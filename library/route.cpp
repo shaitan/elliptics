@@ -173,10 +173,14 @@ static int dnet_state_join_nolock(struct dnet_net_state *st)
 
 	err = dnet_route_list_send_all_ids_nolock(st, &id, 0, DNET_CMD_JOIN, 0, 1);
 	if (err) {
+		LIST_HEAD(head);
 		dnet_log(n, DNET_LOG_ERROR, "%s: failed to send join request to %s.",
 			dnet_dump_id(&id), dnet_server_convert_dnet_addr(&st->addr));
 		// JOIN is critical command
-		dnet_state_reset(st, err);
+		// n->state_lock has already been locked, use nolock version of dnet_state_reset
+		dnet_state_reset_nolock_noclean(st, err, &head);
+		// dnet_state_reset_nolock_noclean doesn't clean trans list, clean it there.
+		dnet_trans_clean_list(&head);
 		goto err_out_exit;
 	}
 
