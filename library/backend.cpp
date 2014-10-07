@@ -440,7 +440,7 @@ int dnet_backend_init_all(struct dnet_node *node)
 			std::vector<async_backend_control_result> results;
 
 			for (size_t backend_id = 0; backend_id < backends.size(); ++backend_id) {
-				dnet_backend_info &backend = node->config_data->backends->backends[backend_id];
+				dnet_backend_info &backend = backends[backend_id];
 				if (!backend.enable_at_start)
 					continue;
 
@@ -456,7 +456,7 @@ int dnet_backend_init_all(struct dnet_node *node)
 		}
 	} else {
 		for (size_t backend_id = 0; backend_id < backends.size(); ++backend_id) {
-			dnet_backend_info &backend = node->config_data->backends->backends[backend_id];
+			dnet_backend_info &backend = backends[backend_id];
 			if (!backend.enable_at_start)
 				continue;
 
@@ -483,12 +483,55 @@ int dnet_backend_init_all(struct dnet_node *node)
 
 void dnet_backend_cleanup_all(struct dnet_node *node)
 {
+	dnet_log(node, DNET_LOG_NOTICE, "backend_cleanup_all: disabling all backends");
+	int err = 1;
+	bool all_ok = true;
 	int state = DNET_BACKEND_ENABLED;
 
 	auto &backends = node->config_data->backends->backends;
-	for (size_t backend_id = 0; backend_id < backends.size(); ++backend_id) {
-		dnet_backend_cleanup(node, backend_id, &state);
+
+	if (node->config_data->parallel_start) {
+		try {
+			using ioremap::elliptics::session;
+			using ioremap::elliptics::async_backend_control_result;
+
+			session sess(node);
+			sess.set_exceptions_policy(session::no_exceptions);
+			sess.set_timeout(std::numeric_limits<unsigned>::max() / 2);
+
+			session clean_sess = sess.clean_clone();
+
+			std::vector<async_backend_control_result> results;
+
+			for (size_t backend_id = 0; backend_id < backends.size(); ++backend_id) {
+				dnet_log(node, DNET_LOG_NOTICE, "disabling backend: %lu, state: %d", backend_id, backends[backend_id].state);
+				results.emplace_back(clean_sess.disable_backend(node->st->addr, backend_id));
+			}
+
+			async_backend_control_result result = ioremap::elliptics::aggregated(sess, results.begin(), results.end());
+			result.wait();
+
+			err = result.error().code();
+		} catch (std::bad_alloc &) {}
+	} else {
+		for (size_t backend_id = 0; backend_id < backends.size(); ++backend_id) {
+			int tmp = dnet_backend_cleanup(node, backend_id, &state);
+			if (!tmp) {
+				err = 0;
+			} else if (err == 1) {
+				err = tmp;
+				all_ok = false;
+			}
+		}
 	}
+
+	if (all_ok) {
+		err = 0;
+	} else if (err == 1) {
+		err = -EINVAL;
+	}
+
+	dnet_log(node, err ? DNET_LOG_ERROR : DNET_LOG_NOTICE, "backend_cleanup_all: finished disabling all backends: %d", err);
 }
 
 static int dnet_backend_set_ids(dnet_node *node, uint32_t backend_id, dnet_raw_id *ids, uint32_t ids_count)
