@@ -3,7 +3,7 @@
 
 Summary:	Distributed hash table storage
 Name:		elliptics
-Version:	2.26.3.33-1
+Version:	2.26.3.33-2
 Release:	1%{?dist}
 
 License:	GPLv2+
@@ -143,6 +143,9 @@ rm -rf %{buildroot}
 
 
 %changelog
+* Fri Dec 05 2014 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.26.3.33-2
+- dependencies: updated eblob version
+
 * Fri Dec 05 2014 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.26.3.33-1
 - Disable only non-disabled backends at cleanup.
 - config: do not reparse config at each backend init - only if config was modified. Removed useless copying of an array at config methods.
