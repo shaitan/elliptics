@@ -1,3 +1,42 @@
+elliptics (2.26.3.33-1) unstable; urgency=low
+
+  * Disable only non-disabled backends at cleanup.
+  * config: do not reparse config at each backend init - only if config was modified. Removed useless copying of an array at config methods.
+  * Fixed code indent
+  * speed up dc recovery as don't spend time on pickling/unpickling data and concatenate files via cat.
+  * Change file concatenation from calling cat to python file read+write
+  * use shutil.copyfileobj to concatinate files
+  * remove extra bracket
+  * Added option for dumping into text file all iterated keys
+  * Switched pickle protocol to binary to reduce size of temp files and reduce processing time
+  * Made dumping key enabled by default, to disable it introduced new option -> -u
+  * don't add option for key dumping in dc_recovery
+  * removed multiple context expression for python 2.6 compatibility
+  * don't set ctx.dump_keys on dc_recovery
+  * removed multiple context expression for python 2.6 compatibility
+  * Pytests: moved fixture to global conftests. Disabled srw for test cluster in test_specific_cases. Cleaned up pytests code.
+  * Pytests: added iterator tests.
+  * config: use uint32_t for parsing group from config - disallow setting negative group.
+  * bindings: added start_time and end_time methods for async_result: both for C++ and Python bindings. They returns timestamps when async result was created and finished.
+  * Fixed calculation tnsec of elapsed_time.
+  * python: fixed gil_guard
+  * python: made elliptics.Id to be initialized by any iterable object and group
+  * recovery: replaced cPickle by msgpack for packing intermediate results
+  * recovery: added 'total_keys' statistics that shows how much keys should be recovered/processed
+  * recovery: added 'recovery_speed' and 'iteration_speed' to statistics. Both values are mesuared in records per second.
+  * iteration: added new iteration flag: DNET_IFLAGS_NO_META which turns off reading extended header from blob and speedups iteration, but all keys that will be returned by such iteration will have empty metadata (timestamp and user_flags).
+  * recovery: added '-M' option to dnet_recovery which speedups iteration phases of recovery but sacrifices checking metadata.
+  * pytests: updated some test cases of test_recovery to use new '-M' option
+  * pytests: added case to test_session_iterator that check iterating with no_meta flag
+  * iteration: removed double checking of ranges - keys is already filtered in eblob.
+  * recovery: added recovery_speed to merge stats.
+  * recovery: used total_size instead of size for determining record size. …
+  * recovery: escaped dumping keys that allready consistent in all groups
+  * core: fixed broking API/ABI.
+
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Fri, 05 Dec 2014 14:33:18 +0400
+
 elliptics (2.26.3.33) unstable; urgency=low
 
   * lookup: extended lookup address to return dnet_addr, not address string
