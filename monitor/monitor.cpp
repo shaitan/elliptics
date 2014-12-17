@@ -38,6 +38,19 @@ static ioremap::monitor::monitor* get_monitor(struct dnet_node *n) {
 
 namespace ioremap { namespace monitor {
 
+const char handystats_defaults[] = R"handy({
+    "statistics": {
+        "moving-interval": 1000,
+        "tags": ["moving-avg"]},
+    "metrics": {
+        "counter": {
+            "tags": ["value", "moving-avg", "rate"] },
+        "timer": {
+            "idle-timeout": 60000,
+            "tags": ["moving-avg"] } },
+    "metrics-dump": { "interval": 1000 }
+})handy";
+
 monitor::monitor(struct dnet_node *n, struct dnet_config *cfg)
 : m_node(n)
 , m_server(*this, cfg->monitor_port, cfg->family)
@@ -52,6 +65,7 @@ monitor::monitor(struct dnet_node *n, struct dnet_config *cfg)
 			BH_LOG(*cfg->log, DNET_LOG_ERROR, "monitor: initializing stats subsystem, error parsing config file '%s', using defaults", cfg->handystats_config);
 		}
 	} else {
+		HANDY_CONFIG_JSON(handystats_defaults);
 		BH_LOG(*cfg->log, DNET_LOG_INFO, "monitor: initializing stats subsystem, no config file specified, using defaults");
 	}
 	HANDY_INIT();
