@@ -84,6 +84,7 @@ struct dnet_config_backend {
 	void				(* cleanup)(struct dnet_config_backend *b);
 
 	struct dnet_backend_callbacks	cb;
+	size_t				stat_id;
 };
 
 /*!

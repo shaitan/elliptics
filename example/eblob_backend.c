@@ -1042,6 +1042,7 @@ static int dnet_blob_config_init(struct dnet_config_backend *b)
 	c->log.log = dnet_eblob_log_implemenation;
 
 	c->data.log = &c->log;
+	c->data.stat_id = b->stat_id;
 
 	err = pthread_mutex_init(&c->last_read_lock, NULL);
 	if (err) {
