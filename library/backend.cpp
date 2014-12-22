@@ -269,6 +269,7 @@ int dnet_backend_init(struct dnet_node *node, size_t backend_id, int *state)
 	backend.data.assign(backend.data.size(), '\0');
 	backend.config.data = backend.data.data();
 	backend.config.log = backend.log.get();
+	backend.config.stat_id = backend_id;
 
 	backend_io = &node->io->backends[backend_id];
 	backend_io->need_exit = 0;
