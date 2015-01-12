@@ -39,16 +39,73 @@ static ioremap::monitor::monitor* get_monitor(struct dnet_node *n) {
 namespace ioremap { namespace monitor {
 
 const char handystats_defaults[] = R"handy({
-    "statistics": {
+    "enable": true,
+    "dump-interval": 750,
+
+    "defaults": {
         "moving-interval": 1000,
-        "tags": ["moving-avg"]},
-    "metrics": {
-        "counter": {
-            "tags": ["value", "moving-avg", "rate"] },
-        "timer": {
-            "idle-timeout": 60000,
-            "tags": ["moving-avg"] } },
-    "metrics-dump": { "interval": 1000 }
+        "histogram-bins": 30,
+        "stats": ["moving-avg"]
+    },
+
+    "gauge": {
+        "stats": ["moving-avg", "throughput"]
+    },
+
+    "counter": {
+        "stats": ["value", "moving-avg"]
+    },
+
+    "timer": {
+        "idle-timeout": 60000,
+        "stats": ["moving-avg", "quantile"]
+    },
+
+    "io.cmd{,.*.lock_time,.*}": {
+        "moving-interval": 10000,
+        "stats": ["moving-avg", "quantile"]
+    },
+
+    "io.cmd_recursive{,.READ}": {
+        "moving-interval": 10000,
+        "stats": ["moving-avg", "quantile"]
+    },
+
+    "cache.{READ,WRITE,DEL}": {
+        "moving-interval": 10000,
+        "stats": ["moving-avg", "quantile"]
+    },
+
+    "eblob_backend.cmd.{READ,WRITE,LOOKUP,DEL,READ_RANGE,DEL_RANGE}": {
+        "moving-interval": 10000,
+        "stats": ["moving-avg", "quantile"]
+    },
+
+    "io.notify.{update,add,remove}": {
+        "moving-interval": 10000,
+        "stats": ["moving-avg", "quantile"]
+    },
+
+    "io.{cmds,forwards,replies}": {
+        "stats": ["throughput"]
+    },
+
+    "io.{input,output}.queue.size": {
+        "stats": ["moving-avg", "max"]
+    },
+
+    "pool.*.{blocking,nonblocking}.queue.size": {
+        "stats": ["moving-avg", "max"]
+    },
+
+    "pool.*.{blocking,nonblocking}.queue.wait_time": {
+        "moving-interval": 10000,
+        "stats": ["moving-avg", "quantile"]
+    },
+
+    "pool.*.{blocking,nonblocking}.active_threads": {
+        "stats": ["moving-avg"]
+    }
 })handy";
 
 monitor::monitor(struct dnet_node *n, struct dnet_config *cfg)
