@@ -16,14 +16,12 @@
 from elliptics.core import *
 from elliptics.route import Address
 from elliptics.node import Node
-from elliptics import log_level
+import elliptics
 
 
 @property
 def storage_address(self):
-    """
-    Node address as elliptics.Address
-    """
+    ''' Node address as elliptics.Address '''
     return Address.from_host_port(self.__storage_address__)
 
 
@@ -36,9 +34,7 @@ def monitor_statistics(self):
 def wrap_address(classes):
     @property
     def address(self):
-        """
-        Node address as elliptics.Address
-        """
+        ''' Node address as elliptics.Address '''
         return Address.from_host_port(self.__address__)
     for cls in classes:
         cls.__address__ = cls.address
@@ -56,7 +52,7 @@ wrap_address([CallbackResultEntry,
               ])
 
 
-def create_node(elog=None, log_file='/dev/stderr', log_level=log_level.error,
+def create_node(elog=None, log_file='/dev/stderr', log_level=elliptics.log_level.error,
                 cfg=None, wait_timeout=3600, check_timeout=60,
                 flags=0, io_thread_num=1, net_thread_num=1,
                 nonblocking_io_thread_num=1, remotes=[]):
@@ -72,9 +68,9 @@ def create_node(elog=None, log_file='/dev/stderr', log_level=log_level.error,
         cfg.net_thread_num = net_thread_num
     n = Node(elog, cfg)
     try:
-        n.add_remotes(map(Address.from_host_port_family, remotes))
+        n.add_remotes(remotes)
     except Exception as e:
-        elog.log(log_level.error, "Coudn't connect to: {0}: {1}".format(repr(remotes), repr(e)))
+        elog.log(elliptics.log_level.error, "Coudn't connect to: {0}: {1}".format(repr(remotes), repr(e)))
     return n
 
 

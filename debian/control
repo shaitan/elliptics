@@ -23,6 +23,7 @@ Build-Depends:	cdbs,
 		python-central | dh-python,
 		python-pip,
 		python-virtualenv,
+		python-click,
 		msgpack-python | python-msgpack,
 		handystats (>= 1.10.2)
 Standards-Version: 3.8.0

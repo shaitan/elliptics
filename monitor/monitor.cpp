@@ -47,7 +47,7 @@ const char handystats_defaults[] = R"handy({
             "tags": ["value", "moving-avg", "rate"] },
         "timer": {
             "idle-timeout": 60000,
-            "tags": ["moving-avg"] } },
+            "tags": ["moving-avg", "quantile"] } },
     "metrics-dump": { "interval": 1000 }
 })handy";
 

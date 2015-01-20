@@ -112,7 +112,7 @@ add_custom_command(TARGET test
     COMMAND cp ${CMAKE_CURRENT_BINARY_DIR}/../bindings/python/core.so* pytests/elliptics/
     COMMAND cp ${CMAKE_CURRENT_BINARY_DIR}/../bindings/cpp/libelliptics_cpp.so* pytests/
     COMMAND cp ${CMAKE_CURRENT_BINARY_DIR}/../*/libelliptics*.so* pytests/
-    COMMAND cp ${CMAKE_SOURCE_DIR}/bindings/python/src/* pytests/elliptics/
+    COMMAND cp -r ${CMAKE_SOURCE_DIR}/bindings/python/src/* pytests/elliptics/
     COMMAND cp -r ${CMAKE_SOURCE_DIR}/recovery/elliptics_recovery/* pytests/elliptics_recovery/
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
