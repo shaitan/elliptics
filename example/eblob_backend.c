@@ -928,6 +928,13 @@ static int dnet_blob_set_blob_flags(struct dnet_config_backend *b, char *key __u
 	return 0;
 }
 
+static int dnet_blob_set_backend_id(struct dnet_config_backend *b, char *key __unused, char *value) {
+	struct eblob_backend_config *c = b->data;
+
+	c->data.stat_id = strtoul(value, NULL, 0);
+	return 0;
+}
+
 uint64_t eblob_backend_total_elements(void *priv) {
 	struct eblob_backend_config *r = priv;
 	return eblob_total_elements(r->eblob);
@@ -1063,7 +1070,6 @@ static int dnet_blob_config_init(struct dnet_config_backend *b)
 	c->log.log = dnet_eblob_log_implemenation;
 
 	c->data.log = &c->log;
-	c->data.stat_id = b->stat_id;
 
 	err = pthread_mutex_init(&c->last_read_lock, NULL);
 	if (err) {
@@ -1130,7 +1136,8 @@ static struct dnet_config_entry dnet_cfg_entries_blobsystem[] = {
 	{"blob_size_limit", dnet_blob_set_blob_size},
 	{"index_block_size", dnet_blob_set_index_block_size},
 	{"index_block_bloom_length", dnet_blob_set_index_block_bloom_length},
-	{"periodic_timeout", dnet_blob_set_periodic_timeout}
+	{"periodic_timeout", dnet_blob_set_periodic_timeout},
+	{"backend_id", dnet_blob_set_backend_id}
 };
 
 static struct dnet_config_backend dnet_eblob_backend = {

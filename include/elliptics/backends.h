@@ -85,7 +85,6 @@ struct dnet_config_backend {
 	int				(* to_json)(struct dnet_config_backend *b, char **json_stat, size_t *size);
 
 	struct dnet_backend_callbacks	cb;
-	size_t				stat_id;
 };
 
 /*!
