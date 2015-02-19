@@ -219,6 +219,14 @@ public:
 		return session::get_trace_id();
 	}
 
+	void set_trace_bit(bool trace) {
+		session::set_trace_bit(trace);
+	}
+
+	bool get_trace_bit() {
+		return session::get_trace_bit();
+	}
+
 	void set_namespace(const std::string& ns) {
 		session::set_namespace(ns.c_str(), ns.size());
 	}
@@ -870,6 +878,13 @@ void init_elliptics_session() {
 		    "All logs connected with operations executed by the session\n"
 		    "will be printed with ignoring current log level\n\n"
 		    "session.trace_id = 123456")
+
+		.add_property("trace_bit",
+		              &elliptics_session::get_trace_bit,
+		              &elliptics_session::set_trace_bit,
+		    "Sets debug trace_bit which turns on/off printing all logs\n"
+		    "connected with requests sended by the session.\n\n"
+		    "session.trace_bit = True")
 
 		.add_property("cflags",
 		              &elliptics_session::get_cflags,
