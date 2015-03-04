@@ -1,3 +1,10 @@
+elliptics (2.26.3.33-3) unstable; urgency=low
+
+  * logs: fixed printing trace_id at logs while receiving/sending packets.
+  * core: use rbtree to store groups list.
+
+ -- Anton Kortunov <toshik@yandex-team.ru>  Wed, 04 Mar 2015 16:39:07 +0400
+
 elliptics (2.26.3.33-2) unstable; urgency=low
 
   * dependencies: updated eblob version

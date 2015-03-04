@@ -3,7 +3,7 @@
 
 Summary:	Distributed hash table storage
 Name:		elliptics
-Version:	2.26.3.33-2
+Version:	2.26.3.33-3
 Release:	1%{?dist}
 
 License:	GPLv2+
@@ -143,6 +143,10 @@ rm -rf %{buildroot}
 
 
 %changelog
+* Wed Mar 04 2015 Anton Kortunov <toshik@yandex-team.ru> - 2.26.3.33-3
+- logs: fixed printing trace_id at logs while receiving/sending packets.
+- core: use rbtree to store groups list.
+
 * Fri Dec 05 2014 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.26.3.33-2
 - dependencies: updated eblob version
 
