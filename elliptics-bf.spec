@@ -3,7 +3,7 @@
 
 Summary:	Distributed hash table storage
 Name:		elliptics
-Version:	2.26.3.33-3
+Version:	2.26.3.33-5
 Release:	1%{?dist}
 
 License:	GPLv2+

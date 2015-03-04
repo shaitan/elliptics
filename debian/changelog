@@ -1,4 +1,4 @@
-elliptics (2.26.3.33-3) unstable; urgency=low
+elliptics (2.26.3.33-5) unstable; urgency=low
 
   * logs: fixed printing trace_id at logs while receiving/sending packets.
   * core: use rbtree to store groups list.
