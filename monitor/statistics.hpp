@@ -30,9 +30,6 @@
 #include <thread>
 #include <map>
 
-#include <boost/thread/locks.hpp>
-#include <boost/thread/shared_mutex.hpp>
-
 #include "rapidjson/document.h"
 
 #include "../library/elliptics.h"
@@ -177,7 +174,7 @@ public:
 	 * \a size - size of data that takes a part in command execution
 	 * \a time - time spended on command execution
 	 */
-	void command_counter(const int cmd, const int trans, const int err, const int cache,
+	void command_counter(const int cmd, const uint64_t trans, const int err, const int cache,
 	                     const uint64_t size, const unsigned long time);
 
 	/*!
@@ -212,7 +209,6 @@ private:
  *     generating final statistics report in json format
  */
 class statistics {
-	typedef boost::shared_mutex rw_lock;
 public:
 	/*!
 	 * \internal
@@ -241,7 +237,7 @@ public:
 	 * \a size - size of data that takes a part in command execution
 	 * \a time - time spended on command execution
 	 */
-	void command_counter(const int cmd, const int trans, const int err, const int cache,
+	void command_counter(const int cmd, const uint64_t trans, const int err, const int cache,
 	                     const uint64_t size, const unsigned long time);
 
 	/*!
@@ -293,7 +289,7 @@ private:
 	 *
 	 * Lock for controlling access to vector of external statistics provider
 	 */
-	rw_lock m_provider_lock;
+	std::mutex m_provider_lock;
 
 	std::map<std::string, std::shared_ptr<stat_provider>> m_stat_providers;
 };

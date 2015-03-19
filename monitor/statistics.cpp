@@ -134,7 +134,7 @@ command_stats::command_stats()
 }
 
 void command_stats::command_counter(const int orig_cmd,
-                                 const int trans,
+                                 const uint64_t trans,
                                  const int err,
                                  const int cache,
                                  const uint64_t size,
@@ -174,7 +174,7 @@ rapidjson::Value& command_stats::commands_report(dnet_node *node, rapidjson::Val
 
 
 void statistics::command_counter(const int cmd,
-                                 const int trans,
+                                 const uint64_t trans,
                                  const int err,
                                  const int cache,
                                  const uint64_t size,
@@ -190,13 +190,13 @@ statistics::statistics(monitor& mon, struct dnet_config *cfg) : m_monitor(mon)
 
 void statistics::add_provider(stat_provider *stat, const std::string &name)
 {
-	boost::unique_lock<rw_lock> guard(m_provider_lock);
+	std::unique_lock<std::mutex> guard(m_provider_lock);
 	m_stat_providers.insert(make_pair(name, std::shared_ptr<stat_provider>(stat)));
 }
 
 void statistics::remove_provider(const std::string &name)
 {
-	boost::unique_lock<rw_lock> guard(m_provider_lock);
+	std::unique_lock<std::mutex> guard(m_provider_lock);
 	m_stat_providers.erase(name);
 }
 
@@ -247,7 +247,7 @@ std::string statistics::report(uint64_t categories)
 #endif
 	}
 
-	boost::shared_lock<rw_lock> guard(m_provider_lock);
+	std::unique_lock<std::mutex> guard(m_provider_lock);
 	for (auto it = m_stat_providers.cbegin(), end = m_stat_providers.cend(); it != end; ++it) {
 		auto json = it->second->json(categories);
 		if (json.empty())
