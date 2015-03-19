@@ -219,6 +219,13 @@ public:
 	/*!
 	 * \internal
 	 *
+	 * Destructor: destructes statistics
+	 */
+	~statistics();
+
+	/*!
+	 * \internal
+	 *
 	 * Generates and returns json statistics for specified \a category
 	 * For that statistics will interview all external statistics provider
 	 * which supports \a categories
