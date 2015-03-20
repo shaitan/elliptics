@@ -188,6 +188,11 @@ statistics::statistics(monitor& mon, struct dnet_config *cfg) : m_monitor(mon)
 	(void) cfg;
 }
 
+statistics::~statistics() {
+	std::unique_lock<std::mutex> guard(m_provider_mutex);
+	m_stat_providers.clear();
+}
+
 void statistics::add_provider(stat_provider *stat, const std::string &name)
 {
 	std::unique_lock<std::mutex> guard(m_provider_mutex);

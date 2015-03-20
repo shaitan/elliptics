@@ -82,10 +82,11 @@ class KeyRecover(object):
             if self.chunked:
                 size = min(self.total_size - self.recovered_size, self.ctx.chunk_size)
             if self.recovered_size != 0:
-                self.read_session.ioflags != elliptics.io_flags.nocsum
+                self.read_session.ioflags = elliptics.io_flags.nocsum
             else:
                 #first read should be at least INDEX_MAGIC_NUMBER_LENGTH bytes
                 size = min(self.total_size, max(size, INDEX_MAGIC_NUMBER_LENGTH))
+                self.read_session.ioflags = 0
             log.debug("Reading key: {0} from groups: {1}, chunked: {2}, offset: {3}, size: {4}, total_size: {5}"
                       .format(self.key, self.read_session.groups, self.chunked, self.recovered_size, size, self.total_size))
             read_result = self.read_session.read_data(self.key,
@@ -108,9 +109,9 @@ class KeyRecover(object):
             else:
                 log.debug("Writing key: {0} to groups: {1}"
                           .format(repr(self.key), self.diff_groups + self.missed_groups))
-                params = {'key' : self.key,
-                          'data' : self.write_data,
-                          'remote_offset' : self.recovered_size}
+                params = {'key': self.key,
+                          'data': self.write_data,
+                          'remote_offset': self.recovered_size}
                 if self.chunked:
                     if self.recovered_size == 0:
                         params['psize'] = self.total_size
@@ -152,7 +153,7 @@ class KeyRecover(object):
                     self.diff_groups += self.read_session.groups
                     self.run()
                 else:
-                    log.error("Failed to read key: {0} from any available group. This key couldn't be recovered now.")
+                    log.error("Failed to read key: {0} from any available group. This key couldn't be recovered now.".format(self.key))
                     self.stop(False)
                 return
 
@@ -162,6 +163,9 @@ class KeyRecover(object):
             if self.recovered_size == 0:
                 self.write_session.user_flags = results[-1].user_flags
                 self.write_session.timestamp = results[-1].timestamp
+                if self.total_size != results[-1].total_size:
+                    self.total_size = results[-1].total_size
+                    self.chunked = self.total_size > self.ctx.chunk_size
             self.attempt = 0
 
             if self.chunked and len(results) > 1:

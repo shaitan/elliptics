@@ -3,7 +3,7 @@
 
 Summary:	Distributed hash table storage
 Name:		elliptics
-Version:	2.26.3.33-5
+Version:	2.26.3.33-6
 Release:	1%{?dist}
 
 License:	GPLv2+
@@ -143,7 +143,10 @@ rm -rf %{buildroot}
 
 
 %changelog
-* Wed Mar 04 2015 Anton Kortunov <toshik@yandex-team.ru> - 2.26.3.33-3
+* Wed Mar 18 2015 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.26.3.33-6
+- net: connection between servers with different number of addresses is not allowed. If connected node has different number of addresses fail its socket processing.
+
+* Wed Mar 04 2015 Anton Kortunov <toshik@yandex-team.ru> - 2.26.3.33-5
 - logs: fixed printing trace_id at logs while receiving/sending packets.
 - core: use rbtree to store groups list.
 

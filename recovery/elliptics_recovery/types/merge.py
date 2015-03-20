@@ -122,7 +122,9 @@ class Recovery(object):
                 size = min(self.total_size - self.recovered_size, self.ctx.chunk_size)
             if self.recovered_size != 0:
                 # if it is not first chunk then do not check checksum on read
-                self.direct_session.ioflags |= elliptics.io_flags.nocsum
+                self.direct_session.ioflags = elliptics.io_flags.nocsum
+            else:
+                self.direct_session.ioflags = 0
             self.direct_session.read_data(self.key,
                                           offset=self.recovered_size,
                                           size=size).connect(self.onread)
@@ -236,6 +238,9 @@ class Recovery(object):
             if self.recovered_size == 0:
                 self.session.user_flags = results[0].user_flags
                 self.session.timestamp = results[0].timestamp
+                if self.total_size != results[0].total_size:
+                    self.total_size = results[0].total_size
+                    self.chunked = self.total_size > self.ctx.chunk_size
             self.stats.read += 1
             self.write_data = results[0].data
             self.total_size = results[0].io_attribute.total_size

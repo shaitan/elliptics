@@ -1,3 +1,9 @@
+elliptics (2.26.3.33-6) unstable; urgency=low
+
+  * net: connection between servers with different number of addresses is not allowed. If connected node has different number of addresses fail its socket processing.
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Wed, 18 Mar 2015 21:35:15 +0400
+
 elliptics (2.26.3.33-5) unstable; urgency=low
 
   * logs: fixed printing trace_id at logs while receiving/sending packets.
