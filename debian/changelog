@@ -1,3 +1,11 @@
+elliptics (2.26.3.33-7) unstable; urgency=low
+
+  * Fixed typo in some logs
+  * recovery: fixed recovering keys which have several alive copies at one backend
+  * monitor: added statistics destructor which frees providers under lock - fixed crash on exit while node is handling monitor request
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Mon, 23 Mar 2015 15:05:42 +0400
+
 elliptics (2.26.3.33-6) unstable; urgency=low
 
   * net: connection between servers with different number of addresses is not allowed. If connected node has different number of addresses fail its socket processing.

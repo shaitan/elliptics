@@ -3,7 +3,7 @@
 
 Summary:	Distributed hash table storage
 Name:		elliptics
-Version:	2.26.3.33-6
+Version:	2.26.3.33-7
 Release:	1%{?dist}
 
 License:	GPLv2+
@@ -143,6 +143,11 @@ rm -rf %{buildroot}
 
 
 %changelog
+* Mon Mar 23 2015 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.26.3.33-7
+- Fixed typo in some logs
+- recovery: fixed recovering keys which have several alive copies at one backend
+- monitor: added statistics destructor which frees providers under lock - fixed crash on exit while node is handling monitor request
+
 * Wed Mar 18 2015 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.26.3.33-6
 - net: connection between servers with different number of addresses is not allowed. If connected node has different number of addresses fail its socket processing.
 
