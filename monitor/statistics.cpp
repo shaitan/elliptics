@@ -195,27 +195,14 @@ statistics::~statistics() {
 
 void statistics::add_provider(stat_provider *stat, const std::string &name)
 {
-	std::unique_lock<std::mutex> guard(m_provider_mutex);
-	m_stat_providers.emplace_back(std::unique_ptr<stat_provider>(stat), name);
+	boost::unique_lock<rw_lock> guard(m_provider_lock);
+	m_stat_providers.insert(make_pair(name, std::shared_ptr<stat_provider>(stat)));
 }
-
-struct provider_remover_condition
-{
-	std::string name;
-
-	bool operator() (const std::pair<std::unique_ptr<stat_provider>, std::string> &pair)
-	{
-		return pair.second == name;
-	}
-};
 
 void statistics::remove_provider(const std::string &name)
 {
-	provider_remover_condition condition = { name };
-
-	std::unique_lock<std::mutex> guard(m_provider_mutex);
-	auto it = std::remove_if(m_stat_providers.begin(), m_stat_providers.end(), condition);
-	m_stat_providers.erase(it, m_stat_providers.end());
+	boost::unique_lock<rw_lock> guard(m_provider_lock);
+	m_stat_providers.erase(name);
 }
 
 inline std::string convert_report(const rapidjson::Document &report)
@@ -265,14 +252,14 @@ std::string statistics::report(uint64_t categories)
 #endif
 	}
 
-	std::unique_lock<std::mutex> guard(m_provider_mutex);
+	boost::shared_lock<rw_lock> guard(m_provider_lock);
 	for (auto it = m_stat_providers.cbegin(), end = m_stat_providers.cend(); it != end; ++it) {
-		auto json = it->first->json(categories);
+		auto json = it->second->json(categories);
 		if (json.empty())
 			continue;
 		rapidjson::Document value_doc(&allocator);
 		value_doc.Parse<0>(json.c_str());
-		report.AddMember(it->second.c_str(),
+		report.AddMember(it->first.c_str(),
 		                 allocator,
 		                 static_cast<rapidjson::Value&>(value_doc),
 		                 allocator);

@@ -6,6 +6,8 @@ ADD_LIBRARY(elliptics_monitor STATIC
             io_stat_provider.cpp
             backends_stat_provider.cpp
             procfs_provider.cpp
+            top_provider.cpp
+            top_stats.cpp
     )
 
 if(UNIX OR MINGW)
