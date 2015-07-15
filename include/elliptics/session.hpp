@@ -179,6 +179,11 @@ class node
 		logger			&get_log() const;
 		dnet_node		*get_native() const;
 
+		/* Stops node by destroying node internals.
+		 * After calling \a stop(), the node can't be used or restored.
+		 */
+		void			stop();
+
 	protected:
 		std::shared_ptr<node_data> m_data;
 

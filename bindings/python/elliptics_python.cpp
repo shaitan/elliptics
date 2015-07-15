@@ -155,6 +155,11 @@ class elliptics_node_python : public node, public bp::wrapper<node> {
 
 			add_remote(std_remotes);
 		}
+
+		void stop() {
+			py_allow_threads_scoped pythr;
+			node::stop();
+		}
 };
 
 class elliptics_file_logger : public file_logger
@@ -367,6 +372,11 @@ BOOST_PYTHON_MODULE(core)
 		     (bp::arg("idle"), bp::arg("cnt"), bp::arg("interval")),
 		     "set_keepalive(idle, cnt, interval)\n"
 		     "    Sets tcp keepalive parameters to connections\n")
+		.def("stop", &elliptics_node_python::stop,
+		     "stop()\n"
+		     "    Stops node by destroying node internals\n"
+		     "    After calling \a stop(), the node can't be used or restored\n\n"
+		     "    node.stop()")
 	;
 
 	bp::enum_<elliptics_iterator_flags>("iterator_flags",

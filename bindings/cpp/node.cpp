@@ -132,12 +132,21 @@ void node::set_keepalive(int idle, int cnt, int interval)
 
 logger &node::get_log() const
 {
+	if (!m_data)
+		throw_error(-EINVAL, "Failed to get logger from null node");
 	return m_data->log;
 }
 
 dnet_node *node::get_native() const
 {
+	if (!m_data)
+		throw_error(-EINVAL, "Failed to get native node from null node");
 	return m_data ? m_data->node_ptr : NULL;
+}
+
+void node::stop() {
+	if (m_data)
+		m_data.reset();
 }
 
 } } // namespace ioremap::elliptics
