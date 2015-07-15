@@ -380,9 +380,14 @@ def iterate_key(filepath, groups):
 
 
 class WindowedDC(WindowedRecovery):
-    def __init__(self, ctx, node):
+    def __init__(self, ctx):
         super(WindowedDC, self).__init__(ctx, ctx.stats['recover'])
-        self.node = node
+        self.node = elliptics_create_node(address=ctx.address,
+                                          elog=elliptics.Logger(ctx.log_file, int(ctx.log_level)),
+                                          wait_timeout=ctx.wait_timeout,
+                                          net_thread_num=4,
+                                          io_thread_num=24,
+                                          remotes=ctx.remotes)
         self.keys = iterate_key(self.ctx.merged_filename, self.ctx.groups)
 
     def run_one(self):
@@ -397,18 +402,15 @@ class WindowedDC(WindowedRecovery):
             pass
         return False
 
+    def oncomplete(self):
+        self.node.stop()
+
 
 def recover(ctx):
     stats = ctx.stats['recover']
 
     stats.timer('recover', 'started')
-    node = elliptics_create_node(address=ctx.address,
-                                 elog=elliptics.Logger(ctx.log_file, int(ctx.log_level)),
-                                 wait_timeout=ctx.wait_timeout,
-                                 net_thread_num=4,
-                                 io_thread_num=24,
-                                 remotes=ctx.remotes)
-    result = WindowedDC(ctx, node).run()
+    result = WindowedDC(ctx).run()
     stats.timer('recover', 'finished')
 
     return result

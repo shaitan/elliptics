@@ -352,6 +352,8 @@ class WindowedRecovery(object):
         speed = self.processed_keys / (time.time() - self.start_time)
         self.stats.set_counter('recovery_speed', round(speed, 2))
         self.stats.set_counter('recovers_in_progress', self.recovers_in_progress)
+
+        self.oncomplete()
         return self.result
 
     def callback(self, result, stat):
@@ -372,3 +374,6 @@ class WindowedRecovery(object):
 
         if last:
             self.complete.set()
+
+    def oncomplete(self):
+        pass
