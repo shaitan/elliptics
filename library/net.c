@@ -171,14 +171,28 @@ void dnet_state_clean(struct dnet_net_state *st)
 	dnet_log(st->n, DNET_LOG_NOTICE, "Cleaned state %s, transactions freed: %d", dnet_state_dump_addr(st), num);
 }
 
-static struct dnet_io_req *dnet_io_req_copy(struct dnet_net_state *st, struct dnet_io_req *orig)
+/*
+ * This function makes a copy of io_req to transfer memory ownership to another thread.
+ * If target thread is net thread we can just make a copy and propertly fill fd params.
+ * If target thread is io thread (bypass for local transaction on server side, read_data flag
+ * is set to 1) we need to allocate buffer and read fd content info this buffer.
+ * Result should looks exactly as if was read from network socket. This CPU IO time is spent
+ * in backend's IO pool.
+ */
+static struct dnet_io_req *dnet_io_req_copy(struct dnet_net_state *st, struct dnet_io_req *orig, int read_data)
 {
 	void *buf;
+	size_t len = 0;
 	struct dnet_io_req *r;
 	int offset = 0;
 	int err = 0;
 
-	buf = r = malloc(sizeof(struct dnet_io_req) + orig->dsize + orig->hsize);
+	len = sizeof(struct dnet_io_req) + orig->dsize + orig->hsize;
+	if (orig->fd >= 0 && orig->fsize && read_data) {
+		len += orig->fsize;
+	}
+
+	buf = r = malloc(len);
 	if (!r) {
 		dnet_log(st->n, DNET_LOG_ERROR, "Not enough memory for io req queue fd: %d : %s %d", orig->fd, strerror(-err), err);
 		return NULL;
@@ -192,7 +206,10 @@ static struct dnet_io_req *dnet_io_req_copy(struct dnet_net_state *st, struct dn
 
 		offset = r->hsize;
 		memcpy(r->header, orig->header, r->hsize);
-	}
+	} else if (read_data) {
+        r->header = buf + sizeof(struct dnet_io_req);
+        r->hsize = 0;
+    }
 
 	if (orig->data && orig->dsize) {
 		r->data = buf + sizeof(struct dnet_io_req) + offset;
@@ -203,13 +220,33 @@ static struct dnet_io_req *dnet_io_req_copy(struct dnet_net_state *st, struct dn
 	}
 
 	if (orig->fd >= 0 && orig->fsize) {
-		r->fd = orig->fd;
-		r->on_exit = orig->on_exit;
-		r->local_offset = orig->local_offset;
-		r->fsize = orig->fsize;
+		if (read_data) {
+			if (r->data == NULL) {
+				r->data = buf + sizeof(struct dnet_io_req) + offset;
+			}
+
+			err = dnet_read_ll(orig->fd, r->data + r->dsize, orig->fsize, orig->local_offset);
+			if (err) {
+				dnet_log(st->n, DNET_LOG_ERROR, "Error while reading data: %s %d", strerror(-err), err);
+				goto err_out_free;
+			}
+
+			r->dsize += orig->fsize;
+			r->on_exit = orig->on_exit;
+
+		} else {
+			r->fd = orig->fd;
+			r->on_exit = orig->on_exit;
+			r->local_offset = orig->local_offset;
+			r->fsize = orig->fsize;
+		}
 	}
 
 	return r;
+
+err_out_free:
+	free(r);
+	return NULL;
 }
 
 /*
@@ -221,7 +258,41 @@ static int dnet_io_req_queue(struct dnet_net_state *st, struct dnet_io_req *orig
 	int err = 0;
 	struct dnet_io_req *r;
 
-	r = dnet_io_req_copy(st, orig);
+	/*
+	 * If destination is local node there is no need to copy it via net thread.
+	 * Here it could be sheduled to the proper IO pool directly.
+	 * If io_req hold fd instead of data it should be read here.
+	 */
+	if (st == st->n->st) {
+		dnet_log(st->n, DNET_LOG_DEBUG, "Sending to local state: data: 0x%lx data_size: %d", (unsigned long)orig->data, (int)orig->dsize);
+
+		r = dnet_io_req_copy(st, orig, 1);
+		if (!r) {
+			err = -ENOMEM;
+			goto err_out_exit;
+		}
+
+		/*
+		 * Fixup request.
+		 * r->header and r->data are just a pointers to the same buffer.
+		 * Here r->header could be any size, it depend on function that created io_req.
+		 * In net thread r->hsize is ALWAYS sizeof(struct dnet_cmd) and r->data points
+		 * exactly after struct dnet_cmd struct. We need to modify our copy to the same layout
+		 * because dnet_schedule_io requires it.
+		 */
+		if (r->hsize != sizeof(struct dnet_cmd)) {
+			r->data = r->header + sizeof(struct dnet_cmd);
+			r->dsize += r->hsize - sizeof(struct dnet_cmd);
+			r->hsize = sizeof(struct dnet_cmd);
+		}
+
+		r->st = dnet_state_get(st);
+		dnet_schedule_io(st->n, r);
+
+		return 0;
+	}
+
+	r = dnet_io_req_copy(st, orig, 0);
 	if (!r) {
 		err = -ENOMEM;
 		goto err_out_exit;
@@ -336,8 +407,12 @@ ssize_t dnet_send(struct dnet_net_state *st, void *data, uint64_t size)
 	struct dnet_io_req r;
 
 	memset(&r, 0, sizeof(r));
-	r.data = data;
-	r.dsize = size;
+	r.header = data;
+	r.hsize = sizeof(struct dnet_cmd);
+	if (size > r.hsize) {
+		r.data = data + r.hsize;
+		r.dsize = size - r.hsize;
+	}
 	r.fd = -1;
 
 	return dnet_io_req_queue(st, &r);
