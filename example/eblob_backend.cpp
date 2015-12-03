@@ -18,40 +18,17 @@
  * along with Elliptics.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#define _XOPEN_SOURCE 600
-
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/socket.h>
-#include <sys/mman.h>
-#include <sys/wait.h>
-
 #include <assert.h>
-#include <ctype.h>
-#include <dirent.h>
-#include <errno.h>
-#include <fcntl.h>
 #define __STDC_FORMAT_MACROS
 #include <inttypes.h>
-#include <pthread.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-
-#include <eblob/blob.h>
 
 #include "example/eblob_backend.h"
 
-#include "elliptics/packet.h"
-#include "elliptics/interface.h"
 #include "elliptics/backends.h"
 
 #include "rapidjson/document.h"
 #include "rapidjson/writer.h"
 #include "rapidjson/stringbuffer.h"
-
-#include "common.h"
 
 #include "monitor/measure_points.h"
 
