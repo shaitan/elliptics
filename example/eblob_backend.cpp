@@ -32,13 +32,6 @@
 
 #include "monitor/measure_points.h"
 
-/*
- * FIXME: __unused is used internally by glibc, so it may cause conflicts.
- */
-#ifndef __unused
-#define __unused	__attribute__ ((unused))
-#endif
-
 #if EBLOB_ID_SIZE != DNET_ID_SIZE
 #error "EBLOB_ID_SIZE must be equal to DNET_ID_SIZE"
 #endif
@@ -123,8 +116,8 @@ static int blob_iterate_callback_common(struct eblob_disk_control *dc, int fd, u
  * will empty timestamp.
  */
 static int blob_iterate_callback_without_meta(struct eblob_disk_control *dc,
-		struct eblob_ram_control *rctl __unused,
-		int fd, uint64_t data_offset, void *priv, void *thread_priv __unused) {
+		struct eblob_ram_control *,
+		int fd, uint64_t data_offset, void *priv, void *) {
 	return blob_iterate_callback_common(dc, fd, data_offset, priv, 1);
 }
 
@@ -132,8 +125,8 @@ static int blob_iterate_callback_without_meta(struct eblob_disk_control *dc,
  * With no_meta=0 blob_iterate_callback_common will read ext header from blob.
  */
 static int blob_iterate_callback_with_meta(struct eblob_disk_control *dc,
-		struct eblob_ram_control *rctl __unused,
-		int fd, uint64_t data_offset, void *priv, void *thread_priv __unused) {
+		struct eblob_ram_control *,
+		int fd, uint64_t data_offset, void *priv, void *) {
 	return blob_iterate_callback_common(dc, fd, data_offset, priv, 0);
 }
 
@@ -1101,7 +1094,7 @@ static int eblob_backend_command_handler(void *state, void *priv, struct dnet_cm
 }
 
 static int dnet_blob_set_sync(struct dnet_config_backend *b,
-                              const char *key __unused, const char *value)
+                              const char *, const char *value)
 {
 	auto c = static_cast<eblob_backend_config *>(b->data);
 
@@ -1110,7 +1103,7 @@ static int dnet_blob_set_sync(struct dnet_config_backend *b,
 }
 
 static int dnet_blob_set_data(struct dnet_config_backend *b,
-                              const char *key __unused, const char *file)
+                              const char *, const char *file)
 {
 	auto c = static_cast<eblob_backend_config *>(b->data);
 	int err;
@@ -1139,7 +1132,7 @@ static int dnet_blob_set_data(struct dnet_config_backend *b,
 }
 
 static int dnet_blob_set_datasort_dir(struct dnet_config_backend *b,
-				      const char *key __unused, const char *dir)
+				      const char *, const char *dir)
 {
 	auto c = static_cast<eblob_backend_config *>(b->data);
 	struct stat st;
@@ -1184,7 +1177,7 @@ static int dnet_blob_set_blob_size(struct dnet_config_backend *b,
 }
 
 static int dnet_blob_set_index_block_size(struct dnet_config_backend *b,
-                                          const char *key __unused, const char *value)
+                                          const char *, const char *value)
 {
 	auto c = static_cast<eblob_backend_config *>(b->data);
 
@@ -1193,7 +1186,7 @@ static int dnet_blob_set_index_block_size(struct dnet_config_backend *b,
 }
 
 static int dnet_blob_set_index_block_bloom_length(struct dnet_config_backend *b,
-                                                  const char *key __unused, const char *value)
+                                                  const char *, const char *value)
 {
 	auto c = static_cast<eblob_backend_config *>(b->data);
 
@@ -1202,7 +1195,7 @@ static int dnet_blob_set_index_block_bloom_length(struct dnet_config_backend *b,
 }
 
 static int dnet_blob_set_periodic_timeout(struct dnet_config_backend *b,
-                                          const char *key __unused, const char *value) {
+                                          const char *, const char *value) {
 	auto c = static_cast<eblob_backend_config *>(b->data);
 
 	c->data.periodic_timeout = strtoul(value, NULL, 0);
@@ -1210,7 +1203,7 @@ static int dnet_blob_set_periodic_timeout(struct dnet_config_backend *b,
 }
 
 static int dnet_blob_set_records_in_blob(struct dnet_config_backend *b,
-                                         const char *key __unused, const char *value)
+                                         const char *, const char *value)
 {
 	auto c = static_cast<eblob_backend_config *>(b->data);
 	uint64_t val = strtoul(value, NULL, 0);
@@ -1220,7 +1213,7 @@ static int dnet_blob_set_records_in_blob(struct dnet_config_backend *b,
 }
 
 static int dnet_blob_set_defrag_timeout(struct dnet_config_backend *b,
-                                        const char *key __unused, const char *value)
+                                        const char *, const char *value)
 {
 	auto c = static_cast<eblob_backend_config *>(b->data);
 
@@ -1229,7 +1222,7 @@ static int dnet_blob_set_defrag_timeout(struct dnet_config_backend *b,
 }
 
 static int dnet_blob_set_defrag_time(struct dnet_config_backend *b,
-                                     const char *key __unused, const char *value)
+                                     const char *, const char *value)
 {
 	auto c = static_cast<eblob_backend_config *>(b->data);
 
@@ -1238,7 +1231,7 @@ static int dnet_blob_set_defrag_time(struct dnet_config_backend *b,
 }
 
 static int dnet_blob_set_defrag_splay(struct dnet_config_backend *b,
-                                      const char *key __unused, const char *value)
+                                      const char *, const char *value)
 {
 	auto c = static_cast<eblob_backend_config *>(b->data);
 
@@ -1247,7 +1240,7 @@ static int dnet_blob_set_defrag_splay(struct dnet_config_backend *b,
 }
 
 static int dnet_blob_set_defrag_percentage(struct dnet_config_backend *b,
-                                           const char *key __unused, const char *value)
+                                           const char *, const char *value)
 {
 	auto c = static_cast<eblob_backend_config *>(b->data);
 
@@ -1256,7 +1249,7 @@ static int dnet_blob_set_defrag_percentage(struct dnet_config_backend *b,
 }
 
 static int dnet_blob_set_blob_flags(struct dnet_config_backend *b,
-                                    const char *key __unused, const char *value)
+                                    const char *, const char *value)
 {
 	auto c = static_cast<eblob_backend_config *>(b->data);
 
@@ -1265,7 +1258,7 @@ static int dnet_blob_set_blob_flags(struct dnet_config_backend *b,
 }
 
 static int dnet_blob_set_backend_id(struct dnet_config_backend *b,
-                                    const char *key __unused, const char *value) {
+                                    const char *, const char *value) {
 	auto c = static_cast<eblob_backend_config *>(b->data);
 
 	c->data.stat_id = strtoul(value, NULL, 0);
