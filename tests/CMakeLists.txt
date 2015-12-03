@@ -29,7 +29,6 @@ add_library(test_common STATIC
     ../example/config_impl.cpp
     ../example/backends.c
     ../example/eblob_backend.cpp
-    ../example/eblob_backend.c
     test_base.hpp
     test_base.cpp
     test_session.hpp
