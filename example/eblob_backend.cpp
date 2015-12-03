@@ -50,24 +50,6 @@ trace_id_t get_trace_id()
 	return backend_trace_id_hook;
 }
 
-static int eblob_read_params_compare(const void *p1, const void *p2)
-{
-	auto r1 = static_cast<const eblob_read_params *>(p1);
-	auto r2 = static_cast<const eblob_read_params *>(p2);
-	int ret;
-
-	ret = r1->fd - r2->fd;
-	if (ret != 0)
-		return ret;
-
-	if (r1->offset > r2->offset)
-		return 1;
-	if (r1->offset < r2->offset)
-		return -1;
-
-	return 0;
-}
-
 /* Pre-callback that formats arguments and calls ictl->callback */
 static int blob_iterate_callback_common(struct eblob_disk_control *dc, int fd, uint64_t data_offset, void *priv, int no_meta) {
 	auto ictl = static_cast<dnet_iterator_ctl *>(priv);
@@ -424,8 +406,15 @@ static int blob_read(struct eblob_backend_config *c, void *state, struct dnet_cm
 			int64_t mean = 0;
 			int old_ra;
 
-			qsort(c->last_reads, ARRAY_SIZE(c->last_reads), sizeof(struct eblob_read_params),
-					eblob_read_params_compare);
+			std::sort(c->last_reads, c->last_reads + ARRAY_SIZE(c->last_reads),
+				[] (const eblob_read_params &r1, const eblob_read_params &r2) {
+					if (r1.fd != r2.fd) {
+						return r1.fd > r2.fd;
+					} else {
+						return r1.offset > r2.offset;
+					}
+				}
+			);
 
 			prev = &c->last_reads[0];
 			tmp = prev->offset;
