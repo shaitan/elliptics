@@ -49,20 +49,19 @@ namespace ioremap { namespace elliptics {
 
 using namespace std::placeholders;
 
-// Is there a better way to find groups that are served by this node?
-std::vector<int> find_local_groups(session &sess)
+std::vector<int> find_local_groups(dnet_node *node)
 {
-	const auto &routes = sess.get_routes();
-	const dnet_node *node = sess.get_native_node();
-	std::set<int> unique_groups;
-	for (const auto &route : routes) {
-		for (int i = 0; i < node->addr_num; ++i) {
-			if (dnet_addr_equal(&route.addr, &node->addrs[i])) {
-				unique_groups.insert(route.group_id);
-			}
+	std::vector<int> result;
+
+	for (rb_node *i = rb_first(&node->group_root); i != nullptr; i = rb_next(i)) {
+		const dnet_group *group = rb_entry(i, dnet_group, group_entry);
+		// take local groups only
+		if (group->ids[0].idc->st == node->st) {
+			result.push_back(group->group_id);
 		}
 	}
-	return std::move(std::vector<int>(unique_groups.begin(), unique_groups.end()));
+
+	return result;
 }
 
 localnode::localnode(cocaine::context_t& context, cocaine::io::reactor_t& reactor, const std::string& name, const Json::Value& args, dnet_node* node)
@@ -82,46 +81,44 @@ localnode::localnode(cocaine::context_t& context, cocaine::io::reactor_t& reacto
 		std::bind(&localnode::lookup, this, _1, _2)
 	);
 
-	// find groups that are served by our node, and set them as session default
-	session_proto_.set_groups(find_local_groups(session_proto_));
-	COCAINE_LOG_INFO((&log_), "%s: found local groups: [%s]", __func__, to_string(session_proto_.get_groups()).c_str());
+	// In the simplest case when node serves exactly one group, we want to free
+	// client from the bother of providing group number: client will be allowed
+	// to use an empty group list.
+	{
+		// We are forced to find all local groups anyway because there is no other
+		// way to get the total number of the groups this node serves.
+		const auto local_groups = find_local_groups(node);
+		COCAINE_LOG_INFO((&log_), "%s: found local groups: [%s]", __func__, to_string(local_groups).c_str());
+		if (local_groups.size() == 1) {
+			session_proto_.set_groups(local_groups);
+		}
+	}
+
+	COCAINE_LOG_INFO((&log_), "%s: service initialized", __func__);
 
 	COCAINE_LOG_DEBUG((&log_), "%s: exit", __func__);
 }
 
-error_info override_groups(session &s, const std::vector<int> &groups)
+inline void override_groups(session &s, const std::vector<int> &groups)
 {
-	// special case: empty group list is only meaningful if node serve
-	// exactly single group, then is just a way to say:
-	// 'execute command against whatever group you serving'
-
-	if (groups.size() > 0)  {
+	// Empty group list is only meaningful if node serve a single group.
+	// In that case, empty groups are just a way to say: "please execute
+	// my command against whatever group you are serving".
+	if (!groups.empty())  {
 		s.set_groups(groups);
-
-	} else {
-		if (s.get_groups().size() > 1) {
-			return error_info(-6, "couldn't use group substitution on node which serve more then one group");
-		}
 	}
-	return error_info();
 }
 
 deferred<data_pointer> localnode::read(const dnet_raw_id &key, const std::vector<int> &groups, uint64_t offset, uint64_t size)
 {
 	COCAINE_LOG_DEBUG((&log_), "%s: enter", __func__);
 
-	deferred<data_pointer> promise;
-
 	auto s = session_proto_.clone();
 	s.set_exceptions_policy(session::no_exceptions);
+	override_groups(s, groups);
 
-	if (auto error = override_groups(s, groups)) {
-		promise.abort(error.code(), error.message());
-		return promise;
-	}
 
-	COCAINE_LOG_INFO((&log_), "%s: proposed groups: [%s]", __func__, to_string(groups).c_str());
-	COCAINE_LOG_INFO((&log_), "%s: using groups: [%s]", __func__, to_string(s.get_groups()).c_str());
+	deferred<data_pointer> promise;
 
 	s.read_data(elliptics::key(key), offset, size).connect(
 		std::bind(&localnode::on_read_completed, this, promise, _1, _2)
@@ -136,15 +133,11 @@ deferred<dnet_async_service_result> localnode::write(const dnet_raw_id &key, con
 {
 	COCAINE_LOG_DEBUG((&log_), "%s: enter", __func__);
 
-	deferred<dnet_async_service_result> promise;
-
 	auto s = session_proto_.clone();
-	s.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
+	s.set_exceptions_policy(session::no_exceptions);
+	override_groups(s, groups);
 
-	if (auto error = override_groups(s, groups)) {
-		promise.abort(error.code(), error.message());
-		return promise;
-	}
+	deferred<dnet_async_service_result> promise;
 
 	s.write_data(elliptics::key(key), bytes, offset).connect(
 		std::bind(&localnode::on_write_completed, this, promise, _1, _2)
@@ -157,16 +150,11 @@ deferred<dnet_async_service_result> localnode::write(const dnet_raw_id &key, con
 
 deferred<dnet_async_service_result> localnode::lookup(const dnet_raw_id &key, const std::vector<int> &groups)
 {
-	deferred<dnet_async_service_result> promise;
-
 	auto s = session_proto_.clone();
-	s.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
+	s.set_exceptions_policy(session::no_exceptions);
+	override_groups(s, groups);
 
-	if (auto error = override_groups(s, groups)) {
-		COCAINE_LOG_ERROR((&log_), "%s: return error %d, %s", __func__, error.code(), error.message());
-		promise.abort(error.code(), error.message());
-		return promise;
-	}
+	deferred<dnet_async_service_result> promise;
 
 	s.lookup(elliptics::key(key)).connect(
 		std::bind(&localnode::on_write_completed, this, promise, _1, _2)
@@ -176,8 +164,8 @@ deferred<dnet_async_service_result> localnode::lookup(const dnet_raw_id &key, co
 }
 
 void localnode::on_read_completed(deferred<data_pointer> promise,
-		const std::vector<ioremap::elliptics::read_result_entry> &result,
-		const ioremap::elliptics::error_info &error)
+		const std::vector<read_result_entry> &result,
+		const error_info &error)
 {
 	COCAINE_LOG_DEBUG((&log_), "%s: enter", __func__);
 
@@ -185,6 +173,7 @@ void localnode::on_read_completed(deferred<data_pointer> promise,
 		COCAINE_LOG_ERROR((&log_), "%s: return error %d, %s", __func__, error.code(), error.message());
 		promise.abort(error.code(), error.message());
 	} else {
+		COCAINE_LOG_DEBUG((&log_), "%s: return success", __func__);
 		promise.write(result[0].file());
 	}
 
@@ -192,8 +181,8 @@ void localnode::on_read_completed(deferred<data_pointer> promise,
 }
 
 void localnode::on_write_completed(deferred<dnet_async_service_result> promise,
-		const std::vector<ioremap::elliptics::lookup_result_entry> &results,
-		const ioremap::elliptics::error_info &error)
+		const std::vector<lookup_result_entry> &results,
+		const error_info &error)
 {
 	COCAINE_LOG_DEBUG((&log_), "%s: enter", __func__);
 
@@ -206,7 +195,7 @@ void localnode::on_write_completed(deferred<dnet_async_service_result> promise,
 		r.addr = *single_result.storage_address();
 		r.file_info = *single_result.file_info();
 		r.file_path = single_result.file_path();
-		COCAINE_LOG_INFO((&log_), "%s: return success", __func__);
+		COCAINE_LOG_DEBUG((&log_), "%s: return success", __func__);
 		promise.write(r);
 	}
 
