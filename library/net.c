@@ -173,7 +173,7 @@ void dnet_state_clean(struct dnet_net_state *st)
 
 /*
  * This function makes a copy of io_req to transfer memory ownership to another thread.
- * If target thread is net thread we can just make a copy and propertly fill fd params.
+ * If target thread is net thread we can just make a copy and properly fill fd params.
  * If target thread is io thread (bypass for local transaction on server side, read_data flag
  * is set to 1) we need to allocate buffer and read fd content info this buffer.
  * Result should looks exactly as if was read from network socket. This CPU IO time is spent
@@ -260,7 +260,7 @@ static int dnet_io_req_queue(struct dnet_net_state *st, struct dnet_io_req *orig
 
 	/*
 	 * If destination is local node there is no need to copy it via net thread.
-	 * Here it could be sheduled to the proper IO pool directly.
+	 * Here it could be scheduled to the proper IO pool directly.
 	 * If io_req hold fd instead of data it should be read here.
 	 */
 	if (st == st->n->st) {
