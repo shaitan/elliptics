@@ -1,3 +1,20 @@
+elliptics (2.26.9.3~localnode-1) unstable; urgency=low
+
+  [ Ivan Chelubeev ]
+  * srw: localnode service
+  * localnode: more optimal search for local groups
+  * localnode: add NOLOCK flag for read operations
+
+  [ Anton Kortunov ]
+  * Core: bypass write to pipe for local transactions
+  * Fixed typos
+  * Core: request fixup moved to dnet_io_req_copy
+
+  [ Ivan Chelubeev ]
+  * tests: added target `pytest` for launching tests in python
+
+ -- Ivan Chelubeev <ijon@yandex-team.ru>  Wed, 09 Dec 2015 18:17:27 +0300
+
 elliptics (2.26.9.2) unstable; urgency=low
 
   * fixed crash caused by using freed memory
