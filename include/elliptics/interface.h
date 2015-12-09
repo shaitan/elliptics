@@ -880,6 +880,7 @@ int dnet_mix_states(struct dnet_session *s, struct dnet_id *id, uint32_t ioflags
 char * __attribute__((weak)) dnet_cmd_string(int cmd);
 const char *dnet_backend_state_string(uint32_t state);
 const char *dnet_backend_defrag_state_string(uint32_t state);
+const char *dnet_backend_command_string(uint32_t command);
 
 int dnet_checksum_file(struct dnet_node *n, const char *file, uint64_t offset, uint64_t size, void *csum, int csize);
 int dnet_checksum_fd(struct dnet_node *n, int fd, uint64_t offset, uint64_t size, void *csum, int csize);

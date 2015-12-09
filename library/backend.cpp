@@ -640,8 +640,8 @@ static int dnet_cmd_backend_control_dangerous(struct dnet_net_state *st, struct 
 		return -EINVAL;
 	}
 
-	dnet_log(node, DNET_LOG_INFO, "backend_control: received BACKEND_CONTROL: backend_id: %u, command: %u, state: %s",
-		control->backend_id, control->command, dnet_state_dump_addr(st));
+	dnet_log(node, DNET_LOG_INFO, "backend_control: received BACKEND_CONTROL: backend_id: %u, command: %s, state: %s",
+		control->backend_id, dnet_backend_command_string(control->command), dnet_state_dump_addr(st));
 
 	const dnet_backend_info &backend = backends[control->backend_id];
 	if (backend.state == DNET_BACKEND_UNITIALIZED) {

@@ -207,6 +207,29 @@ const char *dnet_backend_defrag_state_string(uint32_t state)
 	}
 }
 
+const char *dnet_backend_command_string(uint32_t command) {
+	switch ((enum dnet_backend_command)command) {
+		case DNET_BACKEND_ENABLE:
+			return "ENABLE";
+		case DNET_BACKEND_DISABLE:
+			return "DISABLE";
+		case DNET_BACKEND_START_DEFRAG:
+			return "START_DEFRAG";
+		case DNET_BACKEND_SET_IDS:
+			return "SET_IDS";
+		case DNET_BACKEND_READ_ONLY:
+			return "READ_ONLY";
+		case DNET_BACKEND_WRITEABLE:
+			return "WRITEABLE";
+		case DNET_BACKEND_CTL:
+			return "CONTROL";
+		case DNET_BACKEND_STOP_DEFRAG:
+			return "STOP_DEFRAG";
+		default:
+			return "UNKNOWN";
+	}
+}
+
 int dnet_copy_addrs_nolock(struct dnet_net_state *nst, struct dnet_addr *addrs, int addr_num)
 {
 	char addr_str[128];
