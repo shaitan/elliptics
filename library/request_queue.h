@@ -62,9 +62,9 @@ public:
 	void unlock_key(const dnet_id *id);
 
 	/*!
-	 * Returns internal queue statistics
+	 * Returns size of the queue
 	 */
-	void get_list_stats(list_stat *stats) const;
+	size_t size() const;
 
 private:
 	/*
@@ -89,7 +89,7 @@ private:
 	std::mutex m_queue_mutex;
 	std::condition_variable m_queue_wait;
 
-	std::atomic_ullong m_queue_size;
+	std::atomic_size_t m_queue_size;
 
 	typedef std::unordered_map<dnet_id, dnet_locks_entry *, size_t(*)(const dnet_id&), bool(*)(const dnet_id&, const dnet_id&)> locked_keys_t;
 	locked_keys_t m_locked_keys;
@@ -107,7 +107,7 @@ void dnet_push_request(struct dnet_work_pool *pool, struct dnet_io_req *req);
 struct dnet_io_req *dnet_pop_request(struct dnet_work_io *wio, const char *thread_stat_id);
 void dnet_release_request(struct dnet_work_io *wio, const struct dnet_io_req *req);
 
-void dnet_get_pool_list_stats(struct dnet_work_pool *pool, struct list_stat *stats);
+size_t dnet_get_pool_queue_size(struct dnet_work_pool *pool);
 
 void dnet_oplock(struct dnet_backend_io *backend, const struct dnet_id *id);
 void dnet_opunlock(struct dnet_backend_io *backend, const struct dnet_id *id);
