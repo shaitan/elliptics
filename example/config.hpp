@@ -361,6 +361,7 @@ struct config_data : public dnet_config_data
 	std::vector<address>				remotes;
 	std::unique_ptr<cache::cache_config>		cache_config;
 	std::unique_ptr<monitor::monitor_config>	monitor_config;
+	uint64_t					queue_timeout;
 };
 
 } } } // namespace ioremap::elliptics::config

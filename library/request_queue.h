@@ -2,7 +2,6 @@
 #define IOREMAP_ELLIPTICS_REQUEST_QUEUE_HPP
 
 #include "elliptics.h"
-#include "murmurhash.h"
 
 #ifdef __cplusplus
 #include <unordered_map>
@@ -32,7 +31,7 @@ public:
 	/*!
 	 * Constructor: initializes internal state properly
 	 */
-	dnet_request_queue(bool has_backend);
+	dnet_request_queue(bool has_backend, uint64_t timeout);
 	/*!
 	 * Destructor: frees all dnet_locks_entry objects in /a m_lock_pool and destroys all requests in /a m_queue
 	 */
@@ -90,6 +89,7 @@ private:
 	std::condition_variable m_queue_wait;
 
 	std::atomic_size_t m_queue_size;
+	uint64_t m_timeout;
 
 	typedef std::unordered_map<dnet_id, dnet_locks_entry *, size_t(*)(const dnet_id&), bool(*)(const dnet_id&, const dnet_id&)> locked_keys_t;
 	locked_keys_t m_locked_keys;
@@ -100,7 +100,7 @@ private:
 extern "C" {
 #endif // __cplusplus
 
-void *dnet_request_queue_create(int has_backend);
+void *dnet_request_queue_create(struct dnet_node *n, int has_backend);
 void dnet_request_queue_destroy(void *queue);
 
 void dnet_push_request(struct dnet_work_pool *pool, struct dnet_io_req *req);
