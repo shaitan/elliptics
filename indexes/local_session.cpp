@@ -103,7 +103,7 @@ data_pointer local_session::read(const dnet_id &id, uint64_t *user_flags, dnet_t
 	cmd.flags |= m_cflags;
 	cmd.size = sizeof(io);
 
-	int err = dnet_process_cmd_raw(m_backend, m_state, &cmd, &io, 0);
+	int err = dnet_process_cmd_raw(m_backend, m_state, &cmd, &io, 0, 0);
 	if (err) {
 		clear_queue();
 		*errp = err;
@@ -204,7 +204,7 @@ int local_session::write(const dnet_id &id, const char *data, size_t size, uint6
 	cmd.flags |= m_cflags;
 	cmd.size = datap.size();
 
-	int err = dnet_process_cmd_raw(m_backend, m_state, &cmd, datap.data(), 0);
+	int err = dnet_process_cmd_raw(m_backend, m_state, &cmd, datap.data(), 0, 0);
 
 	clear_queue(&err);
 
@@ -217,7 +217,7 @@ data_pointer local_session::lookup(const dnet_cmd &tmp_cmd, int *errp)
 	cmd.flags |= m_cflags;
 	cmd.size = 0;
 
-	*errp = dnet_process_cmd_raw(m_backend, m_state, &cmd, NULL, 0);
+	*errp = dnet_process_cmd_raw(m_backend, m_state, &cmd, NULL, 0, 0);
 
 	if (*errp)
 		return data_pointer();
@@ -259,7 +259,7 @@ int local_session::remove(const dnet_id &id)
 	memcpy(io.parent, id.id, DNET_ID_SIZE);
 	io.flags |= m_ioflags;
 
-	int err = dnet_process_cmd_raw(m_backend, m_state, &cmd, &io, 0);
+	int err = dnet_process_cmd_raw(m_backend, m_state, &cmd, &io, 0, 0);
 
 	clear_queue(&err);
 
@@ -307,12 +307,13 @@ int local_session::update_index_internal(const dnet_id &id, const dnet_raw_id &i
 	cmd.cmd = DNET_CMD_INDEXES_INTERNAL;
 	cmd.size = datap.size();
 
-	int err = dnet_process_cmd_raw(m_backend, m_state, &cmd, datap.data(), 0);
+	int err = dnet_process_cmd_raw(m_backend, m_state, &cmd, datap.data(), 0, 0);
 
 	clear_queue(&err);
 
 	gettimeofday(&end, NULL);
-	long diff = (end.tv_sec - start.tv_sec) * 1000000 + (end.tv_usec - start.tv_usec);
+	timersub(&end, &start, &end);
+	long diff = end.tv_sec * 1000000 + end.tv_usec;
 
 	if (dnet_log_enabled(m_state->n->log, DNET_LOG_INFO)) {
 		char index_str[2*DNET_ID_SIZE+1];
