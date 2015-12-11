@@ -124,6 +124,8 @@ struct dnet_io_req {
 	int			fd;
 	off_t			local_offset;
 	size_t			fsize;
+
+	struct timeval		time;
 };
 
 /*
@@ -735,7 +737,12 @@ static inline void dnet_counter_set(struct dnet_node *n, int counter, int err, i
 }
 
 struct dnet_trans;
-int __attribute__((weak)) dnet_process_cmd_raw(struct dnet_backend_io *backend, struct dnet_net_state *st, struct dnet_cmd *cmd, void *data, int recursive);
+int __attribute__((weak)) dnet_process_cmd_raw(struct dnet_backend_io *backend,
+                                               struct dnet_net_state *st,
+                                               struct dnet_cmd *cmd,
+                                               void *data,
+                                               int recursive,
+                                               long queue_time);
 int dnet_process_recv(struct dnet_backend_io *backend, struct dnet_net_state *st, struct dnet_io_req *r);
 
 int dnet_recv(struct dnet_net_state *st, void *data, unsigned int size);

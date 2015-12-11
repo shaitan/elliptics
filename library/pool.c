@@ -1019,9 +1019,9 @@ void *dnet_io_process(void *data_)
 
 		dnet_node_set_trace_id(n->log, cmd->trace_id, cmd->flags & DNET_FLAGS_TRACE_BIT, pool->io ? (ssize_t)pool->io->backend_id : (ssize_t)-1);
 
-		dnet_log(n, DNET_LOG_DEBUG, "%s: %s: got IO event: %p: cmd: %s, hsize: %zu, dsize: %zu, mode: %s, backend_id: %zd",
+		dnet_log(n, DNET_LOG_DEBUG, "%s: %s: got IO event: %p: cmd: %s, hsize: %zu, dsize: %zu, mode: %s, backend_id: %zd, queue_time: %ld usecs",
 			dnet_state_dump_addr(st), dnet_dump_id(r->header), r, dnet_cmd_string(cmd->cmd), r->hsize, r->dsize, dnet_work_io_mode_str(pool->mode),
-			pool->io ? (ssize_t)pool->io->backend_id : (ssize_t)-1);
+			pool->io ? (ssize_t)pool->io->backend_id : (ssize_t)-1, (r->time.tv_sec * 1000000 + r->time.tv_usec));
 
 		dnet_process_recv(pool->io, st, r);
 
