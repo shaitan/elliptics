@@ -38,7 +38,7 @@ extern "C" {
 #endif
 
 /*
- * Header note fpr @dnet_commands enum
+ * Header note for @dnet_commands enum
  * When adding new command, take a look at @dnet_cmd_needs_backend(),
  * it must be updated if new non-backend command is added.
  */
@@ -54,7 +54,7 @@ enum dnet_commands {
 						 * IO attribute which will have offset and size
 						 * parameters.
 						 */
-	DNET_CMD_LIST_DEPRECATED,		/* List all objects for given node ID. Deperacted and forbidden */
+	DNET_CMD_LIST_DEPRECATED,		/* List all objects for given node ID. Deprecated and forbidden */
 	DNET_CMD_EXEC,				/* Execute given command on the remote node */
 	DNET_CMD_ROUTE_LIST,			/* Receive route table from given node */
 	DNET_CMD_STAT_DEPRECATED,		/* Gather remote VM, LA and FS statistics */
@@ -64,7 +64,7 @@ enum dnet_commands {
 	DNET_CMD_STATUS,			/* Change elliptics node status */
 	DNET_CMD_READ_RANGE,			/* Read range of objects */
 	DNET_CMD_DEL_RANGE,			/* Remove range of objects */
-	DNET_CMD_AUTH,				/* Authentification cookie check */
+	DNET_CMD_AUTH,				/* Authentication cookie check */
 	DNET_CMD_BULK_READ,			/* Read a number of ids at one time */
 	DNET_CMD_DEFRAG_DEPRECATED,		/* Start defragmentation process if backend supports it. Deprecated and forbidden */
 	DNET_CMD_ITERATOR,			/* Start/stop/pause/status for server-side iterator */
@@ -155,7 +155,7 @@ enum dnet_backend_defrag_level {
 /* Transaction is about to be destroyed */
 #define DNET_FLAGS_DESTROY		(1<<2)
 
-/* Do not forward requst to antoher node even if given ID does not belong to our range */
+/* Do not forward request to another node even if given ID does not belong to our range */
 #define DNET_FLAGS_DIRECT		(1<<3)
 
 /* Do not locks operations - must be set for script callers or recursive operations */
@@ -286,7 +286,7 @@ static inline void dnet_convert_cmd(struct dnet_cmd *cmd)
  * they occupy higher 32 bits
  */
 
-/* drop notifiction */
+/* drop notification */
 #define DNET_ATTR_DROP_NOTIFICATION		(1ULL<<32)
 
 /* Bulk request for checking files */
@@ -816,7 +816,7 @@ struct dnet_io_attr
 
 	/*
 	 * Total size of the object being read.
-	 * Particulary useful when client asks for part of the object (by specifying size in read request).
+	 * Particularly useful when client asks for part of the object (by specifying size in read request).
 	 */
 	uint64_t		total_size;
 
@@ -926,7 +926,7 @@ static inline void dnet_info_from_stat(struct dnet_file_info *info, struct stat 
 /* Elliptics node should exit */
 #define DNET_STATUS_EXIT		(1<<0)
 
-/* Ellipitcs node goes ro/rw */
+/* Elliptics node goes ro/rw */
 #define DNET_STATUS_RO			(1<<1)
 
 struct dnet_node_status {
@@ -965,7 +965,7 @@ enum dnet_ext_free_data {
 };
 
 /*!
- * Versions ov extension headers
+ * Versions of extension headers
  */
 enum dnet_ext_versions {
 	DNET_EXT_VERSION_FIRST,
@@ -986,7 +986,7 @@ struct dnet_ext_list_hdr {
 	uint64_t		__pad2[2];	/* For future use (should be NULLed) */
 } __attribute__ ((packed));
 
-/*! In-memory extension conatiner */
+/*! In-memory extension container */
 struct dnet_ext_list {
 	uint8_t			version;	/* Extension header version */
 	uint32_t		size;		/* Total size of extensions */
@@ -1020,7 +1020,7 @@ enum {
 /*
  * Server-send iterator should move data not copy.
  * This will force iterator/server-send logic to queue REMOVE command locally
- * if remote write has succeeeded.
+ * if remote write has succeeded.
  */
 #define DNET_IFLAGS_MOVE		(1<<4)
 /*
@@ -1119,7 +1119,7 @@ static inline void dnet_convert_iterator_request(struct dnet_iterator_request *r
  */
 #define DNET_RECORD_FLAGS_EXTHDR		(1<<6)
 /*
- * This flag is set for records that were prepared but haven't been commmitted yet.
+ * This flag is set for records that were prepared but haven't been committed yet.
  * Such records doesn't available for read but can be committed even after restart.
  */
 #define DNET_RECORD_FLAGS_UNCOMMITTED		(1<<7)
