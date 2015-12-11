@@ -1629,7 +1629,7 @@ int dnet_process_cmd_raw(struct dnet_backend_io *backend, struct dnet_net_state 
 				break;
 			}
 
-			// no need to convert IO attribute here, it is aloready converted in backend processing code
+			// no need to convert IO attribute here, it is already converted in backend processing code
 			io = data;
 
 
