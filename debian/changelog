@@ -1,3 +1,16 @@
+elliptics (2.26.9.3~localnode-2) unstable; urgency=low
+
+  * added command flags which disables queue timeout for the command
+  * fixed typos
+  * Added 'queue_timeout'
+  * Added 'set_delay' to python binding
+  * Added to logs time that request spent in queue
+  * refactored queue size statistics
+  * fixed typos
+  * logs: print backend command as human-readable string
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Fri, 11 Dec 2015 16:45:48 +0400
+
 elliptics (2.26.9.3~localnode-1) unstable; urgency=low
 
   [ Ivan Chelubeev ]
