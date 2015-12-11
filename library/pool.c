@@ -198,7 +198,7 @@ int dnet_work_pool_alloc(struct dnet_work_pool_place *place, struct dnet_node *n
 	pool->io = io;
 
 	const int has_backend = io ? 1 : 0;
-	pool->request_queue = dnet_request_queue_create(has_backend);
+	pool->request_queue = dnet_request_queue_create(n, has_backend);
 	if (!pool->request_queue) {
 		err = -ENOMEM;
 		goto err_out_mutex_destroy;
@@ -1006,11 +1006,6 @@ void *dnet_io_process(void *data_)
 			continue;
 
 		pthread_cond_broadcast(&n->io->full_wait);
-
-		HANDY_COUNTER_DECREMENT("io.input.queue.size", 1);
-
-		FORMATTED(HANDY_COUNTER_DECREMENT, ("pool.%s.queue.size", thread_stat_id), 1);
-		FORMATTED(HANDY_TIMER_STOP, ("pool.%s.queue.wait_time", thread_stat_id), (uint64_t)r);
 
 		FORMATTED(HANDY_COUNTER_INCREMENT, ("pool.%s.active_threads", thread_stat_id), 1);
 

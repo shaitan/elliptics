@@ -309,6 +309,31 @@ void parse_options(config_data *data, const config &options)
 		const config cache = options.at("cache");
 		data->cache_config = ioremap::cache::cache_config::parse(cache);
 	}
+
+	if (options.has("queue_timeout")) {
+		auto timeout = options.at<std::string>("queue_timeout");
+		data->queue_timeout = strtoul(timeout.c_str(), NULL, 0);
+		if (timeout.find("ms") == std::string::npos) {
+			// converts timeout
+			if (timeout.find("w") != std::string::npos) {		// from weeks to seconds
+				data->queue_timeout *= 7 * 24 * 60 * 60;
+			} else if (timeout.find("d") != std::string::npos) {	// from days to seconds
+				data->queue_timeout *= 24 * 60 * 60;
+			} else if (timeout.find("h") != std::string::npos) {	// from hours to seconds
+				data->queue_timeout *= 60 * 60;
+			} else if (timeout.find("m") != std::string::npos) {	// from minutes to seconds
+				data->queue_timeout *= 60;
+			}
+
+			// converts timeout from seconds to microseconds
+			data->queue_timeout *= 1000000;
+		} else {
+			// converts timeout from milliseconds to microseconds
+			data->queue_timeout *= 1000;
+		}
+	} else {
+		data->queue_timeout = 0;
+	}
 }
 
 void parse_backends(config_data *data, const config &backends)
