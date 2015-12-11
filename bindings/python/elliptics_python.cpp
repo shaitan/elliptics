@@ -54,9 +54,10 @@ enum elliptics_iterator_flags {
 };
 
 enum elliptics_cflags {
-	cflags_default	= 0,
-	cflags_direct	= DNET_FLAGS_DIRECT,
-	cflags_nolock	= DNET_FLAGS_NOLOCK,
+	cflags_default		= 0,
+	cflags_direct		= DNET_FLAGS_DIRECT,
+	cflags_nolock		= DNET_FLAGS_NOLOCK,
+	cflags_no_queue_timeout	= DNET_FLAGS_NO_QUEUE_TIMEOUT,
 };
 
 enum elliptics_ioflags {
@@ -409,10 +410,12 @@ BOOST_PYTHON_MODULE(core)
 	    "default\n    The key is locked before performing an operation and unlocked when an operation will done\n"
 	    "direct\n    Request is sent to the specified Node bypassing the DHT ring\n"
 	    "nolock\n    Server will not check the key is locked and will not lock it during this transaction.\n"
+	    "no_queue_timeout\n    Server will not use queue timeout for this transaction.\n"
 	            "    The operation will be handled in separated io thread pool")
 		.value("default", cflags_default)
 		.value("direct", cflags_direct)
 		.value("nolock", cflags_nolock)
+		.value("no_queue_timeout", cflags_no_queue_timeout)
 	;
 
 	bp::enum_<elliptics_ioflags>("io_flags",
