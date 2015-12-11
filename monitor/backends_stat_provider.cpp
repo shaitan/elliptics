@@ -60,10 +60,6 @@ static void fill_backend_backend(rapidjson::Value &stat_value,
 	free(json_stat);
 }
 
-static void dump_list_stats(rapidjson::Value &stat, list_stat &list_stats, rapidjson::Document::AllocatorType &allocator) {
-	stat.AddMember("current_size", list_stats.list_size, allocator);
-}
-
 /*
  * Fills io section of one backend
  */
@@ -72,16 +68,14 @@ static void fill_backend_io(rapidjson::Value &stat_value,
                             const struct dnet_backend_io &backend) {
 	rapidjson::Value io_value(rapidjson::kObjectType);
 
-	struct list_stat stats;
-
 	rapidjson::Value blocking_stat(rapidjson::kObjectType);
-	dnet_get_pool_list_stats(backend.pool.recv_pool.pool, &stats);
-	dump_list_stats(blocking_stat, stats, allocator);
+	auto size = dnet_get_pool_queue_size(backend.pool.recv_pool.pool);
+	blocking_stat.AddMember("current_size", size, allocator);
 	io_value.AddMember("blocking", blocking_stat, allocator);
 
 	rapidjson::Value nonblocking_stat(rapidjson::kObjectType);
-	dnet_get_pool_list_stats(backend.pool.recv_pool_nb.pool, &stats);
-	dump_list_stats(nonblocking_stat, stats, allocator);
+	size = dnet_get_pool_queue_size(backend.pool.recv_pool_nb.pool);
+	nonblocking_stat.AddMember("current_size", size, allocator);
 	io_value.AddMember("nonblocking", nonblocking_stat, allocator);
 
 	stat_value.AddMember("io", io_value, allocator);
