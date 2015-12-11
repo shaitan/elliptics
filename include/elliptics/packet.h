@@ -181,6 +181,9 @@ enum dnet_backend_defrag_level {
 /* This reply was generated on server, and it IS reply from the server */
 #define DNET_FLAGS_REPLY		(1<<9)
 
+/* Do not use queue timeout for the request */
+#define DNET_FLAGS_NO_QUEUE_TIMEOUT	(1<<10)
+
 struct flag_info
 {
 	uint64_t flag;
@@ -229,6 +232,7 @@ static inline const char *dnet_flags_dump_cflags(uint64_t flags)
 		{ DNET_FLAGS_DIRECT_BACKEND, "direct_backend" },
 		{ DNET_FLAGS_TRACE_BIT, "tracebit" },
 		{ DNET_FLAGS_REPLY, "reply" },
+		{ DNET_FLAGS_NO_QUEUE_TIMEOUT, "no_queue_timeout"},
 	};
 
 	dnet_flags_dump_raw(buffer, sizeof(buffer), flags, infos, sizeof(infos) / sizeof(infos[0]));
