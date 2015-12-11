@@ -91,10 +91,10 @@ dnet_io_req *dnet_request_queue::pop_request(dnet_work_io *wio, const char *thre
 	FORMATTED(HANDY_COUNTER_DECREMENT, ("pool.%s.queue.size", thread_stat_id), 1);
 	FORMATTED(HANDY_TIMER_STOP, ("pool.%s.queue.wait_time", thread_stat_id), (uint64_t)r);
 
-	const auto expired = [&r, this] () {
+	auto cmd = static_cast<dnet_cmd *>(r->header);
+	const auto expired = [&r, &cmd, this] () {
 		if (r->st->__need_exit)
 			return true;
-		auto cmd = static_cast<dnet_cmd *>(r->header);
 		if (!m_timeout || (cmd->flags & DNET_FLAGS_NO_QUEUE_TIMEOUT))
 			return false;
 		return (r->time.tv_sec * 1000000 + r->time.tv_usec) > m_timeout;
@@ -105,7 +105,20 @@ dnet_io_req *dnet_request_queue::pop_request(dnet_work_io *wio, const char *thre
 
 	FORMATTED(HANDY_COUNTER_INCREMENT, ("pool.%s.queue.dropped", thread_stat_id), 1);
 
+	dnet_node_set_trace_id(wio->pool->n->log, cmd->trace_id, cmd->flags & DNET_FLAGS_TRACE_BIT, wio->pool->io ? (ssize_t)wio->pool->io->backend_id : (ssize_t)-1);
+	dnet_log(wio->pool->n, DNET_LOG_ERROR,
+	         "%s: %s: client: %s: drop request: trans: %llu, cflags: %s, queue_time: %ld usecs, "
+	         "timeout: %ld usecs, need_exit: %d",
+	         dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), dnet_state_dump_addr(r->st),
+	         (unsigned long long)cmd->trans, dnet_flags_dump_cflags(cmd->flags), (unsigned long)(r->time.tv_sec * 1000000 + r->time.tv_usec),
+	         m_timeout, r->st->__need_exit);
+	dnet_node_unset_trace_id();
+
+	pthread_cond_broadcast(&wio->pool->n->io->full_wait);
+
 	dnet_io_req_free(r);
+	release_request(r);
+	dnet_state_put(r->st);
 	return nullptr;
 }
 

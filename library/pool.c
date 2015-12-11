@@ -765,7 +765,7 @@ err_out_exit:
 	return err;
 }
 
-static size_t dnet_check_work_pool_place(struct dnet_work_pool_place *place, uint64_t *queue_size, uint64_t *threads_count)
+static void dnet_check_work_pool_place(struct dnet_work_pool_place *place, uint64_t *queue_size, uint64_t *threads_count)
 {
 	struct dnet_work_pool *pool;
 
