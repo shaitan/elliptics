@@ -1,3 +1,10 @@
+elliptics (2.26.9.3~localnode-3) unstable; urgency=low
+
+  * Added log when it skips request due to queue timeout or need_exit status
+  * Added 'us' (microseconds) to queue_timeout variants
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Fri, 11 Dec 2015 17:55:52 +0400
+
 elliptics (2.26.9.3~localnode-2) unstable; urgency=low
 
   * added command flags which disables queue timeout for the command
