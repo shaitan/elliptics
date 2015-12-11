@@ -479,6 +479,10 @@ public:
 		return create_result(std::move(session::make_writable(address(host, port, family), backend_id)));
 	}
 
+	python_backend_status_result set_delay(const std::string &host, int port, int family,
+	                                       uint32_t backend_id, uint32_t delay) {
+		return create_result(std::move(session::set_delay(address(host, port, family), backend_id, delay)));
+	}
 
 	python_read_result read_data_range(const elliptics_range &r) {
 		return create_result(std::move(session::read_data_range(r.io_attr(), r.group_id)));
@@ -1450,6 +1454,13 @@ void init_elliptics_session() {
 		     "    Returns AsyncResult which provides new status of the backend\n\n"
 		     "    backends_statuses = session.make_writable(elliptics.Address.from_host_port_family(host='host.com', port=1025, family=AF_INET), 0).get()[0].backends")
 
+		.def("set_delay", &elliptics_session::set_delay,
+		     (bp::arg("host"), bp::arg("port"), bp::arg("family"), bp::arg("backend_id"), bp::arg("delay")),
+		     "set_delay(host, port, family, backend_id, delay)\n"
+		     "    Makes backend with @backend_id to sleep delay microseconds before handling all command\n"
+		     "    Returns AsyncResult which provides new status of the backend\n\n"
+		     "    address = elliptics.Address.from_host_port_family('host.com:port:2')"
+		     "    backend_statsu = session.set_delay(address, 0, 1000)")
 // Remove operations
 
 		.def("remove", &elliptics_session::remove,
