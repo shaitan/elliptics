@@ -74,7 +74,12 @@ dnet_io_req *dnet_request_queue::pop_request(dnet_work_io *wio, const char *thre
 		if (r) {
 			list_del_init(&r->req_entry);
 			--m_queue_size;
+
+			timeval tv;
+			gettimeofday(&tv, nullptr);
+			timersub(&tv, &r->time, &r->time);
 		}
+
 		return r;
 	} ();
 
@@ -89,11 +94,9 @@ dnet_io_req *dnet_request_queue::pop_request(dnet_work_io *wio, const char *thre
 	const auto expired = [&r, this] () {
 		if (r->st->__need_exit)
 			return true;
-		if (!m_timeout)
+		auto cmd = static_cast<dnet_cmd *>(r->header);
+		if (!m_timeout || (cmd->flags & DNET_FLAGS_NO_QUEUE_TIMEOUT))
 			return false;
-		timeval tv;
-		gettimeofday(&tv, nullptr);
-		timersub(&tv, &r->time, &r->time);
 		return (r->time.tv_sec * 1000000 + r->time.tv_usec) > m_timeout;
 	} ();
 
