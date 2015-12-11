@@ -765,16 +765,14 @@ err_out_exit:
 	return err;
 }
 
-static void dnet_check_work_pool_place(struct dnet_work_pool_place *place, uint64_t *list_size, uint64_t *threads_count)
+static size_t dnet_check_work_pool_place(struct dnet_work_pool_place *place, uint64_t *queue_size, uint64_t *threads_count)
 {
 	struct dnet_work_pool *pool;
-	struct list_stat stats;
 
 	pthread_mutex_lock(&place->lock);
 	pool = place->pool;
 	if (pool) {
-		dnet_get_pool_list_stats(pool, &stats);
-		*list_size += stats.list_size;
+		*queue_size += dnet_get_pool_queue_size(pool);
 
 		pthread_mutex_lock(&pool->lock);
 		*threads_count += pool->num;
@@ -783,27 +781,27 @@ static void dnet_check_work_pool_place(struct dnet_work_pool_place *place, uint6
 	pthread_mutex_unlock(&place->lock);
 }
 
-static void dnet_check_io_pool(struct dnet_io_pool *io, uint64_t *list_size, uint64_t *threads_count)
+static void dnet_check_io_pool(struct dnet_io_pool *io, uint64_t *queue_size, uint64_t *threads_count)
 {
-	dnet_check_work_pool_place(&io->recv_pool, list_size, threads_count);
-	dnet_check_work_pool_place(&io->recv_pool_nb, list_size, threads_count);
+	dnet_check_work_pool_place(&io->recv_pool, queue_size, threads_count);
+	dnet_check_work_pool_place(&io->recv_pool_nb, queue_size, threads_count);
 }
 
 static int dnet_check_io(struct dnet_io *io)
 {
-	uint64_t list_size = 0;
+	uint64_t queue_size = 0;
 	uint64_t threads_count = 0;
 
-	dnet_check_io_pool(&io->pool, &list_size, &threads_count);
+	dnet_check_io_pool(&io->pool, &queue_size, &threads_count);
 
 	if (io->backends) {
 		size_t i;
 		for (i = 0; i < io->backends_count; ++i) {
-			dnet_check_io_pool(&io->backends[i].pool, &list_size, &threads_count);
+			dnet_check_io_pool(&io->backends[i].pool, &queue_size, &threads_count);
 		}
 	}
 
-	if (list_size <= threads_count * 1000)
+	if (queue_size <= threads_count * 1000)
 		return 1;
 
 	return 0;

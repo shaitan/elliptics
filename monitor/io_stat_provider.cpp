@@ -53,20 +53,18 @@ std::string io_stat_provider::json(uint64_t categories) const {
 	if (!(categories & DNET_MONITOR_IO))
 		return std::string();
 
-	struct list_stat stats;
-
 	rapidjson::Document doc;
 	doc.SetObject();
 	auto &allocator = doc.GetAllocator();
 
 	rapidjson::Value blocking_stat(rapidjson::kObjectType);
-	dnet_get_pool_list_stats(m_node->io->pool.recv_pool.pool, &stats);
-	dump_list_stats(blocking_stat, stats, allocator);
+	auto size = dnet_get_pool_queue_size(m_node->io->pool.recv_pool.pool);
+	blocking_stat.AddMember("current_size", size, allocator);
 	doc.AddMember("blocking", blocking_stat, allocator);
 
 	rapidjson::Value nonblocking_stat(rapidjson::kObjectType);
-	dnet_get_pool_list_stats(m_node->io->pool.recv_pool_nb.pool, &stats);
-	dump_list_stats(nonblocking_stat, stats, allocator);
+	size = dnet_get_pool_queue_size(m_node->io->pool.recv_pool_nb.pool);
+	nonblocking_stat.AddMember("current_size", size, allocator);
 	doc.AddMember("nonblocking", nonblocking_stat, allocator);
 
 	rapidjson::Value output_stat(rapidjson::kObjectType);
