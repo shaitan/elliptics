@@ -47,6 +47,8 @@ dnet_request_queue::~dnet_request_queue()
 
 void dnet_request_queue::push_request(dnet_io_req *req)
 {
+	gettimeofday(&req->time, NULL);
+
 	{
 		std::unique_lock<std::mutex> lock(m_queue_mutex);
 		list_add_tail(&req->req_entry, &m_queue);
