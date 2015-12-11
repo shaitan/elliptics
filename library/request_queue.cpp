@@ -24,9 +24,9 @@ static bool dnet_raw_id_comparator(const dnet_id &lhs, const dnet_id &rhs)
 }
 
 
-dnet_request_queue::dnet_request_queue(bool has_backend)
-: m_queue_size(0),
- m_locked_keys(1, has_backend ? &dnet_raw_id_hash : &dnet_id_hash,
+dnet_request_queue::dnet_request_queue(bool has_backend, uint64_t timeout)
+: m_queue_size(0)
+, m_locked_keys(1, has_backend ? &dnet_raw_id_hash : &dnet_id_hash,
 	       has_backend ? &dnet_raw_id_comparator : &dnet_id_comparator)
 {
 	INIT_LIST_HEAD(&m_queue);
@@ -234,9 +234,8 @@ void dnet_request_queue::put_lock_entry(dnet_locks_entry *entry)
 	m_lock_pool.push_back(entry);
 }
 
-void dnet_request_queue::get_list_stats(list_stat *stats) const
-{
-	stats->list_size = m_queue_size;
+size_t dnet_request_queue::size() const {
+	return m_queue_size;
 }
 
 
@@ -273,10 +272,9 @@ void dnet_opunlock(struct dnet_backend_io *backend, const struct dnet_id *id)
 	queue->unlock_key(id);
 }
 
-void dnet_get_pool_list_stats(struct dnet_work_pool *pool, struct list_stat *stats)
-{
+size_t dnet_get_pool_queue_size(struct dnet_work_pool *pool) {
 	auto queue = reinterpret_cast<dnet_request_queue*>(pool->request_queue);
-	queue->get_list_stats(stats);
+	return queue->size();
 }
 
 void *dnet_request_queue_create(int has_backend)
