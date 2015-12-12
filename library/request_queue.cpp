@@ -116,9 +116,11 @@ dnet_io_req *dnet_request_queue::pop_request(dnet_work_io *wio, const char *thre
 
 	pthread_cond_broadcast(&wio->pool->n->io->full_wait);
 
-	dnet_io_req_free(r);
+	auto st = r->st;
 	release_request(r);
-	dnet_state_put(r->st);
+	dnet_io_req_free(r);
+	dnet_state_put(st);
+
 	return nullptr;
 }
 
