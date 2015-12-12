@@ -1,3 +1,9 @@
+elliptics (2.26.9.3~localnode-5) unstable; urgency=low
+
+  * fixed crash 
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Sat, 12 Dec 2015 16:58:33 +0400
+
 elliptics (2.26.9.3~localnode-4) unstable; urgency=low
 
   * fixed queue_time at logs
