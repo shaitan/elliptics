@@ -689,7 +689,7 @@ class ServerSendRecovery(object):
     should not contain this keys to proper backend via server-send operation.
     '''
     def __init__(self, ctx, node, group):
-        self.routes = self._prepare_routes(ctx, group)
+        self.routes, self.backends = self._prepare_routes(ctx, group)
         self.session = elliptics.Session(node)
         self.session.exceptions_policy = elliptics.exceptions_policy.no_exceptions
         self.session.set_filter(elliptics.filters.all)
@@ -700,30 +700,21 @@ class ServerSendRecovery(object):
 
     def _prepare_routes(self, ctx, group):
         '''
-        Returns list of triplets (address, backend, [ranges]),
-        where ranges are sorted by their left boundary.
+        Returns pair: route list of @group and list of pairs (address, backend)
         '''
-        def sort_ranges(ranges):
-            ranges = sorted(ranges, key=lambda r: r[0])
-            return reduce(lambda x, y: x + y, ranges, tuple())
-
         group_routes = ctx.routes.filter_by_groups([group])
-        routes = []
+        backends = []
         if ctx.one_node:
             if ctx.backend_id is not None:
-                ranges = group_routes.get_address_backend_ranges(ctx.address, ctx.backend_id)
-                routes = [(ctx.address, ctx.backend_id, sort_ranges(ranges))]
+                backends = [(ctx.address, ctx.backend_id)]
             else:
                 for backend_id in group_routes.get_address_backends(ctx.address):
-                    ranges = group_routes.get_address_backend_ranges(ctx.address, backend_id)
-                    routes.append((ctx.address, backend_id, sort_ranges(ranges)))
+                    backends.append((ctx.address, backend_id))
         else:
-            for addr, backend_id in group_routes.addresses_with_backends():
-                ranges = group_routes.get_address_backend_ranges(addr, backend_id)
-                routes.append((addr, backend_id, sort_ranges(ranges)))
+            backends = group_routes.addresses_with_backends()
 
-        log.info("Server-send recovery: group: {0}, num addresses: {1}".format(group, len(routes)))
-        return routes
+        log.info("Server-send recovery: group: {0}, num backends: {1}".format(group, len(backends)))
+        return group_routes, backends
 
     def recover(self, keys):
         '''
@@ -733,13 +724,13 @@ class ServerSendRecovery(object):
         '''
         log.info("Server-send bucket: num keys: {0}".format(len(keys)))
 
-        def contain(key, ranges):
-            index = bisect(ranges, key)
-            return index % 2 == 1
+        def contain(address, backend_id, key):
+            addr, _, backend = self.routes.get_id_routes(key)[0]
+            return address == addr and backend_id == backend
 
-        responses = dict([(str(k), []) for k in keys]) # key -> [list of responses]
-        for addr, backend_id, backend_ranges in self.routes:
-            key_candidates = [k for k in keys if not contain(k, backend_ranges)]
+        responses = {str(k): [] for k in keys} # key -> [list of responses]
+        for addr, backend_id in self.backends:
+            key_candidates = [k for k in keys if not contain(addr, backend_id, k)]
             if key_candidates:
                 self._server_send(key_candidates, addr, backend_id, responses)
 
@@ -751,29 +742,35 @@ class ServerSendRecovery(object):
         Calls server-send with a given list of keys to the specific backend.
         '''
         log.debug("Server-send: address: {0}, backend: {1}, num keys: {2}".format(addr, backend_id, len(keys)))
+        if self.ctx.dry_run:
+            return
 
         self.session.set_direct_id(addr, backend_id)
-        iterator = self.session.server_send(keys, elliptics.iterator_flags.move, list(self.session.groups))
+        flags = 0 if self.ctx.safe else elliptics.iterator_flags.move
+        iterator = self.session.server_send(keys, flags, list(self.session.groups))
         for result in iterator:
             status = result.response.status
-            key = result.response.key
-            r = (key, status, addr, backend_id)
-            log.debug("Server-send result: key: {0}, status: {1}".format(str(key), status))
-            responses[str(key)].append(r)
+            key = str(result.response.key)
+            r = (status, addr, backend_id)
+            log.debug("Server-send result: key: {0}, status: {1}".format(key, status))
+            responses[key].append(r)
 
     def _remove_bad_keys(self, responses):
         '''
         Removes invalid keys with older timestamp or invalid checksum.
         '''
         bad_keys = []
-        for val in responses.itervalues():
-            bad_keys.extend([r for r in val if self._check_bad_key(r)])
+        for val in responses.iteritems():
+            for response in val[1]:
+                if self._check_bad_key(response):
+                    key = val[0]
+                    bad_keys.append((key, ) + response)
 
         results = []
         for k in bad_keys:
             key, _, addr, backend_id = k
             self.session.set_direct_id(addr, backend_id)
-            result = self.session.remove(key)
+            result = self.session.remove(elliptics.Id(key))
             results.append(result)
 
         for i, r in enumerate(results):
@@ -781,7 +778,7 @@ class ServerSendRecovery(object):
             log.info("Removing key: {0}, status: ".format(bad_keys[i], status))
 
     def _check_bad_key(self, response):
-        status = response[1]
+        status = response[0]
         return status == -errno.EBADFD or status == -errno.EILSEQ
 
     def _get_unrecovered_keys(self, responses):
@@ -801,7 +798,7 @@ class ServerSendRecovery(object):
         Returns True, if a valid key exists on the backend, but the key could not be recovered by any reason.
         '''
         for r in responses:
-            status = r[1]
+            status = r[0]
             if status < 0 and status != -errno.ENOENT and not self._check_bad_key(r):
                 return True
         return False

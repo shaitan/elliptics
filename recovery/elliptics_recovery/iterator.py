@@ -372,11 +372,8 @@ class Iterator(object):
                 result = it
                 break
 
-            iterated_keys, total_keys, start, end = it
-            result_len = iterated_keys
-            stats.set_counter('iteration_speed', round(iterated_keys / (end - start), 2))
-            stats.set_counter('iterated_keys', iterated_keys)
-            stats.set_counter('total_keys', total_keys)
+            result_len = iterated_keys = it[0]
+            self._update_stats(stats, it)
 
         if result is None:
             stats.set_counter('iterations', -1)
@@ -384,6 +381,12 @@ class Iterator(object):
             stats.set_counter('iterations', 1)
 
         return result, result_len
+
+    def _update_stats(self, stats, it):
+        iterated_keys, total_keys, start, end = it
+        stats.set_counter('iteration_speed', round(iterated_keys / (end - start), 2))
+        stats.set_counter('iterated_keys', iterated_keys)
+        stats.set_counter('total_keys', total_keys)
 
 
 class MergeRecoveryIterator(Iterator):
@@ -402,6 +405,12 @@ class MergeRecoveryIterator(Iterator):
     def _on_key_response(self, results, record):
         if record.response.status != 0:
             self._save_record(results, record)
+
+    def _update_stats(self, stats, it):
+        iterated_keys, total_keys, start, end = it
+        stats.set_counter('recovery_speed', round(iterated_keys / (end - start), 2))
+        stats.set_counter('recovered_keys', iterated_keys)
+        stats.set_counter('total_keys', total_keys)
 
 
 class MergeData(object):
