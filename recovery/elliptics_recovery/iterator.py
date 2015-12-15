@@ -305,6 +305,8 @@ class Iterator(object):
 
             iterated_keys = 0
             total_keys = 0
+            positive_responses = 0
+            negative_responses = 0
 
             start = time.time()
 
@@ -316,16 +318,20 @@ class Iterator(object):
 
                 iterated_keys = record.response.iterated_keys
                 total_keys = record.response.total_keys
+                if record.response.status == 0:
+                    positive_responses += 1
+                else:
+                    negative_responses += 1
 
                 if iterated_keys % batch_size == 0:
-                    yield (iterated_keys, total_keys, start, end)
+                    yield (iterated_keys, total_keys, positive_responses, negative_responses, start, end)
 
                 self._on_key_response(results, record)
             end = time.time()
 
             elapsed_time = records.elapsed_time()
             self.log.debug("Time spended for iterator: {0}/{1}".format(elapsed_time.tsec, elapsed_time.tnsec))
-            yield (iterated_keys, total_keys, start, end)
+            yield (iterated_keys, total_keys, positive_responses, negative_responses, start, end)
             if self.separately:
                 yield results
             else:
@@ -372,7 +378,7 @@ class Iterator(object):
                 result = it
                 break
 
-            result_len = iterated_keys = it[0]
+            result_len = it[0]
             self._update_stats(stats, it)
 
         if result is None:
@@ -383,7 +389,7 @@ class Iterator(object):
         return result, result_len
 
     def _update_stats(self, stats, it):
-        iterated_keys, total_keys, start, end = it
+        iterated_keys, total_keys, _, _, start, end = it
         stats.set_counter('iteration_speed', round(iterated_keys / (end - start), 2))
         stats.set_counter('iterated_keys', iterated_keys)
         stats.set_counter('total_keys', total_keys)
@@ -407,9 +413,10 @@ class MergeRecoveryIterator(Iterator):
             self._save_record(results, record)
 
     def _update_stats(self, stats, it):
-        iterated_keys, total_keys, start, end = it
+        iterated_keys, total_keys, positive_responses, negative_responses, start, end = it
         stats.set_counter('recovery_speed', round(iterated_keys / (end - start), 2))
-        stats.set_counter('recovered_keys', iterated_keys)
+        stats.set_counter('recovered_keys', positive_responses)
+        stats.set_counter('recovered_keys', -negative_responses)
         stats.set_counter('total_keys', total_keys)
 
 
