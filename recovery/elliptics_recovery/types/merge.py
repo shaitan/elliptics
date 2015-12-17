@@ -306,9 +306,9 @@ class ServerSendRecovery(object):
 
         timeouted_keys = []
         index = -1
-        for index, result in enumerate(iterator):
+        for index, result in enumerate(iterator, 1):
             status = result.response.status
-            self._update_stats(start_time, index + 1, recovers_in_progress, status)
+            self._update_stats(start_time, index, recovers_in_progress, status)
             key = result.response.key
             log.debug("Server-send result: key: {0}, status: {1}".format(key, status))
             if status == -errno.ETIMEDOUT:
@@ -334,22 +334,23 @@ class ServerSendRecovery(object):
                     bad_keys.append((key, ) + response)
 
         for attempt in range(self.ctx.attempts):
-            if bad_keys:
-                results = []
-                for k in bad_keys:
-                    key, _, addr, backend_id = k
-                    self.remove_session.set_direct_id(addr, backend_id)
-                    result = self.remove_session.remove(elliptics.Id(key))
-                    results.append(result)
+            if not bad_keys:
+                break
 
-                timeouted_keys = []
-                is_last_attempt = (attempt == self.ctx.attempts - 1)
-                for i, r in enumerate(results):
-                    status = r.get()[0].status
-                    log.info("Removing key: {0}, status: {1}, last attempt: {2}".format(bad_keys[i], status, is_last_attempt))
-                    if status == -errno.ETIMEDOUT:
-                        timeouted_keys.append(bad_keys[i])
-                bad_keys = timeouted_keys
+            results = []
+            for key, _, addr, backend_id in bad_keys:
+                self.remove_session.set_direct_id(addr, backend_id)
+                result = self.remove_session.remove(elliptics.Id(key))
+                results.append(result)
+
+            timeouted_keys = []
+            is_last_attempt = (attempt == self.ctx.attempts - 1)
+            for i, r in enumerate(results):
+                status = r.get()[0].status
+                log.info("Removing key: {0}, status: {1}, last attempt: {2}".format(bad_keys[i], status, is_last_attempt))
+                if status == -errno.ETIMEDOUT:
+                    timeouted_keys.append(bad_keys[i])
+            bad_keys = timeouted_keys
 
     def _check_bad_key(self, response):
         status = response[0]
