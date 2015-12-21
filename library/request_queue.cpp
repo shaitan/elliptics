@@ -93,10 +93,12 @@ dnet_io_req *dnet_request_queue::pop_request(dnet_work_io *wio, const char *thre
 
 	auto cmd = static_cast<dnet_cmd *>(r->header);
 	const auto expired = [&r, &cmd, this] () {
-		if (r->st->__need_exit)
-			return true;
 		if (!m_timeout || (cmd->flags & DNET_FLAGS_NO_QUEUE_TIMEOUT))
 			return false;
+
+		if (r->st->__need_exit)
+			return true;
+
 		return (r->time.tv_sec * 1000000 + r->time.tv_usec) > m_timeout;
 	} ();
 
