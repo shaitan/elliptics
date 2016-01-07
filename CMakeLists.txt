@@ -206,4 +206,3 @@ if(DOXYGEN_FOUND)
 #		DESTINATION share/elliptics/doc
 #        )
 endif()
-
