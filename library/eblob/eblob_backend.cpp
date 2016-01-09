@@ -22,9 +22,11 @@
 #define __STDC_FORMAT_MACROS
 #include <inttypes.h>
 
-#include "example/eblob_backend.h"
+#include "eblob_backend.h"
 
 #include "elliptics/backends.h"
+#include "elliptics/utils.hpp"
+#include "library/elliptics.h"
 
 #include "rapidjson/document.h"
 #include "rapidjson/writer.h"
@@ -36,12 +38,73 @@
 #error "EBLOB_ID_SIZE must be equal to DNET_ID_SIZE"
 #endif
 
+static inline void convert_id(const uint8_t *id, eblob_key &key) {
+	memcpy(key.id, id, EBLOB_ID_SIZE);
+}
+
+static inline void convert_id(const dnet_raw_id &id, eblob_key &key) {
+	convert_id(id.id, key);
+}
+
+static inline eblob_key convert_id(const uint8_t *id) {
+	eblob_key key;
+	convert_id(id, key);
+	return std::move(key);
+}
+
+static inline eblob_key convert_id(const dnet_raw_id &id) {
+	return std::move(convert_id(id.id));
+}
+
 extern __thread trace_id_t backend_trace_id_hook;
 
 trace_id_t get_trace_id()
 {
 	return backend_trace_id_hook;
 }
+
+int blob_lookup_struct(struct eblob_backend_config *c, struct dnet_net_state *state, struct dnet_cmd *cmd, void *data);
+int blob_read_struct(struct eblob_backend_config *c, struct dnet_net_state *state, struct dnet_cmd *cmd, void *data);
+int blob_write_struct(struct eblob_backend_config *c, void *state, struct dnet_cmd *cmd, void *data);
+std::string blob_read_stored_index(eblob_backend_config *c, const eblob_key &key, const eblob_write_control &wc);
+
+class struct_reader {
+public:
+	struct_reader(eblob_backend_config *c, dnet_net_state *state)
+	: m_eblob(c->eblob)
+	, m_log(c->blog)
+	, m_state(state)
+
+	, m_io(nullptr)
+	, m_key()
+	, m_wc()
+	, m_request_index()
+	, m_stored_index()
+
+	, m_c(c)
+	{}
+
+	int read(dnet_cmd *cmd, void *data);
+	int read_default(dnet_cmd *cmd, void *data);
+private:
+	void parse_request(void *data);
+	int read_stored_index();
+
+	/* useful out-come fields */
+	eblob_backend *m_eblob;
+	dnet_logger *m_log;
+	dnet_net_state *m_state;
+
+	/* generated fields */
+	dnet_io_attr *m_io;
+	eblob_key m_key;
+	eblob_write_control m_wc;
+	std::string m_request_index;
+	std::string m_stored_index;
+
+	/* which should be removed */
+	eblob_backend_config *m_c;
+};
 
 /* Pre-callback that formats arguments and calls ictl->callback */
 static int blob_iterate_callback_common(struct eblob_disk_control *dc, int fd, uint64_t data_offset, void *priv, int no_meta) {
@@ -138,7 +201,7 @@ static int blob_lookup(struct eblob_backend *b, struct eblob_key *key, struct eb
 	return err;
 }
 
-static int blob_write(struct eblob_backend_config *c, void *state,
+static int blob_write(struct eblob_backend_config *c, dnet_net_state *state,
 		struct dnet_cmd *cmd, void *data)
 {
 	struct dnet_ext_list elist;
@@ -147,7 +210,6 @@ static int blob_write(struct eblob_backend_config *c, void *state,
 	eblob_write_control wc;
 	memset(&wc, 0, sizeof(wc));
 	wc.data_fd = -1;
-	struct eblob_key key;
 	struct dnet_ext_list_hdr ehdr;
 	uint64_t flags = BLOB_DISK_CTL_EXTHDR;
 	uint64_t fd_offset;
@@ -172,7 +234,7 @@ static int blob_write(struct eblob_backend_config *c, void *state,
 	if (io->flags & DNET_IO_FLAGS_NOCSUM)
 		flags |= BLOB_DISK_CTL_NOCSUM;
 
-	memcpy(key.id, io->id, EBLOB_ID_SIZE);
+	auto key = convert_id(io->id);
 
 	if (io->flags & DNET_IO_FLAGS_PREPARE) {
 		/*
@@ -317,13 +379,39 @@ err_out_exit:
 	return err;
 }
 
+static int blob_read_struct_default(eblob_backend_config *c,
+                                    const eblob_key &key,
+                                    const eblob_write_control &wc,
+                                    const dnet_ext_list_hdr &ehdr,
+                                    uint64_t &size,
+                                    uint64_t &offset,
+                                    uint64_t &record_offset) {
+	size -= ehdr.index_size;
+	offset += ehdr.index_size;
+	record_offset += ehdr.index_size;
 
-static int blob_read(struct eblob_backend_config *c, void *state, struct dnet_cmd *cmd, void *data, int last)
+	auto index = blob_read_stored_index(c, key, wc);
+	rapidjson::Document stored_doc;
+	stored_doc.Parse<0>(index.data());
+
+	if (stored_doc.HasMember("default")) {
+		const auto &value = stored_doc["default"];
+		if (value.HasMember("__attributes__")) {
+			const auto &attributes = value["__attributes__"];
+			size = attributes["size"].GetUint64();
+			offset += attributes["offset"].GetUint64();
+			record_offset += attributes["offset"].GetUint64();
+		}
+	}
+	return 0;
+}
+
+
+static int blob_read(struct eblob_backend_config *c, dnet_net_state *state, struct dnet_cmd *cmd, void *data, int last)
 {
 	struct dnet_ext_list elist;
 	auto io = static_cast<dnet_io_attr *>(data);
 	auto b = static_cast<eblob_backend *>(c->eblob);
-	struct eblob_key key;
 	struct eblob_write_control wc;
 	uint64_t offset = 0, size = 0, record_offset = io->offset;
 	int err, fd = -1, on_close = 0;
@@ -332,7 +420,7 @@ static int blob_read(struct eblob_backend_config *c, void *state, struct dnet_cm
 	dnet_ext_list_init(&elist);
 	dnet_convert_io_attr(io);
 
-	memcpy(key.id, io->id, EBLOB_ID_SIZE);
+	auto key = convert_id(io->id);
 
 	err = blob_lookup(b, &key, &wc);
 	if (err < 0) {
@@ -366,6 +454,13 @@ static int blob_read(struct eblob_backend_config *c, void *state, struct dnet_cm
 		size -= sizeof(struct dnet_ext_list_hdr);
 		offset += sizeof(struct dnet_ext_list_hdr);
 		record_offset += sizeof(struct dnet_ext_list_hdr);
+
+		if (ehdr.index_size != 0) {
+			err = blob_read_struct_default(c, key, wc, ehdr, size, offset, record_offset);
+			if (err) {
+				goto err_out_exit;
+			}
+		}
 	}
 
 	err = dnet_backend_check_get_size(io, &offset, &size);
@@ -469,7 +564,7 @@ err_out_exit:
 }
 
 struct eblob_read_range_priv {
-	void			*state;
+	dnet_net_state		*state;
 	struct dnet_cmd		*cmd;
 	dnet_logger		*blog;
 	struct eblob_range_request	*keys;
@@ -541,13 +636,12 @@ err_out_exit:
 
 static int blob_del_range_callback(struct eblob_backend_config *c, struct eblob_range_request *req)
 {
-	struct eblob_key key;
 	int err;
 
 	dnet_backend_log(c->blog, DNET_LOG_DEBUG, "%s: EBLOB: blob-read-range: DEL",
 			dnet_dump_id_str(req->record_key));
 
-	memcpy(key.id, req->record_key, EBLOB_ID_SIZE);
+	auto key = convert_id(req->record_key);
 	err = eblob_remove(req->back, &key);
 	if (err) {
 		dnet_backend_log(c->blog, DNET_LOG_DEBUG, "%s: EBLOB: blob-read-range: DEL: err: %d",
@@ -605,7 +699,7 @@ err_out_exit:
 	return err;
 }
 
-static int blob_read_range(struct eblob_backend_config *c, void *state, struct dnet_cmd *cmd, void *data)
+static int blob_read_range(struct eblob_backend_config *c, dnet_net_state *state, struct dnet_cmd *cmd, void *data)
 {
 	struct eblob_read_range_priv p;
 	auto io = static_cast<dnet_io_attr *>(data);
@@ -697,10 +791,9 @@ err_out_exit:
 
 static int blob_del(struct eblob_backend_config *c, struct dnet_cmd *cmd)
 {
-	struct eblob_key key;
 	int err;
 
-	memcpy(key.id, cmd->id.id, EBLOB_ID_SIZE);
+	auto key = convert_id(cmd->id.id);
 
 	err = eblob_remove(c->eblob, &key);
 	if (err) {
@@ -711,10 +804,9 @@ static int blob_del(struct eblob_backend_config *c, struct dnet_cmd *cmd)
 	return err;
 }
 
-static int blob_file_info(struct eblob_backend_config *c, void *state, struct dnet_cmd *cmd)
+static int blob_file_info(struct eblob_backend_config *c, dnet_net_state *state, struct dnet_cmd *cmd)
 {
 	struct eblob_backend *b = c->eblob;
-	struct eblob_key key;
 	struct eblob_write_control wc;
 	struct dnet_ext_list elist;
 	static const size_t ehdr_size = sizeof(struct dnet_ext_list_hdr);
@@ -723,7 +815,7 @@ static int blob_file_info(struct eblob_backend_config *c, void *state, struct dn
 
 	dnet_ext_list_init(&elist);
 
-	memcpy(key.id, cmd->id.id, EBLOB_ID_SIZE);
+	auto key = convert_id(cmd->id.id);
 	err = blob_lookup(b, &key, &wc);
 	if (err < 0) {
 		dnet_backend_log(c->blog, DNET_LOG_ERROR, "%s: EBLOB: blob-file-info: info-read: %d: %s.",
@@ -754,6 +846,14 @@ static int blob_file_info(struct eblob_backend_config *c, void *state, struct dn
 		/* Take into an account extended header's len */
 		size -= ehdr_size;
 		offset += ehdr_size;
+
+		if (ehdr.index_size != 0) {
+			uint64_t record_offset = 0;
+			err = blob_read_struct_default(c, key, wc, ehdr, size, offset, record_offset);
+			if (err) {
+				goto err_out_exit;
+			}
+		}
 	}
 
 	if (size == 0) {
@@ -774,11 +874,10 @@ static int eblob_backend_checksum(struct dnet_node *n, void *priv, struct dnet_i
 	auto c = static_cast<eblob_backend_config *>(priv);
 	auto b = static_cast<eblob_backend *>(c->eblob);
 	struct eblob_write_control wc;
-	struct eblob_key key;
 	static const size_t ehdr_size = sizeof(struct dnet_ext_list_hdr);
 	int err;
 
-	memcpy(key.id, id->id, EBLOB_ID_SIZE);
+	auto key = convert_id(id->id);
 	err = blob_lookup(b, &key, &wc);
 	if (err < 0) {
 		dnet_backend_log(c->blog, DNET_LOG_ERROR, "%s: EBLOB: blob-checksum: read: %d: %s.",
@@ -811,7 +910,6 @@ static int eblob_backend_lookup(struct dnet_node *n, void *priv, struct dnet_io_
 {
 	auto c = static_cast<eblob_backend_config *>(priv);
 	auto b = static_cast<eblob_backend *>(c->eblob);
-	struct eblob_key key;
 	struct dnet_ext_list_hdr ehdr;
 	struct dnet_ext_list elist;
 	struct eblob_write_control wc;
@@ -821,7 +919,7 @@ static int eblob_backend_lookup(struct dnet_node *n, void *priv, struct dnet_io_
 	int err;
 
 	(void) n;
-	memcpy(key.id, io->key, EBLOB_ID_SIZE);
+	auto key = convert_id(io->key);
 
 	dnet_ext_list_init(&elist);
 
@@ -909,7 +1007,7 @@ static int blob_defrag_stop(void *priv)
 	return eblob_stop_defrag(c->eblob);
 }
 
-static int blob_send_reply(void *state, struct dnet_cmd *cmd, struct dnet_iterator_response *re, int more)
+static int blob_send_reply(dnet_net_state *state, struct dnet_cmd *cmd, struct dnet_iterator_response *re, int more)
 {
 	int err;
 
@@ -921,7 +1019,7 @@ static int blob_send_reply(void *state, struct dnet_cmd *cmd, struct dnet_iterat
 	return err;
 }
 
-static int blob_send(struct eblob_backend_config *cfg, void *state, struct dnet_cmd *cmd, void *data)
+static int blob_send(struct eblob_backend_config *cfg, dnet_net_state *state, struct dnet_cmd *cmd, void *data)
 {
 	auto b = static_cast<eblob_backend *>(cfg->eblob);
 	auto req = static_cast<dnet_server_send_request *>(data);
@@ -983,7 +1081,7 @@ static int blob_send(struct eblob_backend_config *cfg, void *state, struct dnet_
 
 
 	for (i = 0; i < req->id_num; ++i) {
-		memcpy(key.id, ids[i].id, EBLOB_ID_SIZE);
+		convert_id(ids[i], key);
 
 		err = blob_lookup(b, &key, &wc);
 		if (err < 0) {
@@ -1062,28 +1160,39 @@ static int eblob_backend_command_handler(void *state, void *priv, struct dnet_cm
 {
 	FORMATTED(HANDY_TIMER_SCOPE, ("eblob_backend.cmd.%s", dnet_cmd_string(cmd->cmd)));
 
+	auto st = static_cast<dnet_net_state *>(state);
+
 	int err;
 	auto c = static_cast<eblob_backend_config *>(priv);
 
 	switch (cmd->cmd) {
 		case DNET_CMD_LOOKUP:
-			err = blob_file_info(c, state, cmd);
+			err = blob_file_info(c, st, cmd);
 			break;
 		case DNET_CMD_WRITE:
-			err = blob_write(c, state, cmd, data);
+			err = blob_write(c, st, cmd, data);
 			break;
 		case DNET_CMD_READ:
-			err = blob_read(c, state, cmd, data, 1);
+			err = blob_read(c, st, cmd, data, 1);
 			break;
 		case DNET_CMD_READ_RANGE:
 		case DNET_CMD_DEL_RANGE:
-			err = blob_read_range(c, state, cmd, data);
+			err = blob_read_range(c, st, cmd, data);
 			break;
 		case DNET_CMD_DEL:
 			err = blob_del(c, cmd);
 			break;
 		case DNET_CMD_SEND:
-			err = blob_send(c, state, cmd, data);
+			err = blob_send(c, st, cmd, data);
+			break;
+		case DNET_CMD_LOOKUP_STRUCT:
+			err = blob_lookup_struct(c, st, cmd, data);
+			break;
+		case DNET_CMD_WRITE_STRUCT:
+			err = blob_write_struct(c, st, cmd, data);
+			break;
+		case DNET_CMD_READ_STRUCT:
+			err = blob_read_struct(c, st, cmd, data);
 			break;
 		default:
 			err = -ENOTSUP;
@@ -1312,8 +1421,6 @@ static int dnet_eblob_iterator(struct dnet_iterator_ctl *ictl, struct dnet_itera
 	eictl.iterator_cb.iterator = no_meta ? blob_iterate_callback_without_meta : blob_iterate_callback_with_meta;
 
 	if (ireq->range_num) {
-		unsigned int i;
-
 		try {
 			range.resize(ireq->range_num);
 		} catch (std::exception &e) {
@@ -1321,7 +1428,7 @@ static int dnet_eblob_iterator(struct dnet_iterator_ctl *ictl, struct dnet_itera
 			goto err_out_exit;
 		}
 
-		for (i = 0; i < ireq->range_num; ++i) {
+		for (uint64_t i = 0; i < ireq->range_num; ++i) {
 			memcpy(range[i].start_key.id, irange[i].key_begin.id, DNET_ID_SIZE);
 			memcpy(range[i].end_key.id, irange[i].key_end.id, DNET_ID_SIZE);
 		}
@@ -1363,12 +1470,10 @@ static eblob_log_levels convert_to_eblob_log(dnet_log_level level)
 	case DNET_LOG_INFO:
 		return EBLOB_LOG_INFO;
 	case DNET_LOG_WARNING:
-		return EBLOB_LOG_ERROR;
 	case DNET_LOG_ERROR:
+	default:
 		return EBLOB_LOG_ERROR;
 	}
-
-	return EBLOB_LOG_ERROR;
 }
 
 static void dnet_eblob_log_implemenation(void *priv, int level, const char *msg)
@@ -1504,7 +1609,7 @@ static auto dnet_eblob_backend = [] () {
 	return ret;
 } ();
 
-struct dnet_config_backend *dnet_eblob_backend_info(void) {
+struct dnet_config_backend *dnet_eblob_backend_info() {
 	return &dnet_eblob_backend;
 }
 
@@ -1555,3 +1660,786 @@ err_out_reset:
 	return err;
 }
 
+std::string blob_read_stored_index(eblob_backend_config *c,
+                                   const eblob_key &key,
+                                   const eblob_write_control &wc) {
+	if ((wc.flags & BLOB_DISK_CTL_EXTHDR) == 0) {
+		dnet_backend_log(c->blog, DNET_LOG_ERROR,
+		                 "EBLOB: blob_read_stored_index: FAILED: key doesn't have exthdr");
+		return "";
+	}
+
+	static const size_t ehdr_size = sizeof(struct dnet_ext_list_hdr);
+
+	if (wc.total_data_size < ehdr_size) {
+		dnet_backend_log(c->blog, DNET_LOG_ERROR, "EBLOB: blob_read_stored_index: FAILED: "
+		                 "total_data_size is too small: %" PRIu64 " < %" PRIu64,
+		                 wc.total_data_size, ehdr_size);
+		return "";
+	}
+
+	struct dnet_ext_list_hdr ehdr;
+	// TODO: we should verify checksums before reading
+	int err = dnet_ext_hdr_read(&ehdr, wc.data_fd, wc.data_offset);
+	if (err) {
+		dnet_backend_log(c->blog, DNET_LOG_ERROR,
+		                 "EBLOB: blob_read_stored_index: dnet_ext_hdr_read: FAILED: %s: %d",
+		                 strerror(-err), err);
+		return "";
+	}
+
+	if (ehdr.index_size == 0)
+		return "";
+
+	if (ehdr.index_size + ehdr_size > wc.total_data_size) {
+		dnet_backend_log(c->blog, DNET_LOG_ERROR, "EBLOB: blob_read_stored_index: FAILED: "
+		                 "index_size (%" PRIu64 ") + ehdr_size: (%" PRIu64 ") > total_data_size (%" PRIu64 ")",
+		                 ehdr.index_size, ehdr_size, wc.total_data_size);
+		return "";
+	}
+
+	const uint64_t index_offset = wc.data_offset + ehdr_size;
+
+	std::string ret(ehdr.index_size, '\0');
+
+	// TODO: we should verify checksums before reading
+	err = dnet_read_ll(wc.data_fd, const_cast<char*>(ret.data()), ret.size(), index_offset);
+	if (err) {
+		dnet_backend_log(c->blog, DNET_LOG_ERROR, "EBLOB: blob_read_stored_index: failed to read: %s: %d",
+		                 strerror(-err), err);
+		return "";
+	}
+
+	dnet_backend_log(c->blog, DNET_LOG_DEBUG, "EBLOB: blob_read_stored_index: succeeded: %s",
+	                 ret.c_str());
+
+	return ret;
+}
+
+static int blob_lookup(struct eblob_backend *b, struct eblob_key &key, struct eblob_write_control &wc) {
+	int err = eblob_read_return(b, &key, EBLOB_READ_NOCSUM, &wc);
+	/* Uncommitted records can be read, so fail lookup with ENOENT */
+	if (err == 0 && wc.flags & BLOB_DISK_CTL_UNCOMMITTED)
+		err = -ENOENT;
+	return err;
+}
+
+int blob_lookup_struct(struct eblob_backend_config *c, struct dnet_net_state *state, struct dnet_cmd *cmd, void *data) {
+	int err = 0;
+	struct eblob_backend *b = c->eblob;
+
+	auto key = convert_id(cmd->id.id);
+
+	struct eblob_write_control wc;
+	err = blob_lookup(b, key, wc);
+	if (err) {
+		dnet_backend_log(c->blog, DNET_LOG_ERROR, "%s: EBLOB: blob_lookup_struct: FAILED: %s: %d",
+		                 dnet_dump_id(&cmd->id), strerror(-err), err);
+		return err;
+	}
+
+	std::string stored_index = blob_read_stored_index(c, key, wc);
+
+	ioremap::elliptics::data_buffer buffer(sizeof(struct dnet_write_struct_response) + stored_index.size());
+	struct dnet_write_struct_response r;
+	memset(&r, 0, sizeof(r));
+	r.size = stored_index.size();
+
+	buffer.write(r);
+	buffer.write(stored_index.data(), stored_index.size());
+
+	ioremap::elliptics::data_pointer data_p(std::move(buffer));
+
+	err = dnet_send_reply(state, cmd, data_p.data(), data_p.size(), 0);
+
+	return err;
+}
+
+static uint64_t blob_write_stuct_process_subfields(
+		struct eblob_backend_config *c,
+		const rapidjson::Value &request_value,
+		rapidjson::Value &stored_value,
+		rapidjson::Document::AllocatorType &allocator,
+		std::vector<std::string> &datas,
+		std::vector<struct eblob_iovec> &iov) {
+	dnet_backend_log(c->blog, EBLOB_LOG_ERROR, "blob: %s: start", __func__);
+	uint64_t ret = 0;
+
+	for (auto it = request_value.MemberBegin(); it != request_value.MemberEnd(); ++it) {
+		const auto member_name = it->name.GetString();
+		if (it->name.GetString() == std::string("__attributes__"))
+			continue;
+		dnet_backend_log(c->blog, EBLOB_LOG_ERROR, "blob: %s: found member: '%s'",
+		                 __func__, member_name);
+
+		if (stored_value.HasMember(member_name)) {
+			dnet_backend_log(c->blog, EBLOB_LOG_ERROR, "blob: %s: stored_index already has member: '%s'",
+			                 __func__, member_name);
+		} else {
+			dnet_backend_log(c->blog, EBLOB_LOG_ERROR, "blob: %s: stored_index doesn't have member: '%s'",
+			                 __func__, member_name);
+
+			uint64_t offset = 0, size = 0, capacity = 0;
+			struct eblob_iovec data_iov;
+			memset(&data_iov, 0, sizeof(data_iov));
+
+			if (!stored_value.HasMember("__attributes__")) {
+				stored_value.AddMember("__attributes__", allocator, rapidjson::Value().SetObject(), allocator);
+			}
+			auto &stored_attributes = stored_value["__attributes__"];
+			if (stored_attributes.HasMember("capacity")) {
+				offset = stored_attributes["offset"].GetUint64() + stored_attributes["size"].GetUint64();
+			} else {
+				if (stored_attributes.HasMember("offset")) {
+					offset = stored_attributes["offset"].GetUint64();
+				}
+				if (stored_attributes.HasMember("size")) {
+					offset += stored_attributes["size"].GetUint64();
+				}
+			}
+
+			rapidjson::Value field_value(rapidjson::kObjectType);
+			field_value.AddMember("__attributes__", allocator,
+			                      rapidjson::Value().SetObject(), allocator);
+			auto &field_attributes = field_value["__attributes__"];
+			field_attributes.AddMember("offset", offset, allocator);
+
+			if (it->value.IsString()) {
+				dnet_backend_log(c->blog, EBLOB_LOG_ERROR, "blob: %s: request value '%s' is string",
+				                 __func__, member_name);
+
+				size = capacity = it->value.GetStringLength();
+				datas.emplace_back(it->value.GetString(), size);
+				data_iov.size = size;
+				data_iov.offset = offset;
+				// TODO: remove const_cast here
+				data_iov.base = const_cast<char*>(datas.back().data());
+			} else if (it->value.IsUint64()) {
+				dnet_backend_log(c->blog, EBLOB_LOG_ERROR, "blob: %s: request value '%s' is uint64_t",
+				                 __func__, member_name);
+
+				size = capacity = datas[it->value.GetUint64()].size();
+				data_iov.size = size;
+				data_iov.offset = offset;
+				// TODO: remove const_cast here
+				data_iov.base = const_cast<char*>(datas[it->value.GetUint64()].data());
+			} else if (it->value.IsObject()) {
+				dnet_backend_log(c->blog, EBLOB_LOG_ERROR, "blob: %s: request value '%s' is object",
+				                 __func__, member_name);
+
+				uint64_t internal_offset = 0;
+				auto subfields_count = it->value.MemberCount();
+				if (it->value.HasMember("__attributes__")) {
+					dnet_backend_log(c->blog, EBLOB_LOG_ERROR, "blob: %s: request value '%s' has '__attributes__'",
+					                 __func__, member_name);
+					--subfields_count;
+					const auto &attributes = it->value["__attributes__"];
+					if (attributes.HasMember("offset")) {
+						internal_offset = attributes["offset"].GetUint64();
+						size = internal_offset;
+						data_iov.offset = internal_offset;
+					}
+
+					if (attributes.HasMember("capacity")) {
+						capacity = attributes["capacity"].GetUint64();
+					}
+
+					if (subfields_count == 0 && attributes.HasMember("data")) {
+						// if there is no subfields and
+						// data is presented at __attributes__
+						const auto &data = attributes["data"];
+						if (data.IsString()) {
+							size = data.GetStringLength();
+							datas.emplace_back(data.GetString(), size);
+							data_iov.size = size;
+							data_iov.offset = offset;
+							// TODO: remove const_cast here
+							data_iov.base = const_cast<char*>(datas.back().data());
+							size += internal_offset;
+						} else if (data.IsUint64()) {
+							size = datas[data.GetUint64()].size();
+							data_iov.size = size;
+							data_iov.offset = offset;
+							// TODO: remove const_cast here
+							data_iov.base = const_cast<char*>(datas[data.GetUint64()].data());
+							size += internal_offset;
+						}
+					}
+				}
+
+				if (subfields_count > 0) {
+					size = blob_write_stuct_process_subfields(c,
+					                                          it->value,
+					                                          field_value,
+					                                          allocator,
+					                                          datas,
+					                                          iov);
+				}
+
+				capacity = std::max(size, capacity);
+			}
+
+			if (capacity > 0) {
+				field_attributes.AddMember("capacity", capacity, allocator)
+				                .AddMember("size", size, allocator);
+			}
+
+			stored_value.AddMember(member_name, allocator, field_value, allocator);
+
+			if (!stored_attributes.HasMember("offset")) {
+				stored_attributes.AddMember("offset", 0, allocator);
+			}
+
+			if (!stored_attributes.HasMember("size")) {
+				stored_attributes.AddMember("size", capacity, allocator);
+			} else {
+				stored_attributes["size"] = stored_attributes["size"].GetUint64() + capacity;
+			}
+
+			if (data_iov.size > 0) {
+				iov.push_back(data_iov);
+			}
+
+			ret += capacity;
+		}
+	}
+	dnet_backend_log(c->blog, EBLOB_LOG_ERROR, "blob: %s: finish", __func__);
+
+	return ret;
+}
+
+static int blob_write_struct_parse_request(struct eblob_backend_config *c,
+                                           const struct dnet_io_attr *io,
+                                           const std::string &request_index,
+                                           std::string &stored_index,
+                                           std::vector<std::string> &datas,
+                                           std::vector<struct eblob_iovec> &iov) {
+	int err = 0;
+
+	dnet_backend_log(c->blog, DNET_LOG_ERROR, "blob: %s: blob_write_struct_parse_request: "
+	                 "request_index: %s, stored_index: %s, datas.size(): %zu",
+	                 dnet_dump_id_str(io->id), request_index.data(), stored_index.data(), datas.size());
+
+	rapidjson::Document stored_doc;
+	auto &allocator = stored_doc.GetAllocator();
+	if (!stored_index.empty()) {
+		stored_doc.Parse<0>(stored_index.data());
+	} else {
+		stored_doc.SetObject();
+	}
+
+	rapidjson::Document request_doc(&allocator);
+	request_doc.Parse<0>(request_index.data());
+
+	auto size = blob_write_stuct_process_subfields(c,
+	                                               request_doc,
+	                                               stored_doc,
+	                                               allocator,
+	                                               datas,
+	                                               iov);
+
+	stored_index = [&stored_doc] () {
+		rapidjson::StringBuffer buffer;
+		rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+		stored_doc.Accept(writer);
+
+		return std::string(buffer.GetString(), buffer.Size());
+	} ();
+
+	dnet_backend_log(c->blog, DNET_LOG_ERROR, "blob: %s: process_data: size: %" PRIu64 " stored_json: %s, stored_json_size: %" PRIu64 ", iov.size(): %zu",
+	                 dnet_dump_id_str(io->id), size, stored_index.c_str(), stored_index.size(), iov.size());
+	return err;
+}
+
+int blob_write_struct(struct eblob_backend_config *c, void *state, struct dnet_cmd *cmd, void *data) {
+	int err = 0;
+
+	struct eblob_backend *b = c->eblob; // eblob instance
+
+	struct eblob_write_control wc;
+	memset(&wc, 0, sizeof(wc));
+	wc.data_fd = -1;
+
+	auto io = static_cast<struct dnet_io_attr *>(data); // io attributes
+	data += sizeof(struct dnet_io_attr); // move pointer to the request
+
+	uint64_t flags = BLOB_DISK_CTL_EXTHDR; // set that the record has ext header
+
+	dnet_convert_io_attr(io);
+
+	struct dnet_ext_list_hdr ehdr = [&io] {
+		struct dnet_ext_list_hdr val;
+		memset(&val, 0, sizeof(val));
+
+		struct dnet_ext_list elist;
+		dnet_ext_list_init(&elist);
+
+		dnet_ext_io_to_list(io, &elist);
+
+		dnet_ext_list_to_hdr(&elist, &val);
+
+		dnet_ext_list_destroy(&elist);
+		return val;
+	}();
+
+	if (io->flags & DNET_IO_FLAGS_NOCSUM)
+		flags |= BLOB_DISK_CTL_NOCSUM;
+
+	auto key = convert_id(io->id);
+
+	/*
+	 * get all entries from the request.
+	 * The first one is index and others are data
+	 */
+	auto request = static_cast<dnet_write_struct_request *>(data);
+
+	dnet_backend_log(c->blog, DNET_LOG_ERROR, "blob: %s: blob_write_struct: entries_count: %" PRIu64,
+	                 dnet_dump_id_str(io->id), request->entries_count);
+
+	/*
+	 * Read index separately
+	 */
+	auto request_raw = reinterpret_cast<char*>(request->entries);
+	auto index_entry = reinterpret_cast<const struct dnet_write_struct_request_entry *>(request_raw);
+
+	const std::string request_index(index_entry->data, index_entry->size);
+	request_raw += sizeof(*index_entry) + index_entry->size;
+
+	dnet_backend_log(c->blog, DNET_LOG_ERROR, "blob: %s: blob_write_struct: index: %s",
+	                 dnet_dump_id_str(io->id), request_index.data());
+
+	/*
+	 * Adds all entries to vector;
+	 */
+	std::vector<std::string> datas;
+	datas.reserve(request->entries_count - 1);
+
+	for (decltype(request->entries_count) i = 1; i < request->entries_count; ++i) {
+		auto entry = reinterpret_cast<const struct dnet_write_struct_request_entry *>(request_raw);
+		datas.emplace_back(entry->data, entry->size);
+		request_raw += sizeof(*entry) + entry->size;
+	}
+
+	std::vector<struct eblob_iovec> iov(2);
+	memset(&iov[0], 0, sizeof(iov[0])); // zero-fills iovec for ehdr
+	memset(&iov[1], 0, sizeof(iov[1])); // zero-fills iovec for json index
+
+	std::string stored_index("");
+
+	err = blob_write_struct_parse_request(c, io, request_index, stored_index, datas, iov);
+
+	ehdr.index_size = stored_index.size();
+	iov[0].size = sizeof(struct dnet_ext_list_hdr);
+	iov[0].base = &ehdr;
+
+	iov[1].offset = iov[0].size;
+	iov[1].size = stored_index.size();
+	iov[1].base = const_cast<char*>(stored_index.data());
+
+	const auto data_offset = iov[1].offset + iov[1].size;
+
+	for (auto it = iov.begin() + 2; it != iov.end(); ++it) {
+		it->offset += data_offset;
+	}
+
+	dnet_backend_log(c->blog, DNET_LOG_ERROR, "blob: %s: blob_write_struct: final index: %s, iov.size(): %zu",
+	                 dnet_dump_id_str(io->id), stored_index.data(), iov.size());
+	for (auto it = iov.begin() + 1; it != iov.end(); ++it) {
+		dnet_backend_log(c->blog, DNET_LOG_ERROR, "blob: %s: iov: size: %" PRIu64 ", offset: %" PRIu64 ". data: %s",
+		                 dnet_dump_id_str(io->id), it->size, it->offset, (const char*)it->base);
+	}
+
+	err = eblob_writev_return(b, &key, iov.data(), iov.size(), flags, &wc);
+
+	ioremap::elliptics::data_buffer buffer(sizeof(struct dnet_write_struct_response) + stored_index.size());
+	struct dnet_write_struct_response r;
+	memset(&r, 0, sizeof(r));
+	r.size = stored_index.size();
+
+	buffer.write(r);
+	buffer.write(stored_index.data(), stored_index.size());
+
+	ioremap::elliptics::data_pointer data_p(std::move(buffer));
+	err = dnet_send_reply(state, cmd, data_p.data(), data_p.size(), 0);
+
+	return err;
+}
+
+struct field_point{
+	uint64_t offset;
+	uint64_t size;
+};
+
+static int blob_read_struct_process_data(struct eblob_backend_config *c,
+                                         const rapidjson::Value &value,
+                                         rapidjson::Document::AllocatorType &allocator,
+                                         rapidjson::Value &response_value,
+                                         std::vector<struct field_point> &points);
+
+static int blob_read_struct_process_field(struct eblob_backend_config *c,
+                                          const rapidjson::Value &value,
+                                          rapidjson::Document::AllocatorType &allocator,
+                                          rapidjson::Value &response_value,
+                                          std::vector<struct field_point> &points) {
+	int err = 0;
+	uint64_t offset = 0, size = 0, capacity = 0;
+
+	std::tie(offset, size, capacity) = [&] {
+		const auto &attributes = value["__attributes__"];
+		return std::make_tuple(attributes["offset"].GetUint64(),
+		                       attributes["size"].GetUint64(),
+		                       attributes["capacity"].GetUint64());
+	} ();
+
+	response_value.AddMember("__attributes__", allocator, rapidjson::Value().SetObject(), allocator);
+
+	auto &attributes = response_value["__attributes__"];
+	attributes.AddMember("offset", offset, allocator)
+	          .AddMember("size", size, allocator)
+	          .AddMember("capacity", capacity, allocator);
+
+	if (value.MemberCount() > 1) {
+		// Value isn't leap, so it should be processed recursively
+		err = blob_read_struct_process_data(c,
+		                                    value,
+		                                    allocator,
+		                                    response_value,
+		                                    points);
+	} else {
+		// Value is leap, provides its data in points
+		attributes.AddMember("data", points.size(), allocator);
+		points.push_back({offset, size});
+	}
+
+	return err;
+}
+
+static int blob_read_struct_process_data(struct eblob_backend_config *c,
+                                         const rapidjson::Value &value,
+                                         rapidjson::Document::AllocatorType &allocator,
+                                         rapidjson::Value &response_value,
+                                         std::vector<struct field_point> &points) {
+	int err = 0;
+
+	for (auto it = value.MemberBegin(), end = value.MemberEnd(); it != end; ++it) {
+		if (it->name.GetString() == std::string("__attributes__"))
+			continue;
+		rapidjson::Value field_value(rapidjson::kObjectType);
+		err = blob_read_struct_process_field(c,
+		                                     it->value,
+		                                     allocator,
+		                                     field_value,
+		                                     points);
+		if (err) {
+			dnet_backend_log(c->blog, DNET_LOG_ERROR,
+			                 "EBLOB: blob_read_struct_process_data: FAILED: %d",
+			                 err);
+			break;
+		}
+		dnet_backend_log(c->blog, DNET_LOG_DEBUG,
+		                 "EBLOB: blob_read_struct_process_data: adding '%s' element",
+		                 it->name.GetString());
+		response_value.AddMember(it->name.GetString(), allocator, field_value, allocator);
+	}
+
+	return err;
+}
+
+static int blob_read_struct_without_request_index(struct eblob_backend_config *c,
+                                                  const rapidjson::Document &stored_doc,
+                                                  rapidjson::Document::AllocatorType &allocator,
+                                                  rapidjson::Document &response_doc,
+                                                  std::vector<struct field_point> &points) {
+	return blob_read_struct_process_data(c,
+	                                     stored_doc,
+	                                     allocator,
+	                                     response_doc,
+	                                     points);
+}
+
+static int blob_read_struct_process_data_with_request(struct eblob_backend_config *c,
+                                                      const rapidjson::Value &stored_value,
+                                                      const rapidjson::Value &request_value,
+                                                      rapidjson::Document::AllocatorType &allocator,
+                                                      rapidjson::Value &response_value,
+                                                      std::vector<struct field_point> &points);
+
+static int blob_read_struct_process_field_with_request(struct eblob_backend_config *c,
+                                                       const rapidjson::Value &stored_value,
+                                                       const rapidjson::Value &request_value,
+                                                       rapidjson::Document::AllocatorType &allocator,
+                                                       rapidjson::Value &response_value,
+                                                       std::vector<struct field_point> &points) {
+	int err = 0;
+	auto request_member_count = request_value.MemberCount();
+	if (request_value.HasMember("__attributes__"))
+		--request_member_count;
+
+	if (request_member_count) {
+		if (stored_value.MemberCount() > 1) {
+			err = blob_read_struct_process_data_with_request(c,
+			                                                 stored_value,
+			                                                 request_value,
+			                                                 allocator,
+			                                                 response_value,
+			                                                 points);
+		} else {
+			for (auto it = request_value.MemberBegin(), end = request_value.MemberEnd(); it != end; ++it) {
+				if (it->name.GetString() == std::string("__attributes__"))
+					continue;
+
+				rapidjson::Value field_attributes(rapidjson::kObjectType);
+				field_attributes.AddMember("data", -ENOENT, allocator);
+
+				rapidjson::Value field_value(rapidjson::kObjectType);
+				field_value.AddMember("__attributes__", allocator, field_attributes, allocator);
+
+				response_value.AddMember(it->name.GetString(), allocator, field_value, allocator);
+			}
+		}
+	} else {
+		if (stored_value.MemberCount() > 1) {
+			err = blob_read_struct_process_data(c,
+			                                    stored_value,
+			                                    allocator,
+			                                    response_value,
+			                                    points);
+		} else {
+			auto get = [&request_value] (const char* field) -> uint64_t {
+				if (request_value.HasMember("__attributes__")) {
+					const auto &attributes = request_value["__attributes__"];
+					if (attributes.HasMember(field)) {
+						return attributes[field].GetUint64();
+					}
+				}
+				return 0;
+			};
+			const auto &stored_attributes = stored_value["__attributes__"];
+			auto request_offset = get("offset");
+			auto stored_offset = stored_attributes["offset"].GetUint64();
+			auto stored_size = stored_attributes["size"].GetUint64();
+			auto request_size = get("size");
+			request_size = request_size == 0 ? stored_size : request_size;
+
+			rapidjson::Value field_attributes(rapidjson::kObjectType);
+			field_attributes.AddMember("offset", stored_offset, allocator)
+			                .AddMember("size", stored_size, allocator)
+			                .AddMember("capacity", stored_attributes["capacity"].GetUint64(), allocator);
+
+			if (request_offset >= stored_size) {
+				field_attributes.AddMember("data", -E2BIG, allocator);
+			} else {
+				request_size = std::min(request_size, stored_size - request_offset);
+
+				field_attributes.AddMember("data", points.size(), allocator);
+				points.push_back({request_offset + stored_offset, request_size});
+			}
+
+			response_value.AddMember("__attributes__", allocator, field_attributes, allocator);
+		}
+	}
+
+	return err;
+}
+
+static int blob_read_struct_process_data_with_request(struct eblob_backend_config *c,
+                                                      const rapidjson::Value &stored_value,
+                                                      const rapidjson::Value &request_value,
+                                                      rapidjson::Document::AllocatorType &allocator,
+                                                      rapidjson::Value &response_value,
+                                                      std::vector<struct field_point> &points) {
+	int err = 0;
+	for (auto it = request_value.MemberBegin(), end = request_value.MemberEnd(); it != end; ++it) {
+		rapidjson::Value field_value(rapidjson::kObjectType);
+
+		if (stored_value.HasMember(it->name.GetString())) {
+			err = blob_read_struct_process_field_with_request(c,
+			                                                  stored_value[it->name.GetString()],
+			                                                  it->value,
+			                                                  allocator,
+			                                                  field_value,
+			                                                  points);
+		} else {
+			rapidjson::Value field_attributes(rapidjson::kObjectType);
+			field_attributes.AddMember("data", -ENOENT, allocator);
+			field_value.AddMember("__attributes__", allocator, field_attributes, allocator);
+		}
+
+		response_value.AddMember(it->name.GetString(), allocator, field_value, allocator);
+	}
+
+	return err;
+}
+
+static int blob_read_struct_with_request_index(struct eblob_backend_config *c,
+                                               const rapidjson::Document &stored_doc,
+                                               const rapidjson::Document &request_doc,
+                                               rapidjson::Document::AllocatorType &allocator,
+                                               rapidjson::Document &response_doc,
+                                               std::vector<struct field_point> &points) {
+	return blob_read_struct_process_data_with_request(c,
+	                                                  stored_doc,
+	                                                  request_doc,
+	                                                  allocator,
+	                                                  response_doc,
+	                                                  points);
+}
+
+static int blob_read_struct_raw(struct eblob_backend_config *c,
+                                const std::string &stored_index,
+                                const std::string &request_index,
+                                struct dnet_net_state *state,
+                                struct dnet_cmd *cmd,
+                                const struct eblob_write_control &wc,
+                                struct dnet_io_attr *io) {
+	int err = 0;
+	dnet_backend_log(c->blog, DNET_LOG_DEBUG,
+	                 "%s: EBLOB: blob_read_struct_raw: stored_index: '%s', request_index: '%s'",
+	                 dnet_dump_id_str(io->id), stored_index.c_str(), request_index.c_str());
+
+	if (stored_index.empty()) {
+		return -EINVAL;
+	}
+
+	rapidjson::Document stored_doc;
+	stored_doc.Parse<0>(stored_index.data());
+
+	rapidjson::Document response_doc;
+	response_doc.SetObject();
+	auto &allocator = response_doc.GetAllocator();
+
+	std::vector<struct field_point> points;
+
+	if (!request_index.empty()) {
+		rapidjson::Document request_doc;
+		request_doc.Parse<0>(request_index.data());
+
+		err = blob_read_struct_with_request_index(c,
+		                                          stored_doc,
+		                                          request_doc,
+		                                          allocator,
+		                                          response_doc,
+		                                          points);
+	} else {
+		err = blob_read_struct_without_request_index(c,
+		                                             stored_doc,
+		                                             allocator,
+		                                             response_doc,
+		                                             points);
+	}
+
+	const std::string response_index = [&response_doc] () {
+		rapidjson::StringBuffer buffer;
+		rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+		response_doc.Accept(writer);
+
+		return std::string(buffer.GetString(), buffer.Size());
+	} ();
+
+	dnet_backend_log(c->blog, DNET_LOG_DEBUG,
+	                 "%s: EBLOB: blob_read_struct_raw: response_index: '%s', points: %zu",
+	                 dnet_dump_id_str(io->id), response_index.c_str(), points.size());
+
+	int i = 0;
+	for (auto &p: points) {
+		dnet_backend_log(c->blog, DNET_LOG_DEBUG,
+		                 "%s: EBLOB: blob_read_struct_raw: point: %d: %" PRIu64 "/%" PRIu64,
+		                 dnet_dump_id_str(io->id), i++, p.offset, p.size);
+	}
+
+	ioremap::elliptics::data_pointer data_p = [&response_index] () {
+		ioremap::elliptics::data_buffer buffer(sizeof(struct dnet_read_struct_response) + response_index.size());
+		struct dnet_read_struct_response r;
+		memset(&r, 0, sizeof(r));
+		r.size = response_index.size();
+
+		buffer.write(r);
+		buffer.write(response_index.data(), response_index.size());
+		return std::move(buffer);
+	} ();
+
+	int more = points.empty() ? 0 : 1; // if points is empty we will send only index
+	err = dnet_send_reply(state, cmd, data_p.data(), data_p.size(), more);
+	if (err) {
+		dnet_backend_log(c->blog, DNET_LOG_ERROR,
+		                 "%s: EBLOB: blob_read_struct_raw: failed to dnet_send_reply with index: %d",
+		                 dnet_dump_id_str(io->id), err);
+		return err;
+	}
+
+	cmd->flags |= DNET_FLAGS_MORE;
+	auto offset = wc.data_offset + sizeof(struct dnet_ext_list_hdr) + stored_index.size();
+	for (auto it = points.cbegin(), end = points.cend(); it != end; ++it) {
+		io->size = it->size;
+		static const auto hsize = sizeof(struct dnet_cmd) + sizeof(struct dnet_io_attr);
+		cmd->flags |= DNET_FLAGS_REPLY;
+		cmd->size = sizeof(struct dnet_io_attr) + it->size;
+		if (std::next(it) == points.cend())
+			cmd->flags &= ~DNET_FLAGS_MORE;
+		err = dnet_send_fd(state, cmd, hsize, wc.data_fd, offset + it->offset, it->size, 0);
+		if (err) {
+			dnet_backend_log(c->blog, DNET_LOG_ERROR,
+			                 "%s: EBLOB: blob_read_struct_raw: failed to dnet_send_fd: %d",
+			                 dnet_dump_id_str(io->id), err);
+			return err;
+		}
+	}
+
+	return err;
+}
+
+void struct_reader::parse_request(void *data) {
+	m_io = static_cast<struct dnet_io_attr *>(data);
+	data += sizeof(*m_io);
+
+	dnet_convert_io_attr(m_io);
+
+	dnet_read_struct_request *request = static_cast<struct dnet_read_struct_request *>(data);
+
+	m_key = convert_id(m_io->id);
+
+	m_request_index = std::string(request->index, request->size);
+}
+
+int struct_reader::read_stored_index() {
+	int err = eblob_read_return(m_eblob, &m_key, EBLOB_READ_NOCSUM, &m_wc);
+	if (err) {
+		dnet_backend_log(m_log, DNET_LOG_ERROR, "%s: EBLOB: blob-read-struct: failed: %d",
+		                 dnet_dump_id_str(m_io->id), err);
+		return err;
+	}
+
+	if (err == 0 && m_wc.flags & BLOB_DISK_CTL_UNCOMMITTED) {
+		err = -ENOENT;
+		dnet_backend_log(m_log, DNET_LOG_ERROR, "%s: EBLOB: blob-read-struct: record is uncommitted",
+		                 dnet_dump_id_str(m_io->id));
+		return err;
+	}
+
+	if (!(m_wc.flags & BLOB_DISK_CTL_EXTHDR)) {
+		err = -EINVAL;
+		dnet_backend_log(m_log, DNET_LOG_ERROR, "%s: EBLOB: blob-read-struct: record has no exthdr",
+		                 dnet_dump_id_str(m_io->id));
+		return err;
+	}
+
+	m_stored_index = blob_read_stored_index(m_c, m_key, m_wc);
+
+	return err;
+}
+
+int struct_reader::read(dnet_cmd *cmd, void *data) {
+	int err = 0;
+	parse_request(data);
+	err = read_stored_index();
+	if (err) {
+		return err;
+	}
+
+	return blob_read_struct_raw(m_c, m_stored_index, m_request_index, m_state, cmd, m_wc, m_io);
+}
+
+int blob_read_struct(struct eblob_backend_config *c, struct dnet_net_state *state, struct dnet_cmd *cmd, void *data) {
+	struct_reader reader(c, state);
+	return reader.read(cmd, data);
+}

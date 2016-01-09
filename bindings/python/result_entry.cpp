@@ -281,6 +281,24 @@ bp::list dnet_backend_status_result_get_backends(const backend_status_result_ent
 	return ret;
 }
 
+std::string read_struct_result_entry_get_index(const read_struct_result_entry &entry) {
+	return entry.index.to_string();
+}
+
+bp::list read_struct_result_entry_get_datas(const read_struct_result_entry &entry) {
+	bp::list ret;
+
+	for (const auto &data : entry.datas) {
+		ret.append(data.to_string());
+	}
+
+	return ret;
+}
+
+std::string write_struct_result_entry_get_index(const write_struct_result_entry &entry) {
+	return entry.index().to_string();
+}
+
 void init_result_entry() {
 
 	bp::class_<callback_result_entry>("CallbackResultEntry")
@@ -419,6 +437,15 @@ void init_result_entry() {
 		.add_property("last_start", dnet_backend_status_get_last_start)
 		.add_property("last_start_err", &dnet_backend_status::last_start_err)
 		.add_property("read_only", dnet_backend_status_get_read_only)
+	;
+
+	bp::class_<read_struct_result_entry>("ReadStructResultEntry")
+		.add_property("index", read_struct_result_entry_get_index)
+		.add_property("datas", read_struct_result_entry_get_datas)
+	;
+
+	bp::class_<write_struct_result_entry, bp::bases<callback_result_entry>>("WriteStructResultEntry")
+		.add_property("index", &write_struct_result_entry_get_index)
 	;
 
 }

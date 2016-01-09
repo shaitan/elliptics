@@ -1477,7 +1477,7 @@ static int dnet_process_cmd_with_backend_raw(struct dnet_backend_io *backend, st
 			}
 
 			size_t req_size = sizeof(struct dnet_server_send_request) +
-						req->id_num * sizeof(struct dnet_raw_id) + 
+						req->id_num * sizeof(struct dnet_raw_id) +
 						req->group_num * sizeof(int);
 
 			if (cmd->size != req_size) {
@@ -1501,7 +1501,9 @@ static int dnet_process_cmd_with_backend_raw(struct dnet_backend_io *backend, st
 		case DNET_CMD_READ:
 		case DNET_CMD_WRITE:
 		case DNET_CMD_DEL:
-			if ((n->ro || backend->read_only) && ((cmd->cmd == DNET_CMD_DEL) || (cmd->cmd == DNET_CMD_WRITE))) {
+			if ((n->ro || backend->read_only) && ((cmd->cmd == DNET_CMD_DEL) ||
+			                                      (cmd->cmd == DNET_CMD_WRITE) ||
+			                                      (cmd->cmd == DNET_CMD_WRITE_STRUCT))) {
 				err = -EROFS;
 				break;
 			}
@@ -1561,7 +1563,12 @@ static int dnet_process_cmd_with_backend_raw(struct dnet_backend_io *backend, st
 			   to eliminate double reply packets
 			   (the first one with dnet_file_info structure or data has been read,
 			   the second to destroy transaction on client side, i.e. packet without DNET_FLAGS_MORE bit) */
-			if ((cmd->cmd == DNET_CMD_WRITE) || (cmd->cmd == DNET_CMD_READ) || (cmd->cmd == DNET_CMD_LOOKUP)) {
+			if ((cmd->cmd == DNET_CMD_WRITE) ||
+			    (cmd->cmd == DNET_CMD_READ) ||
+			    (cmd->cmd == DNET_CMD_LOOKUP) ||
+			    (cmd->cmd == DNET_CMD_WRITE_STRUCT) ||
+			    (cmd->cmd == DNET_CMD_READ_STRUCT) ||
+			    (cmd->cmd == DNET_CMD_LOOKUP_STRUCT)) {
 				cmd->flags &= ~DNET_FLAGS_NEED_ACK;
 			}
 			err = backend->cb->command_handler(st, backend->cb->command_private, cmd, data);
@@ -1638,7 +1645,10 @@ int dnet_process_cmd_raw(struct dnet_backend_io *backend, struct dnet_net_state 
 			break;
 	}
 
-	if (((cmd->cmd == DNET_CMD_READ) || (cmd->cmd == DNET_CMD_WRITE)) && io) {
+	if (io && ((cmd->cmd == DNET_CMD_READ) ||
+	           (cmd->cmd == DNET_CMD_WRITE) ||
+	           (cmd->cmd == DNET_CMD_READ_STRUCT) ||
+	           (cmd->cmd == DNET_CMD_WRITE_STRUCT))) {
 		char time_str[64];
 		struct tm io_tm;
 		struct timeval io_tv;

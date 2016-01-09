@@ -274,6 +274,24 @@ struct get_index_metadata_result_entry
 	bool is_valid;
 };
 
+class write_struct_result_entry: public callback_result_entry {
+public:
+	write_struct_result_entry();
+	write_struct_result_entry(const write_struct_result_entry &other);
+	~write_struct_result_entry();
+
+	write_struct_result_entry &operator =(const write_struct_result_entry &other);
+
+	data_pointer index() const;
+
+	dnet_addr *storage_address() const;
+};
+
+struct read_struct_result_entry {
+	data_pointer index;
+	std::vector<data_pointer> datas;
+};
+
 typedef async_result<callback_result_entry> async_generic_result;
 typedef std::vector<callback_result_entry> sync_generic_result;
 
@@ -318,6 +336,12 @@ typedef std::vector<index_entry> sync_list_indexes_result;
 
 typedef async_result<get_index_metadata_result_entry> async_get_index_metadata_result;
 typedef std::vector<get_index_metadata_result_entry> sync_get_index_metadata_result;
+
+// struct result entries
+typedef async_result<write_struct_result_entry> async_write_struct_result;
+typedef std::vector<write_struct_result_entry> sync_write_struct_result;
+typedef async_result<read_struct_result_entry> async_read_struct_result;
+typedef std::vector<read_struct_result_entry> sync_read_struct_result;
 
 static inline bool operator <(const dnet_raw_id &a, const dnet_raw_id &b)
 {

@@ -437,4 +437,40 @@ dnet_backend_status *backend_status_result_entry::backend(uint32_t index) const
 	DNET_DATA_END(sizeof(dnet_backend_status_list) + (index + 1) * sizeof(dnet_backend_status));
 }
 
+write_struct_result_entry::write_struct_result_entry() {}
+
+write_struct_result_entry::write_struct_result_entry(const write_struct_result_entry &other)
+: callback_result_entry(other) {}
+
+write_struct_result_entry::~write_struct_result_entry() {}
+
+write_struct_result_entry &write_struct_result_entry::operator =(const write_struct_result_entry &other) {
+	callback_result_entry::operator =(other);
+	return *this;
+}
+
+data_pointer write_struct_result_entry::index() const {
+	DNET_DATA_BEGIN();
+	auto resp = data().data<dnet_write_struct_response>();
+	return data()
+		.skip<dnet_write_struct_response>()
+		.slice(0, resp->size);
+	DNET_DATA_END(sizeof(dnet_write_struct_response));
+}
+
+dnet_addr *write_struct_result_entry::storage_address() const {
+	DNET_DATA_BEGIN();
+	return data()
+		.data<dnet_addr>();
+	DNET_DATA_END(sizeof(dnet_addr));
+}
+
+// dnet_file_info *write_struct_result_entry::file_info() const {
+//     DNET_DATA_BEGIN();
+//     return data()
+//             .skip<dnet_addr>()
+//             .data<dnet_file_info>();
+//     DNET_DATA_END(sizeof(dnet_addr) + sizeof(dnet_file_info));
+// }
+
 } } // namespace ioremap::elliptics

@@ -26,7 +26,7 @@ set(ELLIPTICS_SRCS
     ../example/config.cpp
     ../example/config_impl.cpp
     ../example/backends.c
-    ../example/eblob_backend.cpp
+    eblob/eblob_backend.cpp
     )
 
 add_library(elliptics_ids STATIC ids.cpp)

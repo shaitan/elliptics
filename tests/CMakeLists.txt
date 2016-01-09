@@ -28,7 +28,7 @@ add_library(test_common STATIC
     ../example/config.cpp
     ../example/config_impl.cpp
     ../example/backends.c
-    ../example/eblob_backend.cpp
+    ../library/eblob/eblob_backend.cpp
     test_base.hpp
     test_base.cpp
     test_session.hpp
@@ -234,13 +234,7 @@ endif()
 #
 list(APPEND TESTS_DEPS dnet_run_servers)
 
-#
-# Target `test` execute all available tests (both implemented in C++ and in python)
-#
-add_test_target(test ${TESTS_LIST} DEPENDS ${TESTS_DEPS})
-
-add_custom_command(TARGET test
-    POST_BUILD
+add_custom_target(_pytest_prepare
     COMMAND mkdir -p ${CMAKE_CURRENT_BINARY_DIR}/pytests/elliptics
     COMMAND mkdir -p ${CMAKE_CURRENT_BINARY_DIR}/pytests/elliptics_recovery
     COMMAND cp ${CMAKE_CURRENT_BINARY_DIR}/../bindings/python/core.so* pytests/elliptics/
@@ -249,6 +243,7 @@ add_custom_command(TARGET test
     COMMAND cp ${CMAKE_SOURCE_DIR}/bindings/python/src/* pytests/elliptics/
     COMMAND cp -r ${CMAKE_SOURCE_DIR}/recovery/elliptics_recovery/* pytests/elliptics_recovery/
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+    DEPENDS ${TESTS_DEPS}
 )
 
 set(PYTESTS_FLAGS "-v" "-l" "-x" "--timeout=1200" "--durations=20")
@@ -256,17 +251,34 @@ if(NOT WITH_COCAINE)
     list(APPEND PYTESTS_FLAGS "--without-cocaine")
 endif()
 
-add_custom_command(TARGET test
-    POST_BUILD
-    COMMAND virtualenv -p "${PYTHON_EXECUTABLE}" . &&
-        . bin/activate &&
-        pip install argparse &&
-        pip install pytest &&
-        pip install pytest-timeout &&
-        pip install msgpack-python &&
-        export LD_LIBRARY_PATH=.:.. &&
-        ${TEST_ENV} py.test ${PYTESTS_FLAGS} ${CMAKE_CURRENT_SOURCE_DIR}/pytests
-    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/pytests)
+function(add_pytest_target name module)
+    if (NOT ${module} EQUAL "")
+        set(module "-m" ${module})
+    endif()
+
+    add_custom_target(${name}
+        COMMAND virtualenv -p "${PYTHON_EXECUTABLE}" . &&
+            . bin/activate &&
+            pip install argparse &&
+            pip install pytest &&
+            pip install pytest-timeout &&
+            pip install msgpack-python &&
+            export LD_LIBRARY_PATH=.:.. &&
+            ${TEST_ENV} py.test ${module} ${PYTESTS_FLAGS} ${CMAKE_CURRENT_SOURCE_DIR}/pytests
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/pytests
+        DEPENDS _pytest_prepare
+    )
+endfunction(add_pytest_target)
+
+add_pytest_target(pytest "")
+list(APPEND TESTS_DEPS pytest)
+
+add_pytest_target(pytest_structured_data structured_data)
+
+#
+# Target `test` execute all available tests (both implemented in C++ and in python)
+#
+add_test_target(test ${TESTS_LIST} DEPENDS ${TESTS_DEPS})
 
 add_executable(dnet_run_servers run_servers.cpp)
 target_link_libraries(dnet_run_servers ${TEST_LIBRARIES})

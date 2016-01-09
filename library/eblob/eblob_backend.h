@@ -26,10 +26,6 @@
 
 #include "elliptics/interface.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 struct dnet_config_backend;
 
 struct eblob_read_params {
@@ -52,9 +48,5 @@ struct eblob_backend_config {
 };
 
 int dnet_blob_config_to_json(struct dnet_config_backend *b, char **json_stat, size_t *size);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* __DNET_EBLOB_BACKEND_H */

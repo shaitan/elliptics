@@ -2,17 +2,17 @@
  * Copyright 2008+ Evgeniy Polyakov <zbr@ioremap.net>
  *
  * This file is part of Elliptics.
- * 
+ *
  * Elliptics is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * Elliptics is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU Lesser General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Lesser General Public License
  * along with Elliptics.  If not, see <http://www.gnu.org/licenses/>.
  */
@@ -164,6 +164,9 @@ static char *dnet_cmd_strings[] = {
 	[DNET_CMD_BACKEND_CONTROL] = "BACKEND_CONTROL",
 	[DNET_CMD_BACKEND_STATUS] = "BACKEND_STATUS",
 	[DNET_CMD_SEND] = "SERVER_SEND",
+	[DNET_CMD_LOOKUP_STRUCT] = "LOOKUP_STRUCT",
+	[DNET_CMD_WRITE_STRUCT] = "WRITE_STRUCT",
+	[DNET_CMD_READ_STRUCT] = "READ_STRUCT",
 	[DNET_CMD_UNKNOWN] = "UNKNOWN",
 };
 

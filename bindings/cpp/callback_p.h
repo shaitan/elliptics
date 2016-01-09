@@ -156,6 +156,8 @@ struct entry_converter
 	static void convert(callback_result_entry &, callback_result_data *)
 	{
 	}
+
+	static void convert(read_struct_result_entry &, callback_result_data *) {}
 };
 
 struct dnet_net_state_deleter

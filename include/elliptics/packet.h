@@ -76,6 +76,9 @@ enum dnet_commands {
 	DNET_CMD_BACKEND_CONTROL,		/* Special command to start or stop backends */
 	DNET_CMD_BACKEND_STATUS,		/* Special command to see current statuses of backends */
 	DNET_CMD_SEND,				/* Send given set of local keys to remote groups */
+	DNET_CMD_LOOKUP_STRUCT,			/* Extended lookup which allows to lookup structured data */
+	DNET_CMD_WRITE_STRUCT,			/* Extended write which allows to write structured data */
+	DNET_CMD_READ_STRUCT,			/* Extended read which allows to read structured data */
 	DNET_CMD_UNKNOWN,			/* This slot is allocated for statistics gathered for unknown commands */
 	__DNET_CMD_MAX,
 };
@@ -983,7 +986,8 @@ struct dnet_ext_list_hdr {
 	uint32_t		size;		/* Size of all extensions */
 	struct dnet_time	timestamp;	/* Time stamp of record */
 	uint64_t		flags;		/* Custom flags for this record */
-	uint64_t		__pad2[2];	/* For future use (should be NULLed) */
+	uint64_t		index_size;		/* */
+	uint64_t		__pad2;		/* For future use (should be NULLed) */
 } __attribute__ ((packed));
 
 /*! In-memory extension container */
@@ -1205,6 +1209,38 @@ struct dnet_indexes_reply
 	uint64_t			entries_count;	/* Count of results */
 	struct dnet_indexes_reply_entry	entries[0];	/* List of entries update results */
 } __attribute__ ((packed));
+
+/* ============= Structured records ============= */
+
+struct dnet_write_struct_request_entry {
+	uint64_t	size;		// size of data
+	uint64_t	reserved[3];	// for future use
+	char		data[0];	// data
+} __attribute__ ((packed));
+
+struct dnet_write_struct_request {
+	uint64_t				reserved[5];	// for future use
+	uint64_t				entries_count;	// number of datas at the end
+	struct dnet_write_struct_request_entry	entries[0];	// entries, first entry is index
+} __attribute__ ((packed));
+
+struct dnet_write_struct_response {
+	uint64_t	size;		// size of index
+	uint64_t	reserved[3];	// for future use
+	char		index[0];	// index of data structure
+} __attribute__ ((packed));
+
+struct dnet_read_struct_request {
+	uint64_t	size;		// size of index
+	uint64_t	reserved[3];	// for future use
+	char		index[0];	// index
+}  __attribute__ ((packed));
+
+struct dnet_read_struct_response {
+	uint64_t	size;		// size of data
+	uint64_t	reserved[3];	// for future use
+	char		data[0];	// data
+};
 
 /*
  * Defragmentation control structure

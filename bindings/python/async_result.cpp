@@ -151,16 +151,19 @@ struct def_async_result<T, Args...>
 
 void init_async_results() {
 
-	def_async_result<	callback_result_entry,
-						lookup_result_entry,
-						read_result_entry,
-						monitor_stat_result_entry,
-						iterator_result_entry,
-						exec_result_entry,
-						find_indexes_result_entry,
-						index_entry,
-						backend_status_result_entry
-					>::init();
+	def_async_result
+		< callback_result_entry
+		, lookup_result_entry
+		, read_result_entry
+		, monitor_stat_result_entry
+		, iterator_result_entry
+		, exec_result_entry
+		, find_indexes_result_entry
+		, index_entry
+		, backend_status_result_entry
+		, write_struct_result_entry
+		, read_struct_result_entry
+		>::init();
 
 }
 

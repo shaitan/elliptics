@@ -263,7 +263,7 @@ class Iterator(object):
               itype=elliptics.iterator_types.network,
               flags=elliptics.iterator_flags.key_range | elliptics.iterator_flags.ts_range,
               key_ranges=(IdRange(IdRange.ID_MIN, IdRange.ID_MAX),),
-              timestamp_range=(Time.time_min().to_etime(), Time.time_max().to_etime()),
+              timestamp_range=(e.time_min().to_etime(), Time.time_max().to_etime()),
               tmp_dir='/var/tmp',
               address=None,
               backend_id=0,

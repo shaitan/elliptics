@@ -17,6 +17,7 @@ from elliptics.core import *
 from elliptics.route import Address
 from elliptics.node import Node
 from elliptics import log_level
+import json
 
 
 @property
@@ -26,11 +27,8 @@ def storage_address(self):
     """
     return Address.from_host_port(self.__storage_address__)
 
-
-@property
-def monitor_statistics(self):
-    from json import loads
-    return loads(self.__statistics__)
+LookupResultEntry.__storage_address__ = LookupResultEntry.storage_address
+LookupResultEntry.storage_address = storage_address
 
 
 def wrap_address(classes):
@@ -44,16 +42,29 @@ def wrap_address(classes):
         cls.__address__ = cls.address
         cls.address = address
 
-LookupResultEntry.__storage_address__ = LookupResultEntry.storage_address
-LookupResultEntry.storage_address = storage_address
-
-MonitorStatResultEntry.__statistics__ = MonitorStatResultEntry.statistics
-MonitorStatResultEntry.statistics = monitor_statistics
-
 wrap_address([CallbackResultEntry,
               ExecContext,
               RouteEntry
               ])
+
+
+@property
+def monitor_statistics(self):
+    return json.loads(self.__statistics__)
+
+MonitorStatResultEntry.__statistics__ = MonitorStatResultEntry.statistics
+MonitorStatResultEntry.statistics = monitor_statistics
+
+
+@property
+def json_index(self):
+    return json.loads(self.__index__)
+
+WriteStructResultEntry.__index__ = WriteStructResultEntry.index
+WriteStructResultEntry.index = json_index
+
+ReadStructResultEntry.__index__ = ReadStructResultEntry.index
+ReadStructResultEntry.index = json_index
 
 
 def create_node(elog=None, log_file='/dev/stderr', log_level=log_level.error,
@@ -74,7 +85,7 @@ def create_node(elog=None, log_file='/dev/stderr', log_level=log_level.error,
     try:
         n.add_remotes(map(Address.from_host_port_family, remotes))
     except Exception as e:
-        elog.log(log_level.error, "Coudn't connect to: {0}: {1}".format(repr(remotes), repr(e)))
+        elog.log(log_level.error, "Couldn't connect to: {0}: {1}".format(repr(remotes), repr(e)))
     return n
 
 

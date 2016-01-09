@@ -954,6 +954,15 @@ class session
 		 */
 		async_get_index_metadata_result get_index_metadata(const std::string &index);
 
+		async_write_struct_result lookup_struct(const key &id);
+
+		async_write_struct_result write_struct(const key &id,
+		                                       const data_pointer &index,
+		                                       const std::vector<data_pointer> &datas);
+
+		async_read_struct_result read_struct(const key &id,
+		                                     const data_pointer &index);
+
 		/*!
 		 * Returns logger object.
 		 */

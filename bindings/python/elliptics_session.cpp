@@ -735,6 +735,19 @@ public:
 		                                                     categories)));
 	}
 
+	python_write_struct_result lookup_struct(const bp::object &key) {
+		return create_result(std::move(session::lookup_struct(transform(key).id())));
+	}
+
+	python_write_struct_result write_struct(const bp::object &key, const std::string &index, const bp::api::object &datas) {
+		auto std_datas = convert_to_vector<data_pointer>(datas);
+		return create_result(std::move(session::write_struct(transform(key).id(), data_pointer::copy(index), std_datas)));
+	}
+
+	python_read_struct_result read_struct(const bp::object &key, const std::string &index) {
+		return create_result(std::move(session::read_struct(transform(key).id(), data_pointer::copy(index))));
+	}
+
 private:
 	void transform_io_attr(elliptics_io_attr &io_attr) {
 		auto& io = static_cast<dnet_io_attr&>(io_attr);
@@ -1838,6 +1851,15 @@ void init_elliptics_session() {
 		    "    Result contains information if starter received the reply.\n")
 
 		.def("prepare_latest", &elliptics_session::prepare_latest)
+
+		.def("lookup_struct", &elliptics_session::lookup_struct,
+		     (bp::arg("key")))
+
+		.def("write_struct", &elliptics_session::write_struct,
+		     (bp::arg("key"), bp::arg("index"), bp::arg("datas")=bp::list()))
+
+		.def("read_struct", &elliptics_session::read_struct,
+		     (bp::arg("key"), bp::arg("index")=std::string()))
 	;
 }
 

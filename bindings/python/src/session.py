@@ -13,6 +13,8 @@
 # GNU General Public License for more details.
 # =============================================================================
 
+import json
+
 from elliptics.core import Session, monitor_stat_categories
 from elliptics.route import RouteList, Address
 from elliptics.log import logged_class
@@ -32,7 +34,7 @@ class Session(Session):
     def clone(self):
         '''
         Creates and returns session which is equal to current"
-        but complitely independent from it."
+        but completely independent from it."
 
         cloned_session = session.clone()
         '''
@@ -97,7 +99,7 @@ class Session(Session):
 
     def update_indexes(self, id, indexes, datas=None):
         """
-        Adds id to additional indees and or updates data for the id in specified indexes.
+        Adds id to additional indexes and or updates data for the id in specified indexes.
         Also it updates list of indexes where id is.
         Return elliptics.AsyncResult.
         -- id - string or elliptics.Id
@@ -125,7 +127,7 @@ class Session(Session):
 
     def update_indexes_internal(self, id, indexes, datas=None):
         """
-        Adds id to additional indees and or updates data for the id in specified indexes.
+        Adds id to additional indexes and or updates data for the id in specified indexes.
         It doesn't update list of indexes where id is.
         Return elliptics.AsyncResult.
         -- id - string or elliptics.Id
@@ -276,3 +278,18 @@ class Session(Session):
         else:
             address = tuple(address)
         return super(Session, self).monitor_stat(address, categories)
+
+    def read_struct(self, key, index=''):
+        if not isinstance(index, basestring):
+            index = json.dumps(index)
+
+        return super(Session, self).read_struct(key, index)
+
+    def write_struct(self, key, index, data=None):
+        if not isinstance(index, basestring):
+            index = json.dumps(index)
+
+        if data is None:
+            data = []
+
+        return super(Session, self).write_struct(key, index, data)

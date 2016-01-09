@@ -16,6 +16,7 @@ set(ELLIPTICS_CPP_SRCS
     session_indexes.cpp
     session_file.cpp
     session_indexes.hpp
+    session_structured_data.cpp
     result_entry.cpp
     exception.cpp
     key.cpp

@@ -61,6 +61,11 @@ INIT_CALLBACK_TYPE(backend_status_result_entry,
 	DNET_CMD_BACKEND_STATUS
 )
 
+INIT_CALLBACK_TYPE(write_struct_result_entry,
+	DNET_CMD_LOOKUP_STRUCT,
+	DNET_CMD_WRITE_STRUCT
+)
+
 template <typename T>
 struct callback_result_traits
 {

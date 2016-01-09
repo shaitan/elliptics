@@ -169,12 +169,15 @@ typedef python_async_result<remove_result_entry>			python_remove_result;
 typedef python_async_result<exec_result_entry>				python_exec_result;
 typedef python_async_result<callback_result_entry>			python_callback_result;
 
-typedef python_async_result<find_indexes_result_entry>		python_find_indexes_result;
-typedef python_async_result<index_entry>					python_check_indexes_result;
+typedef python_async_result<find_indexes_result_entry>			python_find_indexes_result;
+typedef python_async_result<index_entry>				python_check_indexes_result;
 
-typedef python_async_result<monitor_stat_result_entry>		python_monitor_stat_result;
-typedef python_async_result<node_status_result_entry>		python_node_status_result;
-typedef python_async_result<backend_status_result_entry>	python_backend_status_result;
+typedef python_async_result<monitor_stat_result_entry>			python_monitor_stat_result;
+typedef python_async_result<node_status_result_entry>			python_node_status_result;
+typedef python_async_result<backend_status_result_entry>		python_backend_status_result;
+
+typedef python_async_result<write_struct_result_entry>			python_write_struct_result;
+typedef python_async_result<read_struct_result_entry>			python_read_struct_result;
 
 void init_async_results();
 
