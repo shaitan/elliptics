@@ -326,7 +326,7 @@ class Iterator(object):
                 if iterated_keys % batch_size == 0:
                     yield (iterated_keys, total_keys, positive_responses, negative_responses, start, end)
 
-                self._on_key_response(results, record)
+                self._on_key_response(results, record, address, backend_id)
             end = time.time()
 
             elapsed_time = records.elapsed_time()
@@ -349,7 +349,7 @@ class Iterator(object):
                                            timestamp_range[0],
                                            timestamp_range[1])
 
-    def _on_key_response(self, results, record):
+    def _on_key_response(self, results, record, address, backend_id):
         if record.response.status == 0:
             self._save_record(results, record)
 
@@ -408,8 +408,10 @@ class MergeRecoveryIterator(Iterator):
         flags |= elliptics.iterator_flags.move
         return self.session.start_copy_iterator(eid, ranges, [eid.group_id], flags, timestamp_range[0], timestamp_range[1])
 
-    def _on_key_response(self, results, record):
+    def _on_key_response(self, results, record, address, backend_id):
         if record.response.status != 0:
+            self.log.error("Key recovery on node: {0}/{1} failed: {2}, key: {3}"
+                           .format(address, backend_id, record.response.status, record.response.key))
             self._save_record(results, record)
 
     def _update_stats(self, stats, it):
