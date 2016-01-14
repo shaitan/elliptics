@@ -735,6 +735,46 @@ public:
 		                                                     categories)));
 	}
 
+	python_write_result write_prepare_ex(const bp::api::object &id, uint64_t json_size, uint64_t data_size) {
+		return create_result(std::move(session::write_prepare_ex(transform(id).id(), json_size, data_size)));
+	}
+
+	python_write_result write_commit_ex(const bp::api::object &id, uint64_t data_size) {
+		return create_result(std::move(session::write_commit_ex(transform(id).id(), data_size)));
+	}
+
+	python_write_result write_plain_ex(const bp::api::object &id, const std::string &json, const std::string &data, uint64_t offset) {
+		return create_result(std::move(session::write_plain_ex(transform(id).id(), data_pointer::copy(json), data_pointer::copy(data), offset)));
+	}
+
+	python_write_result write_json_plain_ex(const bp::api::object &id, const std::string &json) {
+		return create_result(std::move(session::write_plain_ex(transform(id).id(), data_pointer::copy(json))));
+	}
+
+	python_write_result write_data_plain_ex(const bp::api::object &id, const std::string &data, uint64_t offset) {
+		return create_result(std::move(session::write_plain_ex(transform(id).id(), data_pointer::copy(data), offset)));
+	}
+
+	python_write_result write_ex(const bp::api::object &id, const std::string &json, const std::string &data, uint64_t offset) {
+		return create_result(std::move(session::write_data_ex(transform(id).id(), data_pointer::copy(json), data_pointer::copy(data), offset)));
+	}
+
+	python_write_result write_json_ex(const bp::api::object &id, const std::string &json) {
+		return create_result(std::move(session::write_data_ex(transform(id).id(), data_pointer::copy(json))));
+	}
+
+	python_write_result write_data_ex(const bp::api::object &id, const std::string &data, uint64_t offset) {
+		return create_result(std::move(session::write_data_ex(transform(id).id(), data_pointer::copy(data), offset)));
+	}
+
+	python_lookup_result lookup_ex(const bp::api::object &id) {
+		return create_result(std::move(session::lookup_ex(transform(id).id())));
+	}
+
+	python_read_result read_json(const bp::api::object &id, const std::string &json) {
+		return create_result(std::move(session::read_json(transform(id).id(), data_pointer::copy(json))));
+	}
+
 private:
 	void transform_io_attr(elliptics_io_attr &io_attr) {
 		auto& io = static_cast<dnet_io_attr&>(io_attr);
@@ -1838,6 +1878,244 @@ void init_elliptics_session() {
 		    "    Result contains information if starter received the reply.\n")
 
 		.def("prepare_latest", &elliptics_session::prepare_latest)
+
+		.def("write_prepare_ex", &elliptics_session::write_prepare_ex,
+		     (bp::arg("key"), bp::arg("json_size"), bp::arg("data_size")),
+		    "write_prepare_ex(key, json_size, data_size)\n"
+		    "    Tells Elliptics to allocate space of @json_size for future json meta and \n"
+		    "    @data_size for future data by @key.\n"
+		    "    Returns elliptics.AsyncResult.\n"
+		    "    -- key - string or elliptics.Id\n"
+		    "    -- json_size - number of bytes to be reserved for future json meta\n"
+		    "    -- data_size - number of bytes to be reserved for future data\n\n"
+		    "    write_results = []\n"
+		    "    try:\n"
+		    "        result = session.write_prepare_ex('key', 100, 1024)\n"
+		    "        write_results = result.get()\n"
+		    "    except Exception as e:\n"
+		    "        print 'Write data is failed:', e\n\n"
+		    "    for write_result in write_results:\n"
+		    "        print 'The key:\\'key\\' has been written:'\n"
+		    "        print 'node:', write_result.address\n"
+		    "        print 'checksum:', write_result.checksum\n"
+		    "        print 'offset:', write_result.offset\n"
+		    "        print 'size:', write_result.size\n"
+		    "        print 'timestamp:', write_result.tiemstamp\n"
+		    "        print 'filepath:', write_result.filepath\n")
+
+		.def("write_commit_ex", &elliptics_session::write_commit_ex,
+		     (bp::arg("key"), bp::arg("data_size")),
+		    "write_commit_ex(key, data, remote_offset, data_size)\n"
+		    "    Finalizes the object by truncating it by @data_size.\n"
+		    "    Return elliptics.AsyncResult\n"
+		    "    -- key - string or elliptics.Id\n"
+		    "    -- data_size - total size of the data by which the object should be truncated\n\n"
+		    "    write_results = []\n"
+		    "    try:\n"
+		    "        result = session.write_commit_ex('key', 1024)\n"
+		    "        write_results += result.get()\n"
+		    "    except Exception as e:\n"
+		    "        print 'Write data is failed:', e\n\n"
+		    "    for write_result in write_results:\n"
+		    "        print 'The key:\\'key\\' has been written:'\n"
+		    "        print 'node:', write_result.address\n"
+		    "        print 'checksum:', write_result.checksum\n"
+		    "        print 'offset:', write_result.offset\n"
+		    "        print 'size:', write_result.size\n"
+		    "        print 'timestamp:', write_result.tiemstamp\n"
+		    "        print 'filepath:', write_result.filepath\n")
+
+		.def("write_plain_ex", &elliptics_session::write_plain_ex,
+		     (bp::arg("key"), bp::arg("json"), bp::arg("data"), bp::arg("offset")),
+		    "write_plain_ex(key, json, data, offset)\n"
+		    "    Writes @json and @data to the space allocated earlier by write_prepare_ex.\n"
+		    "    Return elliptics.AsyncResult.\n"
+		    "    -- key - string or elliptics.Id\n"
+		    "    -- json - string json which should be written into json meta\n"
+		    "    -- data - string data which should be written at @offset\n"
+		    "    -- offset - offset with which @data should be written\n\n"
+		    "    write_results = []\n"
+		    "    try:\n"
+		    "        offset = len('first_part')\n"
+		    "        result = session.write_plain_ex('key', '{\"a\":1}', 'second_part', offset)\n"
+		    "        write_results += result.get()\n\n"
+		    "        offset += len('second_part')\n"
+		    "        result = session.write_plain_ex('key', '{\"a\":1}', 'third_part', offset)\n"
+		    "        write_results += result.get()\n\n"
+		    "        offset += len('third_part')\n"
+		    "        result = session.write_plain_ex('key', '{\"a\":1}', 'fourth_part', offset)\n"
+		    "        write_results += result.get()\n"
+		    "    except Exception as e:\n"
+		    "        print 'Write data is failed:', e\n\n"
+		    "    for write_result in write_results:\n"
+		    "        print 'The key:\\'key\\' has been written:'\n"
+		    "        print 'node:', write_result.address\n"
+		    "        print 'checksum:', write_result.checksum\n"
+		    "        print 'offset:', write_result.offset\n"
+		    "        print 'size:', write_result.size\n"
+		    "        print 'timestamp:', write_result.tiemstamp\n"
+		    "        print 'filepath:', write_result.filepath\n")
+
+		.def("write_json_plain_ex", &elliptics_session::write_json_plain_ex,
+		     (bp::arg("key"), bp::arg("json")),
+		    "write_json_plain_ex(key, json)\n"
+		    "    Writes @json to the space allocated earlier by write_prepare_ex.\n"
+		    "    Return elliptics.AsyncResult.\n"
+		    "    -- key - string or elliptics.Id\n"
+		    "    -- json - string json which should be written into json meta\n\n"
+		    "    write_results = []\n"
+		    "    try:\n"
+		    "        result = session.write_json_plain_ex('key', '{\"a\":1}')\n"
+		    "        write_results += result.get()\n\n"
+		    "    except Exception as e:\n"
+		    "        print 'Write data is failed:', e\n\n"
+		    "    for write_result in write_results:\n"
+		    "        print 'The key:\\'key\\' has been written:'\n"
+		    "        print 'node:', write_result.address\n"
+		    "        print 'checksum:', write_result.checksum\n"
+		    "        print 'offset:', write_result.offset\n"
+		    "        print 'size:', write_result.size\n"
+		    "        print 'timestamp:', write_result.tiemstamp\n"
+		    "        print 'filepath:', write_result.filepath\n")
+
+		.def("write_data_plain_ex", &elliptics_session::write_data_plain_ex,
+		     (bp::arg("key"), bp::arg("data"), bp::arg("offset")),
+		    "write_data_plain_ex(key, data, offset)\n"
+		    "    Writes @data to the space allocated earlier by write_prepare_ex.\n"
+		    "    Return elliptics.AsyncResult.\n"
+		    "    -- key - string or elliptics.Id\n"
+		    "    -- data - string data which should be written at @offset\n"
+		    "    -- offset - offset with which @data should be written\n\n"
+		    "    write_results = []\n"
+		    "    try:\n"
+		    "        offset = len('first_part')\n"
+		    "        result = session.write_data_plain_ex('key', 'second_part', offset)\n"
+		    "        write_results += result.get()\n\n"
+		    "        offset += len('second_part')\n"
+		    "        result = session.write_data_plain_ex('key', 'third_part', offset)\n"
+		    "        write_results += result.get()\n\n"
+		    "        offset += len('third_part')\n"
+		    "        result = session.write_data_plain_ex('key', 'fourth_part', offset)\n"
+		    "        write_results += result.get()\n"
+		    "    except Exception as e:\n"
+		    "        print 'Write data is failed:', e\n\n"
+		    "    for write_result in write_results:\n"
+		    "        print 'The key:\\'key\\' has been written:'\n"
+		    "        print 'node:', write_result.address\n"
+		    "        print 'checksum:', write_result.checksum\n"
+		    "        print 'offset:', write_result.offset\n"
+		    "        print 'size:', write_result.size\n"
+		    "        print 'timestamp:', write_result.tiemstamp\n"
+		    "        print 'filepath:', write_result.filepath\n")
+
+		.def("write_ex", &elliptics_session::write_ex,
+		     (bp::arg("key"), bp::arg("json"), bp::arg("data"),
+		      bp::arg("offset")=0),
+		    "write_ex(key, json, data, offset=0)\n"
+		    "    Writes @json and @data to @key with @offset. Returns elliptics.AsyncResult\n"
+		    "    -- key - string or elliptics.Id, or elliptics.IoAttr\n"
+		    "    -- json - string json\n"
+		    "    -- data - string data\n"
+		    "    -- offset - offset with which data should be written\n\n"
+		    "    write_results = []\n"
+		    "    try:\n"
+		    "        result = session.write_ex('key', '{\"a\":1}', 'key_data', 0)\n"
+		    "        write_results = result.get()\n"
+		    "    except Exception as e:\n"
+		    "        print 'Write data is failed:', e\n\n"
+		    "    for write_result in write_results:\n"
+		    "        print 'The key:\\'key\\' has been written:'\n"
+		    "        print 'node:', write_result.address\n"
+		    "        print 'checksum:', write_result.checksum\n"
+		    "        print 'offset:', write_result.offset\n"
+		    "        print 'size:', write_result.size\n"
+		    "        print 'timestamp:', write_result.tiemstamp\n"
+		    "        print 'filepath:', write_result.filepath\n")
+
+		.def("write_json_ex", &elliptics_session::write_json_ex,
+		     (bp::arg("key"), bp::arg("json")),
+		    "write_json_ex(key, json)\n"
+		    "    Writes @json to @key. Returns elliptics.AsyncResult\n"
+		    "    -- key - string or elliptics.Id, or elliptics.IoAttr\n"
+		    "    -- json - string json\n\n"
+		    "    write_results = []\n"
+		    "    try:\n"
+		    "        result = session.write_json_ex('key', '{\"a\":1}')\n"
+		    "        write_results = result.get()\n"
+		    "    except Exception as e:\n"
+		    "        print 'Write data is failed:', e\n\n"
+		    "    for write_result in write_results:\n"
+		    "        print 'The key:\\'key\\' has been written:'\n"
+		    "        print 'node:', write_result.address\n"
+		    "        print 'checksum:', write_result.checksum\n"
+		    "        print 'offset:', write_result.offset\n"
+		    "        print 'size:', write_result.size\n"
+		    "        print 'timestamp:', write_result.tiemstamp\n"
+		    "        print 'filepath:', write_result.filepath\n")
+
+		.def("write_data_ex", &elliptics_session::write_data_ex,
+		     (bp::arg("key"), bp::arg("data"), bp::arg("offset")=0),
+		    "write_data_ex(key, data, offset=0)\n"
+		    "    Writes @data to @key with @offset. Returns elliptics.AsyncResult\n"
+		    "    -- key - string or elliptics.Id, or elliptics.IoAttr\n"
+		    "    -- data - string data\n"
+		    "    -- offset - offset with which data should be written\n\n"
+		    "    write_results = []\n"
+		    "    try:\n"
+		    "        result = session.write_data_ex('key', 'key_data', 0)\n"
+		    "        write_results = result.get()\n"
+		    "    except Exception as e:\n"
+		    "        print 'Write data is failed:', e\n\n"
+		    "    for write_result in write_results:\n"
+		    "        print 'The key:\\'key\\' has been written:'\n"
+		    "        print 'node:', write_result.address\n"
+		    "        print 'checksum:', write_result.checksum\n"
+		    "        print 'offset:', write_result.offset\n"
+		    "        print 'size:', write_result.size\n"
+		    "        print 'timestamp:', write_result.tiemstamp\n"
+		    "        print 'filepath:', write_result.filepath\n")
+
+		.def("lookup_ex", &elliptics_session::lookup_ex,
+		     bp::args("key"),
+		    "lookup_ex(key)\n"
+		    "    Looks up meta information about the key. Returns elliptics.AsyncResult\n"
+		    "    -- key - string or elliptics.Id\n\n"
+		    "    result = session.lookup_ex('looking up key')\n"
+		    "    lookups = []\n"
+		    "    try:\n"
+		    "        lookups = result.get()\n"
+		    "    except Exception as e:\n"
+		    "        print 'Lookup is failed: ', e\n"
+		    "    for lookup in lookups:\n"
+		    "        print 'The \\'looking up key\\' exists on node:', lookup.address, '. It has:'\n"
+		    "        print 'size:', lookup.size\n"
+		    "        print 'offset', lookup.offset\n"
+		    "        print 'timestamp:', lookup.timestamp\n"
+		    "        print 'filepath:', lookup.filepath\n"
+		    "        print 'checksum:', lookup.checksum\n"
+		    "        print 'error:', lookup.error\n")
+
+		.def("read_json", &elliptics_session::read_json,
+		     (bp::arg("key"), bp::arg("json") = ""),
+		    "read_json(key, json='')\n"
+		    "    Reads json by the @key and @json which specifies which part of json meta should be read.\n"
+		    "    Returns elliptics.AsyncResult.\n"
+		    "    -- key - string or elliptics.Id, or elliptics.IoAttr\n"
+		    "    -- json - specifies which part of json meta should be read\n\n"
+		    "    read_result = None\n"
+		    "    try:\n"
+		    "        result = session.read_json('key')\n"
+		    "        read_result = result.get()[0]\n"
+		    "    except Exception as e:\n"
+		    "        print 'Read has been failed:', e\n\n"
+		    "    if read_result:\n"
+		    "        print 'Read key: \\'key\\':'\n"
+		    "        print 'data:', read_result.data\n"
+		    "        print 'timestamp:', read_result.timestamp\n"
+		    "        print 'size:', read_result.size\n"
+		    "        print 'offset:', read_result.offset\n"
+		    "        print 'user_flags:', read_result.user_flags\n"
+		    "        print 'flags:', read_result.flags\n")
 	;
 }
 

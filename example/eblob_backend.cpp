@@ -25,6 +25,7 @@
 #include "example/eblob_backend.h"
 
 #include "elliptics/backends.h"
+#include "library/elliptics.h"
 
 #include "rapidjson/document.h"
 #include "rapidjson/writer.h"
@@ -363,8 +364,8 @@ static int blob_read(struct eblob_backend_config *c, void *state, struct dnet_cm
 		dnet_ext_list_to_io(&elist, io);
 
 		/* Take into an account extended header's len */
-		size -= sizeof(struct dnet_ext_list_hdr);
-		offset += sizeof(struct dnet_ext_list_hdr);
+		size -= sizeof(struct dnet_ext_list_hdr) + ehdr.data_offset;
+		offset += sizeof(struct dnet_ext_list_hdr) + ehdr.data_offset;
 		record_offset += sizeof(struct dnet_ext_list_hdr);
 	}
 
@@ -1058,6 +1059,366 @@ err_out_exit:
 	return err;
 }
 
+class dnet_header {
+public:
+	/* Default constructor */
+	dnet_header() {
+		memset(&m_raw, 0, sizeof(m_raw));
+	}
+
+	dnet_header(const dnet_io_attr *io) {
+		dnet_ext_list elist;
+		dnet_ext_list_init(&elist);
+
+		dnet_ext_io_to_list(io, &elist);
+		dnet_ext_list_to_hdr(&elist, &m_raw);
+
+		dnet_ext_list_destroy(&elist);
+	}
+
+	/* Read header from @fd with @offset */
+	int read(int fd, uint64_t offset) {
+		return dnet_ext_hdr_read(&m_raw, fd, offset);
+	}
+
+	/* Read header of @key from eblob and fills @wc */
+	int read_return(eblob_backend *b, eblob_key &key, eblob_write_control &wc) {
+		int err = eblob_read_return(b, &key, EBLOB_READ_NOCSUM, &wc);
+		if (err)
+			return err;
+
+		if (!(wc.flags & BLOB_DISK_CTL_EXTHDR))
+			return 0;
+
+		if (wc.total_data_size < size())
+			return -ERANGE;
+
+		err = read(wc.data_fd, wc.data_offset);
+		if (err)
+			return err;
+
+		const uint64_t data_offset = size() + m_raw.data_offset;
+		// if (wc.total_data_size < data_offset)
+		// 	return -ERANGE;
+
+		// wc.total_data_size -= data_offset;
+		wc.data_offset += data_offset;
+
+		return 0;
+	}
+
+	/* Read header of @key from eblob */
+	int read(eblob_backend *b, eblob_key &key) {
+		eblob_write_control wc;
+		return read_return(b, key, wc);
+	}
+
+	void apply(dnet_io_attr *io) {
+		io->timestamp = m_raw.timestamp;
+		io->user_flags = m_raw.flags;
+	}
+
+	dnet_ext_list_hdr &raw() { return m_raw; }
+	static constexpr size_t size() { return sizeof(dnet_ext_list_hdr); }
+private:
+	dnet_ext_list_hdr m_raw;
+};
+
+static int blob_file_info_ex(struct eblob_backend_config *cfg, void *state, struct dnet_cmd *cmd) {
+	auto b = static_cast<eblob_backend *>(cfg->eblob);
+
+	struct eblob_key key;
+	memcpy(key.id, cmd->id.id, EBLOB_ID_SIZE);
+
+	dnet_header header;
+	eblob_write_control wc;
+	int err = header.read_return(b, key, wc);
+	if (!err && wc.flags & BLOB_DISK_CTL_UNCOMMITTED)
+		err = -ENOENT;
+	if (err) {
+		dnet_backend_log(cfg->blog, DNET_LOG_ERROR, "%s: EBLOB: blob-file-info-ex: info-read: %d: %s",
+		                 dnet_dump_id(&cmd->id), err, strerror(-err));
+		return err;
+	}
+
+	if (wc.total_data_size == 0) {
+		dnet_backend_log(cfg->blog, DNET_LOG_INFO, "%s: EBLOB: blob-file-info-ex: ZERO_SIZE_FILE.",
+		                 dnet_dump_id(&cmd->id));
+		return -ENOENT;
+	}
+
+	return dnet_send_file_info_ts(state, cmd, wc.data_fd, wc.data_offset, wc.total_data_size,
+	                              &header.raw().timestamp, wc.flags);
+}
+
+static int blob_write_prepare_ex(eblob_backend_config *cfg, const dnet_io_attr *io,
+                                 eblob_key &key, dnet_header &header, uint64_t flags,
+                                 eblob_write_control &wc) {
+	auto b = static_cast<eblob_backend *>(cfg->eblob);
+	/* set data_offset to the capacity of json meta */
+	header.raw().data_offset = io->start;
+
+	const uint64_t psize = io->start + io->num + header.size();
+
+	int err = eblob_write_prepare(b, &key, psize, flags);
+	if (err) {
+		dnet_backend_log(cfg->blog, DNET_LOG_ERROR,
+		                 "%s: EBLOB: blob-write-prepare-ex: eblob_write_prepare: size: %" PRIu64 ": "
+		                 "json_size: %" PRIu64 ", data_size: %" PRIu64", header_size: %" PRIu64" : %s %d",
+		                 dnet_dump_id_str(io->id), psize, io->start, io->num, header.size(),
+		                 strerror(-err), err);
+		return err;
+	}
+	const struct eblob_iovec iov { &header.raw(), header.size(), 0 };
+	err = eblob_plain_writev_return(b, &key, &iov, 1, flags, &wc);
+	if (err) {
+		dnet_backend_log(cfg->blog, DNET_LOG_ERROR,
+		                 "%s: EBLOB: blob-write-prepare-ex: eblob_plain_writev: header WRITE: %d: %s",
+		                 dnet_dump_id_str(io->id), err, strerror(-err));
+		return err;
+	}
+
+	dnet_backend_log(cfg->blog, DNET_LOG_NOTICE,
+	                 "%s: EBLOB: blob-write-prepare-ex: eblob_write_prepare: size: %" PRIu64 ": Ok",
+	                 dnet_dump_id_str(io->id), psize);
+	return err;
+}
+
+static int blob_write_commit_ex(eblob_backend_config *cfg, const dnet_io_attr *io,
+                                eblob_key &key, dnet_header &header, uint64_t flags,
+                                eblob_write_control &wc) {
+	auto b = static_cast<eblob_backend *>(cfg->eblob);
+
+	const eblob_iovec iov { &header.raw(), header.size(), 0 };
+	int err = eblob_plain_writev(b, &key, &iov, 1, flags);
+	if (err) {
+		dnet_backend_log(cfg->blog, DNET_LOG_ERROR,
+		                 "%s: EBLOB: blob-write-commit-ex: eblob_plain_writev: commit WRITE: %d: %s",
+		                 dnet_dump_id_str(io->id), err, strerror(-err));
+		return err;
+	}
+
+	const uint64_t csize = header.raw().data_offset + io->num + header.size();
+	err = eblob_write_commit_return(b, &key, csize, flags, &wc);
+	if (err) {
+		dnet_backend_log(cfg->blog, DNET_LOG_ERROR,
+		                 "%s: EBLOB: blob-write-commit-ex: eblob_write_commit: size: %" PRIu64 ": %s %d",
+		                 dnet_dump_id_str(io->id), csize, strerror(-err), err);
+		return err;
+	}
+
+	dnet_backend_log(cfg->blog, DNET_LOG_NOTICE,
+	                 "%s: EBLOB: blob-write-commit-ex: eblob_write_commit: size: %" PRIu64 ": Ok",
+	                 dnet_dump_id_str(io->id), csize);
+	return err;
+}
+
+static int validate_json(eblob_backend_config *cfg, dnet_header &header, char *json, const dnet_io_attr *io) {
+	if (io->start > header.raw().data_offset) {
+		dnet_backend_log(cfg->blog, DNET_LOG_ERROR,
+		                 "%s: EBLOB: blob-write-data-ex: WRITE: writing json is too big: "
+		                 "size: %" PRIu64", capacity: %" PRIu64,
+		                 dnet_dump_id_str(io->id), io->start, header.raw().data_offset);
+		return -E2BIG;
+	}
+
+	try {
+		std::string js(json, io->start);
+		rapidjson::Document doc;
+		doc.Parse<0>(js.c_str());
+		if (doc.HasParseError()) {
+			dnet_backend_log(cfg->blog, DNET_LOG_ERROR,
+			                 "%s: EBLOB: blob-write-data-ex: WRITE: failed to parse json: '%s', error_offset: %zd, size: %" PRIu64,
+			                 dnet_dump_id_str(io->id), doc.GetParseError(), doc.GetErrorOffset(), io->start);
+			return -EINVAL;
+		}
+	} catch (std::exception &e) {
+		dnet_backend_log(cfg->blog, DNET_LOG_ERROR,
+		                 "%s: EBLOB: blob-write-data-ex: WRITE: failed to validate json: %s",
+		                 dnet_dump_id_str(io->id), e.what());
+		return -EINVAL;
+	}
+
+	dnet_backend_log(cfg->blog, DNET_LOG_ERROR,
+	                 "%s: EBLOB: blob-write-data-ex: WRITE: validate json: Ok",
+	                 dnet_dump_id_str(io->id));
+	return 0;
+}
+
+static int blob_write_data_ex(eblob_backend_config *cfg, const dnet_io_attr *io,
+                              eblob_key &key, dnet_header &header, void *data, uint64_t flags,
+                              eblob_write_control &wc) {
+	auto b = static_cast<eblob_backend *>(cfg->eblob);
+
+	int err = 0;
+	std::vector<eblob_iovec> iov;
+	iov.reserve(3);
+
+	if (io->start) {
+		if (!(io->flags & DNET_IO_FLAGS_PLAIN_WRITE) && !header.raw().data_offset)
+			header.raw().data_offset = io->start;
+
+		err = validate_json(cfg, header, (char *)data, io);
+		if (err)
+			return err;
+		header.raw().json_size = io->start;
+		iov.push_back({ data, io->start, header.size() });
+		data += io->start;
+	}
+
+	iov.insert(iov.begin(), { &header.raw(), header.size(), 0 });
+	if (io->size > io->start) {
+		const uint64_t data_size = io->size - io->start;
+		iov.push_back({ data, data_size, header.size() + header.raw().data_offset + io->offset });
+	}
+
+	dnet_backend_log(cfg->blog, DNET_LOG_INFO,
+	                 "%s: EBLOB: blob-write-data-ex: WRITE: "
+	                 "header: (offset: %" PRIu64 ", size: %" PRIu64 "), "
+	                 "json: (offset: %" PRIu64 ", size: %" PRIu64 "), "
+	                 "data: (offset: %" PRIu64 ", size: %" PRIu64 ")",
+	                 iov[0].offset, iov[0].size,
+	                 iov[1].offset, iov[1].size,
+	                 iov[2].offset, iov[2].size);
+
+	if (io->flags & DNET_IO_FLAGS_PLAIN_WRITE) {
+		err = eblob_plain_writev_return(b, &key, iov.data(), iov.size(), flags, &wc);
+	} else {
+		err = eblob_writev_return(b, &key, iov.data(), iov.size(), flags, &wc);
+	}
+
+	if (err) {
+		dnet_backend_log(cfg->blog, DNET_LOG_ERROR,
+		                 "%s: EBLOB: blob-write-data-ex: WRITE: %d: %s",
+		                 dnet_dump_id_str(io->id), err, strerror(-err));
+		return err;
+	}
+
+	dnet_backend_log(cfg->blog, DNET_LOG_NOTICE,
+	                 "%s: EBLOB: blob-write-data-ex: WRITE: Ok:  offset: %" PRIu64 ", size: %" PRIu64 ".",
+	                 dnet_dump_id_str(io->id), io->offset, io->size);
+	return err;
+}
+
+static int blob_write_ex(eblob_backend_config *cfg, void *state, dnet_cmd *cmd, void *data) {
+	auto b = static_cast<eblob_backend *>(cfg->eblob);
+
+	int err = 0;
+
+	auto io = static_cast<dnet_io_attr *>(data);
+	dnet_convert_io_attr(io);
+
+	eblob_write_control wc;
+	memset(&wc, 0, sizeof(wc));
+
+	dnet_backend_log(cfg->blog, DNET_LOG_NOTICE, "%s: EBLOB: blob-write-ex: WRITE: start: offset: %llu, size: %llu, ioflags: %s",
+		dnet_dump_id_str(io->id), (unsigned long long)io->offset, (unsigned long long)io->size, dnet_flags_dump_ioflags(io->flags));
+
+	dnet_header header(io);
+
+	data += sizeof(dnet_io_attr);
+	uint64_t flags = BLOB_DISK_CTL_EXTHDR;
+	if (io->flags & DNET_IO_FLAGS_NOCSUM)
+		flags |= BLOB_DISK_CTL_NOCSUM;
+
+	eblob_key key;
+	memcpy(key.id, io->id, EBLOB_ID_SIZE);
+
+	if (io->flags & DNET_IO_FLAGS_PREPARE) {
+		err = blob_write_prepare_ex(cfg, io, key, header, flags, wc);
+		if (err)
+			return err;
+	} else {
+		dnet_header stored_header;
+		err = stored_header.read(b, key);
+		dnet_backend_log(cfg->blog, DNET_LOG_DEBUG,
+		                 "%s: EBLOB: blob-write-ex: WRITE: read stored header: %d, data_offset: %" PRIu64,
+		                 dnet_dump_id_str(io->id), err, stored_header.raw().data_offset);
+		if (!err) {
+			header.raw().data_offset = stored_header.raw().data_offset;
+		}
+
+		if (io->flags & DNET_IO_FLAGS_COMMIT) {
+			err = blob_write_commit_ex(cfg, io, key, header, flags, wc);
+			if (err)
+				return err;
+		} else {
+			err = blob_write_data_ex(cfg, io, key, header, data, flags, wc);
+			if (err)
+				return err;
+		}
+	}
+
+	if (io->flags & DNET_IO_FLAGS_WRITE_NO_FILE_INFO) {
+		cmd->flags |= DNET_FLAGS_NEED_ACK;
+		return 0;
+	}
+
+	const uint64_t fd_offset = wc.ctl_data_offset + header.size() + header.raw().data_offset;
+
+	err = dnet_send_file_info_ts(state, cmd, wc.data_fd, fd_offset, wc.size, &header.raw().timestamp, wc.flags);
+	if (err) {
+		dnet_backend_log(cfg->blog, DNET_LOG_ERROR,
+		                 "%s: EBLOB: blob-write-ex: dnet_send_file_info_ts: "
+		                 "fd: %d, offset: %" PRIu64 ", offset-within-fd: %" PRIu64 ", size: %" PRIu64 ": %s %d",
+		                 dnet_dump_id_str(io->id), wc.data_fd, wc.offset, fd_offset, wc.size,
+		                 strerror(-err), err);
+		return err;
+	}
+
+	dnet_backend_log(cfg->blog, DNET_LOG_INFO,
+	                 "%s: EBLOB: blob-write-ex: fd: %d, offset: %" PRIu64 " offset-within-fd: %" PRIu64 ", size: %" PRIu64 ": %s %d",
+	                 dnet_dump_id_str(io->id), wc.data_fd, wc.offset, fd_offset, wc.size, strerror(-err), err);
+
+	return err;
+}
+
+static int blob_read_json(eblob_backend_config *cfg, void *state, dnet_cmd *cmd, void *data) {
+	auto b = static_cast<eblob_backend *>(cfg->eblob);
+	auto io = static_cast<dnet_io_attr *>(data);
+	data += sizeof(*io);
+
+	eblob_key key;
+	memcpy(key.id, io->id, EBLOB_ID_SIZE);
+
+	dnet_header header;
+	eblob_write_control wc;
+	int err = header.read_return(b, key, wc);
+	if (!err && wc.flags & BLOB_DISK_CTL_UNCOMMITTED)
+		err = -ENOENT;
+
+	if (err) {
+		dnet_backend_log(cfg->blog, DNET_LOG_ERROR, "%s: EBLOB: blob-read-json: READ: %d: %s",
+		                 dnet_dump_id_str(io->id), err, strerror(-err));
+		return err;
+	}
+
+	if (!header.raw().data_offset || !header.raw().json_size) {
+		dnet_backend_log(cfg->blog, DNET_LOG_ERROR,
+		                 "%s: EBLOB: blob-read-json: READ: key doesn't have json: "
+		                 "data_offset: %" PRIu64 ", json_size: %" PRIu64,
+		                 dnet_dump_id_str(io->id),
+		                 header.raw().data_offset, header.raw().json_size);
+		return dnet_send_read_data(state, cmd, io, NULL, -1, 0, 0);
+	}
+
+	std::vector<char> json(header.raw().json_size, '\0');
+
+	err = dnet_read_ll(wc.data_fd, json.data(), json.size(), wc.data_offset - header.raw().data_offset);
+	if (err) {
+		dnet_backend_log(cfg->blog, DNET_LOG_ERROR,
+		                 "%s: EBLOB: blob-read-json: READ: failed to read json: "
+		                 "fd: %d, offset: %" PRIu64 ", size: %" PRIu64 "%d: %s",
+		                 dnet_dump_id_str(io->id),
+		                 wc.data_fd, wc.data_offset - header.raw().data_offset, json.size(), err, strerror(-err));
+		return err;
+	}
+
+	header.apply(io);
+	io->size = json.size();
+	return dnet_send_read_data(state, cmd, io, json.data(), -1, 0, 0);
+}
+
 static int eblob_backend_command_handler(void *state, void *priv, struct dnet_cmd *cmd, void *data)
 {
 	FORMATTED(HANDY_TIMER_SCOPE, ("eblob_backend.cmd.%s", dnet_cmd_string(cmd->cmd)));
@@ -1084,6 +1445,15 @@ static int eblob_backend_command_handler(void *state, void *priv, struct dnet_cm
 			break;
 		case DNET_CMD_SEND:
 			err = blob_send(c, state, cmd, data);
+			break;
+		case DNET_CMD_LOOKUP_EX:
+			err = blob_file_info_ex(c, state, cmd);
+			break;
+		case DNET_CMD_WRITE_EX:
+			err = blob_write_ex(c, state, cmd, data);
+			break;
+		case DNET_CMD_READ_JSON:
+			err = blob_read_json(c, state, cmd, data);
 			break;
 		default:
 			err = -ENOTSUP;

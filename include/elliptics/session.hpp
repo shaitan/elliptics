@@ -967,6 +967,69 @@ class session
 		 */
 		dnet_session *get_native();
 
+		/* Interface for writing data and json */
+		async_write_result write_prepare_ex(const key &id, uint64_t json_size, uint64_t data_size);
+		async_write_result write_commit_ex(const key &id, uint64_t data_size);
+
+		/*!
+		 * Writes @data by @offset and overwrites stored json by @json and
+		 * remains @id uncommitted and unavailable for read
+		 */
+		async_write_result write_plain_ex(const key &id,
+		                                  const data_pointer &json,
+		                                  const data_pointer &data, uint64_t offset);
+
+		/*!
+		 * Overwrites stored json by @json and
+		 * remains @id uncommitted and unavailable for read
+		 */
+		async_write_result write_plain_ex(const key &id, const data_pointer &json);
+
+		/*!
+		 * Writes @data by @offset and
+		 * remains @id uncommitted and unavailable for read
+		 */
+		async_write_result write_plain_ex(const key &id, const data_pointer &data, uint64_t offset);
+
+		async_write_result write_data_ex(const dnet_io_control &ctl);
+
+		/*!
+		 * Writes @data by @offset and overwrites stored json by @json
+		 */
+		async_write_result write_data_ex(const key &id,
+		                                 const data_pointer &json,
+		                                 const data_pointer &data, uint64_t offset);
+
+		/*!
+		 * Overwrites stored json by @json
+		 */
+		async_write_result write_data_ex(const key &id, const data_pointer &json);
+
+		/*!
+		 * Writes @data by @offset
+		 */
+		async_write_result write_data_ex(const key &id, const data_pointer &data, uint64_t offset);
+
+		/* Interface for reading stored json of the key */
+
+		/*!
+		 * Lookups id and returns information about data and stored json
+		 */
+		async_lookup_result lookup_ex(const key &id);
+
+		/*!
+		 * Reads stored json:
+		 * if json is empty or it presents empty object "{}", whole stored json will be read
+		 * in other way it will be considered as specification of which parts of the original
+		 * json should be read.
+		 */
+		async_read_result read_json(const key &id, const data_pointer &json);
+
+		/*!
+		 * Reads json and data:
+		 */
+		async_read_result read(const key &id, const data_pointer &json, uint64_t offset, uint64_t size);
+
 	protected:
 		std::shared_ptr<session_data> m_data;
 

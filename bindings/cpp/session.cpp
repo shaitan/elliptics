@@ -2832,4 +2832,177 @@ dnet_session *session::get_native()
 	return m_data->session_ptr;
 }
 
+async_write_result session::write_data_ex(const dnet_io_control &ctl) {
+	dnet_io_control ctl_copy = ctl;
+
+	ctl_copy.cmd = DNET_CMD_WRITE_EX;
+	ctl_copy.cflags |= DNET_FLAGS_NEED_ACK;
+	ctl_copy.io.user_flags |= get_user_flags();
+
+	memcpy(ctl_copy.io.id, ctl_copy.id.id, DNET_ID_SIZE);
+
+	if (dnet_time_is_empty(&ctl_copy.io.timestamp)) {
+		get_timestamp(&ctl_copy.io.timestamp);
+
+		if (dnet_time_is_empty(&ctl_copy.io.timestamp))
+			dnet_current_time(&ctl_copy.io.timestamp);
+	}
+
+	session sess = clean_clone();
+	return async_result_cast<write_result_entry>(*this, send_to_groups(sess, ctl_copy));
+}
+
+async_write_result session::write_prepare_ex(const key &id, uint64_t json_size, uint64_t data_size)
+{
+	transform(id);
+
+	dnet_io_control ctl;
+
+	memset(&ctl, 0, sizeof(ctl));
+	dnet_empty_time(&ctl.io.timestamp);
+
+	ctl.cflags = get_cflags();
+
+	ctl.io.flags = get_ioflags() | DNET_IO_FLAGS_PREPARE;
+	ctl.io.user_flags = get_user_flags();
+	ctl.io.start = json_size;
+	ctl.io.num = data_size;
+
+	memcpy(&ctl.id, &id.id(), sizeof(ctl.id));
+
+	ctl.fd = -1;
+
+	return write_data_ex(ctl);
+}
+
+async_write_result session::write_commit_ex(const key &id, uint64_t data_size) {
+	transform(id);
+
+	dnet_io_control ctl;
+
+	memset(&ctl, 0, sizeof(ctl));
+	dnet_empty_time(&ctl.io.timestamp);
+
+	ctl.cflags = get_cflags();
+
+	ctl.io.flags = get_ioflags() | DNET_IO_FLAGS_COMMIT;
+	ctl.io.user_flags = get_user_flags();
+	ctl.io.num = data_size;
+	ctl.id = id.id();
+
+	ctl.fd = -1;
+
+	return write_data_ex(ctl);
+}
+
+async_write_result session::write_plain_ex(const key &id,
+                                           const data_pointer &json,
+                                           const data_pointer &data, uint64_t offset) {
+	transform(id);
+
+	dnet_io_control ctl;
+
+	memset(&ctl, 0, sizeof(ctl));
+	dnet_empty_time(&ctl.io.timestamp);
+
+	data_buffer buffer(json.size() + data.size());
+	buffer.write(json.data(), json.size());
+	buffer.write(data.data(), data.size());
+	data_pointer data_p(std::move(buffer));
+
+	ctl.cflags = get_cflags();
+	ctl.data = data_p.data();
+
+	ctl.io.flags = get_ioflags() | DNET_IO_FLAGS_PLAIN_WRITE;
+	ctl.io.user_flags = get_user_flags();
+	ctl.io.offset = offset;
+	ctl.io.size = data_p.size();
+	ctl.id = id.id();
+	ctl.io.start = json.size();
+	ctl.io.num = data.size() + offset;
+
+	memcpy(&ctl.id, &id.id(), sizeof(ctl.id));
+
+	ctl.fd = -1;
+
+	return write_data_ex(ctl);
+}
+
+async_write_result session::write_plain_ex(const key &id, const data_pointer &json) {
+	return write_plain_ex(id, json, data_pointer(), 0);
+}
+
+async_write_result session::write_plain_ex(const key &id, const data_pointer &data, uint64_t offset) {
+	return write_plain_ex(id, data_pointer(), data, offset);
+}
+
+async_write_result session::write_data_ex(const key &id,
+                                          const data_pointer &json,
+                                          const data_pointer &data, uint64_t offset) {
+	transform(id);
+
+	dnet_io_control ctl;
+
+	memset(&ctl, 0, sizeof(ctl));
+	dnet_empty_time(&ctl.io.timestamp);
+
+	data_buffer buffer(json.size() + data.size());
+	buffer.write(json.data(), json.size());
+	buffer.write(data.data(), data.size());
+	data_pointer data_p(std::move(buffer));
+
+	ctl.cflags = get_cflags();
+	ctl.data = data_p.data();
+
+	ctl.io.flags = get_ioflags();
+	ctl.io.user_flags = get_user_flags();
+	ctl.io.offset = offset;
+	ctl.io.size = data_p.size();
+	ctl.io.start = json.size();
+
+	ctl.id = id.id();
+
+	ctl.fd = -1;
+
+	return write_data_ex(ctl);
+}
+
+async_write_result session::write_data_ex(const key &id,
+                                          const data_pointer &json) {
+	return write_data_ex(id, json, data_pointer(), 0);
+}
+
+async_write_result session::write_data_ex(const key &id,
+                                          const data_pointer &data, uint64_t offset) {
+	return write_data_ex(id, data_pointer(), data, offset);
+}
+
+async_lookup_result session::lookup_ex(const key &id) {
+	DNET_SESSION_GET_GROUPS(async_lookup_result);
+
+	transport_control control(id.id(), DNET_CMD_LOOKUP_EX, DNET_FLAGS_NEED_ACK);
+
+	async_lookup_result result(*this);
+	auto handler = std::make_shared<lookup_handler>(*this, result, std::move(groups), control.get_native());
+	handler->set_total(1);
+	handler->start();
+
+	return result;
+}
+
+async_read_result session::read_json(const key &id, const data_pointer &json) {
+	DNET_SESSION_GET_GROUPS(async_read_result);
+
+	transform(id);
+
+	dnet_io_attr io;
+	memset(&io, 0, sizeof(io));
+	io.flags  = get_ioflags();
+
+	memcpy(io.id, id.id().id, DNET_ID_SIZE);
+	memcpy(io.parent, id.id().id, DNET_ID_SIZE);
+
+	return read_data(id, groups, io, DNET_CMD_READ_JSON);
+}
+
 } } // namespace ioremap::elliptics

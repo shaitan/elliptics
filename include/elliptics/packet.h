@@ -76,6 +76,11 @@ enum dnet_commands {
 	DNET_CMD_BACKEND_CONTROL,		/* Special command to start or stop backends */
 	DNET_CMD_BACKEND_STATUS,		/* Special command to see current statuses of backends */
 	DNET_CMD_SEND,				/* Send given set of local keys to remote groups */
+
+	DNET_CMD_LOOKUP_EX,			/* Extended lookup which returns info about data and json meta */
+	DNET_CMD_WRITE_EX,			/* Extended write which allows to write data and update json meta*/
+	DNET_CMD_READ_JSON,			/* Read which allows to read json meta fully and partially*/
+
 	DNET_CMD_UNKNOWN,			/* This slot is allocated for statistics gathered for unknown commands */
 	__DNET_CMD_MAX,
 };
@@ -983,7 +988,8 @@ struct dnet_ext_list_hdr {
 	uint32_t		size;		/* Size of all extensions */
 	struct dnet_time	timestamp;	/* Time stamp of record */
 	uint64_t		flags;		/* Custom flags for this record */
-	uint64_t		__pad2[2];	/* For future use (should be NULLed) */
+	uint64_t		json_size;	/* Actual size of the json meta*/
+	uint64_t		data_offset;	/* Offset after ext_hdr where data is placed */
 } __attribute__ ((packed));
 
 /*! In-memory extension container */
