@@ -1900,7 +1900,7 @@ void init_elliptics_session() {
 		    "        print 'checksum:', write_result.checksum\n"
 		    "        print 'offset:', write_result.offset\n"
 		    "        print 'size:', write_result.size\n"
-		    "        print 'timestamp:', write_result.tiemstamp\n"
+		    "        print 'timestamp:', write_result.timestamp\n"
 		    "        print 'filepath:', write_result.filepath\n")
 
 		.def("write_commit_ex", &elliptics_session::write_commit_ex,
@@ -1922,7 +1922,7 @@ void init_elliptics_session() {
 		    "        print 'checksum:', write_result.checksum\n"
 		    "        print 'offset:', write_result.offset\n"
 		    "        print 'size:', write_result.size\n"
-		    "        print 'timestamp:', write_result.tiemstamp\n"
+		    "        print 'timestamp:', write_result.timestamp\n"
 		    "        print 'filepath:', write_result.filepath\n")
 
 		.def("write_plain_ex", &elliptics_session::write_plain_ex,
@@ -1953,7 +1953,7 @@ void init_elliptics_session() {
 		    "        print 'checksum:', write_result.checksum\n"
 		    "        print 'offset:', write_result.offset\n"
 		    "        print 'size:', write_result.size\n"
-		    "        print 'timestamp:', write_result.tiemstamp\n"
+		    "        print 'timestamp:', write_result.timestamp\n"
 		    "        print 'filepath:', write_result.filepath\n")
 
 		.def("write_json_plain_ex", &elliptics_session::write_json_plain_ex,
@@ -1975,7 +1975,7 @@ void init_elliptics_session() {
 		    "        print 'checksum:', write_result.checksum\n"
 		    "        print 'offset:', write_result.offset\n"
 		    "        print 'size:', write_result.size\n"
-		    "        print 'timestamp:', write_result.tiemstamp\n"
+		    "        print 'timestamp:', write_result.timestamp\n"
 		    "        print 'filepath:', write_result.filepath\n")
 
 		.def("write_data_plain_ex", &elliptics_session::write_data_plain_ex,
@@ -2005,7 +2005,7 @@ void init_elliptics_session() {
 		    "        print 'checksum:', write_result.checksum\n"
 		    "        print 'offset:', write_result.offset\n"
 		    "        print 'size:', write_result.size\n"
-		    "        print 'timestamp:', write_result.tiemstamp\n"
+		    "        print 'timestamp:', write_result.timestamp\n"
 		    "        print 'filepath:', write_result.filepath\n")
 
 		.def("write_ex", &elliptics_session::write_ex,
@@ -2029,7 +2029,7 @@ void init_elliptics_session() {
 		    "        print 'checksum:', write_result.checksum\n"
 		    "        print 'offset:', write_result.offset\n"
 		    "        print 'size:', write_result.size\n"
-		    "        print 'timestamp:', write_result.tiemstamp\n"
+		    "        print 'timestamp:', write_result.timestamp\n"
 		    "        print 'filepath:', write_result.filepath\n")
 
 		.def("write_json_ex", &elliptics_session::write_json_ex,
@@ -2050,7 +2050,7 @@ void init_elliptics_session() {
 		    "        print 'checksum:', write_result.checksum\n"
 		    "        print 'offset:', write_result.offset\n"
 		    "        print 'size:', write_result.size\n"
-		    "        print 'timestamp:', write_result.tiemstamp\n"
+		    "        print 'timestamp:', write_result.timestamp\n"
 		    "        print 'filepath:', write_result.filepath\n")
 
 		.def("write_data_ex", &elliptics_session::write_data_ex,
@@ -2072,7 +2072,7 @@ void init_elliptics_session() {
 		    "        print 'checksum:', write_result.checksum\n"
 		    "        print 'offset:', write_result.offset\n"
 		    "        print 'size:', write_result.size\n"
-		    "        print 'timestamp:', write_result.tiemstamp\n"
+		    "        print 'timestamp:', write_result.timestamp\n"
 		    "        print 'filepath:', write_result.filepath\n")
 
 		.def("lookup_ex", &elliptics_session::lookup_ex,
