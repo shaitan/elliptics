@@ -1224,12 +1224,16 @@ static int validate_json(eblob_backend_config *cfg, dnet_header &header, char *j
 
 	try {
 		std::string js(json, io->start);
+
 		rapidjson::Document doc;
 		doc.Parse<0>(js.c_str());
-		if (doc.HasParseError()) {
+
+		if (doc.HasParseError() || !doc.IsObject()) {
 			dnet_backend_log(cfg->blog, DNET_LOG_ERROR,
-			                 "%s: EBLOB: blob-write-data-ex: WRITE: failed to parse json: '%s', error_offset: %zd, size: %" PRIu64,
-			                 dnet_dump_id_str(io->id), doc.GetParseError(), doc.GetErrorOffset(), io->start);
+			                 "%s: EBLOB: blob-write-data-ex: WRITE: failed to parse json: "
+			                 "'%s', error_offset: %zd, size: %" PRIu64 "is-object: %s",
+			                 dnet_dump_id_str(io->id), doc.GetParseError(), doc.GetErrorOffset(), io->start,
+			                 doc.IsObject() ? "true" : "false");
 			return -EINVAL;
 		}
 	} catch (std::exception &e) {
