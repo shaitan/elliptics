@@ -1189,8 +1189,18 @@ static int blob_write_commit_ex(eblob_backend_config *cfg, const dnet_io_attr *i
                                 eblob_write_control &wc) {
 	auto b = static_cast<eblob_backend *>(cfg->eblob);
 
+	dnet_header stored_header;
+	int err = stored_header.read(b, key);
+	dnet_backend_log(cfg->blog, DNET_LOG_DEBUG,
+	                 "%s: EBLOB: blob-write-commit-ex: WRITE: read stored header: %d, data_offset: %" PRIu64,
+	                 dnet_dump_id_str(io->id), err, stored_header.raw().data_offset);
+	if (!err) {
+		header.raw().json_size = stored_header.raw().json_size;
+		header.raw().data_offset = stored_header.raw().data_offset;
+	}
+
 	const eblob_iovec iov { &header.raw(), header.size(), 0 };
-	int err = eblob_plain_writev(b, &key, &iov, 1, flags);
+	err = eblob_plain_writev(b, &key, &iov, 1, flags);
 	if (err) {
 		dnet_backend_log(cfg->blog, DNET_LOG_ERROR,
 		                 "%s: EBLOB: blob-write-commit-ex: eblob_plain_writev: commit WRITE: %d: %s",
@@ -1249,17 +1259,83 @@ static int validate_json(eblob_backend_config *cfg, dnet_header &header, char *j
 	return 0;
 }
 
-static int blob_write_data_ex(eblob_backend_config *cfg, const dnet_io_attr *io,
-                              eblob_key &key, dnet_header &header, void *data, uint64_t flags,
-                              eblob_write_control &wc) {
+static int blob_write_plain_ex(eblob_backend_config *cfg, const dnet_io_attr *io,
+                               eblob_key &key, dnet_header &header, void *data, uint64_t flags,
+                               eblob_write_control &wc) {
 	auto b = static_cast<eblob_backend *>(cfg->eblob);
-
 	int err = 0;
+
+	header.raw().data_offset = [&] () {
+		dnet_header stored_header;
+		int err = stored_header.read(b, key);
+		dnet_backend_log(cfg->blog, DNET_LOG_DEBUG,
+		                 "%s: EBLOB: blob-write-plain-ex: WRITE: read stored header: %d, data_offset: %" PRIu64,
+		                 dnet_dump_id_str(io->id), err, stored_header.raw().data_offset);
+		return err ? header.raw().data_offset : stored_header.raw().data_offset;
+	} ();
+
 	std::vector<eblob_iovec> iov;
 	iov.reserve(3);
 
 	if (io->start) {
-		if (!(io->flags & DNET_IO_FLAGS_PLAIN_WRITE) && !header.raw().data_offset)
+		err = validate_json(cfg, header, (char *)data, io);
+		if (err)
+			return err;
+		header.raw().json_size = io->start;
+		iov.push_back({ data, io->start, header.size() });
+		data += io->start;
+	}
+
+	iov.insert(iov.begin(), { &header.raw(), header.size(), 0 });
+	if (io->size > io->start) {
+		const uint64_t data_size = io->size - io->start;
+		iov.push_back({ data, data_size, header.size() + header.raw().data_offset + io->offset });
+	}
+
+	dnet_backend_log(cfg->blog, DNET_LOG_INFO,
+	                 "%s: EBLOB: blob-write-plain-ex: WRITE: "
+	                 "header: (offset: %" PRIu64 ", size: %" PRIu64 "), "
+	                 "json: (offset: %" PRIu64 ", size: %" PRIu64 "), "
+	                 "data: (offset: %" PRIu64 ", size: %" PRIu64 ")",
+	                 iov[0].offset, iov[0].size,
+	                 iov[1].offset, iov[1].size,
+	                 iov[2].offset, iov[2].size);
+
+	err = eblob_plain_writev_return(b, &key, iov.data(), iov.size(), flags, &wc);
+
+	if (err) {
+		dnet_backend_log(cfg->blog, DNET_LOG_ERROR,
+		                 "%s: EBLOB: blob-write-plain-ex: WRITE: %d: %s",
+		                 dnet_dump_id_str(io->id), err, strerror(-err));
+		return err;
+	}
+
+	dnet_backend_log(cfg->blog, DNET_LOG_NOTICE,
+	                 "%s: EBLOB: blob-write-plain-ex: WRITE: Ok:  offset: %" PRIu64 ", size: %" PRIu64 ".",
+	                 dnet_dump_id_str(io->id), io->offset, io->size);
+	return err;
+}
+
+static int blob_write_raw_ex(eblob_backend_config *cfg, const dnet_io_attr *io,
+                              eblob_key &key, dnet_header &header, void *data, uint64_t flags,
+                              eblob_write_control &wc) {
+	auto b = static_cast<eblob_backend *>(cfg->eblob);
+	int err = 0;
+
+	header.raw().data_offset = [&] () {
+		dnet_header stored_header;
+		int err = stored_header.read(b, key);
+		dnet_backend_log(cfg->blog, DNET_LOG_DEBUG,
+		                 "%s: EBLOB: blob-write-raw-ex: WRITE: read stored header: %d, data_offset: %" PRIu64,
+		                 dnet_dump_id_str(io->id), err, stored_header.raw().data_offset);
+		return err ? header.raw().data_offset : stored_header.raw().data_offset;
+	} ();
+
+	std::vector<eblob_iovec> iov;
+	iov.reserve(3);
+
+	if (io->start) {
+		if (!header.raw().data_offset)
 			header.raw().data_offset = io->start;
 
 		err = validate_json(cfg, header, (char *)data, io);
@@ -1277,7 +1353,7 @@ static int blob_write_data_ex(eblob_backend_config *cfg, const dnet_io_attr *io,
 	}
 
 	dnet_backend_log(cfg->blog, DNET_LOG_INFO,
-	                 "%s: EBLOB: blob-write-data-ex: WRITE: "
+	                 "%s: EBLOB: blob-write-raw-ex: WRITE: "
 	                 "header: (offset: %" PRIu64 ", size: %" PRIu64 "), "
 	                 "json: (offset: %" PRIu64 ", size: %" PRIu64 "), "
 	                 "data: (offset: %" PRIu64 ", size: %" PRIu64 ")",
@@ -1285,21 +1361,17 @@ static int blob_write_data_ex(eblob_backend_config *cfg, const dnet_io_attr *io,
 	                 iov[1].offset, iov[1].size,
 	                 iov[2].offset, iov[2].size);
 
-	if (io->flags & DNET_IO_FLAGS_PLAIN_WRITE) {
-		err = eblob_plain_writev_return(b, &key, iov.data(), iov.size(), flags, &wc);
-	} else {
-		err = eblob_writev_return(b, &key, iov.data(), iov.size(), flags, &wc);
-	}
+	err = eblob_writev_return(b, &key, iov.data(), iov.size(), flags, &wc);
 
 	if (err) {
 		dnet_backend_log(cfg->blog, DNET_LOG_ERROR,
-		                 "%s: EBLOB: blob-write-data-ex: WRITE: %d: %s",
+		                 "%s: EBLOB: blob-write-raw-ex: WRITE: %d: %s",
 		                 dnet_dump_id_str(io->id), err, strerror(-err));
 		return err;
 	}
 
 	dnet_backend_log(cfg->blog, DNET_LOG_NOTICE,
-	                 "%s: EBLOB: blob-write-data-ex: WRITE: Ok:  offset: %" PRIu64 ", size: %" PRIu64 ".",
+	                 "%s: EBLOB: blob-write-raw-ex: WRITE: Ok:  offset: %" PRIu64 ", size: %" PRIu64 ".",
 	                 dnet_dump_id_str(io->id), io->offset, io->size);
 	return err;
 }
@@ -1328,30 +1400,28 @@ static int blob_write_ex(eblob_backend_config *cfg, void *state, dnet_cmd *cmd, 
 	eblob_key key;
 	memcpy(key.id, io->id, EBLOB_ID_SIZE);
 
-	if (io->flags & DNET_IO_FLAGS_PREPARE) {
-		err = blob_write_prepare_ex(cfg, io, key, header, flags, wc);
-		if (err)
-			return err;
-	} else {
-		dnet_header stored_header;
-		err = stored_header.read(b, key);
-		dnet_backend_log(cfg->blog, DNET_LOG_DEBUG,
-		                 "%s: EBLOB: blob-write-ex: WRITE: read stored header: %d, data_offset: %" PRIu64,
-		                 dnet_dump_id_str(io->id), err, stored_header.raw().data_offset);
-		if (!err) {
-			header.raw().data_offset = stored_header.raw().data_offset;
+	if (io->flags & (DNET_IO_FLAGS_PREPARE |
+	                 DNET_IO_FLAGS_COMMIT |
+	                 DNET_IO_FLAGS_PLAIN_WRITE)) {
+		if (io->flags & DNET_IO_FLAGS_PREPARE) {
+			err = blob_write_prepare_ex(cfg, io, key, header, flags, wc);
+			if (err)
+				return err;
 		}
-
 		if (io->flags & DNET_IO_FLAGS_COMMIT) {
-			header.raw().json_size = stored_header.raw().json_size;
 			err = blob_write_commit_ex(cfg, io, key, header, flags, wc);
 			if (err)
 				return err;
-		} else {
-			err = blob_write_data_ex(cfg, io, key, header, data, flags, wc);
+		}
+		if (io->flags & DNET_IO_FLAGS_PLAIN_WRITE) {
+			err = blob_write_plain_ex(cfg, io, key, header, data, flags, wc);
 			if (err)
 				return err;
 		}
+	} else {
+		err = blob_write_raw_ex(cfg, io, key, header, data, flags, wc);
+		if (err)
+			return err;
 	}
 
 	if (io->flags & DNET_IO_FLAGS_WRITE_NO_FILE_INFO) {
