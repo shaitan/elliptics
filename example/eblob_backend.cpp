@@ -364,7 +364,11 @@ static int blob_read(struct eblob_backend_config *c, void *state, struct dnet_cm
 		dnet_ext_list_to_io(&elist, io);
 
 		/* Take into an account extended header's len */
-		size -= sizeof(struct dnet_ext_list_hdr) + ehdr.data_offset;
+		if (size > sizeof(struct dnet_ext_list_hdr) + ehdr.data_offset) {
+			size -= sizeof(struct dnet_ext_list_hdr) + ehdr.data_offset;
+		} else {
+			size = 0;
+		}
 		offset += sizeof(struct dnet_ext_list_hdr) + ehdr.data_offset;
 		record_offset += sizeof(struct dnet_ext_list_hdr);
 	}
@@ -1324,7 +1328,7 @@ static int blob_write_raw_ex(eblob_backend_config *cfg, const dnet_io_attr *io,
 
 	header.raw().data_offset = [&] () {
 		dnet_header stored_header;
-		int err = stored_header.read(b, key);
+		int err = stored_header.read_return(b, key, wc);
 		dnet_backend_log(cfg->blog, DNET_LOG_DEBUG,
 		                 "%s: EBLOB: blob-write-raw-ex: WRITE: read stored header: %d, data_offset: %" PRIu64,
 		                 dnet_dump_id_str(io->id), err, stored_header.raw().data_offset);
@@ -1350,6 +1354,10 @@ static int blob_write_raw_ex(eblob_backend_config *cfg, const dnet_io_attr *io,
 	if (io->size > io->start) {
 		const uint64_t data_size = io->size - io->start;
 		iov.push_back({ data, data_size, header.size() + header.raw().data_offset + io->offset });
+	} else {
+		// !!! THIS IS DIRTY-DIRTY HACK WHICH SHOULD BE REPLACED BY VALID CODE
+		// This is needed to avoid truncating disk_size of the record by eblob.
+		iov.push_back({ nullptr, 0, wc.total_data_size });
 	}
 
 	dnet_backend_log(cfg->blog, DNET_LOG_INFO,
