@@ -1324,16 +1324,16 @@ static int blob_write_raw_ex(eblob_backend_config *cfg, const dnet_io_attr *io,
                               eblob_key &key, dnet_header &header, void *data, uint64_t flags,
                               eblob_write_control &wc) {
 	auto b = static_cast<eblob_backend *>(cfg->eblob);
-	int err = 0;
 
-	header.raw().data_offset = [&] () {
-		dnet_header stored_header;
-		int err = stored_header.read_return(b, key, wc);
-		dnet_backend_log(cfg->blog, DNET_LOG_DEBUG,
-		                 "%s: EBLOB: blob-write-raw-ex: WRITE: read stored header: %d, data_offset: %" PRIu64,
-		                 dnet_dump_id_str(io->id), err, stored_header.raw().data_offset);
-		return err ? header.raw().data_offset : stored_header.raw().data_offset;
-	} ();
+	dnet_header stored_header;
+	int err = stored_header.read_return(b, key, wc);
+	dnet_backend_log(cfg->blog, DNET_LOG_DEBUG,
+	                 "%s: EBLOB: blob-write-raw-ex: WRITE: read stored header: %d, data_offset: %" PRIu64,
+	                 dnet_dump_id_str(io->id), err, stored_header.raw().data_offset);
+	if (!err) {
+		header.raw().json_size = stored_header.raw().json_size;
+		header.raw().data_offset = stored_header.raw().data_offset;
+	}
 
 	std::vector<eblob_iovec> iov;
 	iov.reserve(3);
@@ -1351,6 +1351,8 @@ static int blob_write_raw_ex(eblob_backend_config *cfg, const dnet_io_attr *io,
 		                 "%s: EBLOB: blob-write-raw-ex: WRITE: json: (offset: %" PRIu64 ", size: %" PRIu64 ")",
 		                 dnet_dump_id_str(io->id), header.size(), io->start);
 		data += io->start;
+	} else if (!io->size) {
+		header.raw().json_size = io->start;
 	}
 
 	iov.insert(iov.begin(), { &header.raw(), header.size(), 0 });
