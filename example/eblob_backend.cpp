@@ -1378,7 +1378,7 @@ static int blob_write_ex(eblob_backend_config *cfg, void *state, dnet_cmd *cmd, 
 	return err;
 }
 
-static int blob_read_json(eblob_backend_config *cfg, void *state, dnet_cmd *cmd, void *data) {
+static int blob_read_ex(eblob_backend_config *cfg, void *state, dnet_cmd *cmd, void *data) {
 	auto b = static_cast<eblob_backend *>(cfg->eblob);
 	auto io = static_cast<dnet_io_attr *>(data);
 	data += sizeof(*io);
@@ -1457,8 +1457,8 @@ static int eblob_backend_command_handler(void *state, void *priv, struct dnet_cm
 		case DNET_CMD_WRITE_EX:
 			err = blob_write_ex(c, state, cmd, data);
 			break;
-		case DNET_CMD_READ_JSON:
-			err = blob_read_json(c, state, cmd, data);
+		case DNET_CMD_READ_EX:
+			err = blob_read_ex(c, state, cmd, data);
 			break;
 		default:
 			err = -ENOTSUP;

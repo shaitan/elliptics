@@ -3002,7 +3002,7 @@ async_read_result session::read_json(const key &id, const data_pointer &json) {
 	memcpy(io.id, id.id().id, DNET_ID_SIZE);
 	memcpy(io.parent, id.id().id, DNET_ID_SIZE);
 
-	return read_data(id, groups, io, DNET_CMD_READ_JSON);
+	return read_data(id, groups, io, DNET_CMD_READ_EX);
 }
 
 } } // namespace ioremap::elliptics

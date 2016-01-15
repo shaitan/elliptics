@@ -77,9 +77,9 @@ enum dnet_commands {
 	DNET_CMD_BACKEND_STATUS,		/* Special command to see current statuses of backends */
 	DNET_CMD_SEND,				/* Send given set of local keys to remote groups */
 
-	DNET_CMD_LOOKUP_EX,			/* Extended lookup which returns info about data and json meta */
-	DNET_CMD_WRITE_EX,			/* Extended write which allows to write data and update json meta*/
-	DNET_CMD_READ_JSON,			/* Read which allows to read json meta fully and partially*/
+	DNET_CMD_LOOKUP_EX,			/* Extended lookup which returns info about data and json */
+	DNET_CMD_WRITE_EX,			/* Extended write which allows to write data and update json*/
+	DNET_CMD_READ_EX,			/* Extended read which allows to read json and/or data*/
 
 	DNET_CMD_UNKNOWN,			/* This slot is allocated for statistics gathered for unknown commands */
 	__DNET_CMD_MAX,

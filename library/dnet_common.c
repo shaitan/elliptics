@@ -166,7 +166,7 @@ static char *dnet_cmd_strings[] = {
 	[DNET_CMD_SEND] = "SERVER_SEND",
 	[DNET_CMD_LOOKUP_EX] = "LOOKUP_EX",
 	[DNET_CMD_WRITE_EX] = "WRITE_EX",
-	[DNET_CMD_READ_JSON] = "READ_JSON",
+	[DNET_CMD_READ_EX] = "READ_EX",
 	[DNET_CMD_UNKNOWN] = "UNKNOWN",
 };
 
