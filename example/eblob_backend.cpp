@@ -1343,6 +1343,7 @@ static int blob_write_ex(eblob_backend_config *cfg, void *state, dnet_cmd *cmd, 
 		}
 
 		if (io->flags & DNET_IO_FLAGS_COMMIT) {
+			header.raw().json_size = stored_header.raw().json_size;
 			err = blob_write_commit_ex(cfg, io, key, header, flags, wc);
 			if (err)
 				return err;
