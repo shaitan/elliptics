@@ -1257,7 +1257,7 @@ static int validate_json(eblob_backend_config *cfg, dnet_header &header, char *j
 		return -EINVAL;
 	}
 
-	dnet_backend_log(cfg->blog, DNET_LOG_ERROR,
+	dnet_backend_log(cfg->blog, DNET_LOG_NOTICE,
 	                 "%s: EBLOB: blob-write-data-ex: WRITE: validate json: Ok",
 	                 dnet_dump_id_str(io->id));
 	return 0;
@@ -1287,23 +1287,23 @@ static int blob_write_plain_ex(eblob_backend_config *cfg, const dnet_io_attr *io
 			return err;
 		header.raw().json_size = io->start;
 		iov.push_back({ data, io->start, header.size() });
+		dnet_backend_log(cfg->blog, DNET_LOG_INFO,
+		                 "%s: EBLOB: blob-write-plain-ex: WRITE: json: (offset: %" PRIu64 ", size: %" PRIu64 ")",
+		                 dnet_dump_id_str(io->id), header.size(), io->start);
 		data += io->start;
 	}
 
 	iov.insert(iov.begin(), { &header.raw(), header.size(), 0 });
+	dnet_backend_log(cfg->blog, DNET_LOG_INFO,
+	                 "%s: EBLOB: blob-write-plain-ex: WRITE: header: (offset: %" PRIu64 ", size: %" PRIu64 ")",
+	                 dnet_dump_id_str(io->id), 0, header.size());
 	if (io->size > io->start) {
 		const uint64_t data_size = io->size - io->start;
 		iov.push_back({ data, data_size, header.size() + header.raw().data_offset + io->offset });
+		dnet_backend_log(cfg->blog, DNET_LOG_INFO,
+		                 "%s: EBLOB: blob-write-plain-ex: WRITE: data: (offset: %" PRIu64 ", size: %" PRIu64 ")",
+		                 dnet_dump_id_str(io->id), header.size() + header.raw().data_offset + io->offset, data_size);
 	}
-
-	dnet_backend_log(cfg->blog, DNET_LOG_INFO,
-	                 "%s: EBLOB: blob-write-plain-ex: WRITE: "
-	                 "header: (offset: %" PRIu64 ", size: %" PRIu64 "), "
-	                 "json: (offset: %" PRIu64 ", size: %" PRIu64 "), "
-	                 "data: (offset: %" PRIu64 ", size: %" PRIu64 ")",
-	                 iov[0].offset, iov[0].size,
-	                 iov[1].offset, iov[1].size,
-	                 iov[2].offset, iov[2].size);
 
 	err = eblob_plain_writev_return(b, &key, iov.data(), iov.size(), flags, &wc);
 
@@ -1347,27 +1347,30 @@ static int blob_write_raw_ex(eblob_backend_config *cfg, const dnet_io_attr *io,
 			return err;
 		header.raw().json_size = io->start;
 		iov.push_back({ data, io->start, header.size() });
+		dnet_backend_log(cfg->blog, DNET_LOG_INFO,
+		                 "%s: EBLOB: blob-write-raw-ex: WRITE: json: (offset: %" PRIu64 ", size: %" PRIu64 ")",
+		                 dnet_dump_id_str(io->id), header.size(), io->start);
 		data += io->start;
 	}
 
 	iov.insert(iov.begin(), { &header.raw(), header.size(), 0 });
+	dnet_backend_log(cfg->blog, DNET_LOG_INFO,
+	                 "%s: EBLOB: blob-write-raw-ex: WRITE: header: (offset: %" PRIu64 ", size: %" PRIu64 ")",
+	                 dnet_dump_id_str(io->id), 0, header.size());
 	if (io->size > io->start) {
 		const uint64_t data_size = io->size - io->start;
 		iov.push_back({ data, data_size, header.size() + header.raw().data_offset + io->offset });
+		dnet_backend_log(cfg->blog, DNET_LOG_INFO,
+		                 "%s: EBLOB: blob-write-raw-ex: WRITE: data: (offset: %" PRIu64 ", size: %" PRIu64 ")",
+		                 dnet_dump_id_str(io->id), header.size() + header.raw().data_offset + io->offset, data_size);
 	} else {
 		// !!! THIS IS DIRTY-DIRTY HACK WHICH SHOULD BE REPLACED BY VALID CODE
 		// This is needed to avoid truncating disk_size of the record by eblob.
 		iov.push_back({ nullptr, 0, wc.total_data_size });
+		dnet_backend_log(cfg->blog, DNET_LOG_INFO,
+		                 "%s: EBLOB: blob-write-raw-ex: WRITE: data: (offset: %" PRIu64 ", size: %" PRIu64 ")",
+		                 dnet_dump_id_str(io->id), wc.total_data_size, 0);
 	}
-
-	dnet_backend_log(cfg->blog, DNET_LOG_INFO,
-	                 "%s: EBLOB: blob-write-raw-ex: WRITE: "
-	                 "header: (offset: %" PRIu64 ", size: %" PRIu64 "), "
-	                 "json: (offset: %" PRIu64 ", size: %" PRIu64 "), "
-	                 "data: (offset: %" PRIu64 ", size: %" PRIu64 ")",
-	                 iov[0].offset, iov[0].size,
-	                 iov[1].offset, iov[1].size,
-	                 iov[2].offset, iov[2].size);
 
 	err = eblob_writev_return(b, &key, iov.data(), iov.size(), flags, &wc);
 
@@ -1395,8 +1398,9 @@ static int blob_write_ex(eblob_backend_config *cfg, void *state, dnet_cmd *cmd, 
 	eblob_write_control wc;
 	memset(&wc, 0, sizeof(wc));
 
-	dnet_backend_log(cfg->blog, DNET_LOG_NOTICE, "%s: EBLOB: blob-write-ex: WRITE: start: offset: %llu, size: %llu, ioflags: %s",
-		dnet_dump_id_str(io->id), (unsigned long long)io->offset, (unsigned long long)io->size, dnet_flags_dump_ioflags(io->flags));
+	dnet_backend_log(cfg->blog, DNET_LOG_NOTICE,
+	                 "%s: EBLOB: blob-write-ex: WRITE: start: offset: %llu, size: %llu, json_size: %llu, ioflags: %s",
+		dnet_dump_id_str(io->id), (unsigned long long)io->offset, (unsigned long long)io->size, (unsigned long long)io->start, dnet_flags_dump_ioflags(io->flags));
 
 	dnet_header header(io);
 
