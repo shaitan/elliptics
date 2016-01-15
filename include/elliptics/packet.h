@@ -961,15 +961,6 @@ static inline void dnet_convert_auth(struct dnet_auth *a)
 }
 
 /*!
- * Flag used by dnet_ext_list_extract() to indicate that we need to free old
- * data pointer on dnet_ext_list_destroy()
- */
-enum dnet_ext_free_data {
-	DNET_EXT_DONT_FREE_ON_DESTROY,
-	DNET_EXT_FREE_ON_DESTROY
-};
-
-/*!
  * Versions of extension headers
  */
 enum dnet_ext_versions {
@@ -978,15 +969,12 @@ enum dnet_ext_versions {
 	DNET_EXT_VERSION_LAST,
 };
 
-/*! In-memory extension header */
-struct dnet_ext;
-
 /*! On-disk extension list header */
 struct dnet_ext_list_hdr {
 	uint8_t			version;	/* Extension header version */
 	uint8_t			__pad1[3];	/* For future use (should be NULLed) */
 	uint32_t		size;		/* Size of all extensions */
-	struct dnet_time	timestamp;	/* Time stamp of record */
+	struct dnet_time	timestamp;	/* Timestamp of record */
 	uint64_t		flags;		/* Custom flags for this record */
 	uint64_t		json_size;	/* Actual size of the json meta*/
 	uint64_t		data_offset;	/* Offset after ext_hdr where data is placed */
@@ -998,15 +986,6 @@ struct dnet_ext_list {
 	uint32_t		size;		/* Total size of extensions */
 	uint64_t		flags;		/* Custom flags for this record */
 	struct dnet_time	timestamp;	/* TS of header */
-	struct dnet_ext		**exts;		/* Array of pointers to extensions */
-	void			*data;		/* Pointer to original data before extraction */
-};
-
-/*! Types of extensions */
-enum {
-	DNET_EXTENSION_FIRST,		/* Assert */
-	/* DNET_EXTENSION_USER_DATA, */
-	DNET_EXTENSION_LAST		/* Assert */
 };
 
 /*

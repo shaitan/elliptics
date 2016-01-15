@@ -79,9 +79,8 @@ void dnet_ext_list_init(struct dnet_ext_list *elist)
 /*!
  * Destroy extension list
  */
-void dnet_ext_list_destroy(struct dnet_ext_list *elist)
-{
-	free(elist->data);
+void dnet_ext_list_destroy(struct dnet_ext_list *elist) {
+	(void) elist;
 }
 
 /*!
@@ -180,127 +179,6 @@ int dnet_ext_io_to_list(const struct dnet_io_attr *io, struct dnet_ext_list *eli
 
 	elist->timestamp = io->timestamp;
 	elist->flags = io->user_flags;
-
-	return 0;
-}
-
-/*!
- * Extracts \a elist from \a datap, replaces \a datap pointer and adjusts \a
- * sizep. In case \a free_data is set then data pointed by \a *datap is free'd.
- */
-int dnet_ext_list_extract(void **datap, uint64_t *sizep,
-		struct dnet_ext_list *elist, enum dnet_ext_free_data free_data)
-{
-	struct dnet_ext_list_hdr *hdr;	/* Extensions header */
-	uint64_t new_size;		/* Size of data without extensions */
-	void *new_data;			/* Data without extensions */
-	static const size_t hdr_size = sizeof(struct dnet_ext_list_hdr);
-
-	/* Parameter checks */
-	if (datap == NULL || *datap == NULL)
-		return -EINVAL;
-	if (sizep == NULL || elist == NULL)
-		return -EINVAL;
-
-	/* Sanity checks */
-	if (*sizep < hdr_size)
-		return -ERANGE;
-
-	/*
-	 * Shortcut
-	 *
-	 * TODO: For now we account only for header size, but when we add
-	 * support additional extensions we should account for hdr_size +
-	 * hdr->size
-	 */
-	new_size = *sizep - hdr_size;
-	hdr = (struct dnet_ext_list_hdr *)*datap;
-
-	/* Extract payload from \a datap */
-	new_data = (unsigned char *)*datap + hdr_size;
-	dnet_ext_hdr_to_list(hdr, elist);
-
-	/*
-	 * Currently we do not support any extensions beyond header itself
-	 * so assert on any extensions.
-	 *
-	 * TODO: Extract all extensions
-	 */
-	if (elist->size != 0)
-		return -ENOTSUP;
-	if (elist->version <= DNET_EXT_VERSION_FIRST
-			|| elist->version >= DNET_EXT_VERSION_LAST)
-		return -ENOTSUP;
-
-	/* Save original pointer to data */
-	if (free_data == DNET_EXT_FREE_ON_DESTROY)
-		elist->data = *datap;
-
-	/* Swap data, adjust size */
-	*datap = new_data;
-	*sizep = new_size;
-
-	return 0;
-}
-
-/*!
- * Combines \a datap with \a elist and fixes \a sizep
- * NB! It does not free memory pointed by \a datap
- *
- * XXX: It does heavy weight malloc+memcpy. This can be avoided if either
- * provided data buffer was prepended with empty space or backend supported
- * writev(2)-like interface.
- */
-int dnet_ext_list_combine(void **datap, uint64_t *sizep,
-		const struct dnet_ext_list *elist)
-{
-	struct dnet_ext_list_hdr *hdr;	/* Extensions header */
-	uint64_t new_size;		/* Size of data without extensions */
-	void *new_data;			/* Data without extensions */
-	static const size_t hdr_size = sizeof(struct dnet_ext_list_hdr);
-
-	/* Parameter checks */
-	if (datap == NULL || *datap == NULL)
-		return -EINVAL;
-	if (sizep == NULL || elist == NULL)
-		return -EINVAL;
-
-	/*
-	 * Shortcut
-	 *
-	 * TODO: For now we account only for header size, but when we add
-	 * support additional extensions we should account for hdr_size +
-	 * hdr->size
-	 */
-	new_size = *sizep + hdr_size;
-
-	/* Allocate space, copy data, prepend header */
-	if ((new_data = malloc(new_size)) == NULL)
-		return -ENOMEM;
-	memcpy((unsigned char *)new_data + hdr_size, *datap, *sizep);
-
-	hdr = (struct dnet_ext_list_hdr *)new_data;
-	dnet_ext_list_to_hdr(elist, hdr);
-
-	/*
-	 * Currently we do not support any extensions beyond header itself
-	 * so assert on any extensions.
-	 *
-	 * TODO: Combine all extensions
-	 */
-	if (elist->size != 0) {
-		free(new_data);
-		return -ENOTSUP;
-	}
-	if (elist->version <= DNET_EXT_VERSION_FIRST
-			|| elist->version >= DNET_EXT_VERSION_LAST) {
-		free(new_data);
-		return -ENOTSUP;
-	}
-
-	/* Swap data, adjust size */
-	*datap = new_data;
-	*sizep = new_size;
 
 	return 0;
 }
