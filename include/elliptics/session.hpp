@@ -76,8 +76,8 @@ void none(const error_info &error, const std::vector<dnet_cmd> &statuses);
 /*!
  * This handler allows to remove couple of replicas in case of bad writing
  *
- * If you write to 3 groups and at least 2 succesfull writings are mandotary and
- * in case of fail all succesffully written entries must be removed the
+ * If you write to 3 groups and at least 2 successful writings are mandatory and
+ * in case of fail all successfully written entries must be removed the
  * following code may be used:
  *
  * ```cpp
@@ -428,6 +428,21 @@ class session
 		async_read_result read_data(const key &id, uint64_t offset, uint64_t size);
 
 		/*!
+		 * Reads json from server by key \a id.
+		 *
+		 * Returns async_read_result.
+		 */
+		async_read_result read_json(const key &id);
+
+		/*!
+		 * Reads json and data from server by key \a id. \a offset and \a size specifies
+		 * which part of data should be read.
+		 *
+		 * Returns async_read_result.
+		 */
+		async_read_result read(const key &id, uint64_t offset, uint64_t size);
+
+		/*!
 		 * Filters the list \a groups and leaves only ones with the latest
 		 * data at key \a id.
 		 *
@@ -479,10 +494,23 @@ class session
 		async_write_result write_data(const key &id, const data_pointer &file,
 				uint64_t remote_offset, uint64_t chunk_size);
 
+		/*!
+		 * Writes \a json and \a data by the key \a id. \a offset is offset in current data
+		 * where \a data should be written.
+		 *
+		 * Returns async_write_result.
+		 *
+		 * \note Calling this method is equal to consecutive calling
+		 * of write_prepare(), write_plain() and write_commit().
+		 */
+		async_write_result write(const key &id,
+		                         const argument_data &json,
+		                         const argument_data &data, uint64_t offset);
+
 
 		/*!
 		 * Reads data by \a id and passes it through \a converter. If converter returns the same data
-		 * it's threated as data is already up-to-date, othwerwise low-level write-cas with proper
+		 * it's threated as data is already up-to-date, otherwise low-level write-cas with proper
 		 * checksum and \a remote_offset is invoked.
 		 *
 		 * If server returns -EBADFD data is read and processed again.
@@ -518,6 +546,14 @@ class session
 				uint64_t remote_offset, uint64_t psize);
 
 		/*!
+		 * Prepares \a json_size bytes place to write json and \a data_size bytes place to write data
+		 * by \a id
+		 *
+		 * Returns async_write_result.
+		 */
+		async_write_result write_prepare(const key &id, uint64_t json_size, uint64_t data_size);
+
+		/*!
 		 * Writes data \a file by the key \a id and remote offset \a remote_offset in prepared place.
 		 *
 		 * Returns async_write_result.
@@ -527,6 +563,21 @@ class session
 		 *       While write_plain data shouldn't go out of prepared place.
 		 */
 		async_write_result write_plain(const key &id, const argument_data &file, uint64_t remote_offset);
+
+
+		/*!
+		 * Writes \a json and \a data by the key \a id.
+		 * \a offset is offset in prepared place where \a data should be written.
+		 *
+		 * Returns async_write_result.
+		 *
+		 * \note Server writes data by offset in prepared place and
+		 *       remains \a id as incomplete and inaccessible until write_commit is called.
+		 *       While write_plain data shouldn't go out of prepared place.
+		 */
+		async_write_result write_plain(const key &id,
+		                               const argument_data &json,
+		                               const argument_data &data, uint64_t offset);
 
 		/*!
 		 * Writes data \a file by the key \a id and remote offset \a remote_offset and commit key \a id data by \a csize.
@@ -571,6 +622,13 @@ class session
 		async_lookup_result lookup(const key &id);
 
 		/*!
+		 * Lookups information for key \a id.
+		 *
+		 * Returns async_lookup_result.
+		 */
+		 async_lookup_result lookup_ex(const key &id);
+
+		/*!
 		 * Lookups an information for the key \a id in parallel in all groups
 		 * You should use it in case of you need lookup_result_entry from more than one group
 		 * This method allows you to get lookup_result_entries almost simultaneously from all replicas
@@ -584,7 +642,7 @@ class session
 		 * Lookups information for key \a id, picks lookup_result_enties by following rules:
 		 * 1. If there are quorum lookup_result_enties with the same timestamp, they are the final result
 		 * 2. Otherwise the final result is lookup_result_enties with the greatest timestamp
-		 * This method is a wrapper over parallel_lookup and usefull in case of you need to find
+		 * This method is a wrapper over parallel_lookup and useful in case of you need to find
 		 * quorum identical replicas
 		 *
 		 * Returns async_lookup_result.
@@ -816,7 +874,7 @@ class session
 		 * \brief Set \a indexes for object \a id.
 		 *
 		 * It removes object from all indexes which are not in the list \a indexes.
-		 * All data in existen indexes are replaced by so from \a indexes.
+		 * All data in existent indexes are replaced by so from \a indexes.
 		 *
 		 * Returns async_set_indexes_result.
 		 */
@@ -967,68 +1025,7 @@ class session
 		 */
 		dnet_session *get_native();
 
-		/* Interface for writing data and json */
-		async_write_result write_prepare_ex(const key &id, uint64_t json_size, uint64_t data_size);
-		async_write_result write_commit_ex(const key &id, uint64_t data_size);
-
-		/*!
-		 * Writes @data by @offset and overwrites stored json by @json and
-		 * remains @id uncommitted and unavailable for read
-		 */
-		async_write_result write_plain_ex(const key &id,
-		                                  const data_pointer &json,
-		                                  const data_pointer &data, uint64_t offset);
-
-		/*!
-		 * Overwrites stored json by @json and
-		 * remains @id uncommitted and unavailable for read
-		 */
-		async_write_result write_plain_ex(const key &id, const data_pointer &json);
-
-		/*!
-		 * Writes @data by @offset and
-		 * remains @id uncommitted and unavailable for read
-		 */
-		async_write_result write_plain_ex(const key &id, const data_pointer &data, uint64_t offset);
-
 		async_write_result write_data_ex(const dnet_io_control &ctl);
-
-		/*!
-		 * Writes @data by @offset and overwrites stored json by @json
-		 */
-		async_write_result write_data_ex(const key &id,
-		                                 const data_pointer &json,
-		                                 const data_pointer &data, uint64_t offset);
-
-		/*!
-		 * Overwrites stored json by @json
-		 */
-		async_write_result write_data_ex(const key &id, const data_pointer &json);
-
-		/*!
-		 * Writes @data by @offset
-		 */
-		async_write_result write_data_ex(const key &id, const data_pointer &data, uint64_t offset);
-
-		/* Interface for reading stored json of the key */
-
-		/*!
-		 * Lookups id and returns information about data and stored json
-		 */
-		async_lookup_result lookup_ex(const key &id);
-
-		/*!
-		 * Reads stored json:
-		 * if json is empty or it presents empty object "{}", whole stored json will be read
-		 * in other way it will be considered as specification of which parts of the original
-		 * json should be read.
-		 */
-		async_read_result read_json(const key &id, const data_pointer &json);
-
-		/*!
-		 * Reads json and data:
-		 */
-		async_read_result read(const key &id, const data_pointer &json, uint64_t offset, uint64_t size);
 
 	protected:
 		std::shared_ptr<session_data> m_data;

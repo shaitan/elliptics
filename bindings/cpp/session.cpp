@@ -2852,7 +2852,7 @@ async_write_result session::write_data_ex(const dnet_io_control &ctl) {
 	return async_result_cast<write_result_entry>(*this, send_to_groups(sess, ctl_copy));
 }
 
-async_write_result session::write_prepare_ex(const key &id, uint64_t json_size, uint64_t data_size)
+async_write_result session::write_prepare(const key &id, uint64_t json_size, uint64_t data_size)
 {
 	transform(id);
 
@@ -2875,29 +2875,9 @@ async_write_result session::write_prepare_ex(const key &id, uint64_t json_size, 
 	return write_data_ex(ctl);
 }
 
-async_write_result session::write_commit_ex(const key &id, uint64_t data_size) {
-	transform(id);
-
-	dnet_io_control ctl;
-
-	memset(&ctl, 0, sizeof(ctl));
-	dnet_empty_time(&ctl.io.timestamp);
-
-	ctl.cflags = get_cflags();
-
-	ctl.io.flags = get_ioflags() | DNET_IO_FLAGS_COMMIT;
-	ctl.io.user_flags = get_user_flags();
-	ctl.io.num = data_size;
-	ctl.id = id.id();
-
-	ctl.fd = -1;
-
-	return write_data_ex(ctl);
-}
-
-async_write_result session::write_plain_ex(const key &id,
-                                           const data_pointer &json,
-                                           const data_pointer &data, uint64_t offset) {
+async_write_result session::write_plain(const key &id,
+                                        const argument_data &json,
+                                        const argument_data &data, uint64_t offset) {
 	transform(id);
 
 	dnet_io_control ctl;
@@ -2928,17 +2908,9 @@ async_write_result session::write_plain_ex(const key &id,
 	return write_data_ex(ctl);
 }
 
-async_write_result session::write_plain_ex(const key &id, const data_pointer &json) {
-	return write_plain_ex(id, json, data_pointer(), 0);
-}
-
-async_write_result session::write_plain_ex(const key &id, const data_pointer &data, uint64_t offset) {
-	return write_plain_ex(id, data_pointer(), data, offset);
-}
-
-async_write_result session::write_data_ex(const key &id,
-                                          const data_pointer &json,
-                                          const data_pointer &data, uint64_t offset) {
+async_write_result session::write(const key &id,
+                                  const argument_data &json,
+                                  const argument_data &data, uint64_t offset) {
 	transform(id);
 
 	dnet_io_control ctl;
@@ -2967,16 +2939,6 @@ async_write_result session::write_data_ex(const key &id,
 	return write_data_ex(ctl);
 }
 
-async_write_result session::write_data_ex(const key &id,
-                                          const data_pointer &json) {
-	return write_data_ex(id, json, data_pointer(), 0);
-}
-
-async_write_result session::write_data_ex(const key &id,
-                                          const data_pointer &data, uint64_t offset) {
-	return write_data_ex(id, data_pointer(), data, offset);
-}
-
 async_lookup_result session::lookup_ex(const key &id) {
 	DNET_SESSION_GET_GROUPS(async_lookup_result);
 
@@ -2990,7 +2952,7 @@ async_lookup_result session::lookup_ex(const key &id) {
 	return result;
 }
 
-async_read_result session::read_json(const key &id, const data_pointer &json) {
+async_read_result session::read_json(const key &id) {
 	DNET_SESSION_GET_GROUPS(async_read_result);
 
 	transform(id);

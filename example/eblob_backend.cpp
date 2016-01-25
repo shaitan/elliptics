@@ -44,6 +44,71 @@ trace_id_t get_trace_id()
 	return backend_trace_id_hook;
 }
 
+class dnet_header {
+public:
+	/* Default constructor */
+	dnet_header() {
+		memset(&m_raw, 0, sizeof(m_raw));
+	}
+
+	dnet_header(const dnet_io_attr *io) {
+		dnet_ext_list elist;
+		dnet_ext_list_init(&elist);
+
+		dnet_ext_io_to_list(io, &elist);
+		dnet_ext_list_to_hdr(&elist, &m_raw);
+
+		dnet_ext_list_destroy(&elist);
+	}
+
+	/* Read header from @fd with @offset */
+	int read(int fd, uint64_t offset) {
+		return dnet_ext_hdr_read(&m_raw, fd, offset);
+	}
+
+	/* Read header of @key from eblob and fills @wc */
+	int read_return(eblob_backend *b, eblob_key &key, eblob_write_control &wc) {
+		int err = eblob_read_return(b, &key, EBLOB_READ_NOCSUM, &wc);
+		if (err)
+			return err;
+
+		if (!(wc.flags & BLOB_DISK_CTL_EXTHDR))
+			return 0;
+
+		if (wc.total_data_size < size())
+			return -ERANGE;
+
+		err = read(wc.data_fd, wc.data_offset);
+		if (err)
+			return err;
+
+		const uint64_t data_offset = size() + m_raw.data_offset;
+		// if (wc.total_data_size < data_offset)
+		// 	return -ERANGE;
+
+		// wc.total_data_size -= data_offset;
+		wc.data_offset += data_offset;
+
+		return 0;
+	}
+
+	/* Read header of @key from eblob */
+	int read(eblob_backend *b, eblob_key &key) {
+		eblob_write_control wc;
+		return read_return(b, key, wc);
+	}
+
+	void apply(dnet_io_attr *io) {
+		io->timestamp = m_raw.timestamp;
+		io->user_flags = m_raw.flags;
+	}
+
+	dnet_ext_list_hdr &raw() { return m_raw; }
+	static constexpr size_t size() { return sizeof(dnet_ext_list_hdr); }
+private:
+	dnet_ext_list_hdr m_raw;
+};
+
 /* Pre-callback that formats arguments and calls ictl->callback */
 static int blob_iterate_callback_common(struct eblob_disk_control *dc, int fd, uint64_t data_offset, void *priv, int no_meta) {
 	auto ictl = static_cast<dnet_iterator_ctl *>(priv);
@@ -244,6 +309,16 @@ static int blob_write(struct eblob_backend_config *c, void *state,
 		/*
 		 * If io->size is not zero, ext header has been written above.
 		 */
+		dnet_header stored_header;
+		err = stored_header.read(b, key);
+		dnet_backend_log(c->blog, DNET_LOG_DEBUG,
+		                 "%s: EBLOB: blob-write-commit-ex: WRITE: read stored header: %d, data_offset: %" PRIu64,
+		                 dnet_dump_id_str(io->id), err, stored_header.raw().data_offset);
+		if (!err) {
+			ehdr.json_size = stored_header.raw().json_size;
+			ehdr.data_offset = stored_header.raw().data_offset;
+			err = 0;
+		}
 		if (io->size == 0) {
 			const struct eblob_iovec iov { &ehdr, sizeof(ehdr), 0 };
 
@@ -257,7 +332,7 @@ static int blob_write(struct eblob_backend_config *c, void *state,
 		}
 
 		if (io->flags & DNET_IO_FLAGS_PLAIN_WRITE) {
-			uint64_t csize = io->num + ehdr_size;
+			uint64_t csize = ehdr_size + ehdr.data_offset + io->num;
 			if (io->flags & DNET_IO_FLAGS_PREPARE) {
 				// client has set PREPARE, PLAIN_WRITE and COMMIT flags,
 				// there is no way he could write more data than io->size,
@@ -1062,71 +1137,6 @@ err_out_put:
 err_out_exit:
 	return err;
 }
-
-class dnet_header {
-public:
-	/* Default constructor */
-	dnet_header() {
-		memset(&m_raw, 0, sizeof(m_raw));
-	}
-
-	dnet_header(const dnet_io_attr *io) {
-		dnet_ext_list elist;
-		dnet_ext_list_init(&elist);
-
-		dnet_ext_io_to_list(io, &elist);
-		dnet_ext_list_to_hdr(&elist, &m_raw);
-
-		dnet_ext_list_destroy(&elist);
-	}
-
-	/* Read header from @fd with @offset */
-	int read(int fd, uint64_t offset) {
-		return dnet_ext_hdr_read(&m_raw, fd, offset);
-	}
-
-	/* Read header of @key from eblob and fills @wc */
-	int read_return(eblob_backend *b, eblob_key &key, eblob_write_control &wc) {
-		int err = eblob_read_return(b, &key, EBLOB_READ_NOCSUM, &wc);
-		if (err)
-			return err;
-
-		if (!(wc.flags & BLOB_DISK_CTL_EXTHDR))
-			return 0;
-
-		if (wc.total_data_size < size())
-			return -ERANGE;
-
-		err = read(wc.data_fd, wc.data_offset);
-		if (err)
-			return err;
-
-		const uint64_t data_offset = size() + m_raw.data_offset;
-		// if (wc.total_data_size < data_offset)
-		// 	return -ERANGE;
-
-		// wc.total_data_size -= data_offset;
-		wc.data_offset += data_offset;
-
-		return 0;
-	}
-
-	/* Read header of @key from eblob */
-	int read(eblob_backend *b, eblob_key &key) {
-		eblob_write_control wc;
-		return read_return(b, key, wc);
-	}
-
-	void apply(dnet_io_attr *io) {
-		io->timestamp = m_raw.timestamp;
-		io->user_flags = m_raw.flags;
-	}
-
-	dnet_ext_list_hdr &raw() { return m_raw; }
-	static constexpr size_t size() { return sizeof(dnet_ext_list_hdr); }
-private:
-	dnet_ext_list_hdr m_raw;
-};
 
 static int blob_file_info_ex(struct eblob_backend_config *cfg, void *state, struct dnet_cmd *cmd) {
 	auto b = static_cast<eblob_backend *>(cfg->eblob);
