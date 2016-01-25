@@ -17,11 +17,12 @@ import pytest
 import elliptics
 from server import Servers
 
+
 @pytest.fixture(scope="module")
-def servers(request):
+def cluster(request):
     groups = [int(g) for g in request.config.option.groups.split(',')]
 
-    servers = Servers(groups=groups,
+    cluster = Servers(groups=groups,
                       without_cocaine=True,
                       nodes_count=2,
                       backends_count=1,
@@ -29,16 +30,17 @@ def servers(request):
                       path='special_servers')
 
     def fin():
-        servers.stop()
+        cluster.stop()
     request.addfinalizer(fin)
 
-    return servers
+    return cluster
+
 
 class TestSpecificCases:
     '''
     Test that covers specific bugs
     '''
-    def test_2_backends_with_equal_ids_and_group(self, servers):
+    def test_2_backends_with_equal_ids_and_group(self, cluster):
         '''
         These test case check correct handling situation when some backend from one nodes has the same group and ids
         like another backend from another node.
@@ -46,12 +48,13 @@ class TestSpecificCases:
         In this test creates 2 client nodes and both connects to 2 different nodes.
         At each node selects one backend from one group, equal to both backend.
         Updates ids for both backends to make it be equal.
-        To the second client node adds remote to the first node. It raises route-list update error: -EEXIST and raises exception.
-        After that makes read some noexistent key from all groups - it will raise an exception.
-        With old bug thes test case caused `Segmentation fault` on read_data_from_groups.
+        To the second client node adds remote to the first node.
+        It raises route-list update error: -EEXIST and raises exception.
+        After that makes read some nonexistent key from all groups - it will raise an exception.
+        With old bug this test case caused `Segmentation fault` on read_data_from_groups.
         At the end reverts ids of both backends.
         '''
-        address1, address2 = servers.remotes
+        address1, address2 = cluster.remotes
 
         address1 = elliptics.Address.from_host_port_family(address1)
         session1 = elliptics.Session(elliptics.Node(elliptics.Logger("client.log", elliptics.log_level.debug)))

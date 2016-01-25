@@ -29,35 +29,35 @@ class TestSession:
     #
     @pytest.mark.skipif(pytest.config.option.without_cocaine,
                         reason="COCAINE wasn't specified")
-    def test_exec_arg_event_cant_be_none(self, elliptics_client, elliptics_groups, server):
+    def test_exec_arg_event_cant_be_none(self, elliptics_client, elliptics_groups, cluster):
         elliptics_client.trace_id = make_trace_id('TestSession.test_exec_arg_event_cant_be_none')
         with pytest.raises(TypeError):
             elliptics_client.exec_('some-id', data='')
 
     @pytest.mark.skipif(pytest.config.option.without_cocaine,
                         reason="COCAINE wasn't specified")
-    def test_exec_arg_event_cant_be_missed(self, elliptics_client, elliptics_groups, server):
+    def test_exec_arg_event_cant_be_missed(self, elliptics_client, elliptics_groups, cluster):
         elliptics_client.trace_id = make_trace_id('TestSession.test_exec_arg_event_cant_be_missed')
         with pytest.raises(TypeError):
             elliptics_client.exec_('some-id', event=None, data='')
 
     @pytest.mark.skipif(pytest.config.option.without_cocaine,
                         reason="COCAINE wasn't specified")
-    def test_exec_arg_data_could_be_missed(self, elliptics_client, elliptics_groups, server):
+    def test_exec_arg_data_could_be_missed(self, elliptics_client, elliptics_groups, cluster):
         elliptics_client.trace_id = make_trace_id('TestSession.test_exec_arg_data_could_be_missed')
         r = elliptics_client.exec_('some-id', event=EVENT).get()
         assert isinstance(r, list) and len(r) == len(elliptics_groups)
 
     @pytest.mark.skipif(pytest.config.option.without_cocaine,
                         reason="COCAINE wasn't specified")
-    def test_exec_arg_data_could_be_none(self, elliptics_client, elliptics_groups, server):
+    def test_exec_arg_data_could_be_none(self, elliptics_client, elliptics_groups, cluster):
         elliptics_client.trace_id = make_trace_id('TestSession.test_exec_arg_data_could_be_none')
         r = elliptics_client.exec_('some-id', event=EVENT, data=None).get()
         assert isinstance(r, list) and len(r) == len(elliptics_groups)
 
     @pytest.mark.skipif(pytest.config.option.without_cocaine,
                         reason="COCAINE wasn't specified")
-    def test_exec_arg_id_could_be_none(self, elliptics_client, elliptics_groups, server):
+    def test_exec_arg_id_could_be_none(self, elliptics_client, elliptics_groups, cluster):
         elliptics_client.trace_id = make_trace_id('TestSession.test_exec_arg_id_could_be_none')
         nodes = elliptics_client.routes.addresses()
         r = elliptics_client.exec_(None, event=EVENT, data='').get()
@@ -112,7 +112,7 @@ class TestSession:
 
     @pytest.mark.skipif(pytest.config.option.without_cocaine,
                         reason="COCAINE wasn't specified")
-    def test_exec_styles(self, elliptics_client, elliptics_groups, exec_func, server):
+    def test_exec_styles(self, elliptics_client, elliptics_groups, exec_func, cluster):
         elliptics_client.trace_id = make_trace_id('TestSession.test_exec_styles')
         results, error = exec_func(self, elliptics_client, 'some-id', event=EVENT)
         assert error.code == 0
@@ -123,7 +123,7 @@ class TestSession:
     #
     @pytest.mark.skipif(pytest.config.option.without_cocaine,
                         reason="COCAINE wasn't specified")
-    def test_exec_fanout_auto(self, elliptics_client, elliptics_groups, exec_func, server):
+    def test_exec_fanout_auto(self, elliptics_client, elliptics_groups, exec_func, cluster):
         ''' Fan out using None as id '''
         elliptics_client.trace_id = make_trace_id('TestSession.test_exec_fanout_auto')
         nodes = elliptics_client.routes.addresses()
@@ -145,7 +145,7 @@ class TestSession:
 
     @pytest.mark.skipif(pytest.config.option.without_cocaine,
                         reason="COCAINE wasn't specified")
-    def test_exec_fanout_manual(self, elliptics_client, elliptics_groups, exec_func, server):
+    def test_exec_fanout_manual(self, elliptics_client, elliptics_groups, exec_func, cluster):
         ''' Fan out using manual lookup into routing table '''
         elliptics_client.trace_id = make_trace_id('TestSession.test_exec_fanout_manual')
         nodes = elliptics_client.routes.get_unique_routes()
@@ -172,7 +172,7 @@ class TestSession:
 
     @pytest.mark.skipif(pytest.config.option.without_cocaine,
                         reason="COCAINE wasn't specified")
-    def test_exec_arg_event_could_be_positional(self, elliptics_client, elliptics_groups, server):
+    def test_exec_arg_event_could_be_positional(self, elliptics_client, elliptics_groups, cluster):
         elliptics_client.trace_id = make_trace_id('TestSession.test_exec_arg_event_could_be_positional')
         r = elliptics_client.exec_('some-id', EVENT, data=None).get()
         assert isinstance(r, list) and len(r) == len(elliptics_groups)

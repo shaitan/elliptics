@@ -220,11 +220,11 @@ class TestRecovery:
     # timestamp of corrupted_key from second group which should be recovered to first and third group
     corrupted_timestamp2 = elliptics.Time(corrupted_timestamp.tsec + 3600, corrupted_timestamp.tnsec)
 
-    def test_disable_backends(self, server, simple_node):
+    def test_disable_backends(self, cluster, client):
         '''
         Turns off all backends from all node except one.
         '''
-        session = make_session(node=simple_node,
+        session = make_session(node=client,
                                test_name='TestRecovery.test_disable_backends',
                                test_namespace=self.namespace)
         session.set_timeout(10)
@@ -263,11 +263,11 @@ class TestRecovery:
         # checks that routes contains only chosen backend group
         assert session.routes.groups() == (scope.test_group, )
 
-    def test_prepare_data(self, server, simple_node):
+    def test_prepare_data(self, cluster, client):
         '''
         Writes self.keys to chosen group and checks their availability.
         '''
-        session = make_session(node=simple_node,
+        session = make_session(node=client,
                                test_name='TestRecovery.test_prepare_data',
                                test_namespace=self.namespace)
         session.groups = [scope.test_group]
@@ -276,12 +276,12 @@ class TestRecovery:
         write_data(scope, session, self.keys, self.datas)
         check_data(scope, session, self.keys, self.datas, self.timestamp)
 
-    def test_enable_group_one_backend(self, server, simple_node):
+    def test_enable_group_one_backend(self, cluster, client):
         '''
         Turns on one backend from the same group.
         '''
         assert scope.disabled_backends[-1][0] == scope.test_group
-        session = make_session(node=simple_node,
+        session = make_session(node=client,
                                test_name='TestRecovery.test_enable_group_one_backend',
                                test_namespace=self.namespace)
         group, address, backend = scope.disabled_backends[-1]
@@ -289,17 +289,17 @@ class TestRecovery:
         check_backend_status(r.get(), backend, state=1)
         wait_backends_in_route(session, ((address, backend),))
 
-    def test_merge_two_backends(self, server, simple_node):
+    def test_merge_two_backends(self, cluster, client):
         '''
         Runs dnet_recovery merge with --one-node=scope.test_address and --backend-id==scope.test_backend.
         Checks self.keys availability after recovering.
         '''
-        session = make_session(node=simple_node,
+        session = make_session(node=client,
                                test_name='TestRecovery.test_merge_two_backends',
                                test_namespace=self.namespace)
 
         recovery(one_node=True,
-                 remotes=map(elliptics.Address.from_host_port_family, server.remotes),
+                 remotes=map(elliptics.Address.from_host_port_family, cluster.remotes),
                  backend_id=scope.test_backend,
                  address=scope.test_address,
                  groups=(scope.test_group,),
@@ -312,12 +312,12 @@ class TestRecovery:
         session.groups = (scope.test_group,)
         check_data(scope, session, self.keys, self.datas, self.timestamp)
 
-    def test_enable_another_one_backend(self, server, simple_node):
+    def test_enable_another_one_backend(self, cluster, client):
         '''
         Enables another one backend from the same group.
         '''
         assert scope.disabled_backends[-2][0] == scope.test_group
-        session = make_session(node=simple_node,
+        session = make_session(node=client,
                                test_name='TestRecovery.test_enable_another_one_backend',
                                test_namespace=self.namespace)
         group, address, backend = scope.disabled_backends[-1]
@@ -325,13 +325,13 @@ class TestRecovery:
         check_backend_status(r.get(), backend, state=1)
         wait_backends_in_route(session, ((address, backend),))
 
-    def test_merge_from_dump_3_backends(self, server, simple_node):
+    def test_merge_from_dump_3_backends(self, cluster, client):
         '''
         Writes all keys to dump file: 'merge.dump.file'.
         Runs dnet_recovery merge without --one-node and without --backend-id and with -f merge.dump.file.
         Checks that all keys are available and have correct data.
         '''
-        session = make_session(node=simple_node,
+        session = make_session(node=client,
                                test_name='TestRecovery.test_merge_from_dump_3_backends',
                                test_namespace=self.namespace)
 
@@ -341,7 +341,7 @@ class TestRecovery:
                 dump_file.write('{0}\n'.format(str(session.transform(key))))
 
         recovery(one_node=False,
-                 remotes=map(elliptics.Address.from_host_port_family, server.remotes),
+                 remotes=map(elliptics.Address.from_host_port_family, cluster.remotes),
                  backend_id=None,
                  address=scope.test_address,
                  groups=(scope.test_group,),
@@ -354,26 +354,26 @@ class TestRecovery:
         session.groups = (scope.test_group,)
         check_data(scope, session, self.keys, self.datas, self.timestamp)
 
-    def test_enable_all_group_backends(self, server, simple_node):
+    def test_enable_all_group_backends(self, cluster, client):
         '''
         Enables all backends from all nodes from first group
         '''
-        session = make_session(node=simple_node,
+        session = make_session(node=client,
                                test_name='TestRecovery.test_enable_all_group_backends',
                                test_namespace=self.namespace)
         enable_group(scope, session, scope.test_group)
 
-    def test_merge_one_group(self, server, simple_node):
+    def test_merge_one_group(self, cluster, client):
         '''
         Runs dnet_recovery merge without --one-node and without --backend-id.
         Checks self.keys availability after recovering.
         '''
-        session = make_session(node=simple_node,
+        session = make_session(node=client,
                                test_name='TestRecovery.test_merge_one_group',
                                test_namespace=self.namespace)
 
         recovery(one_node=False,
-                 remotes=map(elliptics.Address.from_host_port_family, server.remotes),
+                 remotes=map(elliptics.Address.from_host_port_family, cluster.remotes),
                  backend_id=None,
                  address=scope.test_address,
                  groups=(scope.test_group,),
@@ -385,11 +385,11 @@ class TestRecovery:
         session.groups = (scope.test_group,)
         check_data(scope, session, self.keys, self.datas, self.timestamp)
 
-    def test_enable_second_group_one_backend(self, server, simple_node):
+    def test_enable_second_group_one_backend(self, cluster, client):
         '''
         Enables one backend from one node from second group.
         '''
-        session = make_session(node=simple_node,
+        session = make_session(node=client,
                                test_name='TestRecovery.test_enable_second_group_one_backend',
                                test_namespace=self.namespace)
         group, address, backend = next(((g, a, b) for g, a, b in scope.disabled_backends if g == scope.test_group2))
@@ -400,18 +400,18 @@ class TestRecovery:
         check_backend_status(r.get(), backend, state=1)
         wait_backends_in_route(session, ((address, backend), ))
 
-    def test_dc_one_backend_and_one_group(self, server, simple_node):
+    def test_dc_one_backend_and_one_group(self, cluster, client):
         '''
         Runs dnet_recovery dc with --one-node=scope.test_address2,
         --backend-id=scope.test_backend2 and against both groups.
         Checks self.keys availability after recovering in both groups.
         '''
-        session = make_session(node=simple_node,
+        session = make_session(node=client,
                                test_name='TestRecovery.test_dc_one_backend_and_one_group',
                                test_namespace=self.namespace)
 
         recovery(one_node=True,
-                 remotes=map(elliptics.Address.from_host_port_family, server.remotes),
+                 remotes=map(elliptics.Address.from_host_port_family, cluster.remotes),
                  backend_id=scope.test_backend2,
                  address=scope.test_address2,
                  groups=(scope.test_group, scope.test_group2,),
@@ -424,22 +424,22 @@ class TestRecovery:
         session.groups = (scope.test_group2,)
         check_data(scope, session, self.keys, self.datas, self.timestamp)
 
-    def test_enable_all_second_group_backends(self, server, simple_node):
+    def test_enable_all_second_group_backends(self, cluster, client):
         '''
         Enables all backends from all node in second group.
         '''
-        session = make_session(node=simple_node,
+        session = make_session(node=client,
                                test_name='TestRecovery.test_enable_all_second_group_backends',
                                test_namespace=self.namespace)
         enable_group(scope, session, scope.test_group2)
 
-    def test_dc_from_dump_two_groups(self, server, simple_node):
+    def test_dc_from_dump_two_groups(self, cluster, client):
         '''
         Runs dnet_recovery dc without --one-node and
         without --backend-id against both groups and with -f merge.dump.file.
         Checks self.keys availability after recovering in both groups.
         '''
-        session = make_session(node=simple_node,
+        session = make_session(node=client,
                                test_name='TestRecovery.test_dc_from_dump_two_groups',
                                test_namespace=self.namespace)
 
@@ -449,7 +449,7 @@ class TestRecovery:
                 dump_file.write('{0}\n'.format(str(session.transform(key))))
 
         recovery(one_node=False,
-                 remotes=map(elliptics.Address.from_host_port_family, server.remotes),
+                 remotes=map(elliptics.Address.from_host_port_family, cluster.remotes),
                  backend_id=None,
                  address=scope.test_address2,
                  groups=(scope.test_group, scope.test_group2,),
@@ -465,20 +465,20 @@ class TestRecovery:
         session.groups = (scope.test_group2,)
         check_data(scope, session, self.keys, self.datas, self.timestamp)
 
-    def test_enable_all_third_group_backends(self, server, simple_node):
+    def test_enable_all_third_group_backends(self, cluster, client):
         '''
         Enables all backends from all node from third group.
         '''
-        session = make_session(node=simple_node,
+        session = make_session(node=client,
                                test_name='TestRecovery.test_enable_all_third_group_backends',
                                test_namespace=self.namespace)
         enable_group(scope, session, scope.test_group3)
 
-    def test_write_data_to_third_group(self, server, simple_node):
+    def test_write_data_to_third_group(self, cluster, client):
         '''
         Writes different data by self.key in third group
         '''
-        session = make_session(node=simple_node,
+        session = make_session(node=client,
                                test_name='TestRecovery.test_write_data_to_third_group',
                                test_namespace=self.namespace)
         session.groups = [scope.test_group3]
@@ -487,17 +487,17 @@ class TestRecovery:
         write_data(scope, session, self.keys, self.datas2)
         check_data(scope, session, self.keys, self.datas2, self.timestamp2)
 
-    def test_dc_three_groups(self, server, simple_node):
+    def test_dc_three_groups(self, cluster, client):
         '''
         Run dc recovery without --one-node and without --backend-id against all three groups.
         Checks that all three groups contain data from third group.
         '''
-        session = make_session(node=simple_node,
+        session = make_session(node=client,
                                test_name='TestRecovery.test_dc_three_groups',
                                test_namespace=self.namespace)
 
         recovery(one_node=False,
-                 remotes=map(elliptics.Address.from_host_port_family, server.remotes),
+                 remotes=map(elliptics.Address.from_host_port_family, cluster.remotes),
                  backend_id=None,
                  address=scope.test_address2,
                  groups=(scope.test_group, scope.test_group2, scope.test_group3),
@@ -510,12 +510,12 @@ class TestRecovery:
             session.groups = [group]
             check_data(scope, session, self.keys, self.datas2, self.timestamp2)
 
-    def test_write_and_corrupt_data(self, server, simple_node):
+    def test_write_and_corrupt_data(self, cluster, client):
         '''
         Writes one by one the key with different data and
         incremental timestamp to groups 1, 2, 3 and corrupts data in the group #3.
         '''
-        session = make_session(node=simple_node,
+        session = make_session(node=client,
                                test_name='TestRecovery.test_write_and_corrupt_data',
                                test_namespace=self.namespace)
 
@@ -545,19 +545,19 @@ class TestRecovery:
             f.write(tmp)
             f.flush()
 
-    def test_dc_corrupted_data(self, server, simple_node):
+    def test_dc_corrupted_data(self, cluster, client):
         '''
         Runs dc recovery and checks that second version of data is recovered to all groups.
         This test checks that dc recovery correctly handles corrupted key on his way:
         Group #3 which key was corrupted has a newest timestamp and recovery tries to used it at first.
         But read fails and recovery switchs to the group #2 and recovers data from this group to groups #1 and #3.
         '''
-        session = make_session(node=simple_node,
+        session = make_session(node=client,
                                test_name='TestRecovery.test_dc_corrupted_data',
                                test_namespace=self.namespace)
 
         recovery(one_node=False,
-                 remotes=map(elliptics.Address.from_host_port_family, server.remotes),
+                 remotes=map(elliptics.Address.from_host_port_family, cluster.remotes),
                  backend_id=None,
                  address=scope.test_address2,
                  groups=(scope.test_group, scope.test_group2, scope.test_group3),
@@ -570,12 +570,12 @@ class TestRecovery:
             session.groups = [group]
             check_data(scope, session, [self.corrupted_key], [self.corrupted_data + '.2'], self.corrupted_timestamp2)
 
-    def test_defragmentation(self, server, simple_node):
+    def test_defragmentation(self, cluster, client):
         '''
         Runs defragmentation on all backends from all nodes and groups.
         Waiting defragmentation stops and checks results.
         '''
-        session = make_session(node=simple_node,
+        session = make_session(node=client,
                                test_name='TestRecovery.test_defragmentation',
                                test_namespace=self.namespace)
         res = []
@@ -609,21 +609,21 @@ class TestRecovery:
             session.groups = [group]
             check_data(scope, session, self.keys, self.datas2, self.timestamp2)
 
-    def test_enable_rest_backends(self, server, simple_node):
+    def test_enable_rest_backends(self, cluster, client):
         '''
         Restore all groups with all nodes and all backends.
         '''
-        session = make_session(node=simple_node,
+        session = make_session(node=client,
                                test_name='TestRecovery.test_enable_rest_backends',
                                test_namespace=self.namespace)
         for g in scope.test_other_groups:
             enable_group(scope, session, g)
 
-    def test_checks_all_enabled(self, server, simple_node):
+    def test_checks_all_enabled(self, cluster, client):
         '''
         Checks statuses of all backends from all nodes and groups
         '''
-        session = make_session(node=simple_node,
+        session = make_session(node=client,
                                test_name='TestRecovery.test_checks_all_enabled',
                                test_namespace=self.namespace)
         assert set(scope.init_routes.addresses()) == set(session.routes.addresses())
@@ -807,7 +807,7 @@ class TestMerge:
         assert id2int(first_range[1]) - id2int(first_range[0]) > len(self.scope.test_data)
         return first_range[0]
 
-    def test_setup(self, server, simple_node):
+    def test_setup(self, cluster, client):
         '''
         Initial test cases that prepare test cluster before running recovery. It includes:
         1. preparing whole test class scope - making session, choosing node and backends etc.
@@ -816,7 +816,7 @@ class TestMerge:
         4. running initial actions from test_data - preparing keys on both backends
         '''
         self.scope = scope
-        self.scope.session = make_session(node=simple_node,
+        self.scope.session = make_session(node=client,
                                           test_name='TestMerge')
 
         self.scope.routes = self.scope.session.routes
@@ -842,12 +842,12 @@ class TestMerge:
 
         self.prepare_test_data()
 
-    def test_recovery(self, server, simple_node):
+    def test_recovery(self, cluster, client):
         '''
         Runs recovery and checks recovery result
         '''
         recovery(one_node=False,
-                 remotes=map(elliptics.Address.from_host_port_family, server.remotes),
+                 remotes=map(elliptics.Address.from_host_port_family, cluster.remotes),
                  backend_id=None,
                  address=scope.address,
                  groups=(scope.group,),
@@ -857,7 +857,7 @@ class TestMerge:
                  log_file='merge_with_uncommitted_keys.log',
                  tmp_dir='merge_with_uncommitted_keys')
 
-    def test_check(self, server, simple_node):
+    def test_check(self, cluster, client):
         '''
         Checks that all keys from test_data are in correct state - have correct timestamp and availability.
         '''
@@ -883,7 +883,7 @@ class TestMerge:
                 assert result.timestamp == check_ts
                 assert result.data == self.data
 
-    def test_teardown(self, server, simple_node):
+    def test_teardown(self, cluster, client):
         '''
         Cleanup test that makes follow:
         1. disables all backends
@@ -976,7 +976,7 @@ class TestDC:
             assert result[0].timestamp == ts
             assert result[0].group_id == group
 
-    def test_setup(self, server, simple_node):
+    def test_setup(self, cluster, client):
         '''
         Initial test cases that prepare test cluster before running recovery. It includes:
         1. preparing whole test class scope - making session, choosing node and backends etc.
@@ -985,7 +985,7 @@ class TestDC:
         4. running initial actions from test_data - preparing keys on both backends
         '''
         self.scope = scope
-        self.scope.session = make_session(node=simple_node,
+        self.scope.session = make_session(node=client,
                                           test_name='TestDC')
         self.scope.keyshifter = KeyShifter(elliptics.Id(0))
         self.scope.routes = self.scope.session.routes
@@ -1000,7 +1000,7 @@ class TestDC:
 
         self.prepare_test_data()
 
-    def test_recovery(self, server, simple_node):
+    def test_recovery(self, cluster, client):
         '''
         Runs recovery and checks recovery result
         '''
@@ -1014,7 +1014,7 @@ class TestDC:
                  log_file='dc_with_uncommitted_keys.log',
                  tmp_dir='dc_with_uncommitted_keys')
 
-    def test_check(self, server, simple_node):
+    def test_check(self, cluster, client):
         '''
         Checks that all keys from test_data are in correct state - have correct timestamp and availability.
         '''
@@ -1053,7 +1053,7 @@ class TestDC:
                     assert result.timestamp == check_ts[i]
                     assert result.data == self.data
 
-    def test_teardown(self, server, simple_node):
+    def test_teardown(self, cluster, client):
         '''
         Cleanup test that makes follow:
         1. disables all backends

@@ -59,10 +59,10 @@ def raises(type, message, func, *args, **kwargs):
 
 
 @pytest.fixture(scope='session')
-def simple_node(request):
-    simple_node = elliptics.Node(elliptics.Logger("client.log", elliptics.log_level.debug))
-    simple_node.add_remotes(request.config.option.remotes)
-    return simple_node
+def client(request):
+    node = elliptics.Node(elliptics.Logger("client.log", elliptics.log_level.debug))
+    node.add_remotes(request.config.option.remotes)
+    return node
 
 
 class PassthroughWrapper(object):
@@ -88,7 +88,7 @@ def connect(endpoints, groups, **kw):
         if old in kw:
             kw[new] = kw.pop(old)
 
-    # drop impedeing attrs, just in case
+    # drop impeding attributes, just in case
     kw.pop('elog', None)
     kw.pop('cfg', None)
     kw.pop('remotes', None)
@@ -146,7 +146,7 @@ def elliptics_client(request):
 
 
 @pytest.yield_fixture(scope="session")
-def server(request):
+def cluster(request):
     groups = [int(g) for g in request.config.option.groups.split(',')]
 
     servers = Servers(groups=groups,

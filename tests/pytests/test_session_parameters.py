@@ -79,8 +79,8 @@ class TestSession:
         ('timestamp', elliptics.Time(2 ** 64 - 1, 2 ** 64 - 1)),
         ('trace_id', 0),
         ('user_flags', 0)])
-    def test_properties_default(self, server, simple_node, prop, value):
-        session = elliptics.Session(node=simple_node)
+    def test_properties_default(self, cluster, client, prop, value):
+        session = elliptics.Session(node=client)
         assert getattr(session, prop) == value
 
     @pytest.mark.parametrize('prop, setter, getter, values', [
@@ -115,17 +115,17 @@ class TestSession:
          0,
          438975345,
          2 ** 64 - 1))])
-    def test_properties(self, server, simple_node,
+    def test_properties(self, cluster, client,
                         prop, setter, getter, values):
-        session = elliptics.Session(node=simple_node)
+        session = elliptics.Session(node=client)
         assert type(session) == elliptics.Session
         for value in values:
             set_property(session, prop, value,
                          setter=setter,
                          getter=getter)
 
-    def test_resetting_timeout(self, server, simple_node):
-        session = make_session(node=simple_node,
+    def test_resetting_timeout(self, cluster, client):
+        session = make_session(node=client,
                                test_name='TestSession.test_resetting_timeout')
         assert session.timeout == 5  # check default timeout value
         session.timeout = 1  # set different value
@@ -140,14 +140,14 @@ class TestSession:
                              ('timeout', 2 ** 63),
                              ('trace_id', 2 ** 64),
                              ('user_flags', 2 ** 64)])
-    def test_properties_out_of_limits(self, server, simple_node, prop, value):
-        session = elliptics.Session(simple_node)
+    def test_properties_out_of_limits(self, cluster, client, prop, value):
+        session = elliptics.Session(client)
         pytest.raises(OverflowError,
                       "set_property(session, '{0}', {1})"
                       .format(prop, value))
 
-    def test_clone(self, server, simple_node):
-        orig_s = make_session(node=simple_node,
+    def test_clone(self, cluster, client):
+        orig_s = make_session(node=client,
                               test_name='TestSession.test_clone')
 
         orig_s.groups = [1, 2, 3]

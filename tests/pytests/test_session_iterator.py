@@ -113,12 +113,12 @@ class TestSession:
     It sanity checks all available interface and doesn't check correctness of data and metadata,
     because these tests doesn't know anything about these keys.
     '''
-    def test_iterate_default(self, server, simple_node):
+    def test_iterate_default(self, cluster, client):
         '''
         Runs iterator on first node/backend from route-list without specified ranges and special flags
         Checks iterated keys by check_iterator_results.
         '''
-        session = make_session(node=simple_node,
+        session = make_session(node=client,
                                test_name='TestSession.test_iterate_one_backend')
         session.groups = session.routes.groups()
         routes = session.routes
@@ -136,12 +136,12 @@ class TestSession:
 
         check_iterator_results(first_node, first_backend, iterator, session, node_id)
 
-    def test_iterate_one_range(self, server, simple_node):
+    def test_iterate_one_range(self, cluster, client):
         '''
         Runs iterator on first node/backend from route-list with using only first range of it.
         Checks iterated keys by check_iterator_results.
         '''
-        session = make_session(node=simple_node,
+        session = make_session(node=client,
                                test_name='TestSession.test_iterate_one_range')
         session.groups = session.routes.groups()
         node_id, node, backend = iter(session.routes.get_unique_routes()[0])
@@ -161,12 +161,12 @@ class TestSession:
 
         check_iterator_results(node, backend, iterator, session, node_id)
 
-    def test_iterate_all_node_ranges(self, server, simple_node):
+    def test_iterate_all_node_ranges(self, cluster, client):
         '''
         Runs iterator on first node/backend from route-list with using all ranges covered by it.
         Checks iterated keys by check_iterator_results.
         '''
-        session = make_session(node=simple_node,
+        session = make_session(node=client,
                                test_name='TestSession.test_iterate_all_node_ranges')
         session.groups = session.routes.groups()
         node_id, node, backend = iter(session.routes.get_unique_routes()[0])
@@ -182,13 +182,13 @@ class TestSession:
 
         check_iterator_results(node, backend, iterator, session, node_id)
 
-    def test_iterate_all_node_ranges_with_timestamp(self, server, simple_node):
+    def test_iterate_all_node_ranges_with_timestamp(self, cluster, client):
         '''
         Runs iterator on first node/backend from route-list with using all ranges covered by it
         and timetamps that specifies period from 30 second before now to now.
         Checks iterated keys by check_iterator_results.
         '''
-        session = make_session(node=simple_node,
+        session = make_session(node=client,
                                test_name='TestSession.test_iterate_all_node_ranges_with_timestamp')
         session.groups = session.routes.groups()
         node_id, node, backend = iter(session.routes.get_unique_routes()[0])
@@ -208,13 +208,13 @@ class TestSession:
 
         check_iterator_results(node, backend, iterator, session, node_id)
 
-    def test_iterate_inverted_node_ranges_with_data(self, server, simple_node):
+    def test_iterate_inverted_node_ranges_with_data(self, cluster, client):
         '''
         Runs iterator on first node/backend from route-list with using inverted ranges
         that aren't covered by this node/backend.
         Checks iterated keys by check_iterator_results.
         '''
-        session = make_session(node=simple_node,
+        session = make_session(node=client,
                                test_name='TestSession.test_iterate_inverted_node_ranges')
         session.groups = session.routes.groups()
         node_id, node, backend = iter(session.routes.get_unique_routes()[0])
@@ -230,12 +230,12 @@ class TestSession:
 
         check_iterator_results(node, backend, iterator, session, node_id)
 
-    def test_iterate_all_node_ranges_no_meta(self, server, simple_node):
+    def test_iterate_all_node_ranges_no_meta(self, cluster, client):
         '''
         Runs iterator with no_meta on first node/backend from route-list with using all ranges covered by it.
         Checks iterated keys by check_iterator_results.
         '''
-        session = make_session(node=simple_node,
+        session = make_session(node=client,
                                test_name='TestSession.test_iterate_all_node_ranges_no_meta')
         session.groups = session.routes.groups()
         node_id, node, backend = iter(session.routes.get_unique_routes()[0])

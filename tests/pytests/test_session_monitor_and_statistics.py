@@ -346,9 +346,9 @@ def categories_combination():
 
 
 class TestMonitor:
-    def test_monitor_stat(self, server, simple_node):
+    def test_monitor_stat(self, cluster, client):
         '''Simply get all statistics from all nodes and check that statistics is valid dict'''
-        session = make_session(node=simple_node,
+        session = make_session(node=client,
                                test_name='TestSession.test_monitor_stat')
         for addr in session.routes.addresses():
             stat = session.monitor_stat(addr).get()[0]
@@ -357,9 +357,9 @@ class TestMonitor:
             assert type(stat.statistics) == dict
 
     @pytest.mark.parametrize("categories", categories_combination())
-    def test_monitor_categories(self, server, simple_node, categories):
+    def test_monitor_categories(self, cluster, client, categories):
         '''Requests all possible combination of categories one by one and checks statistics'''
-        session = make_session(node=simple_node,
+        session = make_session(node=client,
                                test_name='TestSession.test_monitor_categories')
 
         checker = MonitorStatsChecker(address=session.routes.addresses()[0],
