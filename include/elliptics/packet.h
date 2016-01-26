@@ -908,16 +908,6 @@ static inline void dnet_convert_file_info(struct dnet_file_info *info)
 	dnet_convert_time(&info->mtime);
 }
 
-static inline void dnet_info_from_stat(struct dnet_file_info *info, struct stat *st)
-{
-	info->record_flags = 0;
-	info->size = st->st_size;
-	info->offset = 0;
-
-	info->mtime.tsec = st->st_mtime;
-	info->mtime.tnsec = 0;
-}
-
 /*
  * Elliptics status flags
  *

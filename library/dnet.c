@@ -1811,79 +1811,6 @@ err_out_exit:
 	return err;
 }
 
-int dnet_send_file_info(void *state, struct dnet_cmd *cmd, int fd, uint64_t offset, int64_t size)
-{
-	struct dnet_node *n = dnet_get_node_from_state(state);
-	struct dnet_file_info *info;
-	struct dnet_addr *addr;
-	int flen, err;
-	char *file;
-	struct stat st;
-
-	err = dnet_fd_readlink(fd, &file);
-	if (err < 0)
-		goto err_out_exit;
-
-	flen = err;
-
-	addr = calloc(1, sizeof(struct dnet_addr) + sizeof(struct dnet_file_info) + flen);
-	if (!addr) {
-		err = -ENOMEM;
-		goto err_out_free_file;
-	}
-	info = (struct dnet_file_info *)(addr + 1);
-
-	dnet_fill_state_addr(state, addr);
-	dnet_convert_addr(addr);
-
-	err = fstat(fd, &st);
-	if (err) {
-		err = -errno;
-		dnet_log(n, DNET_LOG_ERROR, "%s: file-info: %s: info-stat: %d: %s.",
-				dnet_dump_id(&cmd->id), file, err, strerror(-err));
-		goto err_out_free;
-	}
-
-	dnet_info_from_stat(info, &st);
-	/* this is not valid data from raw blob file stat */
-	info->mtime.tsec = 0;
-
-	if (size >= 0)
-		info->size = size;
-	if (offset)
-		info->offset = offset;
-
-	if (cmd->flags & DNET_FLAGS_CHECKSUM) {
-		err = dnet_checksum_fd(n, fd, info->offset, info->size, info->checksum, sizeof(info->checksum));
-		if (err) {
-			dnet_log(n, DNET_LOG_ERROR, "%s: file-info: %s: checksum: %d: %s.",
-					dnet_dump_id(&cmd->id), file, err, strerror(-err));
-			goto err_out_free;
-		}
-	}
-
-	if (info->size == 0) {
-		err = -EINVAL;
-		dnet_log(n, DNET_LOG_NOTICE, "%s: EBLOB: %s: info-stat: ZERO-FILE-SIZE, fd: %d.",
-				dnet_dump_id(&cmd->id), file, fd);
-		goto err_out_free;
-	}
-
-	info->flen = flen;
-	memcpy(info + 1, file, flen);
-
-	dnet_convert_file_info(info);
-
-	err = dnet_send_reply(state, cmd, addr, sizeof(struct dnet_addr) + sizeof(struct dnet_file_info) + flen, 0);
-
-err_out_free:
-	free(addr);
-err_out_free_file:
-	free(file);
-err_out_exit:
-	return err;
-}
-
 /*
  * @offset should be set not to offset within given record,
  * but offset within file descriptor
@@ -1941,11 +1868,6 @@ err_out_free_file:
 	free(file);
 err_out_exit:
 	return err;
-}
-
-int dnet_send_file_info_without_fd(void *state, struct dnet_cmd *cmd, const void *data, int64_t size)
-{
-	return dnet_send_file_info_ts_without_fd(state, cmd, data, size, NULL);
 }
 
 int dnet_send_file_info_ts_without_fd(void *state, struct dnet_cmd *cmd, const void *data, int64_t size, struct dnet_time *timestamp)
