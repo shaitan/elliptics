@@ -129,7 +129,11 @@ class read_result_entry : public callback_result_entry
 		read_result_entry &operator =(const read_result_entry &other);
 
 		struct dnet_io_attr *io_attribute() const;
+		struct dnet_file_info *data_info() const;
+		struct dnet_json_info *json_info() const;
+		data_pointer data() const;
 		data_pointer file() const;
+		data_pointer json() const;
 };
 
 class lookup_result_entry : public callback_result_entry
@@ -142,8 +146,10 @@ class lookup_result_entry : public callback_result_entry
 		lookup_result_entry &operator =(const lookup_result_entry &other);
 
 		struct dnet_addr *storage_address() const;
+		struct dnet_file_info *data_info() const;
 		struct dnet_file_info *file_info() const;
 		const char *file_path() const;
+		struct dnet_json_info *json_info() const;
 };
 
 class monitor_stat_result_entry : public callback_result_entry

@@ -504,8 +504,8 @@ class session
 		 * of write_prepare(), write_plain() and write_commit().
 		 */
 		async_write_result write(const key &id,
-		                         const argument_data &json,
-		                         const argument_data &data, uint64_t offset);
+		                         const argument_data &json, uint64_t json_capacity,
+		                         const argument_data &data, uint64_t data_capacity);
 
 
 		/*!
@@ -551,7 +551,9 @@ class session
 		 *
 		 * Returns async_write_result.
 		 */
-		async_write_result write_prepare(const key &id, uint64_t json_size, uint64_t data_size);
+		async_write_result write_prepare(const key &id,
+		                                 const argument_data &json, uint64_t json_capacity,
+		                                 const argument_data &data, uint64_t offset, uint64_t data_capacity);
 
 		/*!
 		 * Writes data \a file by the key \a id and remote offset \a remote_offset in prepared place.
@@ -594,8 +596,12 @@ class session
 		 *       to actual number of bytes written by client, but size of the reserved on disk area will be equal
 		 *       to prepare size.
 		 */
-		async_write_result write_commit(const key &id, const argument_data &file,
-				uint64_t remote_offset, uint64_t csize);
+		async_write_result write_commit(const key &id,
+		                                const argument_data &file, uint64_t remote_offset, uint64_t csize);
+
+		async_write_result write_commit(const key &id,
+		                                const argument_data &json,
+		                                const argument_data &data, uint64_t offset, uint64_t data_size);
 
 		/*!
 		 * Writes data \a file by the key \a id and remote offset \a remote_offset.
@@ -620,13 +626,6 @@ class session
 		 * Returns async_lookup_result.
 		 */
 		async_lookup_result lookup(const key &id);
-
-		/*!
-		 * Lookups information for key \a id.
-		 *
-		 * Returns async_lookup_result.
-		 */
-		 async_lookup_result lookup_ex(const key &id);
 
 		/*!
 		 * Lookups an information for the key \a id in parallel in all groups

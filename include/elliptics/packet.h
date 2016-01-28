@@ -897,6 +897,14 @@ struct dnet_file_info {
 	struct dnet_time	mtime;
 };
 
+struct dnet_json_info {
+	uint64_t		size;
+	uint64_t		offset;
+	uint64_t		capacity;
+
+	struct dnet_time	timestamp;
+};
+
 static inline void dnet_convert_file_info(struct dnet_file_info *info)
 {
 	info->flen = dnet_bswap32(info->flen);
@@ -906,6 +914,13 @@ static inline void dnet_convert_file_info(struct dnet_file_info *info)
 	info->offset = dnet_bswap64(info->offset);
 
 	dnet_convert_time(&info->mtime);
+}
+
+static inline void dnet_convert_json_info(struct dnet_json_info *info) {
+	info->size = dnet_bswap64(info->size);
+	info->offset = dnet_bswap64(info->offset);
+
+	dnet_convert_time(&info->timestamp);
 }
 
 /*
