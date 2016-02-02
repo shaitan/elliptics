@@ -25,6 +25,7 @@
 #include "node_p.hpp"
 
 #include "elliptics/async_result_cast.hpp"
+#include "library/protocol.h"
 
 namespace ioremap { namespace elliptics {
 
@@ -942,7 +943,7 @@ async_write_result session::write_data(const dnet_io_control &ctl)
 	dnet_io_control ctl_copy = ctl;
 
 	ctl_copy.cmd = DNET_CMD_WRITE;
-	ctl_copy.cflags |= DNET_FLAGS_NEED_ACK;
+	ctl_copy.cflags |= DNET_FLAGS_NEED_ACK | DNET_FLAGS_MSGPACK;
 	ctl_copy.io.user_flags |= get_user_flags();
 
 	memcpy(ctl_copy.io.id, ctl_copy.id.id, DNET_ID_SIZE);
@@ -953,6 +954,8 @@ async_write_result session::write_data(const dnet_io_control &ctl)
 		if (dnet_time_is_empty(&ctl_copy.io.timestamp))
 			dnet_current_time(&ctl_copy.io.timestamp);
 	}
+
+	dnet_convert_io(&ctl_copy);
 
 	session sess = clean_clone();
 	return async_result_cast<write_result_entry>(*this, send_to_groups(sess, ctl_copy));
@@ -2852,7 +2855,9 @@ async_write_result session::write_data_ex(const dnet_io_control &ctl) {
 	return async_result_cast<write_result_entry>(*this, send_to_groups(sess, ctl_copy));
 }
 
-async_write_result session::write_prepare(const key &id, uint64_t json_size, uint64_t data_size)
+async_write_result session::write_prepare(const key &id,
+                                          const argument_data &json, uint64_t json_capacity,
+                                          const argument_data &data, uint64_t offset, uint64_t data_capacity)
 {
 	transform(id);
 
@@ -2865,8 +2870,8 @@ async_write_result session::write_prepare(const key &id, uint64_t json_size, uin
 
 	ctl.io.flags = get_ioflags() | DNET_IO_FLAGS_PREPARE;
 	ctl.io.user_flags = get_user_flags();
-	ctl.io.start = json_size;
-	ctl.io.num = data_size;
+	ctl.io.start = json_capacity;
+	ctl.io.num = data_capacity;
 
 	memcpy(&ctl.id, &id.id(), sizeof(ctl.id));
 
@@ -2909,8 +2914,8 @@ async_write_result session::write_plain(const key &id,
 }
 
 async_write_result session::write(const key &id,
-                                  const argument_data &json,
-                                  const argument_data &data, uint64_t offset) {
+                                  const argument_data &json, uint64_t json_capacity,
+                                  const argument_data &data, uint64_t data_capacity) {
 	transform(id);
 
 	dnet_io_control ctl;
@@ -2928,7 +2933,7 @@ async_write_result session::write(const key &id,
 
 	ctl.io.flags = get_ioflags();
 	ctl.io.user_flags = get_user_flags();
-	ctl.io.offset = offset;
+	ctl.io.offset = 0;
 	ctl.io.size = data_p.size();
 	ctl.io.start = json.size();
 
@@ -2937,19 +2942,6 @@ async_write_result session::write(const key &id,
 	ctl.fd = -1;
 
 	return write_data_ex(ctl);
-}
-
-async_lookup_result session::lookup_ex(const key &id) {
-	DNET_SESSION_GET_GROUPS(async_lookup_result);
-
-	transport_control control(id.id(), DNET_CMD_LOOKUP_EX, DNET_FLAGS_NEED_ACK);
-
-	async_lookup_result result(*this);
-	auto handler = std::make_shared<lookup_handler>(*this, result, std::move(groups), control.get_native());
-	handler->set_total(1);
-	handler->start();
-
-	return result;
 }
 
 async_read_result session::read_json(const key &id) {

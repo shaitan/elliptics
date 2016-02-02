@@ -1477,7 +1477,7 @@ static int dnet_process_cmd_with_backend_raw(struct dnet_backend_io *backend, st
 			}
 
 			size_t req_size = sizeof(struct dnet_server_send_request) +
-						req->id_num * sizeof(struct dnet_raw_id) + 
+						req->id_num * sizeof(struct dnet_raw_id) +
 						req->group_num * sizeof(int);
 
 			if (cmd->size != req_size) {
@@ -1508,8 +1508,8 @@ static int dnet_process_cmd_with_backend_raw(struct dnet_backend_io *backend, st
 
 			io = NULL;
 			if (cmd->size < sizeof(struct dnet_io_attr)) {
-				dnet_log(st->n, DNET_LOG_ERROR, "%s: invalid size: cmd: %u, cmd.size: %llu",
-					dnet_dump_id(&cmd->id), cmd->cmd, (unsigned long long)cmd->size);
+				dnet_log(st->n, DNET_LOG_ERROR, "%s: invalid size: cmd: %s, cmd.size: %llu",
+					dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), (unsigned long long)cmd->size);
 				err = -EINVAL;
 				break;
 			}
@@ -1623,8 +1623,8 @@ int dnet_process_cmd_raw(struct dnet_backend_io *backend, struct dnet_net_state 
 		case DNET_CMD_WRITE:
 		case DNET_CMD_DEL:
 			if (cmd->size < sizeof(struct dnet_io_attr)) {
-				dnet_log(st->n, DNET_LOG_ERROR, "%s: invalid size: cmd: %u, cmd.size: %llu",
-					dnet_dump_id(&cmd->id), cmd->cmd, (unsigned long long)cmd->size);
+				dnet_log(st->n, DNET_LOG_ERROR, "%s: invalid size: cmd: %s, cmd.size: %llu",
+					dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), (unsigned long long)cmd->size);
 				err = -EINVAL;
 				break;
 			}

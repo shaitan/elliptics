@@ -2,17 +2,17 @@
  * Copyright 2008+ Evgeniy Polyakov <zbr@ioremap.net>
  *
  * This file is part of Elliptics.
- * 
+ *
  * Elliptics is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * Elliptics is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU Lesser General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Lesser General Public License
  * along with Elliptics.  If not, see <http://www.gnu.org/licenses/>.
  */
@@ -339,11 +339,11 @@ void dnet_io_trans_alloc_send(struct dnet_session *s, struct dnet_io_control *ct
 	struct dnet_node *n = s->node;
 	struct dnet_io_req req;
 	struct dnet_trans *t = NULL;
-	struct dnet_io_attr *io;
 	struct dnet_cmd *cmd;
 	struct dnet_addr *request_addr = NULL;
 	uint64_t size = ctl->io.size;
-	uint64_t tsize = sizeof(struct dnet_io_attr) + sizeof(struct dnet_cmd);
+	uint64_t tsize = sizeof(struct dnet_cmd) + ctl->io_raw_size;
+	void *io;
 	double backend_weight = 0.;
 	int err;
 
@@ -360,14 +360,14 @@ void dnet_io_trans_alloc_send(struct dnet_session *s, struct dnet_io_control *ct
 	t->priv = ctl->priv;
 
 	cmd = (struct dnet_cmd *)(t + 1);
-	io = (struct dnet_io_attr *)(cmd + 1);
+	io = (void*)(cmd + 1);
 
 	dnet_io_trans_control_fill_cmd(s, ctl, cmd);
-	cmd->size = sizeof(struct dnet_io_attr) + size;
+	cmd->size = ctl->io_raw_size + size;
 
 	t->command = cmd->cmd;
 
-	memcpy(io, &ctl->io, sizeof(struct dnet_io_attr));
+	memcpy(io, ctl->io_raw, ctl->io_raw_size);
 	memcpy(&t->cmd, cmd, sizeof(struct dnet_cmd));
 
 	if ((s->cflags & DNET_FLAGS_DIRECT) == 0) {
@@ -388,7 +388,7 @@ void dnet_io_trans_alloc_send(struct dnet_session *s, struct dnet_io_control *ct
 	}
 
 	cmd->trans = t->rcv_trans = t->trans = atomic_inc(&n->trans);
-	dnet_get_backend_weight(t->st, cmd->backend_id, io->flags, &backend_weight);
+	dnet_get_backend_weight(t->st, cmd->backend_id, ctl->io.flags, &backend_weight);
 	request_addr = dnet_state_addr(t->st);
 
 	dnet_log(n, DNET_LOG_INFO, "%s: created trans: %llu, cmd: %s, cflags: %s, size: %llu, offset: %llu, "
@@ -402,10 +402,10 @@ void dnet_io_trans_alloc_send(struct dnet_session *s, struct dnet_io_control *ct
 		        dnet_addr_string(&t->st->addr), cmd->backend_id, backend_weight,
 			t->wait_ts.tv_sec,
 			dnet_flags_dump_ioflags(ctl->io.flags),
-			(unsigned long long)io->num);
+			(unsigned long long)ctl->io.num);
 
 	dnet_convert_cmd(cmd);
-	dnet_convert_io_attr(io);
+	// dnet_convert_io_attr(io);
 
 
 	memset(&req, 0, sizeof(req));

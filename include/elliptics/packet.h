@@ -181,6 +181,9 @@ enum dnet_backend_defrag_level {
 /* This reply was generated on server, and it IS reply from the server */
 #define DNET_FLAGS_REPLY		(1<<9)
 
+/* Headers of the packet was serialized by msgpack */
+#define DNET_FLAGS_MSGPACK		(1<<10)
+
 struct flag_info
 {
 	uint64_t flag;

@@ -15,6 +15,7 @@ set(ELLIPTICS_CLIENT_SRCS
     tests.c
     common.cpp
     ../bindings/cpp/logger.cpp
+    protocol.cpp
     )
 set(ELLIPTICS_SRCS
     dnet.c

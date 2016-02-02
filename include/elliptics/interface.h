@@ -107,7 +107,7 @@ struct dnet_io_control {
 	 * Can be invoked multiple times, the last one will be when
 	 * cmd->flags does not have DNET_FLAGS_MORE flag.
 	 *
-	 * All parameters are releated to the received transaction reply.
+	 * All parameters are related to the received transaction reply.
 	 */
 	transaction_callback		complete;
 
@@ -146,6 +146,9 @@ struct dnet_io_control {
 
 	/* Data transaction timestamp */
 	struct timespec			ts;
+
+	void				*io_raw;
+	size_t				io_raw_size;
 };
 
 int dnet_search_range(struct dnet_node *n, struct dnet_id *id,
