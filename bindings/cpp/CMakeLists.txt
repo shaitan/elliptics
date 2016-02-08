@@ -19,7 +19,10 @@ set(ELLIPTICS_CPP_SRCS
     result_entry.cpp
     exception.cpp
     key.cpp
+    ../../library/protocol.cpp
     ../../foreign/cmp/cmp.c
+    newapi/session.cpp
+    newapi/result_entry.cpp
 # Added includes for better IDE's experience
     ../../include/elliptics/interface.h
     ../../include/elliptics/utils.hpp

@@ -1525,7 +1525,7 @@ static int dnet_process_cmd_with_backend_raw(struct dnet_backend_io *backend, st
 			}
 
 			size_t req_size = sizeof(struct dnet_server_send_request) +
-						req->id_num * sizeof(struct dnet_raw_id) + 
+						req->id_num * sizeof(struct dnet_raw_id) +
 						req->group_num * sizeof(int);
 
 			if (cmd->size != req_size) {
@@ -1830,7 +1830,7 @@ static void dnet_fill_state_addr(void *state, struct dnet_addr *addr)
 	memcpy(addr, &n->addrs[0], sizeof(struct dnet_addr));
 }
 
-static int dnet_fd_readlink(int fd, char **datap)
+int dnet_fd_readlink(int fd, char **datap)
 {
 	char *dst, src[64];
 	int dsize = 4096;

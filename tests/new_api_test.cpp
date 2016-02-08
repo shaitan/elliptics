@@ -1,0 +1,674 @@
+#include "test_base.hpp"
+
+#include <eblob/blob.h>
+
+#define BOOST_TEST_NO_MAIN
+#include <boost/test/included/unit_test.hpp>
+
+#include <boost/program_options.hpp>
+
+#include "elliptics/newapi/session.hpp"
+
+namespace {
+
+namespace bu = boost::unit_test;
+
+std::shared_ptr<tests::nodes_data> servers;
+
+const std::vector<int> groups{1,2,3};
+
+void configure_servers(const std::string &path) {
+	servers = [&path] {
+		constexpr auto server_config = [](const tests::config_data &c) {
+			return tests::server_config::default_value().apply_options(c);
+		};
+
+		auto configs = {server_config(tests::config_data()("group", 1)),
+		                server_config(tests::config_data()("group", 2)),
+		                server_config(tests::config_data()("group", 3))};
+
+		tests::start_nodes_config config(bu::results_reporter::get_stream(),
+		                                 configs,
+		                                 path);
+		config.fork = true;
+		return tests::start_nodes(config);
+	} ();
+}
+
+struct record {
+	ioremap::elliptics::key key;
+	uint64_t user_flags;
+	dnet_time timestamp;
+	std::string json;
+	uint64_t json_capacity;
+	std::string data;
+	uint64_t data_capacity;
+};
+
+void test_write(const record &record) {
+	ioremap::elliptics::newapi::session s(*servers->node);
+	s.set_groups(groups);
+	s.set_user_flags(record.user_flags);
+
+	s.set_timestamp(record.timestamp);
+
+	auto async = s.write(record.key,
+	                     record.json, record.json_capacity,
+	                     record.data, record.data_capacity);
+
+	size_t count = 0;
+	for (const auto &result: async) {
+		(void)result.address();
+		BOOST_REQUIRE_EQUAL(result.status(), 0);
+		BOOST_REQUIRE_EQUAL(result.command()->cmd, DNET_CMD_WRITE_NEW);
+		BOOST_REQUIRE_EQUAL(result.error().code(), 0);
+		BOOST_REQUIRE_EQUAL(result.error().message(), "");
+
+		auto info = result.info();
+
+		BOOST_REQUIRE_EQUAL(info.user_flags, record.user_flags);
+		BOOST_REQUIRE_EQUAL(info.record_flags, DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM);
+
+		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.json_timestamp, &record.timestamp), 0);
+		constexpr uint64_t eblob_headers_size = sizeof(eblob_disk_control) + sizeof(dnet_ext_list_hdr);
+		BOOST_REQUIRE(info.json_offset >= eblob_headers_size);
+		BOOST_REQUIRE_EQUAL(info.json_size, record.json.size());
+		BOOST_REQUIRE_EQUAL(info.json_capacity, record.json_capacity);
+
+		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.data_timestamp, &record.timestamp), 0);
+		BOOST_REQUIRE_EQUAL(info.data_offset, info.json_offset + record.json_capacity);
+		BOOST_REQUIRE_EQUAL(info.data_size, record.data.size());
+		// BOOST_REQUIRE_EQUAL(info.data_capacity, data_capacity);
+		++count;
+	}
+
+	BOOST_REQUIRE_EQUAL(count, groups.size());
+}
+
+void test_lookup(const record &record) {
+	ioremap::elliptics::newapi::session s(*servers->node);
+	s.set_groups(groups);
+
+	auto async = s.lookup(record.key);
+
+	size_t count = 0;
+	for (const auto &result : async) {
+		(void)result.address();
+		BOOST_REQUIRE_EQUAL(result.status(), 0);
+		BOOST_REQUIRE_EQUAL(result.command()->cmd, DNET_CMD_LOOKUP_NEW);
+		BOOST_REQUIRE_EQUAL(result.error().code(), 0);
+		BOOST_REQUIRE_EQUAL(result.error().message(), "");
+
+		auto info = result.info();
+
+		BOOST_REQUIRE_EQUAL(info.user_flags, record.user_flags);
+		BOOST_REQUIRE_EQUAL(info.record_flags, DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM);
+
+		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.json_timestamp, &record.timestamp), 0);
+		constexpr uint64_t eblob_headers_size = sizeof(eblob_disk_control) + sizeof(dnet_ext_list_hdr);
+		BOOST_REQUIRE(info.json_offset >= eblob_headers_size);
+		BOOST_REQUIRE_EQUAL(info.json_size, record.json.size());
+		BOOST_REQUIRE_EQUAL(info.json_capacity, record.json_capacity);
+
+		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.data_timestamp, &record.timestamp), 0);
+		BOOST_REQUIRE_EQUAL(info.data_offset, info.json_offset + record.json_capacity);
+		BOOST_REQUIRE_EQUAL(info.data_size, record.data.size());
+		// BOOST_REQUIRE_EQUAL(info.data_capacity, data_capacity);
+
+		++count;
+	}
+
+	BOOST_REQUIRE_EQUAL(count, 1);
+}
+
+void test_read_json(const record &record) {
+	ioremap::elliptics::newapi::session s(*servers->node);
+
+	size_t count = 0;
+
+	for (const auto &group : groups) {
+		s.set_groups({group});
+		auto async = s.read_json(record.key);
+
+		for (const auto &result: async) {
+			(void)result.address();
+			BOOST_REQUIRE_EQUAL(result.status(), 0);
+			BOOST_REQUIRE_EQUAL(result.command()->cmd, DNET_CMD_READ_NEW);
+			BOOST_REQUIRE_EQUAL(result.error().code(), 0);
+			BOOST_REQUIRE_EQUAL(result.error().message(), "");
+
+			auto info = result.info();
+
+			BOOST_REQUIRE_EQUAL(info.user_flags, record.user_flags);
+			BOOST_REQUIRE_EQUAL(info.record_flags, DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM);
+
+			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.json_timestamp, &record.timestamp), 0);
+			BOOST_REQUIRE_EQUAL(info.json_offset, 0);
+			BOOST_REQUIRE_EQUAL(info.json_size, record.json.size());
+			BOOST_REQUIRE_EQUAL(info.json_capacity, record.json_capacity);
+
+			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.data_timestamp, &record.timestamp), 0);
+			BOOST_REQUIRE_EQUAL(info.data_offset, 0);
+			BOOST_REQUIRE_EQUAL(info.data_size, record.data.size());
+
+			BOOST_REQUIRE_EQUAL(result.json().to_string(), record.json);
+			BOOST_REQUIRE(result.data().empty());
+
+			++count;
+		}
+	}
+
+	BOOST_REQUIRE_EQUAL(count, groups.size());
+}
+
+void test_read_data(const record &record, uint64_t offset, uint64_t size) {
+	ioremap::elliptics::newapi::session s(*servers->node);
+
+	size_t count = 0;
+
+	for (const auto &group : groups) {
+		s.set_groups({group});
+		auto async = s.read_data(record.key, offset, size);
+
+		for (const auto &result: async) {
+			(void)result.address();
+			BOOST_REQUIRE_EQUAL(result.status(), 0);
+			BOOST_REQUIRE_EQUAL(result.command()->cmd, DNET_CMD_READ_NEW);
+			BOOST_REQUIRE_EQUAL(result.error().code(), 0);
+			BOOST_REQUIRE_EQUAL(result.error().message(), "");
+
+			auto info = result.info();
+
+			BOOST_REQUIRE_EQUAL(info.user_flags, record.user_flags);
+			BOOST_REQUIRE_EQUAL(info.record_flags, DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM);
+
+			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.json_timestamp, &record.timestamp), 0);
+			BOOST_REQUIRE_EQUAL(info.json_offset, 0);
+			BOOST_REQUIRE_EQUAL(info.json_size, record.json.size());
+			BOOST_REQUIRE_EQUAL(info.json_capacity, record.json_capacity);
+
+			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.data_timestamp, &record.timestamp), 0);
+			BOOST_REQUIRE_EQUAL(info.data_offset, 0);
+			BOOST_REQUIRE_EQUAL(info.data_size, record.data.size());
+
+			BOOST_REQUIRE(result.json().empty());
+			BOOST_REQUIRE_EQUAL(result.data().to_string(), record.data.substr(offset, size ? size : std::string::npos));
+
+			++count;
+		}
+	}
+
+	BOOST_REQUIRE_EQUAL(count, groups.size());
+}
+
+void test_read(const record &record, uint64_t offset, uint64_t size) {
+	ioremap::elliptics::newapi::session s(*servers->node);
+
+	size_t count = 0;
+
+	for (const auto &group : groups) {
+		s.set_groups({group});
+		auto async = s.read(record.key, offset, size);
+
+		for (const auto &result: async) {
+			(void)result.address();
+			BOOST_REQUIRE_EQUAL(result.status(), 0);
+			BOOST_REQUIRE_EQUAL(result.command()->cmd, DNET_CMD_READ_NEW);
+			BOOST_REQUIRE_EQUAL(result.error().code(), 0);
+			BOOST_REQUIRE_EQUAL(result.error().message(), "");
+
+			auto info = result.info();
+
+			BOOST_REQUIRE_EQUAL(info.user_flags, record.user_flags);
+			BOOST_REQUIRE_EQUAL(info.record_flags, DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM);
+
+			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.json_timestamp, &record.timestamp), 0);
+			BOOST_REQUIRE_EQUAL(info.json_offset, 0);
+			BOOST_REQUIRE_EQUAL(info.json_size, record.json.size());
+			BOOST_REQUIRE_EQUAL(info.json_capacity, record.json_capacity);
+
+			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.data_timestamp, &record.timestamp), 0);
+			BOOST_REQUIRE_EQUAL(info.data_offset, 0);
+			BOOST_REQUIRE_EQUAL(info.data_size, record.data.size());
+
+			BOOST_REQUIRE_EQUAL(result.json().to_string(), record.json);
+			BOOST_REQUIRE_EQUAL(result.data().to_string(), record.data.substr(offset, size ? size : std::string::npos));
+
+			++count;
+		}
+	}
+
+	BOOST_REQUIRE_EQUAL(count, groups.size());
+}
+
+void test_write_chunked(const record &record) {
+	ioremap::elliptics::newapi::session s(*servers->node);
+	s.set_groups(groups);
+	s.set_user_flags(record.user_flags);
+	s.set_timestamp(record.timestamp);
+
+	auto async = s.write_prepare(record.key,
+	                             std::string{}, record.json_capacity,
+	                             record.data, 0, record.data_capacity);
+
+	size_t count = 0;
+	for (const auto &result: async) {
+		(void)result.address();
+		BOOST_REQUIRE_EQUAL(result.status(), 0);
+		BOOST_REQUIRE_EQUAL(result.command()->cmd, DNET_CMD_WRITE_NEW);
+		BOOST_REQUIRE_EQUAL(result.error().code(), 0);
+		BOOST_REQUIRE_EQUAL(result.error().message(), "");
+
+		auto info = result.info();
+
+		BOOST_REQUIRE_EQUAL(info.user_flags, record.user_flags);
+		BOOST_REQUIRE_EQUAL(info.record_flags, DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM | DNET_RECORD_FLAGS_UNCOMMITTED);
+
+		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.json_timestamp, &record.timestamp), 0);
+		constexpr uint64_t eblob_headers_size = sizeof(eblob_disk_control) + sizeof(dnet_ext_list_hdr);
+		BOOST_REQUIRE(info.json_offset >= eblob_headers_size);
+		BOOST_REQUIRE_EQUAL(info.json_size, 0);
+		BOOST_REQUIRE_EQUAL(info.json_capacity, record.json_capacity);
+
+		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.data_timestamp, &record.timestamp), 0);
+		BOOST_REQUIRE_EQUAL(info.data_offset, info.json_offset + record.json_capacity);
+		BOOST_REQUIRE_EQUAL(info.data_size, 0);
+		++count;
+	}
+	BOOST_REQUIRE_EQUAL(count, groups.size());
+
+	async = s.write_plain(record.key,
+	                      record.json,
+	                      std::string{}, 0);
+
+	count = 0;
+	for (const auto &result: async) {
+		(void)result.address();
+		BOOST_REQUIRE_EQUAL(result.status(), 0);
+		BOOST_REQUIRE_EQUAL(result.command()->cmd, DNET_CMD_WRITE_NEW);
+		BOOST_REQUIRE_EQUAL(result.error().code(), 0);
+		BOOST_REQUIRE_EQUAL(result.error().message(), "");
+
+		auto info = result.info();
+
+		BOOST_REQUIRE_EQUAL(info.user_flags, record.user_flags);
+		BOOST_REQUIRE_EQUAL(info.record_flags, DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM | DNET_RECORD_FLAGS_UNCOMMITTED);
+
+		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.json_timestamp, &record.timestamp), 0);
+		constexpr uint64_t eblob_headers_size = sizeof(eblob_disk_control) + sizeof(dnet_ext_list_hdr);
+		BOOST_REQUIRE(info.json_offset >= eblob_headers_size);
+		BOOST_REQUIRE_EQUAL(info.json_size, record.json.size());
+		BOOST_REQUIRE_EQUAL(info.json_capacity, record.json_capacity);
+
+		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.data_timestamp, &record.timestamp), 0);
+		BOOST_REQUIRE_EQUAL(info.data_offset, info.json_offset + record.json_capacity);
+		BOOST_REQUIRE_EQUAL(info.data_size, 0);
+		++count;
+	}
+	BOOST_REQUIRE_EQUAL(count, groups.size());
+
+	async = s.write_plain(record.key,
+	                      std::string{},
+	                      record.data, record.data.size());
+
+	count = 0;
+	for (const auto &result: async) {
+		(void)result.address();
+		BOOST_REQUIRE_EQUAL(result.status(), 0);
+		BOOST_REQUIRE_EQUAL(result.command()->cmd, DNET_CMD_WRITE_NEW);
+		BOOST_REQUIRE_EQUAL(result.error().code(), 0);
+		BOOST_REQUIRE_EQUAL(result.error().message(), "");
+
+		auto info = result.info();
+
+		BOOST_REQUIRE_EQUAL(info.user_flags, record.user_flags);
+		BOOST_REQUIRE_EQUAL(info.record_flags, DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM | DNET_RECORD_FLAGS_UNCOMMITTED);
+
+		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.json_timestamp, &record.timestamp), 0);
+		constexpr uint64_t eblob_headers_size = sizeof(eblob_disk_control) + sizeof(dnet_ext_list_hdr);
+		BOOST_REQUIRE(info.json_offset >= eblob_headers_size);
+		BOOST_REQUIRE_EQUAL(info.json_size, record.json.size());
+		BOOST_REQUIRE_EQUAL(info.json_capacity, record.json_capacity);
+
+		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.data_timestamp, &record.timestamp), 0);
+		BOOST_REQUIRE_EQUAL(info.data_offset, info.json_offset + record.json_capacity);
+		BOOST_REQUIRE_EQUAL(info.data_size, 0);
+		++count;
+	}
+	BOOST_REQUIRE_EQUAL(count, groups.size());
+
+	async = s.write_commit(record.key,
+	                       record.json,
+	                       record.data, 2*record.data.size(), 3*record.data.size());
+
+	count = 0;
+	for (const auto &result: async) {
+		(void)result.address();
+		BOOST_REQUIRE_EQUAL(result.status(), 0);
+		BOOST_REQUIRE_EQUAL(result.command()->cmd, DNET_CMD_WRITE_NEW);
+		BOOST_REQUIRE_EQUAL(result.error().code(), 0);
+		BOOST_REQUIRE_EQUAL(result.error().message(), "");
+
+		auto info = result.info();
+
+		BOOST_REQUIRE_EQUAL(info.user_flags, record.user_flags);
+		BOOST_REQUIRE_EQUAL(info.record_flags, DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM);
+
+		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.json_timestamp, &record.timestamp), 0);
+		constexpr uint64_t eblob_headers_size = sizeof(eblob_disk_control) + sizeof(dnet_ext_list_hdr);
+		BOOST_REQUIRE(info.json_offset >= eblob_headers_size);
+		BOOST_REQUIRE_EQUAL(info.json_size, record.json.size());
+		BOOST_REQUIRE_EQUAL(info.json_capacity, record.json_capacity);
+
+		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.data_timestamp, &record.timestamp), 0);
+		BOOST_REQUIRE_EQUAL(info.data_offset, info.json_offset + record.json_capacity);
+		BOOST_REQUIRE_EQUAL(info.data_size, 3*record.data.size());
+		++count;
+	}
+	BOOST_REQUIRE_EQUAL(count, groups.size());
+}
+
+void test_old_write_new_read_compatibility() {
+	static const ioremap::elliptics::key key{"test_old_write_new_read_compatibility's key"};
+	static const std::string data{"test_old_write_new_read_compatibility's data"};
+	constexpr uint64_t user_flags = 0xfc1234;
+	constexpr dnet_time timestamp{1, 2};
+	constexpr dnet_time empty_time{0, 0};
+	constexpr uint64_t record_flags = DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM;
+	constexpr uint64_t eblob_headers_size = sizeof(eblob_disk_control) + sizeof(dnet_ext_list_hdr);
+	{
+		ioremap::elliptics::session s(*servers->node);
+		s.set_groups(groups);
+		s.set_user_flags(user_flags);
+		s.set_timestamp(timestamp);
+
+		auto async = s.write_data(key, data, 0);
+
+		size_t count = 0;
+		for (const auto &result: async) {
+			(void)result.storage_address();
+
+			auto info = result.file_info();
+			BOOST_REQUIRE(info != nullptr);
+
+			BOOST_REQUIRE_EQUAL(info->record_flags, record_flags);
+			BOOST_REQUIRE_EQUAL(info->size, data.size());
+			BOOST_REQUIRE(info->offset >= eblob_headers_size);
+			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info->mtime, &timestamp), 0);
+			++count;
+		}
+
+		BOOST_REQUIRE_EQUAL(count, groups.size());
+	}
+
+	{
+		ioremap::elliptics::newapi::session s(*servers->node);
+		s.set_groups(groups);
+
+		auto async = s.lookup(key);
+
+		size_t count = 0;
+		for (const auto &result: async) {
+			(void)result.address();
+
+			auto info = result.info();
+
+			BOOST_REQUIRE_EQUAL(info.user_flags, user_flags);
+			BOOST_REQUIRE_EQUAL(info.record_flags, record_flags);
+
+			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.json_timestamp, &empty_time), 0);
+			BOOST_REQUIRE(info.json_offset >= eblob_headers_size);
+			BOOST_REQUIRE_EQUAL(info.json_size, 0);
+			BOOST_REQUIRE_EQUAL(info.json_capacity, 0);
+
+			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.data_timestamp, &timestamp), 0);
+			BOOST_REQUIRE_EQUAL(info.data_offset, info.json_offset);
+			BOOST_REQUIRE_EQUAL(info.data_size, data.size());
+
+			++count;
+		}
+
+		BOOST_REQUIRE_EQUAL(count, 1);
+	}
+
+	{
+		ioremap::elliptics::newapi::session s(*servers->node);
+		s.set_groups(groups);
+
+		auto async = s.read_json(key);
+
+		size_t count = 0;
+		for (const auto &result: async) {
+			(void)result.address();
+
+			auto info = result.info();
+
+			BOOST_REQUIRE_EQUAL(info.user_flags, user_flags);
+			BOOST_REQUIRE_EQUAL(info.record_flags, record_flags);
+
+			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.json_timestamp, &empty_time), 0);
+			BOOST_REQUIRE_EQUAL(info.json_offset, 0);
+			BOOST_REQUIRE_EQUAL(info.json_size, 0);
+			BOOST_REQUIRE_EQUAL(info.json_capacity, 0);
+
+			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.data_timestamp, &timestamp), 0);
+			BOOST_REQUIRE_EQUAL(info.data_offset, 0);
+			BOOST_REQUIRE_EQUAL(info.data_size, data.size());
+
+			BOOST_REQUIRE(result.json().empty());
+			BOOST_REQUIRE(result.data().empty());
+
+			++count;
+		}
+
+		BOOST_REQUIRE_EQUAL(count, 1);
+	}
+
+	{
+		ioremap::elliptics::newapi::session s(*servers->node);
+		s.set_groups(groups);
+
+		auto async = s.read(key, 0, 0);
+
+		size_t count = 0;
+		for (const auto &result: async) {
+			(void)result.address();
+			BOOST_REQUIRE_EQUAL(result.status(), 0);
+			BOOST_REQUIRE_EQUAL(result.command()->cmd, DNET_CMD_READ_NEW);
+			BOOST_REQUIRE_EQUAL(result.error().code(), 0);
+			BOOST_REQUIRE_EQUAL(result.error().message(), "");
+
+			auto info = result.info();
+
+			BOOST_REQUIRE_EQUAL(info.user_flags, user_flags);
+			BOOST_REQUIRE_EQUAL(info.record_flags, record_flags);
+
+			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.json_timestamp, &empty_time), 0);
+			BOOST_REQUIRE_EQUAL(info.json_offset, 0);
+			BOOST_REQUIRE_EQUAL(info.json_size, 0);
+			BOOST_REQUIRE_EQUAL(info.json_capacity, 0);
+
+			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.data_timestamp, &timestamp), 0);
+			BOOST_REQUIRE_EQUAL(info.data_offset, 0);
+			BOOST_REQUIRE_EQUAL(info.data_size, data.size());
+
+			BOOST_REQUIRE(result.json().empty());
+			BOOST_REQUIRE_EQUAL(result.data().to_string(), data);
+
+			++count;
+		}
+
+		BOOST_REQUIRE_EQUAL(count, 1);
+	}
+}
+
+void test_new_write_old_read_compatibility() {
+	static const ioremap::elliptics::key key{"test_new_write_old_read_compatibility's key"};
+	static const std::string json{"{\"some_field\":\"some_field's data\"}"};
+	uint64_t json_capacity = 100;
+	static const std::string data{"test_new_write_old_read_compatibility's data"};
+	uint64_t data_capacity = 200;
+	constexpr uint64_t user_flags = 0xfc1234;
+	constexpr dnet_time timestamp{1, 2};
+	constexpr uint64_t record_flags = DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM;
+	constexpr uint64_t eblob_headers_size = sizeof(eblob_disk_control) + sizeof(dnet_ext_list_hdr);
+
+	{
+		ioremap::elliptics::newapi::session s(*servers->node);
+		s.set_groups(groups);
+		s.set_user_flags(user_flags);
+
+		s.set_timestamp(timestamp);
+
+		auto async = s.write(key,
+		                     json, json_capacity,
+		                     data, data_capacity);
+		size_t count = 0;
+		for (const auto &result: async) {
+			(void)result.address();
+			BOOST_REQUIRE_EQUAL(result.status(), 0);
+			BOOST_REQUIRE_EQUAL(result.command()->cmd, DNET_CMD_WRITE_NEW);
+			BOOST_REQUIRE_EQUAL(result.error().code(), 0);
+			BOOST_REQUIRE_EQUAL(result.error().message(), "");
+
+			auto info = result.info();
+
+			BOOST_REQUIRE_EQUAL(info.user_flags, user_flags);
+			BOOST_REQUIRE_EQUAL(info.record_flags, record_flags);
+
+			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.json_timestamp, &timestamp), 0);
+			BOOST_REQUIRE(info.json_offset >= eblob_headers_size);
+			BOOST_REQUIRE_EQUAL(info.json_size, json.size());
+			BOOST_REQUIRE_EQUAL(info.json_capacity, json_capacity);
+
+			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.data_timestamp, &timestamp), 0);
+			BOOST_REQUIRE_EQUAL(info.data_offset, info.json_offset + json_capacity);
+			BOOST_REQUIRE_EQUAL(info.data_size, data.size());
+			// BOOST_REQUIRE_EQUAL(info.data_capacity, data_capacity);
+			++count;
+		}
+
+		BOOST_REQUIRE_EQUAL(count, groups.size());
+	}
+
+	{
+		ioremap::elliptics::session s(*servers->node);
+		s.set_groups(groups);
+
+		auto async = s.lookup(key);
+
+		size_t count = 0;
+		for (const auto &result: async) {
+			(void)result.storage_address();
+
+			auto info = result.file_info();
+			BOOST_REQUIRE(info != nullptr);
+
+			BOOST_REQUIRE_EQUAL(info->record_flags, record_flags);
+			BOOST_REQUIRE_EQUAL(info->size, data.size());
+			BOOST_REQUIRE(info->offset >= eblob_headers_size);
+			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info->mtime, &timestamp), 0);
+
+			++count;
+		}
+
+		BOOST_REQUIRE_EQUAL(count, 1);
+	}
+
+	{
+		ioremap::elliptics::session s(*servers->node);
+		s.set_groups(groups);
+
+		auto async = s.read_data(key, 0, 0);
+
+		size_t count = 0;
+		for (const auto &result: async) {
+			BOOST_REQUIRE_EQUAL(result.file().to_string(), data);
+
+			auto io = result.io_attribute();
+
+			BOOST_REQUIRE(io != nullptr);
+			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&io->timestamp, &timestamp), 0);
+			BOOST_REQUIRE_EQUAL(io->user_flags, user_flags);
+			BOOST_REQUIRE_EQUAL(io->total_size, data.size());
+			BOOST_REQUIRE_EQUAL(io->record_flags, record_flags);
+			BOOST_REQUIRE_EQUAL(io->offset, 0);
+			BOOST_REQUIRE_EQUAL(io->size, data.size());
+
+			++count;
+		}
+
+		BOOST_REQUIRE_EQUAL(count, 1);
+	}
+}
+
+void register_tests(bu::test_suite *suite) {
+	record record{
+		std::string{"key"},
+		0xff1ff2ff3,
+		dnet_time{10, 20},
+		std::string{"{\"key\": \"key\"}"},
+		512,
+		std::string{"key data"},
+		1024};
+
+	ELLIPTICS_TEST_CASE(test_write, record);
+	ELLIPTICS_TEST_CASE(test_lookup, record);
+	ELLIPTICS_TEST_CASE(test_read_json, record);
+	ELLIPTICS_TEST_CASE(test_read_data, record, 0, 0);
+	ELLIPTICS_TEST_CASE(test_read_data, record, 0, 1);
+	ELLIPTICS_TEST_CASE(test_read_data, record, 0, std::numeric_limits<uint64_t>::max());
+	ELLIPTICS_TEST_CASE(test_read_data, record, 1, 0);
+	ELLIPTICS_TEST_CASE(test_read_data, record, 2, 1);
+	ELLIPTICS_TEST_CASE(test_read_data, record, 3, std::numeric_limits<uint64_t>::max());
+	ELLIPTICS_TEST_CASE(test_read, record, 0, 0);
+	ELLIPTICS_TEST_CASE(test_read, record, 0, 1);
+	ELLIPTICS_TEST_CASE(test_read, record, 0, std::numeric_limits<uint64_t>::max());
+	ELLIPTICS_TEST_CASE(test_read, record, 1, 0);
+	ELLIPTICS_TEST_CASE(test_read, record, 2, 1);
+	ELLIPTICS_TEST_CASE(test_read, record, 3, std::numeric_limits<uint64_t>::max());
+
+	record.key = {"chunked_key"};
+	ELLIPTICS_TEST_CASE(test_write_chunked, record);
+
+	ELLIPTICS_TEST_CASE_NOARGS(test_old_write_new_read_compatibility);
+	ELLIPTICS_TEST_CASE_NOARGS(test_new_write_old_read_compatibility);
+}
+
+bu::test_suite *setup_tests(int argc, char *argv[]) {
+	namespace bpo = boost::program_options;
+
+	bpo::variables_map vm;
+	bpo::options_description generic("Test options");
+
+	std::string path;
+
+	generic.add_options()
+		("help", "This help message")
+		("path", bpo::value(&path), "Path where to store everything")
+		;
+
+	bpo::store(bpo::parse_command_line(argc, argv, generic), vm);
+	bpo::notify(vm);
+
+	if (vm.count("help")) {
+		std::cerr << generic;
+		return nullptr;
+	}
+
+	auto suite = new bu::test_suite("Local Test Suite");
+
+	configure_servers(path);
+	register_tests(suite);
+
+	return suite;
+}
+
+} // namespace
+
+int main(int argc, char *argv[]) {
+	atexit([] { servers.reset(); });
+
+	srand(time(0));
+	return bu::unit_test_main(setup_tests, argc, argv);
+}
