@@ -1,3 +1,17 @@
+elliptics (2.26.10.1-interiorem~struct) unstable; urgency=low
+
+  * fixed trans number in a result in case of timeout
+  * python: added `set_delay` method
+  * Fixed data size in write response
+  * Core: request fixup moved to dnet_io_req_copy
+  * Core: bypass write to pipe for local transactions
+  * srw: localnode service
+  * refactored queue size statistics
+  * Added 'queue_timeout'
+  * newapi: init
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Tue, 09 Feb 2016 01:38:57 +0400
+
 elliptics (2.26.10.1) unstable; urgency=low
 
   * trans: remove transaction from timer tree in network thread to allow IO thread to run long callbacks and this would not affect 'real' timing for transaction in question
