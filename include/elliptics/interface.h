@@ -885,6 +885,8 @@ int dnet_checksum_file(struct dnet_node *n, const char *file, uint64_t offset, u
 int dnet_checksum_fd(struct dnet_node *n, int fd, uint64_t offset, uint64_t size, void *csum, int csize);
 int dnet_checksum_data(struct dnet_node *n, const void *data, uint64_t size, unsigned char *csum, int csize);
 
+int dnet_fd_readlink(int fd, char **datap);
+
 int dnet_send_file_info(void *state, struct dnet_cmd *cmd, int fd, uint64_t offset, int64_t size);
 int dnet_send_file_info_without_fd(void *state, struct dnet_cmd *cmd, const void *data, int64_t size);
 int dnet_send_file_info_ts(void *state, struct dnet_cmd *cmd, int fd,

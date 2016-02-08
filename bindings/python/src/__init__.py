@@ -27,6 +27,7 @@ from elliptics.misc import create_node
 from elliptics.config import Config
 from elliptics.log import Handler
 from elliptics.id import Id
+from elliptics import newapi
 
 __author__ = "Kirill Smorodinnikov, Evgeniy Polyakov, Ruslan Nigmatullin, Alexey Ivanov"
 __copyright__ = """2008+ Copyright (c) Evgeniy Polyakov <zbr@ioremap.net>

@@ -17,8 +17,9 @@
  * along with Elliptics.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "../../include/elliptics/result_entry.hpp"
-#include "../../include/elliptics/session.hpp"
+#include "elliptics/result_entry.hpp"
+#include "elliptics/newapi/result_entry.hpp"
+#include "elliptics/session.hpp"
 
 #include <condition_variable>
 #include <mutex>
@@ -635,6 +636,9 @@ template class async_result<index_entry>;
 template class async_result<find_indexes_result_entry>;
 template class async_result<get_index_metadata_result_entry>;
 
+template class async_result<newapi::lookup_result_entry>;
+template class async_result<newapi::read_result_entry>;
+
 template class async_result_handler<callback_result_entry>;
 template class async_result_handler<read_result_entry>;
 template class async_result_handler<lookup_result_entry>;
@@ -646,5 +650,8 @@ template class async_result_handler<iterator_result_entry>;
 template class async_result_handler<index_entry>;
 template class async_result_handler<find_indexes_result_entry>;
 template class async_result_handler<get_index_metadata_result_entry>;
+
+template class async_result_handler<newapi::lookup_result_entry>;
+template class async_result_handler<newapi::read_result_entry>;
 
 } }

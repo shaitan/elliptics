@@ -2,6 +2,7 @@
 #define DNET_IOREMAP_ELLIPTICS_CAST_HPP
 
 #include "result_entry.hpp"
+#include "newapi/result_entry.hpp"
 #include <elliptics/packet.h>
 
 namespace ioremap { namespace elliptics {
@@ -34,9 +35,18 @@ INIT_CALLBACK_TYPE(read_result_entry,
 	DNET_CMD_BULK_READ
 )
 
+INIT_CALLBACK_TYPE(newapi::read_result_entry,
+	DNET_CMD_READ_NEW
+)
+
 INIT_CALLBACK_TYPE(lookup_result_entry,
 	DNET_CMD_LOOKUP,
 	DNET_CMD_WRITE
+)
+
+INIT_CALLBACK_TYPE(newapi::lookup_result_entry,
+	DNET_CMD_LOOKUP_NEW,
+	DNET_CMD_WRITE_NEW
 )
 
 INIT_CALLBACK_TYPE(monitor_stat_result_entry,
