@@ -1,5 +1,6 @@
 usr/bin/dnet_run_servers
 usr/include/elliptics/*
+usr/include/elliptics/newapi/*
 usr/share/elliptics/cmake/*
 usr/lib/libelliptics.so
 usr/lib/libelliptics_client.so
