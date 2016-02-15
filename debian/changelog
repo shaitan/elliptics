@@ -1,3 +1,10 @@
+elliptics (2.26.10.1-interiorem~struct-1) unstable; urgency=low
+
+  * add new headers to elliptics-dev package
+  * updated protocol
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Mon, 15 Feb 2016 19:44:21 +0400
+
 elliptics (2.26.10.1-interiorem~struct) unstable; urgency=low
 
   * fixed trans number in a result in case of timeout
