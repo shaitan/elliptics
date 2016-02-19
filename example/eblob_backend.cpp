@@ -194,10 +194,10 @@ int blob_file_info_new(eblob_backend_config *c, void *state, dnet_cmd *cmd) {
 	return 0;
 }
 
-int blob_read_new(struct eblob_backend_config *c, void *state, struct dnet_cmd *cmd, void *data) {
+int blob_read_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *data) {
 	using namespace ioremap::elliptics;
 
-	struct eblob_backend *b = c->eblob;
+	eblob_backend *b = c->eblob;
 
 	auto request = [&data, &cmd] () {
 		dnet_read_request request;
@@ -232,6 +232,8 @@ int blob_read_new(struct eblob_backend_config *c, void *state, struct dnet_cmd *
 	dnet_json_header jhdr;
 	memset(&jhdr, 0, sizeof(jhdr));
 
+	uint64_t record_offset = 0;
+
 	if (wc.flags & BLOB_DISK_CTL_EXTHDR) {
 		if (wc.total_data_size < sizeof(ehdr))
 			return -ERANGE;
@@ -252,11 +254,30 @@ int blob_read_new(struct eblob_backend_config *c, void *state, struct dnet_cmd *
 
 		wc.size -= sizeof(ehdr) + ehdr.size;
 		wc.data_offset += sizeof(ehdr) + ehdr.size;
+		record_offset += sizeof(ehdr) + ehdr.size;
 	}
 
 	data_pointer json;
 
+	auto verify_checksum = [&, wc] (uint64_t offset, uint64_t size) mutable {
+		if (request.ioflags & DNET_IO_FLAGS_NOCSUM)
+			return 0;
+		wc.offset = offset;
+		wc.size = size;
+		return eblob_verify_checksum(b, &key, &wc);
+	};
+
 	if (request.read_flags & DNET_READ_FLAGS_JSON && jhdr.size) {
+		err = verify_checksum(record_offset, jhdr.size);
+		if (err) {
+			dnet_backend_log(c->blog, DNET_LOG_ERROR,
+			                 "%s: EBLOB: blob-read-new: READ_NEW: failed to verify checksum for json: "
+			                 "fd: %d, offset: %" PRIu64 ", size: %" PRIu64 "%s [%d]",
+			                 dnet_dump_id(&cmd->id), wc.data_fd, wc.offset, wc.size,
+			                 strerror(-err), err);
+			return err;
+		}
+
 		json = data_pointer::allocate(jhdr.size);
 		err = dnet_read_ll(wc.data_fd, (char*)json.data(), json.size(), wc.data_offset);
 		if (err) {
@@ -267,7 +288,6 @@ int blob_read_new(struct eblob_backend_config *c, void *state, struct dnet_cmd *
 			                 wc.data_fd, wc.data_offset, json.size(), strerror(-err), err);
 			return err;
 		}
-
 	}
 
 	uint64_t data_size = 0;
@@ -277,8 +297,8 @@ int blob_read_new(struct eblob_backend_config *c, void *state, struct dnet_cmd *
 		data_size = wc.size - jhdr.capacity;
 		data_offset = wc.data_offset + jhdr.capacity;
 
-		if (request.data_offset > data_size)
-			return -ERANGE;
+		if (request.data_offset >= data_size)
+			return -E2BIG;
 
 		data_size -= request.data_offset;
 		data_offset += request.data_offset;
@@ -286,6 +306,16 @@ int blob_read_new(struct eblob_backend_config *c, void *state, struct dnet_cmd *
 		if (request.data_size != 0 &&
 		    request.data_size < data_size)
 			data_size = request.data_size;
+	}
+
+	err = verify_checksum(record_offset + jhdr.capacity, data_size);
+	if (err) {
+		dnet_backend_log(c->blog, DNET_LOG_ERROR,
+		                 "%s: EBLOB: blob-read-new: READ_NEW: failed to verify checksum for data: "
+		                 "offset: %" PRIu64 ", size: %" PRIu64 "%s [%d]",
+		                 dnet_dump_id(&cmd->id), request.data_offset, request.data_offset,
+		                 strerror(-err), err);
+		return err;
 	}
 
 	auto header = serialize(dnet_read_response{
