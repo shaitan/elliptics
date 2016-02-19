@@ -1,3 +1,9 @@
+elliptics (2.26.10.1-interiorem~struct-2) unstable; urgency=low
+
+  * verify checksum of json and/or data before read.
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Fri, 19 Feb 2016 23:57:49 +0400
+
 elliptics (2.26.10.1-interiorem~struct-1) unstable; urgency=low
 
   * add new headers to elliptics-dev package
