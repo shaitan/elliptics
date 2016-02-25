@@ -32,6 +32,17 @@
 #include "rapidjson/writer.h"
 #include "rapidjson/stringbuffer.h"
 
+static int dnet_get_filename(int fd, std::string &filename) {
+	char *name = NULL;
+	int len = dnet_fd_readlink(fd, &name);
+	if (len < 0) {
+		return len;
+	}
+	filename.assign(name, len - 1); // len includes 0-byte
+	free(name);
+	return 0;
+}
+
 int dnet_blob_config_to_json(struct dnet_config_backend *b, char **json_stat, size_t *size) {
 	struct eblob_backend_config *c = static_cast<struct eblob_backend_config *>(b->data);
 	int err = 0;
@@ -118,19 +129,11 @@ int blob_file_info_new(eblob_backend_config *c, void *state, dnet_cmd *cmd) {
 	}
 
 	std::string filename;
-	err = [&] () {
-		char *name = NULL;
-		int len = dnet_fd_readlink(wc.data_fd, &name);
-		if (len < 0) {
-			return len;
-		}
-		filename.assign(name, len);
-		return 0;
-	} ();
+	err = dnet_get_filename(wc.data_fd, filename);
 
 	if (err) {
 		dnet_backend_log(c->blog, DNET_LOG_ERROR,
-		                 "%s: EBLOB: blob-file-info-new: dnet_fd_readlink: fd: %d:  failed: %s [%d]",
+		                 "%s: EBLOB: blob-file-info-new: dnet_get_filename: fd: %d:  failed: %s [%d]",
 		                 dnet_dump_id(&cmd->id), wc.data_fd, strerror(-err), err);
 		return err;
 	}
@@ -507,19 +510,10 @@ int blob_write_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *da
 	}
 
 	std::string filename;
-	err = [&] () {
-		char *name = NULL;
-		int len = dnet_fd_readlink(wc.data_fd, &name);
-		if (len < 0) {
-			return len;
-		}
-		filename.assign(name, len);
-		return 0;
-	} ();
-
+	err = dnet_get_filename(wc.data_fd, filename);
 	if (err) {
 		dnet_backend_log(c->blog, DNET_LOG_ERROR,
-		                 "%s: EBLOB: blob-write-new: dnet_fd_readlink: fd: %d:  failed: %s [%d]",
+		                 "%s: EBLOB: blob-write-new: dnet_get_filename: fd: %d:  failed: %s [%d]",
 		                 dnet_dump_id(&cmd->id), wc.data_fd, strerror(-err), err);
 		return err;
 	}
