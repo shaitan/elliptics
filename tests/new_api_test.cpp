@@ -1,5 +1,7 @@
 #include "test_base.hpp"
 
+#include <fstream>
+
 #include <eblob/blob.h>
 
 #define BOOST_TEST_NO_MAIN
@@ -78,7 +80,23 @@ void test_write(const record &record) {
 		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.data_timestamp, &record.timestamp), 0);
 		BOOST_REQUIRE_EQUAL(info.data_offset, info.json_offset + record.json_capacity);
 		BOOST_REQUIRE_EQUAL(info.data_size, record.data.size());
-		// BOOST_REQUIRE_EQUAL(info.data_capacity, data_capacity);
+
+		std::ifstream blob(result.path(), std::ifstream::binary);
+		BOOST_REQUIRE(blob);
+		{
+			blob.seekg(info.json_offset);
+			auto buffer = ioremap::elliptics::data_pointer::allocate(record.json.size());
+			blob.read(buffer.data<char>(), buffer.size());
+			BOOST_REQUIRE(blob);
+			BOOST_REQUIRE_EQUAL(buffer.to_string(), record.json);
+		} {
+			blob.seekg(info.data_offset);
+			auto buffer = ioremap::elliptics::data_pointer::allocate(record.data.size());
+			blob.read(buffer.data<char>(), buffer.size());
+			BOOST_REQUIRE(blob);
+			BOOST_REQUIRE_EQUAL(buffer.to_string(), record.data);
+		}
+
 		++count;
 	}
 
