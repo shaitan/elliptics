@@ -34,11 +34,10 @@
 
 static int dnet_get_filename(int fd, std::string &filename) {
 	char *name = NULL;
-	int len = dnet_fd_readlink(fd, &name);
-	if (len < 0) {
-		return len;
-	}
-	filename.assign(name, len - 1); // len includes 0-byte
+	if (const int err = dnet_fd_readlink(fd, &name) < 0)
+		return err;
+
+	filename.assign(name);
 	free(name);
 	return 0;
 }
