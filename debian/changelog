@@ -1,3 +1,10 @@
+elliptics (2.26.10.1-interiorem~struct-3) unstable; urgency=low
+
+  * Wrap dnet_fd_readlink by dnet_get_filename.
+  * Fix memoryleak and extra 0-byte in the filename.
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Thu, 25 Feb 2016 19:07:56 +0400
+
 elliptics (2.26.10.1-interiorem~struct-2) unstable; urgency=low
 
   * verify checksum of json and/or data before read.
