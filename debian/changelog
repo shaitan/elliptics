@@ -1,3 +1,9 @@
+elliptics (2.26.10.1-interiorem~struct-4) unstable; urgency=low
+
+  * Add missed implementation for newapi::session::operator =
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Thu, 25 Feb 2016 21:03:00 +0400
+
 elliptics (2.26.10.1-interiorem~struct-3) unstable; urgency=low
 
   * Wrap dnet_fd_readlink by dnet_get_filename.
