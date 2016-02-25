@@ -34,6 +34,11 @@ session session::clean_clone() const {
 	return session(elliptics::session::clean_clone());
 }
 
+session &session::operator =(const session &other) {
+	elliptics::session::operator =(other);
+	return *this;
+}
+
 class lookup_handler: public multigroup_handler<lookup_handler, lookup_result_entry> {
 public:
 	lookup_handler(const session &s, const async_lookup_result &result,
