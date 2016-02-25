@@ -160,7 +160,7 @@ enum dnet_backend_defrag_level {
 /* Transaction is about to be destroyed */
 #define DNET_FLAGS_DESTROY		(1<<2)
 
-/* Do not forward requst to antoher node even if given ID does not belong to our range */
+/* Do not forward requst to another node even if given ID does not belong to our range */
 #define DNET_FLAGS_DIRECT		(1<<3)
 
 /* Do not locks operations - must be set for script callers or recursive operations */
