@@ -20,7 +20,7 @@ public:
 	~lookup_result_entry() = default;
 
 	std::string path() const;
-	dnet_record_info info() const;
+	dnet_record_info record_info() const;
 };
 
 class read_result_entry : public callback_result_entry {
@@ -28,7 +28,8 @@ public:
 	read_result_entry() = default;
 	~read_result_entry() = default;
 
-	dnet_record_info info() const;
+	dnet_record_info record_info() const;
+
 	data_pointer json() const;
 	data_pointer data() const;
 };

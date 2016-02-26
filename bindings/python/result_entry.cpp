@@ -299,39 +299,39 @@ std::string lookup_result_get_path(const newapi::lookup_result_entry &result) {
 }
 
 uint64_t lookup_result_get_record_flags(const newapi::lookup_result_entry &result) {
-	return result.info().record_flags;
+	return result.record_info().record_flags;
 }
 
 uint64_t lookup_result_get_user_flags(const newapi::lookup_result_entry &result) {
-	return result.info().user_flags;
+	return result.record_info().user_flags;
 }
 
 elliptics_time lookup_result_get_json_timestamp(const newapi::lookup_result_entry &result) {
-	return elliptics_time{result.info().json_timestamp};
+	return elliptics_time{result.record_info().json_timestamp};
 }
 
 uint64_t lookup_result_get_json_offset(const newapi::lookup_result_entry &result) {
-	return result.info().json_offset;
+	return result.record_info().json_offset;
 }
 
 uint64_t lookup_result_get_json_size(const newapi::lookup_result_entry &result) {
-	return result.info().json_size;
+	return result.record_info().json_size;
 }
 
 uint64_t lookup_result_get_json_capacity(const newapi::lookup_result_entry &result) {
-	return result.info().json_capacity;
+	return result.record_info().json_capacity;
 }
 
 elliptics_time lookup_result_get_data_timestamp(const newapi::lookup_result_entry &result) {
-	return elliptics_time{result.info().data_timestamp};
+	return elliptics_time{result.record_info().data_timestamp};
 }
 
 uint64_t lookup_result_get_data_offset(const newapi::lookup_result_entry &result) {
-	return result.info().data_offset;
+	return result.record_info().data_offset;
 }
 
 uint64_t lookup_result_get_data_size(const newapi::lookup_result_entry &result) {
-	return result.info().data_size;
+	return result.record_info().data_size;
 }
 
 std::string read_result_get_json(const newapi::read_result_entry &result) {
@@ -343,31 +343,31 @@ std::string read_result_get_data(const newapi::read_result_entry &result) {
 }
 
 uint64_t read_result_get_record_flags(const newapi::read_result_entry &result) {
-	return result.info().record_flags;
+	return result.record_info().record_flags;
 }
 
 uint64_t read_result_get_user_flags(const newapi::read_result_entry &result) {
-	return result.info().user_flags;
+	return result.record_info().user_flags;
 }
 
 elliptics_time read_result_get_json_timestamp(const newapi::read_result_entry &result) {
-	return elliptics_time{result.info().json_timestamp};
+	return elliptics_time{result.record_info().json_timestamp};
 }
 
 uint64_t read_result_get_json_capacity(const newapi::read_result_entry &result) {
-	return result.info().json_capacity;
+	return result.record_info().json_capacity;
 }
 
 uint64_t read_result_get_json_size(const newapi::read_result_entry &result) {
-	return result.info().json_size;
+	return result.record_info().json_size;
 }
 
 elliptics_time read_result_get_data_timestamp(const newapi::read_result_entry &result) {
-	return elliptics_time{result.info().data_timestamp};
+	return elliptics_time{result.record_info().data_timestamp};
 }
 
 uint64_t read_result_get_data_size(const newapi::read_result_entry &result) {
-	return result.info().data_size;
+	return result.record_info().data_size;
 }
 
 } /* unnamed namespace */

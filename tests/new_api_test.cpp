@@ -59,31 +59,31 @@ void check_lookup_result(ioremap::elliptics::newapi::async_lookup_result &async,
 		BOOST_REQUIRE_EQUAL(result.error().code(), 0);
 		BOOST_REQUIRE_EQUAL(result.error().message(), "");
 
-		auto info = result.info();
+		auto record_info = result.record_info();
 
-		BOOST_REQUIRE_EQUAL(info.user_flags, record.user_flags);
-		BOOST_REQUIRE_EQUAL(info.record_flags, DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM);
+		BOOST_REQUIRE_EQUAL(record_info.user_flags, record.user_flags);
+		BOOST_REQUIRE_EQUAL(record_info.record_flags, DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM);
 
-		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.json_timestamp, &record.timestamp), 0);
+		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.json_timestamp, &record.timestamp), 0);
 		constexpr uint64_t eblob_headers_size = sizeof(eblob_disk_control) + sizeof(dnet_ext_list_hdr);
-		BOOST_REQUIRE(info.json_offset >= eblob_headers_size);
-		BOOST_REQUIRE_EQUAL(info.json_size, record.json.size());
-		BOOST_REQUIRE_EQUAL(info.json_capacity, record.json_capacity);
+		BOOST_REQUIRE(record_info.json_offset >= eblob_headers_size);
+		BOOST_REQUIRE_EQUAL(record_info.json_size, record.json.size());
+		BOOST_REQUIRE_EQUAL(record_info.json_capacity, record.json_capacity);
 
-		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.data_timestamp, &record.timestamp), 0);
-		BOOST_REQUIRE_EQUAL(info.data_offset, info.json_offset + record.json_capacity);
-		BOOST_REQUIRE_EQUAL(info.data_size, record.data.size());
+		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.data_timestamp, &record.timestamp), 0);
+		BOOST_REQUIRE_EQUAL(record_info.data_offset, record_info.json_offset + record.json_capacity);
+		BOOST_REQUIRE_EQUAL(record_info.data_size, record.data.size());
 
 		std::ifstream blob(result.path(), std::ifstream::binary);
 		BOOST_REQUIRE(blob);
 		{
-			blob.seekg(info.json_offset);
+			blob.seekg(record_info.json_offset);
 			auto buffer = ioremap::elliptics::data_pointer::allocate(record.json.size());
 			blob.read(buffer.data<char>(), buffer.size());
 			BOOST_REQUIRE(blob);
 			BOOST_REQUIRE_EQUAL(buffer.to_string(), record.json);
 		} {
-			blob.seekg(info.data_offset);
+			blob.seekg(record_info.data_offset);
 			auto buffer = ioremap::elliptics::data_pointer::allocate(record.data.size());
 			blob.read(buffer.data<char>(), buffer.size());
 			BOOST_REQUIRE(blob);
@@ -135,7 +135,7 @@ void test_read_json(const record &record) {
 			BOOST_REQUIRE_EQUAL(result.error().code(), 0);
 			BOOST_REQUIRE_EQUAL(result.error().message(), "");
 
-			auto info = result.info();
+			auto info = result.record_info();
 
 			BOOST_REQUIRE_EQUAL(info.user_flags, record.user_flags);
 			BOOST_REQUIRE_EQUAL(info.record_flags, DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM);
@@ -175,22 +175,23 @@ void test_read_data(const record &record, uint64_t offset, uint64_t size) {
 			BOOST_REQUIRE_EQUAL(result.error().code(), 0);
 			BOOST_REQUIRE_EQUAL(result.error().message(), "");
 
-			auto info = result.info();
+			auto record_info = result.record_info();
 
-			BOOST_REQUIRE_EQUAL(info.user_flags, record.user_flags);
-			BOOST_REQUIRE_EQUAL(info.record_flags, DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM);
+			BOOST_REQUIRE_EQUAL(record_info.user_flags, record.user_flags);
+			BOOST_REQUIRE_EQUAL(record_info.record_flags, DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM);
 
-			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.json_timestamp, &record.timestamp), 0);
-			BOOST_REQUIRE_EQUAL(info.json_offset, 0);
-			BOOST_REQUIRE_EQUAL(info.json_size, record.json.size());
-			BOOST_REQUIRE_EQUAL(info.json_capacity, record.json_capacity);
+			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.json_timestamp, &record.timestamp), 0);
+			BOOST_REQUIRE_EQUAL(record_info.json_offset, 0);
+			BOOST_REQUIRE_EQUAL(record_info.json_size, record.json.size());
+			BOOST_REQUIRE_EQUAL(record_info.json_capacity, record.json_capacity);
 
-			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.data_timestamp, &record.timestamp), 0);
-			BOOST_REQUIRE_EQUAL(info.data_offset, 0);
-			BOOST_REQUIRE_EQUAL(info.data_size, record.data.size());
+			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.data_timestamp, &record.timestamp), 0);
+			BOOST_REQUIRE_EQUAL(record_info.data_offset, 0);
+			BOOST_REQUIRE_EQUAL(record_info.data_size, record.data.size());
 
 			BOOST_REQUIRE(result.json().empty());
-			BOOST_REQUIRE_EQUAL(result.data().to_string(), record.data.substr(offset, size ? size : std::string::npos));
+			auto data_part = record.data.substr(offset, size ? size : std::string::npos);
+			BOOST_REQUIRE_EQUAL(result.data().to_string(), data_part);
 
 			++count;
 		}
@@ -215,22 +216,23 @@ void test_read(const record &record, uint64_t offset, uint64_t size) {
 			BOOST_REQUIRE_EQUAL(result.error().code(), 0);
 			BOOST_REQUIRE_EQUAL(result.error().message(), "");
 
-			auto info = result.info();
+			auto record_info = result.record_info();
 
-			BOOST_REQUIRE_EQUAL(info.user_flags, record.user_flags);
-			BOOST_REQUIRE_EQUAL(info.record_flags, DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM);
+			BOOST_REQUIRE_EQUAL(record_info.user_flags, record.user_flags);
+			BOOST_REQUIRE_EQUAL(record_info.record_flags, DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM);
 
-			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.json_timestamp, &record.timestamp), 0);
-			BOOST_REQUIRE_EQUAL(info.json_offset, 0);
-			BOOST_REQUIRE_EQUAL(info.json_size, record.json.size());
-			BOOST_REQUIRE_EQUAL(info.json_capacity, record.json_capacity);
+			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.json_timestamp, &record.timestamp), 0);
+			BOOST_REQUIRE_EQUAL(record_info.json_offset, 0);
+			BOOST_REQUIRE_EQUAL(record_info.json_size, record.json.size());
+			BOOST_REQUIRE_EQUAL(record_info.json_capacity, record.json_capacity);
 
-			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.data_timestamp, &record.timestamp), 0);
-			BOOST_REQUIRE_EQUAL(info.data_offset, 0);
-			BOOST_REQUIRE_EQUAL(info.data_size, record.data.size());
+			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.data_timestamp, &record.timestamp), 0);
+			BOOST_REQUIRE_EQUAL(record_info.data_offset, 0);
+			BOOST_REQUIRE_EQUAL(record_info.data_size, record.data.size());
 
 			BOOST_REQUIRE_EQUAL(result.json().to_string(), record.json);
-			BOOST_REQUIRE_EQUAL(result.data().to_string(), record.data.substr(offset, size ? size : std::string::npos));
+			auto data_part = record.data.substr(offset, size ? size : std::string::npos);
+			BOOST_REQUIRE_EQUAL(result.data().to_string(), data_part);
 
 			++count;
 		}
@@ -257,20 +259,20 @@ void test_write_chunked(const record &record) {
 		BOOST_REQUIRE_EQUAL(result.error().code(), 0);
 		BOOST_REQUIRE_EQUAL(result.error().message(), "");
 
-		auto info = result.info();
+		auto record_info = result.record_info();
 
-		BOOST_REQUIRE_EQUAL(info.user_flags, record.user_flags);
-		BOOST_REQUIRE_EQUAL(info.record_flags, DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM | DNET_RECORD_FLAGS_UNCOMMITTED);
+		BOOST_REQUIRE_EQUAL(record_info.user_flags, record.user_flags);
+		BOOST_REQUIRE_EQUAL(record_info.record_flags, DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM | DNET_RECORD_FLAGS_UNCOMMITTED);
 
-		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.json_timestamp, &record.timestamp), 0);
+		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.json_timestamp, &record.timestamp), 0);
 		constexpr uint64_t eblob_headers_size = sizeof(eblob_disk_control) + sizeof(dnet_ext_list_hdr);
-		BOOST_REQUIRE(info.json_offset >= eblob_headers_size);
-		BOOST_REQUIRE_EQUAL(info.json_size, 0);
-		BOOST_REQUIRE_EQUAL(info.json_capacity, record.json_capacity);
+		BOOST_REQUIRE(record_info.json_offset >= eblob_headers_size);
+		BOOST_REQUIRE_EQUAL(record_info.json_size, 0);
+		BOOST_REQUIRE_EQUAL(record_info.json_capacity, record.json_capacity);
 
-		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.data_timestamp, &record.timestamp), 0);
-		BOOST_REQUIRE_EQUAL(info.data_offset, info.json_offset + record.json_capacity);
-		BOOST_REQUIRE_EQUAL(info.data_size, 0);
+		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.data_timestamp, &record.timestamp), 0);
+		BOOST_REQUIRE_EQUAL(record_info.data_offset, record_info.json_offset + record.json_capacity);
+		BOOST_REQUIRE_EQUAL(record_info.data_size, 0);
 		++count;
 	}
 	BOOST_REQUIRE_EQUAL(count, groups.size());
@@ -287,20 +289,20 @@ void test_write_chunked(const record &record) {
 		BOOST_REQUIRE_EQUAL(result.error().code(), 0);
 		BOOST_REQUIRE_EQUAL(result.error().message(), "");
 
-		auto info = result.info();
+		auto record_info = result.record_info();
 
-		BOOST_REQUIRE_EQUAL(info.user_flags, record.user_flags);
-		BOOST_REQUIRE_EQUAL(info.record_flags, DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM | DNET_RECORD_FLAGS_UNCOMMITTED);
+		BOOST_REQUIRE_EQUAL(record_info.user_flags, record.user_flags);
+		BOOST_REQUIRE_EQUAL(record_info.record_flags, DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM | DNET_RECORD_FLAGS_UNCOMMITTED);
 
-		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.json_timestamp, &record.timestamp), 0);
+		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.json_timestamp, &record.timestamp), 0);
 		constexpr uint64_t eblob_headers_size = sizeof(eblob_disk_control) + sizeof(dnet_ext_list_hdr);
-		BOOST_REQUIRE(info.json_offset >= eblob_headers_size);
-		BOOST_REQUIRE_EQUAL(info.json_size, record.json.size());
-		BOOST_REQUIRE_EQUAL(info.json_capacity, record.json_capacity);
+		BOOST_REQUIRE(record_info.json_offset >= eblob_headers_size);
+		BOOST_REQUIRE_EQUAL(record_info.json_size, record.json.size());
+		BOOST_REQUIRE_EQUAL(record_info.json_capacity, record.json_capacity);
 
-		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.data_timestamp, &record.timestamp), 0);
-		BOOST_REQUIRE_EQUAL(info.data_offset, info.json_offset + record.json_capacity);
-		BOOST_REQUIRE_EQUAL(info.data_size, 0);
+		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.data_timestamp, &record.timestamp), 0);
+		BOOST_REQUIRE_EQUAL(record_info.data_offset, record_info.json_offset + record.json_capacity);
+		BOOST_REQUIRE_EQUAL(record_info.data_size, 0);
 		++count;
 	}
 	BOOST_REQUIRE_EQUAL(count, groups.size());
@@ -317,20 +319,20 @@ void test_write_chunked(const record &record) {
 		BOOST_REQUIRE_EQUAL(result.error().code(), 0);
 		BOOST_REQUIRE_EQUAL(result.error().message(), "");
 
-		auto info = result.info();
+		auto record_info = result.record_info();
 
-		BOOST_REQUIRE_EQUAL(info.user_flags, record.user_flags);
-		BOOST_REQUIRE_EQUAL(info.record_flags, DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM | DNET_RECORD_FLAGS_UNCOMMITTED);
+		BOOST_REQUIRE_EQUAL(record_info.user_flags, record.user_flags);
+		BOOST_REQUIRE_EQUAL(record_info.record_flags, DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM | DNET_RECORD_FLAGS_UNCOMMITTED);
 
-		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.json_timestamp, &record.timestamp), 0);
+		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.json_timestamp, &record.timestamp), 0);
 		constexpr uint64_t eblob_headers_size = sizeof(eblob_disk_control) + sizeof(dnet_ext_list_hdr);
-		BOOST_REQUIRE(info.json_offset >= eblob_headers_size);
-		BOOST_REQUIRE_EQUAL(info.json_size, record.json.size());
-		BOOST_REQUIRE_EQUAL(info.json_capacity, record.json_capacity);
+		BOOST_REQUIRE(record_info.json_offset >= eblob_headers_size);
+		BOOST_REQUIRE_EQUAL(record_info.json_size, record.json.size());
+		BOOST_REQUIRE_EQUAL(record_info.json_capacity, record.json_capacity);
 
-		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.data_timestamp, &record.timestamp), 0);
-		BOOST_REQUIRE_EQUAL(info.data_offset, info.json_offset + record.json_capacity);
-		BOOST_REQUIRE_EQUAL(info.data_size, 0);
+		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.data_timestamp, &record.timestamp), 0);
+		BOOST_REQUIRE_EQUAL(record_info.data_offset, record_info.json_offset + record.json_capacity);
+		BOOST_REQUIRE_EQUAL(record_info.data_size, 0);
 		++count;
 	}
 	BOOST_REQUIRE_EQUAL(count, groups.size());
@@ -347,20 +349,20 @@ void test_write_chunked(const record &record) {
 		BOOST_REQUIRE_EQUAL(result.error().code(), 0);
 		BOOST_REQUIRE_EQUAL(result.error().message(), "");
 
-		auto info = result.info();
+		auto record_info = result.record_info();
 
-		BOOST_REQUIRE_EQUAL(info.user_flags, record.user_flags);
-		BOOST_REQUIRE_EQUAL(info.record_flags, DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM);
+		BOOST_REQUIRE_EQUAL(record_info.user_flags, record.user_flags);
+		BOOST_REQUIRE_EQUAL(record_info.record_flags, DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM);
 
-		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.json_timestamp, &record.timestamp), 0);
+		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.json_timestamp, &record.timestamp), 0);
 		constexpr uint64_t eblob_headers_size = sizeof(eblob_disk_control) + sizeof(dnet_ext_list_hdr);
-		BOOST_REQUIRE(info.json_offset >= eblob_headers_size);
-		BOOST_REQUIRE_EQUAL(info.json_size, record.json.size());
-		BOOST_REQUIRE_EQUAL(info.json_capacity, record.json_capacity);
+		BOOST_REQUIRE(record_info.json_offset >= eblob_headers_size);
+		BOOST_REQUIRE_EQUAL(record_info.json_size, record.json.size());
+		BOOST_REQUIRE_EQUAL(record_info.json_capacity, record.json_capacity);
 
-		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.data_timestamp, &record.timestamp), 0);
-		BOOST_REQUIRE_EQUAL(info.data_offset, info.json_offset + record.json_capacity);
-		BOOST_REQUIRE_EQUAL(info.data_size, 3*record.data.size());
+		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.data_timestamp, &record.timestamp), 0);
+		BOOST_REQUIRE_EQUAL(record_info.data_offset, record_info.json_offset + record.json_capacity);
+		BOOST_REQUIRE_EQUAL(record_info.data_size, 3*record.data.size());
 		++count;
 	}
 	BOOST_REQUIRE_EQUAL(count, groups.size());
@@ -386,13 +388,13 @@ void test_old_write_new_read_compatibility() {
 		for (const auto &result: async) {
 			(void)result.storage_address();
 
-			auto info = result.file_info();
-			BOOST_REQUIRE(info != nullptr);
+			auto file_info = result.file_info();
+			BOOST_REQUIRE(file_info != nullptr);
 
-			BOOST_REQUIRE_EQUAL(info->record_flags, record_flags);
-			BOOST_REQUIRE_EQUAL(info->size, data.size());
-			BOOST_REQUIRE(info->offset >= eblob_headers_size);
-			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info->mtime, &timestamp), 0);
+			BOOST_REQUIRE_EQUAL(file_info->record_flags, record_flags);
+			BOOST_REQUIRE_EQUAL(file_info->size, data.size());
+			BOOST_REQUIRE(file_info->offset >= eblob_headers_size);
+			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&file_info->mtime, &timestamp), 0);
 			++count;
 		}
 
@@ -409,19 +411,19 @@ void test_old_write_new_read_compatibility() {
 		for (const auto &result: async) {
 			(void)result.address();
 
-			auto info = result.info();
+			auto record_info = result.record_info();
 
-			BOOST_REQUIRE_EQUAL(info.user_flags, user_flags);
-			BOOST_REQUIRE_EQUAL(info.record_flags, record_flags);
+			BOOST_REQUIRE_EQUAL(record_info.user_flags, user_flags);
+			BOOST_REQUIRE_EQUAL(record_info.record_flags, record_flags);
 
-			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.json_timestamp, &empty_time), 0);
-			BOOST_REQUIRE(info.json_offset >= eblob_headers_size);
-			BOOST_REQUIRE_EQUAL(info.json_size, 0);
-			BOOST_REQUIRE_EQUAL(info.json_capacity, 0);
+			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.json_timestamp, &empty_time), 0);
+			BOOST_REQUIRE(record_info.json_offset >= eblob_headers_size);
+			BOOST_REQUIRE_EQUAL(record_info.json_size, 0);
+			BOOST_REQUIRE_EQUAL(record_info.json_capacity, 0);
 
-			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.data_timestamp, &timestamp), 0);
-			BOOST_REQUIRE_EQUAL(info.data_offset, info.json_offset);
-			BOOST_REQUIRE_EQUAL(info.data_size, data.size());
+			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.data_timestamp, &timestamp), 0);
+			BOOST_REQUIRE_EQUAL(record_info.data_offset, record_info.json_offset);
+			BOOST_REQUIRE_EQUAL(record_info.data_size, data.size());
 
 			++count;
 		}
@@ -439,19 +441,19 @@ void test_old_write_new_read_compatibility() {
 		for (const auto &result: async) {
 			(void)result.address();
 
-			auto info = result.info();
+			auto record_info = result.record_info();
 
-			BOOST_REQUIRE_EQUAL(info.user_flags, user_flags);
-			BOOST_REQUIRE_EQUAL(info.record_flags, record_flags);
+			BOOST_REQUIRE_EQUAL(record_info.user_flags, user_flags);
+			BOOST_REQUIRE_EQUAL(record_info.record_flags, record_flags);
 
-			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.json_timestamp, &empty_time), 0);
-			BOOST_REQUIRE_EQUAL(info.json_offset, 0);
-			BOOST_REQUIRE_EQUAL(info.json_size, 0);
-			BOOST_REQUIRE_EQUAL(info.json_capacity, 0);
+			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.json_timestamp, &empty_time), 0);
+			BOOST_REQUIRE_EQUAL(record_info.json_offset, 0);
+			BOOST_REQUIRE_EQUAL(record_info.json_size, 0);
+			BOOST_REQUIRE_EQUAL(record_info.json_capacity, 0);
 
-			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.data_timestamp, &timestamp), 0);
-			BOOST_REQUIRE_EQUAL(info.data_offset, 0);
-			BOOST_REQUIRE_EQUAL(info.data_size, data.size());
+			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.data_timestamp, &timestamp), 0);
+			BOOST_REQUIRE_EQUAL(record_info.data_offset, 0);
+			BOOST_REQUIRE_EQUAL(record_info.data_size, data.size());
 
 			BOOST_REQUIRE(result.json().empty());
 			BOOST_REQUIRE(result.data().empty());
@@ -476,19 +478,19 @@ void test_old_write_new_read_compatibility() {
 			BOOST_REQUIRE_EQUAL(result.error().code(), 0);
 			BOOST_REQUIRE_EQUAL(result.error().message(), "");
 
-			auto info = result.info();
+			auto record_info = result.record_info();
 
-			BOOST_REQUIRE_EQUAL(info.user_flags, user_flags);
-			BOOST_REQUIRE_EQUAL(info.record_flags, record_flags);
+			BOOST_REQUIRE_EQUAL(record_info.user_flags, user_flags);
+			BOOST_REQUIRE_EQUAL(record_info.record_flags, record_flags);
 
-			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.json_timestamp, &empty_time), 0);
-			BOOST_REQUIRE_EQUAL(info.json_offset, 0);
-			BOOST_REQUIRE_EQUAL(info.json_size, 0);
-			BOOST_REQUIRE_EQUAL(info.json_capacity, 0);
+			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.json_timestamp, &empty_time), 0);
+			BOOST_REQUIRE_EQUAL(record_info.json_offset, 0);
+			BOOST_REQUIRE_EQUAL(record_info.json_size, 0);
+			BOOST_REQUIRE_EQUAL(record_info.json_capacity, 0);
 
-			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.data_timestamp, &timestamp), 0);
-			BOOST_REQUIRE_EQUAL(info.data_offset, 0);
-			BOOST_REQUIRE_EQUAL(info.data_size, data.size());
+			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.data_timestamp, &timestamp), 0);
+			BOOST_REQUIRE_EQUAL(record_info.data_offset, 0);
+			BOOST_REQUIRE_EQUAL(record_info.data_size, data.size());
 
 			BOOST_REQUIRE(result.json().empty());
 			BOOST_REQUIRE_EQUAL(result.data().to_string(), data);
@@ -529,20 +531,19 @@ void test_new_write_old_read_compatibility() {
 			BOOST_REQUIRE_EQUAL(result.error().code(), 0);
 			BOOST_REQUIRE_EQUAL(result.error().message(), "");
 
-			auto info = result.info();
+			auto record_info = result.record_info();
 
-			BOOST_REQUIRE_EQUAL(info.user_flags, user_flags);
-			BOOST_REQUIRE_EQUAL(info.record_flags, record_flags);
+			BOOST_REQUIRE_EQUAL(record_info.user_flags, user_flags);
+			BOOST_REQUIRE_EQUAL(record_info.record_flags, record_flags);
 
-			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.json_timestamp, &timestamp), 0);
-			BOOST_REQUIRE(info.json_offset >= eblob_headers_size);
-			BOOST_REQUIRE_EQUAL(info.json_size, json.size());
-			BOOST_REQUIRE_EQUAL(info.json_capacity, json_capacity);
+			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.json_timestamp, &timestamp), 0);
+			BOOST_REQUIRE(record_info.json_offset >= eblob_headers_size);
+			BOOST_REQUIRE_EQUAL(record_info.json_size, json.size());
+			BOOST_REQUIRE_EQUAL(record_info.json_capacity, json_capacity);
 
-			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.data_timestamp, &timestamp), 0);
-			BOOST_REQUIRE_EQUAL(info.data_offset, info.json_offset + json_capacity);
-			BOOST_REQUIRE_EQUAL(info.data_size, data.size());
-			// BOOST_REQUIRE_EQUAL(info.data_capacity, data_capacity);
+			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.data_timestamp, &timestamp), 0);
+			BOOST_REQUIRE_EQUAL(record_info.data_offset, record_info.json_offset + json_capacity);
+			BOOST_REQUIRE_EQUAL(record_info.data_size, data.size());
 			++count;
 		}
 
@@ -559,13 +560,13 @@ void test_new_write_old_read_compatibility() {
 		for (const auto &result: async) {
 			(void)result.storage_address();
 
-			auto info = result.file_info();
-			BOOST_REQUIRE(info != nullptr);
+			auto file_info = result.file_info();
+			BOOST_REQUIRE(file_info != nullptr);
 
-			BOOST_REQUIRE_EQUAL(info->record_flags, record_flags);
-			BOOST_REQUIRE_EQUAL(info->size, data.size());
-			BOOST_REQUIRE(info->offset >= eblob_headers_size);
-			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info->mtime, &timestamp), 0);
+			BOOST_REQUIRE_EQUAL(file_info->record_flags, record_flags);
+			BOOST_REQUIRE_EQUAL(file_info->size, data.size());
+			BOOST_REQUIRE(file_info->offset >= eblob_headers_size);
+			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&file_info->mtime, &timestamp), 0);
 
 			++count;
 		}
@@ -640,19 +641,19 @@ void test_read(ioremap::elliptics::newapi::session &s) {
 			BOOST_REQUIRE_EQUAL(result.error().code(), 0);
 			BOOST_REQUIRE_EQUAL(result.error().message(), "");
 
-			auto info = result.info();
+			auto record_info = result.record_info();
 
-			BOOST_REQUIRE_EQUAL(info.user_flags, record.user_flags);
-			BOOST_REQUIRE_EQUAL(info.record_flags, DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM);
+			BOOST_REQUIRE_EQUAL(record_info.user_flags, record.user_flags);
+			BOOST_REQUIRE_EQUAL(record_info.record_flags, DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM);
 
-			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.json_timestamp, &record.timestamp), 0);
-			BOOST_REQUIRE_EQUAL(info.json_offset, 0);
-			BOOST_REQUIRE_EQUAL(info.json_size, record.json.size());
-			BOOST_REQUIRE_EQUAL(info.json_capacity, record.json_capacity);
+			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.json_timestamp, &record.timestamp), 0);
+			BOOST_REQUIRE_EQUAL(record_info.json_offset, 0);
+			BOOST_REQUIRE_EQUAL(record_info.json_size, record.json.size());
+			BOOST_REQUIRE_EQUAL(record_info.json_capacity, record.json_capacity);
 
-			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.data_timestamp, &record.timestamp), 0);
-			BOOST_REQUIRE_EQUAL(info.data_offset, 0);
-			BOOST_REQUIRE_EQUAL(info.data_size, record.data.size());
+			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.data_timestamp, &record.timestamp), 0);
+			BOOST_REQUIRE_EQUAL(record_info.data_offset, 0);
+			BOOST_REQUIRE_EQUAL(record_info.data_size, record.data.size());
 
 			BOOST_REQUIRE_EQUAL(result.json().to_string(), record.json);
 			BOOST_REQUIRE_EQUAL(result.data().to_string(), record.data);
