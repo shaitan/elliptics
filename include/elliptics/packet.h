@@ -912,6 +912,13 @@ struct dnet_record_info {
 	// uint64_t	data_capacity;		/* reserved space for data */
 };
 
+struct dnet_io_info {
+	uint64_t json_size; /* size of json which has been read or written */
+
+	uint64_t data_offset; /* offset with which data part has been read or written */
+	uint64_t data_size; /* size of data part which has been read or written */
+};
+
 static inline void dnet_convert_file_info(struct dnet_file_info *info)
 {
 	info->flen = dnet_bswap32(info->flen);
