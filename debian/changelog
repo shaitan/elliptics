@@ -1,3 +1,12 @@
+elliptics (2.26.10.1-interiorem~struct-5) unstable; urgency=low
+
+  * Add new test cases which write, lookup, read record by new API with all_with_ack filter.
+  * Remove NEED_ACK flag for new commands: This eliminates double reply packets.
+  * tests: check via read sizes/offsets returned by lookup
+  * tests: check via read sizes/offsets returned by write
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Fri, 26 Feb 2016 14:25:39 +0400
+
 elliptics (2.26.10.1-interiorem~struct-4) unstable; urgency=low
 
   * Add missed implementation for newapi::session::operator =
