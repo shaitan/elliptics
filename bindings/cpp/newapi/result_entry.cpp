@@ -18,7 +18,7 @@ std::string lookup_result_entry::path() const {
 	return response.path;
 }
 
-dnet_record_info lookup_result_entry::info() const {
+dnet_record_info lookup_result_entry::record_info() const {
 	dnet_record_info info;
 	memset(&info, 0, sizeof(info));
 
@@ -42,7 +42,7 @@ dnet_record_info lookup_result_entry::info() const {
 	return info;
 }
 
-dnet_record_info read_result_entry::info() const {
+dnet_record_info read_result_entry::record_info() const {
 	dnet_record_info info;
 	memset(&info, 0, sizeof(info));
 
