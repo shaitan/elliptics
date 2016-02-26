@@ -331,7 +331,7 @@ int blob_read_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *dat
 
 		ehdr.timestamp,
 		wc.size - jhdr.capacity,
-		data_offset,
+		request.data_offset,
 		data_size,
 	});
 
