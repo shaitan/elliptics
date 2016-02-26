@@ -1,3 +1,10 @@
+elliptics (2.26.10.1-interiorem~struct-6) unstable; urgency=low
+
+  * Rename info() into record_info() in new read/lookup/write results
+  * Add io_info() to newapi::read_result_entry
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Fri, 26 Feb 2016 18:16:42 +0400
+
 elliptics (2.26.10.1-interiorem~struct-5) unstable; urgency=low
 
   * Add new test cases which write, lookup, read record by new API with all_with_ack filter.
