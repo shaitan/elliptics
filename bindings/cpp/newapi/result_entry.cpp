@@ -63,6 +63,20 @@ dnet_record_info read_result_entry::record_info() const {
 	return info;
 }
 
+dnet_io_info read_result_entry::io_info() const {
+	dnet_io_info info;
+	memset(&info, 0, sizeof(info));
+
+	dnet_read_response response;
+	deserialize(raw_data(), response);
+
+	info.json_size = response.read_json_size;
+	info.data_offset = response.read_data_offset;
+	info.data_size = response.read_data_size;
+
+	return info;
+}
+
 data_pointer read_result_entry::json() const {
 	size_t offset = 0;
 	dnet_read_response response;

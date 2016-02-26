@@ -152,6 +152,12 @@ void test_read_json(const record &record) {
 			BOOST_REQUIRE_EQUAL(result.json().to_string(), record.json);
 			BOOST_REQUIRE(result.data().empty());
 
+			auto io_info = result.io_info();
+
+			BOOST_REQUIRE_EQUAL(io_info.json_size, record.json.size());
+			BOOST_REQUIRE_EQUAL(io_info.data_offset, 0);
+			BOOST_REQUIRE_EQUAL(io_info.data_size, 0);
+
 			++count;
 		}
 	}
@@ -193,6 +199,12 @@ void test_read_data(const record &record, uint64_t offset, uint64_t size) {
 			auto data_part = record.data.substr(offset, size ? size : std::string::npos);
 			BOOST_REQUIRE_EQUAL(result.data().to_string(), data_part);
 
+			auto io_info = result.io_info();
+
+			BOOST_REQUIRE_EQUAL(io_info.json_size, 0);
+			BOOST_REQUIRE_EQUAL(io_info.data_offset, offset);
+			BOOST_REQUIRE_EQUAL(io_info.data_size, data_part.size());
+
 			++count;
 		}
 	}
@@ -233,6 +245,12 @@ void test_read(const record &record, uint64_t offset, uint64_t size) {
 			BOOST_REQUIRE_EQUAL(result.json().to_string(), record.json);
 			auto data_part = record.data.substr(offset, size ? size : std::string::npos);
 			BOOST_REQUIRE_EQUAL(result.data().to_string(), data_part);
+
+			auto io_info = result.io_info();
+
+			BOOST_REQUIRE_EQUAL(io_info.json_size, record.json.size());
+			BOOST_REQUIRE_EQUAL(io_info.data_offset, offset);
+			BOOST_REQUIRE_EQUAL(io_info.data_size, data_part.size());
 
 			++count;
 		}
@@ -458,6 +476,12 @@ void test_old_write_new_read_compatibility() {
 			BOOST_REQUIRE(result.json().empty());
 			BOOST_REQUIRE(result.data().empty());
 
+			auto io_info = result.io_info();
+
+			BOOST_REQUIRE_EQUAL(io_info.json_size, 0);
+			BOOST_REQUIRE_EQUAL(io_info.data_offset, 0);
+			BOOST_REQUIRE_EQUAL(io_info.data_size, 0);
+
 			++count;
 		}
 
@@ -494,6 +518,12 @@ void test_old_write_new_read_compatibility() {
 
 			BOOST_REQUIRE(result.json().empty());
 			BOOST_REQUIRE_EQUAL(result.data().to_string(), data);
+
+			auto io_info = result.io_info();
+
+			BOOST_REQUIRE_EQUAL(io_info.json_size, 0);
+			BOOST_REQUIRE_EQUAL(io_info.data_offset, 0);
+			BOOST_REQUIRE_EQUAL(io_info.data_size, data.size());
 
 			++count;
 		}
@@ -657,6 +687,12 @@ void test_read(ioremap::elliptics::newapi::session &s) {
 
 			BOOST_REQUIRE_EQUAL(result.json().to_string(), record.json);
 			BOOST_REQUIRE_EQUAL(result.data().to_string(), record.data);
+
+			auto io_info = result.io_info();
+
+			BOOST_REQUIRE_EQUAL(io_info.json_size, record.json.size());
+			BOOST_REQUIRE_EQUAL(io_info.data_offset, 0);
+			BOOST_REQUIRE_EQUAL(io_info.data_size, record.data.size());
 
 			++count;
 		}
