@@ -1,3 +1,9 @@
+elliptics (2.26.10.2~1) unstable; urgency=low
+
+  * bump version to v2.26.10.2~1
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Mon, 29 Feb 2016 18:28:47 +0400
+
 elliptics (2.26.10.1-x1) unstable; urgency=low
 
   * queue_timeout:
