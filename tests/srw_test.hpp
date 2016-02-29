@@ -5,6 +5,8 @@
 #include <msgpack.hpp>
 #include "test_base.hpp"
 
+#include <stdlib.h>
+
 #ifndef BOOST_REQUIRE_EQUAL
 # define BOOST_REQUIRE_EQUAL(a, b) do { \
 		if ((a) != (b)) { \

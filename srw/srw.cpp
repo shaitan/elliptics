@@ -47,8 +47,12 @@
 #include <elliptics/srw.h>
 #include <elliptics/utils.hpp>
 
-#include "cocaine-json-trait.hpp"
 #include "elliptics.h"
+
+#include "cocaine-json-trait.hpp"
+
+#include "cocaine/actor.hpp"
+#include "localnode.hpp"
 
 #define SRW_LOG(__log__, __level__, __app__, ...) \
 	BH_LOG((__log__), (__level__), __VA_ARGS__) \
@@ -345,12 +349,22 @@ class dnet_sink_t: public cocaine::logging::logger_concept_t {
 
 class srw {
 	public:
-		srw(struct dnet_node *n, const std::string &config) :
-		m_node(n),
-		m_ctx(config, blackhole::utils::make_unique<dnet_sink_t>(m_node))
+		srw(struct dnet_node *n, const std::string &config)
+			: m_node(n)
+			, m_ctx(config, blackhole::utils::make_unique<dnet_sink_t>(m_node))
 		{
 			atomic_set(&m_src_key, 1);
 
+			auto reactor = std::make_shared<cocaine::io::reactor_t>();
+			Json::Value arg;
+
+			auto service = blackhole::utils::make_unique<ioremap::elliptics::localnode>(
+				m_ctx, *reactor, "localnode", arg, m_node
+			);
+			auto service_actor = blackhole::utils::make_unique<cocaine::actor_t>(
+				m_ctx, reactor, std::move(service)
+			);
+			m_ctx.attach("localnode", std::move(service_actor));
 		}
 
 		~srw() {
@@ -592,12 +606,12 @@ class srw {
 		}
 
 	private:
-		struct dnet_node		*m_node;
-		cocaine::context_t		m_ctx;
-		std::mutex			m_lock;
-		eng_map_t			m_map;
-		jobs_map_t			m_jobs;
-		atomic_t			m_src_key;
+		struct dnet_node    *m_node;
+		cocaine::context_t  m_ctx;
+		std::mutex          m_lock;
+		eng_map_t           m_map;
+		jobs_map_t          m_jobs;
+		atomic_t            m_src_key;
 
 		std::string dnet_get_event(const struct sph *sph, const char *data) {
 			return std::string(data, sph->event_size);
