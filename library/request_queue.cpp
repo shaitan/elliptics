@@ -1,5 +1,7 @@
 #include "request_queue.h"
+#include "murmurhash.h"
 #include "monitor/measure_points.h"
+#include "example/config.hpp"
 
 
 static size_t dnet_id_hash(const dnet_id &key)
@@ -24,9 +26,10 @@ static bool dnet_raw_id_comparator(const dnet_id &lhs, const dnet_id &rhs)
 }
 
 
-dnet_request_queue::dnet_request_queue(bool has_backend)
-: m_queue_size(0),
- m_locked_keys(1, has_backend ? &dnet_raw_id_hash : &dnet_id_hash,
+dnet_request_queue::dnet_request_queue(bool has_backend, uint64_t timeout)
+: m_queue_size(0)
+, m_timeout(timeout)
+, m_locked_keys(1, has_backend ? &dnet_raw_id_hash : &dnet_id_hash,
 	       has_backend ? &dnet_raw_id_comparator : &dnet_id_comparator)
 {
 	INIT_LIST_HEAD(&m_queue);
@@ -47,6 +50,8 @@ dnet_request_queue::~dnet_request_queue()
 
 void dnet_request_queue::push_request(dnet_io_req *req)
 {
+	gettimeofday(&req->time, NULL);
+
 	{
 		std::unique_lock<std::mutex> lock(m_queue_mutex);
 		list_add_tail(&req->req_entry, &m_queue);
@@ -57,20 +62,68 @@ void dnet_request_queue::push_request(dnet_io_req *req)
 
 dnet_io_req *dnet_request_queue::pop_request(dnet_work_io *wio, const char *thread_stat_id)
 {
-	std::unique_lock<std::mutex> lock(m_queue_mutex);
+	auto r = [&, this] () -> dnet_io_req * {
+		std::unique_lock<std::mutex> lock(m_queue_mutex);
 
-	auto r = take_request(wio, thread_stat_id);
-	if (!r) {
-		m_queue_wait.wait_for(lock, std::chrono::seconds(1));
-		r = take_request(wio, thread_stat_id);
-	}
+		auto r = take_request(wio, thread_stat_id);
+		if (!r) {
+			m_queue_wait.wait_for(lock, std::chrono::seconds(1));
+			r = take_request(wio, thread_stat_id);
+		}
 
-	if (r) {
-		list_del_init(&r->req_entry);
-		--m_queue_size;
-	}
+		if (r) {
+			list_del_init(&r->req_entry);
+			--m_queue_size;
 
-	return r;
+			timeval tv;
+			gettimeofday(&tv, nullptr);
+			timersub(&tv, &r->time, &r->time);
+		}
+
+		return r;
+	} ();
+
+	if (!r)
+		return nullptr;
+
+	HANDY_COUNTER_DECREMENT("io.input.queue.size", 1);
+
+	FORMATTED(HANDY_COUNTER_DECREMENT, ("pool.%s.queue.size", thread_stat_id), 1);
+	FORMATTED(HANDY_TIMER_STOP, ("pool.%s.queue.wait_time", thread_stat_id), (uint64_t)r);
+
+	auto cmd = static_cast<dnet_cmd *>(r->header);
+	const auto expired = [&r, &cmd, this] () {
+		if (!m_timeout || (cmd->flags & DNET_FLAGS_NO_QUEUE_TIMEOUT))
+			return false;
+
+		if (r->st->__need_exit)
+			return true;
+
+		return (r->time.tv_sec * 1000000 + r->time.tv_usec) > m_timeout;
+	} ();
+
+	if (!expired)
+		return r;
+
+	FORMATTED(HANDY_COUNTER_INCREMENT, ("pool.%s.queue.dropped", thread_stat_id), 1);
+
+	dnet_node_set_trace_id(wio->pool->n->log, cmd->trace_id, cmd->flags & DNET_FLAGS_TRACE_BIT, wio->pool->io ? (ssize_t)wio->pool->io->backend_id : (ssize_t)-1);
+	dnet_log(wio->pool->n, DNET_LOG_ERROR,
+	         "%s: %s: client: %s: drop request: trans: %llu, cflags: %s, queue_time: %ld usecs, "
+	         "timeout: %ld usecs, need_exit: %d",
+	         dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), dnet_state_dump_addr(r->st),
+	         (unsigned long long)cmd->trans, dnet_flags_dump_cflags(cmd->flags), (unsigned long)(r->time.tv_sec * 1000000 + r->time.tv_usec),
+	         m_timeout, r->st->__need_exit);
+	dnet_node_unset_trace_id();
+
+	pthread_cond_broadcast(&wio->pool->n->io->full_wait);
+
+	auto st = r->st;
+	release_request(r);
+	dnet_io_req_free(r);
+	dnet_state_put(st);
+
+	return nullptr;
 }
 
 dnet_io_req *dnet_request_queue::take_request(dnet_work_io *wio, const char *thread_stat_id)
@@ -234,9 +287,8 @@ void dnet_request_queue::put_lock_entry(dnet_locks_entry *entry)
 	m_lock_pool.push_back(entry);
 }
 
-void dnet_request_queue::get_list_stats(list_stat *stats) const
-{
-	stats->list_size = m_queue_size;
+size_t dnet_request_queue::size() const {
+	return m_queue_size;
 }
 
 
@@ -273,15 +325,14 @@ void dnet_opunlock(struct dnet_backend_io *backend, const struct dnet_id *id)
 	queue->unlock_key(id);
 }
 
-void dnet_get_pool_list_stats(struct dnet_work_pool *pool, struct list_stat *stats)
-{
+size_t dnet_get_pool_queue_size(struct dnet_work_pool *pool) {
 	auto queue = reinterpret_cast<dnet_request_queue*>(pool->request_queue);
-	queue->get_list_stats(stats);
+	return queue->size();
 }
 
-void *dnet_request_queue_create(int has_backend)
-{
-	return new(std::nothrow) dnet_request_queue(has_backend != 0);
+void *dnet_request_queue_create(dnet_node *n, int has_backend) {
+	const auto data = static_cast<const ioremap::elliptics::config::config_data *>(n->config_data);
+	return new(std::nothrow) dnet_request_queue(has_backend != 0, data ? data->queue_timeout : 0);
 }
 
 void dnet_request_queue_destroy(void *queue)
