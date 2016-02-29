@@ -1529,7 +1529,7 @@ static int dnet_process_cmd_with_backend_raw(struct dnet_backend_io *backend, st
 			}
 
 			size_t req_size = sizeof(struct dnet_server_send_request) +
-						req->id_num * sizeof(struct dnet_raw_id) + 
+						req->id_num * sizeof(struct dnet_raw_id) +
 						req->group_num * sizeof(int);
 
 			if (cmd->size != req_size) {
@@ -1609,11 +1609,16 @@ static int dnet_process_cmd_with_backend_raw(struct dnet_backend_io *backend, st
 				}
 			}
 
-			/* Remove DNET_FLAGS_NEED_ACK flags for READ and WRITE commands
+			/* Remove DNET_FLAGS_NEED_ACK flags for READ/WRITE/LOOKUP commands
 			   to eliminate double reply packets
 			   (the first one with dnet_file_info structure or data has been read,
 			   the second to destroy transaction on client side, i.e. packet without DNET_FLAGS_MORE bit) */
-			if ((cmd->cmd == DNET_CMD_WRITE) || (cmd->cmd == DNET_CMD_READ) || (cmd->cmd == DNET_CMD_LOOKUP)) {
+			if ((cmd->cmd == DNET_CMD_WRITE) ||
+			    (cmd->cmd == DNET_CMD_READ) ||
+			    (cmd->cmd == DNET_CMD_LOOKUP) ||
+			    (cmd->cmd == DNET_CMD_WRITE_NEW) ||
+			    (cmd->cmd == DNET_CMD_READ_NEW) ||
+			    (cmd->cmd == DNET_CMD_LOOKUP_NEW)) {
 				cmd->flags &= ~DNET_FLAGS_NEED_ACK;
 			}
 			err = backend->cb->command_handler(st, backend->cb->command_private, cmd, data);
@@ -1838,7 +1843,7 @@ static void dnet_fill_state_addr(void *state, struct dnet_addr *addr)
 	memcpy(addr, &n->addrs[0], sizeof(struct dnet_addr));
 }
 
-static int dnet_fd_readlink(int fd, char **datap)
+int dnet_fd_readlink(int fd, char **datap)
 {
 	char *dst, src[64];
 	int dsize = 4096;

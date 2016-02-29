@@ -1,6 +1,6 @@
 /*
  * Copyright 2008+ Evgeniy Polyakov <zbr@ioremap.net>
- * Copytight 2015+ Kirill Smorodinnikov <shaitkir@gmail.com>
+ * Copyright 2015+ Kirill Smorodinnikov <shaitkir@gmail.com>
  *
  * This file is part of Elliptics.
  *
@@ -397,6 +397,7 @@ static int blob_read(struct eblob_backend_config *c, void *state, struct dnet_cm
 	/* Existing new-format entry */
 	if ((wc.flags & BLOB_DISK_CTL_EXTHDR) != 0) {
 		struct dnet_ext_list_hdr ehdr;
+		struct dnet_json_header jhdr;
 
 		/* Sanity */
 		if (size < ehdr_size) {
@@ -410,10 +411,23 @@ static int blob_read(struct eblob_backend_config *c, void *state, struct dnet_cm
 		dnet_ext_hdr_to_list(&ehdr, &elist);
 		dnet_ext_list_to_io(&elist, io);
 
-		/* Take into an account extended header's len */
-		size -= sizeof(struct dnet_ext_list_hdr);
-		offset += sizeof(struct dnet_ext_list_hdr);
-		record_offset += sizeof(struct dnet_ext_list_hdr);
+		if (size < sizeof(ehdr) + ehdr.size) {
+			err = -ERANGE;
+			goto err_out_exit;
+		}
+
+		err = dnet_read_json_header(fd, offset + sizeof(ehdr), ehdr.size, &jhdr);
+		if (err)
+			goto err_out_exit;
+
+		if (size < sizeof(ehdr) + ehdr.size + jhdr.capacity) {
+			err = -ERANGE;
+			goto err_out_exit;
+		}
+
+		size -= sizeof(ehdr) + ehdr.size + jhdr.capacity;
+		offset += sizeof(ehdr) + ehdr.size + jhdr.capacity;
+		record_offset += sizeof(ehdr) + ehdr.size + jhdr.capacity;
 	}
 
 	err = dnet_backend_check_get_size(io, &offset, &size);
@@ -552,6 +566,7 @@ static int blob_read_range_callback(struct eblob_range_request *req)
 		if (wc.flags & BLOB_DISK_CTL_EXTHDR) {
 			struct dnet_ext_list_hdr ehdr;
 			struct dnet_ext_list elist;
+			struct dnet_json_header jhdr;
 
 			err = dnet_ext_hdr_read(&ehdr, req->record_fd, req->record_offset);
 			if (err != 0)
@@ -560,8 +575,12 @@ static int blob_read_range_callback(struct eblob_range_request *req)
 			dnet_ext_hdr_to_list(&ehdr, &elist);
 			dnet_ext_list_to_io(&elist, &io);
 
-			io.offset += sizeof(struct dnet_ext_list_hdr);
-			io.size -= sizeof(struct dnet_ext_list_hdr);
+			err = dnet_read_json_header(req->record_fd, req->record_offset + sizeof(ehdr), ehdr.size, &jhdr);
+			if (err)
+				goto err_out_exit;
+
+			io.offset += sizeof(ehdr) + ehdr.size + jhdr.capacity;
+			io.size -= sizeof(ehdr) + ehdr.size + jhdr.capacity;
 		}
 
 		memcpy(io.id, req->record_key, DNET_ID_SIZE);
@@ -780,6 +799,7 @@ static int blob_file_info(struct eblob_backend_config *c, void *state, struct dn
 	/* Existing new-format entry */
 	if ((wc.flags & BLOB_DISK_CTL_EXTHDR) != 0) {
 		struct dnet_ext_list_hdr ehdr;
+		struct dnet_json_header jhdr;
 
 		/* Sanity */
 		if (size < ehdr_size) {
@@ -792,9 +812,22 @@ static int blob_file_info(struct eblob_backend_config *c, void *state, struct dn
 			goto err_out_exit;
 		dnet_ext_hdr_to_list(&ehdr, &elist);
 
-		/* Take into an account extended header's len */
-		size -= ehdr_size;
-		offset += ehdr_size;
+		if (size < sizeof(ehdr) + ehdr.size) {
+			err = -ERANGE;
+			goto err_out_exit;
+		}
+
+		err = dnet_read_json_header(fd, offset + sizeof(ehdr), ehdr.size, &jhdr);
+		if (err)
+			goto err_out_exit;
+
+		if (size < sizeof(ehdr) + ehdr.size + jhdr.capacity) {
+			err = -ERANGE;
+			goto err_out_exit;
+		}
+
+		size -= sizeof(ehdr) + ehdr.size + jhdr.capacity;
+		offset += sizeof(ehdr) + ehdr.size + jhdr.capacity;
 	}
 
 	if (size == 0) {
@@ -854,6 +887,7 @@ static int eblob_backend_lookup(struct dnet_node *n, void *priv, struct dnet_io_
 	struct eblob_backend *b = c->eblob;
 	struct eblob_key key;
 	struct dnet_ext_list_hdr ehdr;
+	struct dnet_json_header jhdr;
 	struct dnet_ext_list elist;
 	struct eblob_write_control wc = { .data_fd = -1 };
 	uint64_t size, offset;
@@ -883,7 +917,7 @@ static int eblob_backend_lookup(struct dnet_node *n, void *priv, struct dnet_io_
 	}
 
 	/* Sanity */
-	if (wc.total_data_size < sizeof(struct dnet_ext_list_hdr)) {
+	if (size < sizeof(struct dnet_ext_list_hdr)) {
 		err = -ERANGE;
 		goto err_out_set_sizes;
 	}
@@ -892,13 +926,27 @@ static int eblob_backend_lookup(struct dnet_node *n, void *priv, struct dnet_io_
 	if (err != 0)
 		goto err_out_set_sizes;
 
+	if (size < sizeof(ehdr) + ehdr.size) {
+		err = -ERANGE;
+		goto err_out_set_sizes;
+	}
+
+	err = dnet_read_json_header(wc.data_fd, wc.data_offset + sizeof(ehdr), ehdr.size, &jhdr);
+	if (err)
+		goto err_out_set_sizes;
+
+	if (size < sizeof(ehdr) + ehdr.size + jhdr.capacity) {
+		err = -ERANGE;
+		goto err_out_set_sizes;
+	}
+
 	dnet_ext_hdr_to_list(&ehdr, &elist);
 
 	io->timestamp = elist.timestamp;
 	io->user_flags = elist.flags;
 
-	size -= sizeof(struct dnet_ext_list_hdr);
-	offset += sizeof(struct dnet_ext_list_hdr);
+	size -= sizeof(ehdr) + ehdr.size + jhdr.capacity;
+	offset += sizeof(ehdr) + ehdr.size + jhdr.capacity;
 
 	err = 0;
 
@@ -1046,6 +1094,7 @@ static int blob_send(struct eblob_backend_config *cfg, void *state, struct dnet_
 
 		if ((wc.flags & BLOB_DISK_CTL_EXTHDR) != 0) {
 			struct dnet_ext_list_hdr ehdr;
+			struct dnet_json_header jhdr;
 
 			/* Sanity */
 			if (re.size < ehdr_size) {
@@ -1062,10 +1111,24 @@ static int blob_send(struct eblob_backend_config *cfg, void *state, struct dnet_
 			re.timestamp = elist.timestamp;
 			re.user_flags = elist.flags;
 
+			if (re.size < sizeof(ehdr) + ehdr.size) {
+				err = -ERANGE;
+				goto err_out_send_fail_reply;
+			}
+
+			err = dnet_read_json_header(wc.data_fd, wc.data_offset + sizeof(ehdr), ehdr.size, &jhdr);
+			if (err)
+				goto err_out_send_fail_reply;
+
+			if (re.size < sizeof(ehdr) + ehdr.size + jhdr.capacity) {
+				err = -ERANGE;
+				goto err_out_send_fail_reply;
+			}
+
 			/* Take into an account extended header's len */
-			re.size -= sizeof(struct dnet_ext_list_hdr);
-			data_offset += sizeof(struct dnet_ext_list_hdr);
-			record_offset += sizeof(struct dnet_ext_list_hdr);
+			re.size -= sizeof(ehdr) + ehdr.size + jhdr.capacity;
+			data_offset += sizeof(ehdr) + ehdr.size + jhdr.capacity;
+			record_offset += sizeof(ehdr) + ehdr.size + jhdr.capacity;
 		}
 
 		wc.offset = record_offset;
@@ -1124,6 +1187,15 @@ static int eblob_backend_command_handler(void *state, void *priv, struct dnet_cm
 			break;
 		case DNET_CMD_SEND:
 			err = blob_send(c, state, cmd, data);
+			break;
+		case DNET_CMD_LOOKUP_NEW:
+			err = blob_file_info_new(c, state, cmd);
+			break;
+		case DNET_CMD_READ_NEW:
+			err = blob_read_new(c, state, cmd, data);
+			break;
+		case DNET_CMD_WRITE_NEW:
+			err = blob_write_new(c, state, cmd, data);
 			break;
 		default:
 			err = -ENOTSUP;
