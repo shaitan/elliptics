@@ -19,6 +19,7 @@
 #include <boost/python/list.hpp>
 
 #include <elliptics/result_entry.hpp>
+#include <elliptics/newapi/result_entry.hpp>
 #include <elliptics/interface.h>
 
 #include "elliptics_id.h"
@@ -281,6 +282,98 @@ bp::list dnet_backend_status_result_get_backends(const backend_status_result_ent
 	return ret;
 }
 
+namespace newapi {
+using namespace ioremap::elliptics::newapi;
+
+namespace {
+std::string callback_result_get_raw(const newapi::callback_result_entry &result) {
+	return result.raw().to_string();
+}
+
+std::string callback_result_get_raw_data(const newapi::callback_result_entry &result) {
+	return result.raw_data().to_string();
+}
+
+std::string lookup_result_get_path(const newapi::lookup_result_entry &result) {
+	return result.path();
+}
+
+uint64_t lookup_result_get_record_flags(const newapi::lookup_result_entry &result) {
+	return result.record_info().record_flags;
+}
+
+uint64_t lookup_result_get_user_flags(const newapi::lookup_result_entry &result) {
+	return result.record_info().user_flags;
+}
+
+elliptics_time lookup_result_get_json_timestamp(const newapi::lookup_result_entry &result) {
+	return elliptics_time{result.record_info().json_timestamp};
+}
+
+uint64_t lookup_result_get_json_offset(const newapi::lookup_result_entry &result) {
+	return result.record_info().json_offset;
+}
+
+uint64_t lookup_result_get_json_size(const newapi::lookup_result_entry &result) {
+	return result.record_info().json_size;
+}
+
+uint64_t lookup_result_get_json_capacity(const newapi::lookup_result_entry &result) {
+	return result.record_info().json_capacity;
+}
+
+elliptics_time lookup_result_get_data_timestamp(const newapi::lookup_result_entry &result) {
+	return elliptics_time{result.record_info().data_timestamp};
+}
+
+uint64_t lookup_result_get_data_offset(const newapi::lookup_result_entry &result) {
+	return result.record_info().data_offset;
+}
+
+uint64_t lookup_result_get_data_size(const newapi::lookup_result_entry &result) {
+	return result.record_info().data_size;
+}
+
+std::string read_result_get_json(const newapi::read_result_entry &result) {
+	return result.json().to_string();
+}
+
+std::string read_result_get_data(const newapi::read_result_entry &result) {
+	return result.data().to_string();
+}
+
+uint64_t read_result_get_record_flags(const newapi::read_result_entry &result) {
+	return result.record_info().record_flags;
+}
+
+uint64_t read_result_get_user_flags(const newapi::read_result_entry &result) {
+	return result.record_info().user_flags;
+}
+
+elliptics_time read_result_get_json_timestamp(const newapi::read_result_entry &result) {
+	return elliptics_time{result.record_info().json_timestamp};
+}
+
+uint64_t read_result_get_json_capacity(const newapi::read_result_entry &result) {
+	return result.record_info().json_capacity;
+}
+
+uint64_t read_result_get_json_size(const newapi::read_result_entry &result) {
+	return result.record_info().json_size;
+}
+
+elliptics_time read_result_get_data_timestamp(const newapi::read_result_entry &result) {
+	return elliptics_time{result.record_info().data_timestamp};
+}
+
+uint64_t read_result_get_data_size(const newapi::read_result_entry &result) {
+	return result.record_info().data_size;
+}
+
+} /* unnamed namespace */
+
+} /* namespace newapi */
+
 void init_result_entry() {
 
 	bp::class_<callback_result_entry>("CallbackResultEntry")
@@ -419,6 +512,40 @@ void init_result_entry() {
 		.add_property("last_start", dnet_backend_status_get_last_start)
 		.add_property("last_start_err", &dnet_backend_status::last_start_err)
 		.add_property("read_only", dnet_backend_status_get_read_only)
+	;
+
+	bp::object newapiModule(bp::handle<>(bp::borrowed(PyImport_AddModule("core.newapi"))));
+	bp::scope().attr("newapi") = newapiModule;
+	bp::scope newapi_scope = newapiModule;
+
+	bp::class_<newapi::callback_result_entry, bp::bases<callback_result_entry>>("CallbackResultEntry")
+		.add_property("raw", newapi::callback_result_get_raw)
+		.add_property("raw_data", newapi::callback_result_get_raw_data)
+	;
+
+	bp::class_<newapi::lookup_result_entry, bp::bases<newapi::callback_result_entry>>("LookupResultEntry")
+		.add_property("path", newapi::lookup_result_get_path)
+		.add_property("record_flags", newapi::lookup_result_get_record_flags)
+		.add_property("user_flags", newapi::lookup_result_get_user_flags)
+		.add_property("json_timestamp", newapi::lookup_result_get_json_timestamp)
+		.add_property("json_offset", newapi::lookup_result_get_json_offset)
+		.add_property("json_size", newapi::lookup_result_get_json_size)
+		.add_property("json_capacity", newapi::lookup_result_get_json_capacity)
+		.add_property("data_timestamp", newapi::lookup_result_get_data_timestamp)
+		.add_property("data_offset", newapi::lookup_result_get_data_offset)
+		.add_property("data_size", newapi::lookup_result_get_data_size)
+	;
+
+	bp::class_<newapi::read_result_entry, bp::bases<newapi::callback_result_entry>>("ReadResultEntry")
+		.add_property("json", newapi::read_result_get_json)
+		.add_property("data", newapi::read_result_get_data)
+		.add_property("record_flags", newapi::read_result_get_record_flags)
+		.add_property("user_flags", newapi::read_result_get_user_flags)
+		.add_property("json_timestamp", newapi::read_result_get_json_timestamp)
+		.add_property("json_size", newapi::read_result_get_json_size)
+		.add_property("json_capacity", newapi::read_result_get_json_capacity)
+		.add_property("data_timestamp", newapi::read_result_get_data_timestamp)
+		.add_property("data_size", newapi::read_result_get_data_size)
 	;
 
 }

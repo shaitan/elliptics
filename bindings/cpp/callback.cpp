@@ -122,7 +122,7 @@ static size_t send_to_single_state_impl(session &sess, dnet_trans_control &ctl)
 	return 1;
 }
 
-// Send request to specificly set state by id
+// Send request to specifically set state by id
 async_generic_result send_to_single_state(session &sess, const transport_control &control)
 {
 	dnet_trans_control writable_copy = control.get_native();

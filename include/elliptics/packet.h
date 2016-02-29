@@ -76,6 +76,11 @@ enum dnet_commands {
 	DNET_CMD_BACKEND_CONTROL,		/* Special command to start or stop backends */
 	DNET_CMD_BACKEND_STATUS,		/* Special command to see current statuses of backends */
 	DNET_CMD_SEND,				/* Send given set of local keys to remote groups */
+
+	DNET_CMD_LOOKUP_NEW,
+	DNET_CMD_READ_NEW,
+	DNET_CMD_WRITE_NEW,
+
 	DNET_CMD_UNKNOWN,			/* This slot is allocated for statistics gathered for unknown commands */
 	__DNET_CMD_MAX,
 };
@@ -155,7 +160,7 @@ enum dnet_backend_defrag_level {
 /* Transaction is about to be destroyed */
 #define DNET_FLAGS_DESTROY		(1<<2)
 
-/* Do not forward requst to antoher node even if given ID does not belong to our range */
+/* Do not forward requst to another node even if given ID does not belong to our range */
 #define DNET_FLAGS_DIRECT		(1<<3)
 
 /* Do not locks operations - must be set for script callers or recursive operations */
@@ -820,7 +825,7 @@ struct dnet_io_attr
 
 	/*
 	 * Total size of the object being read.
-	 * Particulary useful when client asks for part of the object (by specifying size in read request).
+	 * Particularly useful when client asks for part of the object (by specifying size in read request).
 	 */
 	uint64_t		total_size;
 
@@ -896,6 +901,28 @@ struct dnet_file_info {
 	struct dnet_time	mtime;
 };
 
+struct dnet_record_info {
+	uint64_t	record_flags;		/* combination of DNET_RECORD_FLAGS_* */
+	uint64_t	user_flags;		/* user-defined flags */
+
+	struct dnet_time json_timestamp;	/* timestamp of stored json */
+	uint64_t	json_offset;		/* offset of json within blob */
+	uint64_t	json_size;		/* size of stored json */
+	uint64_t	json_capacity;		/* reserved space for json */
+
+	struct dnet_time data_timestamp;	/* timestamp of stored data */
+	uint64_t	data_offset;		/* offset of data within the blob */
+	uint64_t	data_size;		/* size of stored data */
+	// uint64_t	data_capacity;		/* reserved space for data */
+};
+
+struct dnet_io_info {
+	uint64_t json_size; /* size of json which has been read or written */
+
+	uint64_t data_offset; /* offset with which data part has been read or written */
+	uint64_t data_size; /* size of data part which has been read or written */
+};
+
 static inline void dnet_convert_file_info(struct dnet_file_info *info)
 {
 	info->flen = dnet_bswap32(info->flen);
@@ -969,7 +996,7 @@ enum dnet_ext_free_data {
 };
 
 /*!
- * Versions ov extension headers
+ * Versions of extension headers
  */
 enum dnet_ext_versions {
 	DNET_EXT_VERSION_FIRST,
@@ -990,7 +1017,13 @@ struct dnet_ext_list_hdr {
 	uint64_t		__pad2[2];	/* For future use (should be NULLed) */
 } __attribute__ ((packed));
 
-/*! In-memory extension conatiner */
+struct dnet_json_header {
+	uint64_t		size;		/* size of json */
+	uint64_t		capacity;	/* number of bytes reserved for json */
+	struct dnet_time	timestamp;	/* timestamp of json */
+};
+
+/*! In-memory extension container */
 struct dnet_ext_list {
 	uint8_t			version;	/* Extension header version */
 	uint32_t		size;		/* Total size of extensions */
@@ -1123,7 +1156,7 @@ static inline void dnet_convert_iterator_request(struct dnet_iterator_request *r
  */
 #define DNET_RECORD_FLAGS_EXTHDR		(1<<6)
 /*
- * This flag is set for records that were prepared but haven't been commmitted yet.
+ * This flag is set for records that were prepared but haven't been committed yet.
  * Such records doesn't available for read but can be committed even after restart.
  */
 #define DNET_RECORD_FLAGS_UNCOMMITTED		(1<<7)

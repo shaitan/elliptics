@@ -164,6 +164,12 @@ install(FILES
         DESTINATION include/elliptics/
         )
 
+install(FILES
+        include/elliptics/newapi/result_entry.hpp
+        include/elliptics/newapi/session.hpp
+        DESTINATION include/elliptics/newapi/
+        )
+
 set(INSTALL_INCLUDE_DIR "${CMAKE_INSTALL_PREFIX}/include")
 set(INSTALL_LIBRARY_DIR "${CMAKE_INSTALL_PREFIX}/lib${LIB_SUFFIX}")
 

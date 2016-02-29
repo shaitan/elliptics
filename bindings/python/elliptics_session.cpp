@@ -26,7 +26,8 @@
 
 #include <boost/make_shared.hpp>
 
-#include <elliptics/session.hpp>
+#include <elliptics/newapi/session.hpp>
+// #include <elliptics/session.hpp>
 
 #include "elliptics_id.h"
 #include "async_result.h"
@@ -429,7 +430,7 @@ public:
 	}
 
 	python_lookup_result lookup(const bp::api::object &id) {
-		return create_result(std::move(session::lookup(transform(id).id())));
+		return create_result(session::lookup(transform(id).id()));
 	}
 
 	python_node_status_result update_status(const std::string &host, const int port,
@@ -791,6 +792,79 @@ private:
 	}
 };
 
+namespace newapi {
+using namespace ioremap::elliptics::newapi;
+
+class elliptics_session: public python::elliptics_session {
+public:
+	elliptics_session(const node &n) : python::elliptics_session(n) {}
+
+	python_lookup_result lookup(const bp::api::object &id) {
+		return create_result(
+			newapi::session{*this}.lookup(transform(id).id())
+		);
+	}
+
+	python_read_result read_json(const bp::api::object &id) {
+		return create_result(
+			newapi::session{*this}.read_json(transform(id).id())
+		);
+	}
+
+	python_read_result read_data(const bp::api::object &id, uint64_t offset, uint64_t size) {
+		return create_result(
+			newapi::session{*this}.read_data(transform(id).id(), offset, size)
+		);
+	}
+
+	python_read_result read(const bp::api::object &id, uint64_t offset, uint64_t size) {
+		return create_result(
+			newapi::session{*this}.read(transform(id).id(), offset, size)
+		);
+	}
+
+	python_write_result write(const bp::api::object &id,
+	                          const std::string &json, uint64_t json_capacity,
+	                          const std::string &data, uint64_t data_capacity) {
+		return create_result(
+			newapi::session{*this}.write(transform(id).id(),
+			                             json, json_capacity,
+			                             data, data_capacity)
+		);
+	}
+
+	python_write_result write_prepare(const bp::api::object &id,
+	                                  const std::string &json, uint64_t json_capacity,
+	                                  const std::string &data, uint64_t data_offset, uint64_t data_capacity) {
+		return create_result(
+			newapi::session{*this}.write_prepare(transform(id).id(),
+			                                     json, json_capacity,
+			                                     data, data_offset, data_capacity)
+		);
+	}
+
+	python_write_result write_plain(const bp::api::object &id,
+	                                const std::string &json,
+	                                const std::string &data, uint64_t data_offset) {
+		return create_result(
+			newapi::session{*this}.write_plain(transform(id).id(),
+			                                   json,
+			                                   data, data_offset)
+		);
+	}
+
+	python_write_result write_commit(const bp::api::object &id,
+	                                 const std::string &json,
+	                                 const std::string &data, uint64_t data_offset, uint64_t data_commit_size) {
+		return create_result(
+			newapi::session{*this}.write_commit(transform(id).id(),
+			                                    json,
+			                                    data, data_offset, data_commit_size)
+		);
+	}
+};
+} /* namespace newapi */
+
 void init_elliptics_session() {
 
 	bp::enum_<elliptics_filters>("filters",
@@ -910,7 +984,7 @@ void init_elliptics_session() {
 		              &elliptics_session::get_trace_id,
 		              &elliptics_session::set_trace_id,
 		    "Sets debug trace_id which will be printed in all logs\n"
-		    "connected with operations executed by the sesssion\n\n"
+		    "connected with operations executed by the session\n\n"
 		    "session.trace_id = 123456")
 
 		.add_property("trace_bit",
@@ -1929,6 +2003,52 @@ void init_elliptics_session() {
 		    "    Result contains information if starter received the reply.\n")
 
 		.def("prepare_latest", &elliptics_session::prepare_latest)
+	;
+
+	bp::object newapiModule(bp::handle<>(bp::borrowed(PyImport_AddModule("core.newapi"))));
+	bp::scope().attr("newapi") = newapiModule;
+	bp::scope newapi_scope = newapiModule;
+
+	bp::class_<newapi::elliptics_session, bp::bases<elliptics_session>, boost::noncopyable>(
+		"Session",
+		"The main class which is used for executing operations with elliptics",
+		bp::init<node &>(bp::arg("node"),
+		                 "__init__(node)\n"
+		                 "    Initializes session by the node\n\n"
+		                 "    session = elliptics.newapi.Session(node)"))
+
+		.def("lookup", &newapi::elliptics_session::lookup,
+		     bp::args("key"))
+
+		.def("read_json", &newapi::elliptics_session::read_json,
+		     bp::args("key"))
+
+		.def("read_data", &newapi::elliptics_session::read_data,
+		     (bp::arg("key"), bp::arg("offset") = 0, bp::arg("size") = 0))
+
+		.def("read", &newapi::elliptics_session::read,
+		     (bp::arg("key"), bp::arg("offset") = 0, bp::arg("size") = 0))
+
+		.def("write", &newapi::elliptics_session::write,
+		     (bp::arg("key"),
+		      bp::arg("json"), bp::arg("json_capacity"),
+		      bp::arg("data"), bp::arg("data_capacity")))
+
+		.def("write_prepare", &newapi::elliptics_session::write_prepare,
+		     (bp::arg("key"),
+		      bp::arg("json"), bp::arg("json_capacity"),
+		      bp::arg("data"), bp::arg("data_offset"), bp::arg("data_capacity")))
+
+		.def("write_plain", &newapi::elliptics_session::write_plain,
+		     (bp::arg("key"),
+		      bp::arg("json"),
+		      bp::arg("data"), bp::arg("data_offset")))
+
+		.def("write_commit", &newapi::elliptics_session::write_commit,
+		     (bp::arg("key"),
+		      bp::arg("json"),
+		      bp::arg("data"), bp::arg("data_offset"), bp::arg("data_commit_size")))
+
 	;
 }
 

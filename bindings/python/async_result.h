@@ -23,6 +23,7 @@
 #include <boost/python/errors.hpp>
 
 #include <elliptics/result_entry.hpp>
+#include <elliptics/newapi/result_entry.hpp>
 
 #include "elliptics_time.h"
 #include "gil_guard.h"
@@ -170,12 +171,20 @@ typedef python_async_result<exec_result_entry>				python_exec_result;
 typedef python_async_result<callback_result_entry>			python_callback_result;
 
 typedef python_async_result<find_indexes_result_entry>		python_find_indexes_result;
-typedef python_async_result<index_entry>					python_check_indexes_result;
+typedef python_async_result<index_entry>			python_check_indexes_result;
 
 typedef python_async_result<monitor_stat_result_entry>		python_monitor_stat_result;
 typedef python_async_result<node_status_result_entry>		python_node_status_result;
 typedef python_async_result<backend_status_result_entry>	python_backend_status_result;
 
+namespace newapi {
+using namespace ioremap::elliptics::newapi;
+
+typedef python_async_result<newapi::lookup_result_entry>		python_lookup_result;
+typedef python_async_result<newapi::read_result_entry>			python_read_result;
+typedef python_async_result<newapi::write_result_entry>			python_write_result;
+
+} /* namespace newapi */
 void init_async_results();
 
 } } } // namespace ioremap::elliptics::python
