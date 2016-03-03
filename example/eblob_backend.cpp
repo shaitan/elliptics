@@ -441,7 +441,7 @@ int blob_write_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *da
 			if (dnet_read_json_header(wc.data_fd, wc.data_offset + sizeof(old), old.size, &jhdr))
 				return;
 
-			if (request.json_size) {
+			if (request.json_size || (request.ioflags & DNET_IO_FLAGS_UPDATE_JSON)) {
 				jhdr.size = request.json_size;
 				jhdr.timestamp = request.timestamp;
 			}

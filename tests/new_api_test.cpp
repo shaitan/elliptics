@@ -77,13 +77,16 @@ void check_lookup_result(ioremap::elliptics::newapi::async_lookup_result &async,
 
 		std::ifstream blob(result.path(), std::ifstream::binary);
 		BOOST_REQUIRE(blob);
+		if (record.json.size())
 		{
 			blob.seekg(record_info.json_offset);
 			auto buffer = ioremap::elliptics::data_pointer::allocate(record.json.size());
 			blob.read(buffer.data<char>(), buffer.size());
 			BOOST_REQUIRE(blob);
 			BOOST_REQUIRE_EQUAL(buffer.to_string(), record.json);
-		} {
+		}
+
+		if (record.data.size()) {
 			blob.seekg(record_info.data_offset);
 			auto buffer = ioremap::elliptics::data_pointer::allocate(record.data.size());
 			blob.read(buffer.data<char>(), buffer.size());
@@ -762,6 +765,12 @@ void register_tests(bu::test_suite *suite) {
 			"useful": "some useful info about the key"}
 	})json";
 	record.json_timestamp = dnet_time{11,22};
+	ELLIPTICS_TEST_CASE(test_update_json, record);
+	ELLIPTICS_TEST_CASE(test_read_json, record);
+	ELLIPTICS_TEST_CASE(test_read_data, record, 0, 0);
+
+	record.json = "";
+	record.json_timestamp = dnet_time{12,23};
 	ELLIPTICS_TEST_CASE(test_update_json, record);
 	ELLIPTICS_TEST_CASE(test_read_json, record);
 	ELLIPTICS_TEST_CASE(test_read_data, record, 0, 0);
