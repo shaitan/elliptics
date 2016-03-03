@@ -1,3 +1,11 @@
+elliptics (2.26.10.2~4) unstable; urgency=low
+
+  * fix update_json and add tests for its bad cases
+  * json: allow to reset json by calling update_json with empty json
+  * fix hanging of backend initialization
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Thu, 03 Mar 2016 15:37:02 +0400
+
 elliptics (2.26.10.2~3) unstable; urgency=low
 
   * fix build: missed semicolon
