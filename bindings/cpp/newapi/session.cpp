@@ -184,13 +184,39 @@ async_write_result session::write(const key &id,
                                   const argument_data &data, uint64_t data_capacity) {
 	transform(id);
 
+	auto on_fail = [this](const error_info & error) {
+		async_write_result result(*this);
+		async_result_handler<write_result_entry> handler(result);
+		handler.complete(error);
+		return result;
+	};
+
 	try {
 		validate_json(std::string((const char*)json.data(), json.size()));
 	} catch (const std::exception &e) {
-		async_write_result result(*this);
-		async_result_handler<write_result_entry> handler(result);
-		handler.complete(create_error(-EINVAL, "invalid json: %s", e.what()));
-		return result;
+		return on_fail(create_error(-EINVAL, "invalid json: %s", e.what()));
+	}
+
+	if (json_capacity == 0) {
+		json_capacity = json.size();
+	}
+
+	if (data_capacity == 0) {
+		data_capacity = data.size();
+	}
+
+	if (json_capacity < json.size()) {
+		return on_fail(create_error(-EINVAL,
+		                            "json_capacity (%llu) is less than json.size() (%llu)",
+		                            (unsigned long long)json_capacity,
+		                            (unsigned long long)json.size()));
+	}
+
+	if (data_capacity < data.size()) {
+		return on_fail(create_error(-EINVAL,
+		                            "data_capacity (%llu) is less than data.size() (%llu)",
+		                            (unsigned long long)data_capacity,
+		                            (unsigned long long)data.size()));
 	}
 
 	auto packet = [&] () {
@@ -238,20 +264,41 @@ async_lookup_result session::write_prepare(const key &id,
                                            const argument_data &data, uint64_t data_offset, uint64_t data_capacity) {
 	transform(id);
 
+	auto on_fail = [this](const error_info & error) {
+		async_write_result result(*this);
+		async_result_handler<write_result_entry> handler(result);
+		handler.complete(error);
+		return result;
+	};
+
 	try {
 		validate_json(std::string((const char*)json.data(), json.size()));
 	} catch (const std::exception &e) {
-		async_write_result result(*this);
-		async_result_handler<write_result_entry> handler(result);
-		handler.complete(create_error(-EINVAL, "invalid json: %s", e.what()));
-		return result;
+		return on_fail(create_error(-EINVAL, "invalid json: %s", e.what()));
 	}
 
-	if (json_capacity == 0)
+	if (json_capacity == 0) {
 		json_capacity = json.size();
+	}
 
-	if (data_capacity == 0)
+	if (data_capacity == 0) {
 		data_capacity = data_offset + data.size();
+	}
+
+	if (json_capacity < json.size()) {
+		return on_fail(create_error(-EINVAL,
+		                            "json_capacity (%llu) is less than json.size() (%llu)",
+		                            (unsigned long long)json_capacity,
+		                            (unsigned long long)json.size()));
+	}
+
+	if (data_capacity < data_offset + data.size()) {
+		return on_fail(create_error(-EINVAL,
+		                            "data_capacity (%llu) is less than data_offset (%llu) + data.size() (%llu)",
+		                            (unsigned long long)data_capacity,
+		                            (unsigned long long)data_offset,
+		                            (unsigned long long)data.size()));
+	}
 
 	auto packet = [&] () {
 		auto header = [&] () {
