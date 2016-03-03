@@ -564,6 +564,11 @@ static inline void dnet_convert_list(struct dnet_list *l)
  */
 #define DNET_IO_FLAGS_MIX_STATES	(1<<16)
 
+/*
+ * When set, write will only update json, data will remain unchanged.
+ */
+#define DNET_IO_FLAGS_UPDATE_JSON	(1<<17)
+
 
 static inline const char *dnet_flags_dump_ioflags(uint64_t flags)
 {

@@ -432,6 +432,9 @@ int blob_write_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *da
 			if (dnet_ext_hdr_read(&old, wc.data_fd, wc.data_offset))
 				return;
 
+			if (request.ioflags & DNET_IO_FLAGS_UPDATE_JSON)
+				ehdr.timestamp = old.timestamp;
+
 			if (!old.size)
 				return;
 
@@ -461,6 +464,15 @@ int blob_write_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *da
 	}
 
 	if (request.json_size) {
+		if (request.json_size > jhdr.capacity) {
+			err = -E2BIG;
+			dnet_backend_log(c->blog, DNET_LOG_ERROR,
+			                 "%s: EBLOB: blob-write-new: WRITE_NEW: "
+			                 "json (%" PRIu64 ") exceed capacity (%" PRIu64"): %s [%d]",
+			                 dnet_dump_id(&cmd->id), request.json_size, jhdr.capacity,
+			                 strerror(-err), err)
+			return err;
+		}
 		const auto offset = sizeof(ehdr) + ehdr.size;
 		iov.emplace_back(eblob_iovec{data_p.data(), request.json_size, offset});
 	}
@@ -472,6 +484,9 @@ int blob_write_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *da
 
 	if (request.ioflags & DNET_IO_FLAGS_PLAIN_WRITE) {
 		err = eblob_plain_writev(b, &key, iov.data(), iov.size(), flags);
+	} else if (request.ioflags & DNET_IO_FLAGS_UPDATE_JSON) {
+		iov.emplace_back(eblob_iovec{nullptr, 0, wc.size});
+		err = eblob_writev(b, &key, iov.data(), iov.size(), flags);
 	} else {
 		err = eblob_writev(b, &key, iov.data(), iov.size(), flags);
 	}
