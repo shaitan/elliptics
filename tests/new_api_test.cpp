@@ -126,6 +126,75 @@ void test_update_json(const record &record) {
 	check_lookup_result(async, DNET_CMD_WRITE_NEW, record, groups.size());
 }
 
+void test_update_bigger_json(const record &record) {
+	ioremap::elliptics::newapi::session s(*servers->node);
+	s.set_groups(groups);
+	s.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
+	s.set_filter(ioremap::elliptics::filters::all_with_ack);
+
+	/* generate json bigger than record.json_capacity
+	 */
+	auto big_json = [&record] () {
+		std::ostringstream str;
+		str << "{\"big_key\":\"";
+		while (str.tellp() < record.json_capacity) {
+			str << "garbage";
+		}
+		str << "\"}";
+		return str.str();
+	} ();
+
+	auto async = s.update_json(record.key, big_json);
+	size_t count = 0;
+	for (const auto &result: async) {
+		BOOST_REQUIRE_EQUAL(result.status(), -E2BIG);
+		BOOST_REQUIRE_EQUAL(result.command()->cmd, DNET_CMD_WRITE_NEW);
+		++count;
+	}
+
+	BOOST_REQUIRE_EQUAL(count, groups.size());
+}
+
+void test_update_json_noexist() {
+	ioremap::elliptics::newapi::session s(*servers->node);
+	s.set_groups(groups);
+	s.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
+	s.set_filter(ioremap::elliptics::filters::all_with_ack);
+
+	auto async = s.update_json(std::string{"test_update_json_noexist key"}, std::string{"{}"});
+
+	size_t count = 0;
+	for (const auto &result: async) {
+		BOOST_REQUIRE_EQUAL(result.status(), -ENOENT);
+		BOOST_REQUIRE_EQUAL(result.command()->cmd, DNET_CMD_WRITE_NEW);
+		++count;
+	}
+
+	BOOST_REQUIRE_EQUAL(count, groups.size());
+}
+
+void test_update_json_uncommitted() {
+	ioremap::elliptics::newapi::session s(*servers->node);
+	s.set_groups(groups);
+	s.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
+	s.set_filter(ioremap::elliptics::filters::all_with_ack);
+
+	std::string key{"test_update_json_uncommitted key"};
+
+	auto async = s.write_prepare(key, "", 1024, "", 0, 1024);
+	async.wait();
+
+	async = s.update_json(key, std::string{"{}"});
+	size_t count = 0;
+	for (const auto &result: async) {
+		BOOST_REQUIRE_EQUAL(result.status(), -ENOENT);
+		BOOST_REQUIRE_EQUAL(result.command()->cmd, DNET_CMD_WRITE_NEW);
+		++count;
+	}
+
+	BOOST_REQUIRE_EQUAL(count, groups.size());
+}
+
 void test_lookup(const record &record) {
 	ioremap::elliptics::newapi::session s(*servers->node);
 	s.set_groups(groups);
@@ -775,9 +844,14 @@ void register_tests(bu::test_suite *suite) {
 	ELLIPTICS_TEST_CASE(test_read_json, record);
 	ELLIPTICS_TEST_CASE(test_read_data, record, 0, 0);
 
+	ELLIPTICS_TEST_CASE(test_update_bigger_json, record);
+
 	record.key = {"chunked_key"};
 	record.json_timestamp = record.timestamp;
 	ELLIPTICS_TEST_CASE(test_write_chunked, record);
+
+	ELLIPTICS_TEST_CASE(test_update_json_noexist);
+	ELLIPTICS_TEST_CASE(test_update_json_uncommitted);
 
 	ELLIPTICS_TEST_CASE_NOARGS(test_old_write_new_read_compatibility);
 	ELLIPTICS_TEST_CASE_NOARGS(test_new_write_old_read_compatibility);
@@ -807,6 +881,7 @@ bu::test_suite *setup_tests(int argc, char *argv[]) {
 	auto suite = new bu::test_suite("Local Test Suite");
 
 	configure_servers(path);
+
 	register_tests(suite);
 	test_all_with_ack_filter::register_tests(suite);
 
