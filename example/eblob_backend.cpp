@@ -412,6 +412,8 @@ int blob_write_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *da
 	int err = 0;
 	eblob_write_control wc;
 	memset(&wc, 0, sizeof(wc));
+	bool record_exists = false;
+
 	if (request.ioflags & DNET_IO_FLAGS_PREPARE) {
 		const uint64_t prepare_size = sizeof(ehdr) + json_header.size() + request.json_capacity + request.data_capacity;
 		err = eblob_write_prepare(b, &key, prepare_size, flags);
@@ -428,17 +430,19 @@ int blob_write_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *da
 			if (eblob_read_return(b, &key, EBLOB_READ_NOCSUM, &wc))
 				return;
 
-			dnet_ext_list_hdr old;
-			if (dnet_ext_hdr_read(&old, wc.data_fd, wc.data_offset))
+			record_exists = true;
+
+			dnet_ext_list_hdr old_ehdr;
+			if (dnet_ext_hdr_read(&old_ehdr, wc.data_fd, wc.data_offset))
 				return;
 
 			if (request.ioflags & DNET_IO_FLAGS_UPDATE_JSON)
-				ehdr.timestamp = old.timestamp;
+				ehdr.timestamp = old_ehdr.timestamp;
 
-			if (!old.size)
+			if (!old_ehdr.size)
 				return;
 
-			if (dnet_read_json_header(wc.data_fd, wc.data_offset + sizeof(old), old.size, &jhdr))
+			if (dnet_read_json_header(wc.data_fd, wc.data_offset + sizeof(old_ehdr), old_ehdr.size, &jhdr))
 				return;
 
 			if (request.json_size || (request.ioflags & DNET_IO_FLAGS_UPDATE_JSON)) {
@@ -449,6 +453,15 @@ int blob_write_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *da
 				jhdr.capacity = request.json_capacity;
 			}
 		} ();
+	}
+
+	if (request.ioflags & DNET_IO_FLAGS_UPDATE_JSON) {
+		/* update_json can not be applied for nonexistent or uncommitted records.
+		 * we return -ENOENT in such cases.
+		 */
+		if (!record_exists || wc.flags & BLOB_DISK_CTL_UNCOMMITTED) {
+			return -ENOENT;
+		}
 	}
 
 	json_header = jhdr.capacity ? serialize(jhdr) : data_pointer();
