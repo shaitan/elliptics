@@ -308,16 +308,16 @@ int blob_read_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *dat
 		if (request.data_size != 0 &&
 		    request.data_size < data_size)
 			data_size = request.data_size;
-	}
 
-	err = verify_checksum(record_offset + jhdr.capacity, data_size);
-	if (err) {
-		dnet_backend_log(c->blog, DNET_LOG_ERROR,
-		                 "%s: EBLOB: blob-read-new: READ_NEW: failed to verify checksum for data: "
-		                 "offset: %" PRIu64 ", size: %" PRIu64 "%s [%d]",
-		                 dnet_dump_id(&cmd->id), request.data_offset, request.data_offset,
-		                 strerror(-err), err);
-		return err;
+		err = verify_checksum(record_offset + jhdr.capacity, data_size);
+		if (err) {
+			dnet_backend_log(c->blog, DNET_LOG_ERROR,
+			                 "%s: EBLOB: blob-read-new: READ_NEW: failed to verify checksum for data: "
+			                 "offset: %" PRIu64 ", size: %" PRIu64 "%s [%d]",
+			                 dnet_dump_id(&cmd->id), request.data_offset, request.data_offset,
+			                 strerror(-err), err);
+			return err;
+		}
 	}
 
 	auto header = serialize(dnet_read_response{
