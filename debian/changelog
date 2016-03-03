@@ -1,3 +1,9 @@
+elliptics (2.26.10.2~5) unstable; urgency=low
+
+  * verify checksum for the data only if data is requested
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Thu, 03 Mar 2016 19:19:11 +0400
+
 elliptics (2.26.10.2~4) unstable; urgency=low
 
   * fix update_json and add tests for its bad cases
