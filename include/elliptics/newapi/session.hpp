@@ -78,7 +78,8 @@ public:
 
 	/* Rewrite json of key \a id by \a json.
 	 * If record \a id does not exist, update_json will be failed with -ENOENT.
-	 * If record's capacity for json part is less then size of \a json, update_json will be failed with -E2BIG.
+	 * If record's capacity for json part is less than size of \a json, update_json will be failed with -E2BIG.
+	 * Calling update_json with empty \a json will reset stored json to 0 but leave its capacity.
 	 */
 	async_lookup_result update_json(const key &id, const argument_data &json);
 };
