@@ -96,6 +96,8 @@ using namespace boost::unit_test;
 
 static std::shared_ptr<nodes_data> global_data;
 
+bool register_tests(test_suite *suite, node n);
+
 static void configure_nodes(const std::vector<std::string> &remotes, const std::string &path)
 {
 	if (remotes.empty()) {
@@ -109,6 +111,11 @@ static void configure_nodes(const std::vector<std::string> &remotes, const std::
 	} else {
 		global_data = start_nodes(results_reporter::get_stream(), remotes, path);
 	}
+}
+
+static void destroy_global_data()
+{
+	global_data.reset();
 }
 
 static void init_application(session &sess, const std::string &app_name)
@@ -525,50 +532,12 @@ bool register_tests(test_suite *suite, node n)
 	return true;
 }
 
-static void destroy_global_data()
-{
-	global_data.reset();
-}
-
-boost::unit_test::test_suite *register_tests(int argc, char *argv[])
-{
-	namespace bpo = boost::program_options;
-
-	bpo::variables_map vm;
-	bpo::options_description generic("Test options");
-
-	std::vector<std::string> remotes;
-	std::string path;
-
-	generic.add_options()
-			("help", "This help message")
-			("remote", bpo::value(&remotes), "Remote elliptics server address")
-			("path", bpo::value(&path), "Path where to store everything")
-			;
-
-	bpo::store(bpo::parse_command_line(argc, argv, generic), vm);
-	bpo::notify(vm);
-
-	if (vm.count("help")) {
-		std::cerr << generic;
-		return NULL;
-	}
-
-	test_suite *suite = new test_suite("Local Test Suite");
-
-	configure_nodes(remotes, path);
-
-	register_tests(suite, *global_data->node);
-
-	return suite;
-}
-
-}
+} // namespace tests
 
 int main(int argc, char *argv[])
 {
 	atexit(tests::destroy_global_data);
 
 	srand(time(0));
-	return unit_test_main(tests::register_tests, argc, argv);
+	return unit_test_main(tests::create_testsuite, argc, argv);
 }
