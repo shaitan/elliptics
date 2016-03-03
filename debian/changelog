@@ -1,3 +1,15 @@
+elliptics (2.26.10.2~2) unstable; urgency=low
+
+  * server_send: add tests for bad cases
+  * Fix status in ack for request failed with -ENXIO.
+  * server-send: move the check of write error occurence
+  * json: add checking json_capacity and data_capacity in write* methods.
+  * json: add update_json method
+  * iterator-copy: stop eblob iterator if write error has been occurred
+  * cmake: add option to disable long tests
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Thu, 03 Mar 2016 06:25:28 +0400
+
 elliptics (2.26.10.2~1) unstable; urgency=low
 
   * bump version to v2.26.10.2~1
