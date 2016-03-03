@@ -19,26 +19,68 @@ public:
 	session clean_clone() const;
 	session &operator =(const session &other);
 
+	/* Lookup information for key \a id.
+	 */
 	async_lookup_result lookup(const key &id);
+
+	/* Read json of key \a id.
+	 */
 	async_read_result read_json(const key &id);
+
+	/* Read data part of key \a id specified by \a offset and \a size.
+	 * Please note, \a size equal to 0 means reading all available data after \a offset.
+	 */
 	async_read_result read_data(const key &id, uint64_t offset, uint64_t size);
+
+	/* Read json and data of key \a id.
+	 * \a offset and \a size specifies part of key's data that should be read.
+	 * Please note, \a size equal to 0 means reading all available data after \a offset.
+	 */
 	async_read_result read(const key &id, uint64_t offset, uint64_t size);
 
+	/* Write \a json and \a data by key \a id.
+	 * \a json_capacity specifies size of space that should be reserved for future json.
+	 * \a data_capacity specifies size of space that should be reserved for future data.
+	 * Please note, both \a json_capacity and \a data_capacity with value 0 means that
+	 * no extra space should be reserved.
+	 * Record will be available for lookup/read right after write is executed.
+	 */
 	async_write_result write(const key &id,
 	                         const argument_data &json, uint64_t json_capacity,
 	                         const argument_data &data, uint64_t data_capacity);
 
+	/* Prepare place for record by \a key,
+	 * reserve place with size \a json_capacity for future json and
+	 * with \a data_capacity for future data and
+	 * write \a json and data part \a data.
+	 * \a data should be written with \a data_offset.
+	 * Record after prepare will be marked as uncommitted and will be unavailable for lookup/read.
+	 */
 	async_lookup_result write_prepare(const key &id,
 	                                  const argument_data &json, uint64_t json_capacity,
 	                                  const argument_data &data, uint64_t data_offset, uint64_t data_capacity);
 
+	/* Write \a json and data part \a data by key \a id.
+	 * \a data should be written with \a data_offset.
+	 * Record after write_plain remains to be marked as uncommitted and will be unavailable for lookup/read.
+	 */
 	async_lookup_result write_plain(const key &id,
 	                                const argument_data &json,
 	                                const argument_data &data, uint64_t data_offset);
 
+	/* Write final \a json and final data part \a data by key \a id.
+	 * \a data should be written with \a data_offset.
+	 * Record after write_plain will be available for lookup/read.
+	 */
 	async_lookup_result write_commit(const key &id,
 	                                 const argument_data &json,
 	                                 const argument_data &data, uint64_t data_offset, uint64_t data_commit_size);
+
+	/* Rewrite json of key \a id by \a json.
+	 * If record \a id does not exist, update_json will be failed with -ENOENT.
+	 * If record's capacity for json part is less then size of \a json, update_json will be failed with -E2BIG.
+	 */
+	async_lookup_result update_json(const key &id, const argument_data &json);
 };
 
 }}} /* namespace ioremap::elliptics::newapi */

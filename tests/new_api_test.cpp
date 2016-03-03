@@ -41,6 +41,7 @@ struct record {
 	ioremap::elliptics::key key;
 	uint64_t user_flags;
 	dnet_time timestamp;
+	dnet_time json_timestamp;
 	std::string json;
 	uint64_t json_capacity;
 	std::string data;
@@ -64,7 +65,7 @@ void check_lookup_result(ioremap::elliptics::newapi::async_lookup_result &async,
 		BOOST_REQUIRE_EQUAL(record_info.user_flags, record.user_flags);
 		BOOST_REQUIRE_EQUAL(record_info.record_flags, DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM);
 
-		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.json_timestamp, &record.timestamp), 0);
+		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.json_timestamp, &record.json_timestamp), 0);
 		constexpr uint64_t eblob_headers_size = sizeof(eblob_disk_control) + sizeof(dnet_ext_list_hdr);
 		BOOST_REQUIRE(record_info.json_offset >= eblob_headers_size);
 		BOOST_REQUIRE_EQUAL(record_info.json_size, record.json.size());
@@ -110,6 +111,18 @@ void test_write(const record &record) {
 	check_lookup_result(async, DNET_CMD_WRITE_NEW, record, groups.size());
 }
 
+void test_update_json(const record &record) {
+	ioremap::elliptics::newapi::session s(*servers->node);
+	s.set_groups(groups);
+	s.set_user_flags(record.user_flags);
+
+	s.set_timestamp(record.json_timestamp);
+
+	auto async = s.update_json(record.key, record.json);
+
+	check_lookup_result(async, DNET_CMD_WRITE_NEW, record, groups.size());
+}
+
 void test_lookup(const record &record) {
 	ioremap::elliptics::newapi::session s(*servers->node);
 	s.set_groups(groups);
@@ -140,7 +153,7 @@ void test_read_json(const record &record) {
 			BOOST_REQUIRE_EQUAL(info.user_flags, record.user_flags);
 			BOOST_REQUIRE_EQUAL(info.record_flags, DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM);
 
-			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.json_timestamp, &record.timestamp), 0);
+			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.json_timestamp, &record.json_timestamp), 0);
 			BOOST_REQUIRE_EQUAL(info.json_offset, 0);
 			BOOST_REQUIRE_EQUAL(info.json_size, record.json.size());
 			BOOST_REQUIRE_EQUAL(info.json_capacity, record.json_capacity);
@@ -186,7 +199,7 @@ void test_read_data(const record &record, uint64_t offset, uint64_t size) {
 			BOOST_REQUIRE_EQUAL(record_info.user_flags, record.user_flags);
 			BOOST_REQUIRE_EQUAL(record_info.record_flags, DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM);
 
-			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.json_timestamp, &record.timestamp), 0);
+			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.json_timestamp, &record.json_timestamp), 0);
 			BOOST_REQUIRE_EQUAL(record_info.json_offset, 0);
 			BOOST_REQUIRE_EQUAL(record_info.json_size, record.json.size());
 			BOOST_REQUIRE_EQUAL(record_info.json_capacity, record.json_capacity);
@@ -233,7 +246,7 @@ void test_read(const record &record, uint64_t offset, uint64_t size) {
 			BOOST_REQUIRE_EQUAL(record_info.user_flags, record.user_flags);
 			BOOST_REQUIRE_EQUAL(record_info.record_flags, DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM);
 
-			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.json_timestamp, &record.timestamp), 0);
+			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.json_timestamp, &record.json_timestamp), 0);
 			BOOST_REQUIRE_EQUAL(record_info.json_offset, 0);
 			BOOST_REQUIRE_EQUAL(record_info.json_size, record.json.size());
 			BOOST_REQUIRE_EQUAL(record_info.json_capacity, record.json_capacity);
@@ -282,7 +295,7 @@ void test_write_chunked(const record &record) {
 		BOOST_REQUIRE_EQUAL(record_info.user_flags, record.user_flags);
 		BOOST_REQUIRE_EQUAL(record_info.record_flags, DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM | DNET_RECORD_FLAGS_UNCOMMITTED);
 
-		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.json_timestamp, &record.timestamp), 0);
+		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.json_timestamp, &record.json_timestamp), 0);
 		constexpr uint64_t eblob_headers_size = sizeof(eblob_disk_control) + sizeof(dnet_ext_list_hdr);
 		BOOST_REQUIRE(record_info.json_offset >= eblob_headers_size);
 		BOOST_REQUIRE_EQUAL(record_info.json_size, 0);
@@ -312,7 +325,7 @@ void test_write_chunked(const record &record) {
 		BOOST_REQUIRE_EQUAL(record_info.user_flags, record.user_flags);
 		BOOST_REQUIRE_EQUAL(record_info.record_flags, DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM | DNET_RECORD_FLAGS_UNCOMMITTED);
 
-		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.json_timestamp, &record.timestamp), 0);
+		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.json_timestamp, &record.json_timestamp), 0);
 		constexpr uint64_t eblob_headers_size = sizeof(eblob_disk_control) + sizeof(dnet_ext_list_hdr);
 		BOOST_REQUIRE(record_info.json_offset >= eblob_headers_size);
 		BOOST_REQUIRE_EQUAL(record_info.json_size, record.json.size());
@@ -342,7 +355,7 @@ void test_write_chunked(const record &record) {
 		BOOST_REQUIRE_EQUAL(record_info.user_flags, record.user_flags);
 		BOOST_REQUIRE_EQUAL(record_info.record_flags, DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM | DNET_RECORD_FLAGS_UNCOMMITTED);
 
-		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.json_timestamp, &record.timestamp), 0);
+		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.json_timestamp, &record.json_timestamp), 0);
 		constexpr uint64_t eblob_headers_size = sizeof(eblob_disk_control) + sizeof(dnet_ext_list_hdr);
 		BOOST_REQUIRE(record_info.json_offset >= eblob_headers_size);
 		BOOST_REQUIRE_EQUAL(record_info.json_size, record.json.size());
@@ -372,7 +385,7 @@ void test_write_chunked(const record &record) {
 		BOOST_REQUIRE_EQUAL(record_info.user_flags, record.user_flags);
 		BOOST_REQUIRE_EQUAL(record_info.record_flags, DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM);
 
-		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.json_timestamp, &record.timestamp), 0);
+		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.json_timestamp, &record.json_timestamp), 0);
 		constexpr uint64_t eblob_headers_size = sizeof(eblob_disk_control) + sizeof(dnet_ext_list_hdr);
 		BOOST_REQUIRE(record_info.json_offset >= eblob_headers_size);
 		BOOST_REQUIRE_EQUAL(record_info.json_size, record.json.size());
@@ -638,6 +651,7 @@ record record{
 	std::string{"test_write_with_all_with_ack_filter::key"},
 	0xf1235f12431,
 	dnet_time{100, 40},
+	dnet_time{100, 40},
 	std::string{"{\"key\":\"test_write_with_all_with_ack_filter::key\"}"},
 	100,
 	std::string{"test_write_with_all_with_ack_filter::data"},
@@ -676,7 +690,7 @@ void test_read(ioremap::elliptics::newapi::session &s) {
 			BOOST_REQUIRE_EQUAL(record_info.user_flags, record.user_flags);
 			BOOST_REQUIRE_EQUAL(record_info.record_flags, DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM);
 
-			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.json_timestamp, &record.timestamp), 0);
+			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.json_timestamp, &record.json_timestamp), 0);
 			BOOST_REQUIRE_EQUAL(record_info.json_offset, 0);
 			BOOST_REQUIRE_EQUAL(record_info.json_size, record.json.size());
 			BOOST_REQUIRE_EQUAL(record_info.json_capacity, record.json_capacity);
@@ -720,6 +734,7 @@ void register_tests(bu::test_suite *suite) {
 		std::string{"key"},
 		0xff1ff2ff3,
 		dnet_time{10, 20},
+		dnet_time{10, 20},
 		std::string{"{\"key\": \"key\"}"},
 		512,
 		std::string{"key data"},
@@ -741,7 +756,18 @@ void register_tests(bu::test_suite *suite) {
 	ELLIPTICS_TEST_CASE(test_read, record, 2, 1);
 	ELLIPTICS_TEST_CASE(test_read, record, 3, std::numeric_limits<uint64_t>::max());
 
+	record.json = R"json({
+		"record": {
+			"key": "key",
+			"useful": "some useful info about the key"}
+	})json";
+	record.json_timestamp = dnet_time{11,22};
+	ELLIPTICS_TEST_CASE(test_update_json, record);
+	ELLIPTICS_TEST_CASE(test_read_json, record);
+	ELLIPTICS_TEST_CASE(test_read_data, record, 0, 0);
+
 	record.key = {"chunked_key"};
+	record.json_timestamp = record.timestamp;
 	ELLIPTICS_TEST_CASE(test_write_chunked, record);
 
 	ELLIPTICS_TEST_CASE_NOARGS(test_old_write_new_read_compatibility);

@@ -184,13 +184,39 @@ async_write_result session::write(const key &id,
                                   const argument_data &data, uint64_t data_capacity) {
 	transform(id);
 
+	auto on_fail = [this](const error_info & error) {
+		async_write_result result(*this);
+		async_result_handler<write_result_entry> handler(result);
+		handler.complete(error);
+		return result;
+	};
+
 	try {
 		validate_json(std::string((const char*)json.data(), json.size()));
 	} catch (const std::exception &e) {
-		async_write_result result(*this);
-		async_result_handler<write_result_entry> handler(result);
-		handler.complete(create_error(-EINVAL, "invalid json: %s", e.what()));
-		return result;
+		return on_fail(create_error(-EINVAL, "invalid json: %s", e.what()));
+	}
+
+	if (json_capacity == 0) {
+		json_capacity = json.size();
+	}
+
+	if (data_capacity == 0) {
+		data_capacity = data.size();
+	}
+
+	if (json_capacity < json.size()) {
+		return on_fail(create_error(-EINVAL,
+		                            "json_capacity (%llu) is less than json.size() (%llu)",
+		                            (unsigned long long)json_capacity,
+		                            (unsigned long long)json.size()));
+	}
+
+	if (data_capacity < data.size()) {
+		return on_fail(create_error(-EINVAL,
+		                            "data_capacity (%llu) is less than data.size() (%llu)",
+		                            (unsigned long long)data_capacity,
+		                            (unsigned long long)data.size()));
 	}
 
 	auto packet = [&] () {
@@ -198,7 +224,11 @@ async_write_result session::write(const key &id,
 			dnet_write_request request;
 			memset(&request, 0, sizeof(request));
 
-			request.ioflags = get_ioflags() | DNET_IO_FLAGS_PREPARE | DNET_IO_FLAGS_COMMIT | DNET_IO_FLAGS_PLAIN_WRITE;
+			request.ioflags = get_ioflags() |
+			                  DNET_IO_FLAGS_PREPARE |
+			                  DNET_IO_FLAGS_COMMIT |
+			                  DNET_IO_FLAGS_PLAIN_WRITE;
+			request.ioflags &= ~DNET_IO_FLAGS_UPDATE_JSON;
 			request.user_flags = get_user_flags();
 
 			get_timestamp(&request.timestamp);
@@ -238,20 +268,41 @@ async_lookup_result session::write_prepare(const key &id,
                                            const argument_data &data, uint64_t data_offset, uint64_t data_capacity) {
 	transform(id);
 
+	auto on_fail = [this](const error_info & error) {
+		async_write_result result(*this);
+		async_result_handler<write_result_entry> handler(result);
+		handler.complete(error);
+		return result;
+	};
+
 	try {
 		validate_json(std::string((const char*)json.data(), json.size()));
 	} catch (const std::exception &e) {
-		async_write_result result(*this);
-		async_result_handler<write_result_entry> handler(result);
-		handler.complete(create_error(-EINVAL, "invalid json: %s", e.what()));
-		return result;
+		return on_fail(create_error(-EINVAL, "invalid json: %s", e.what()));
 	}
 
-	if (json_capacity == 0)
+	if (json_capacity == 0) {
 		json_capacity = json.size();
+	}
 
-	if (data_capacity == 0)
+	if (data_capacity == 0) {
 		data_capacity = data_offset + data.size();
+	}
+
+	if (json_capacity < json.size()) {
+		return on_fail(create_error(-EINVAL,
+		                            "json_capacity (%llu) is less than json.size() (%llu)",
+		                            (unsigned long long)json_capacity,
+		                            (unsigned long long)json.size()));
+	}
+
+	if (data_capacity < data_offset + data.size()) {
+		return on_fail(create_error(-EINVAL,
+		                            "data_capacity (%llu) is less than data_offset (%llu) + data.size() (%llu)",
+		                            (unsigned long long)data_capacity,
+		                            (unsigned long long)data_offset,
+		                            (unsigned long long)data.size()));
+	}
 
 	auto packet = [&] () {
 		auto header = [&] () {
@@ -259,6 +310,7 @@ async_lookup_result session::write_prepare(const key &id,
 			memset(&request, 0, sizeof(request));
 
 			request.ioflags = get_ioflags() | DNET_IO_FLAGS_PREPARE | DNET_IO_FLAGS_PLAIN_WRITE;
+			request.ioflags &= ~(DNET_IO_FLAGS_COMMIT | DNET_IO_FLAGS_UPDATE_JSON);
 			request.user_flags = get_user_flags();
 
 			get_timestamp(&request.timestamp);
@@ -313,6 +365,7 @@ async_lookup_result session::write_plain(const key &id,
 			memset(&request, 0, sizeof(request));
 
 			request.ioflags = get_ioflags() | DNET_IO_FLAGS_PLAIN_WRITE;
+			request.ioflags &= ~(DNET_IO_FLAGS_PREPARE | DNET_IO_FLAGS_COMMIT | DNET_IO_FLAGS_UPDATE_JSON);
 			request.user_flags = get_user_flags();
 
 			get_timestamp(&request.timestamp);
@@ -368,6 +421,7 @@ async_lookup_result session::write_commit(const key &id,
 			memset(&request, 0, sizeof(request));
 
 			request.ioflags = get_ioflags() | DNET_IO_FLAGS_COMMIT | DNET_IO_FLAGS_PLAIN_WRITE;
+			request.ioflags &= ~(DNET_IO_FLAGS_PREPARE | DNET_IO_FLAGS_UPDATE_JSON);
 			request.user_flags = get_user_flags();
 
 			get_timestamp(&request.timestamp);
@@ -388,6 +442,53 @@ async_lookup_result session::write_commit(const key &id,
 		memcpy(ret.data(), header.data(), header.size());
 		memcpy(ret.skip(header.size()).data(), json.data(), json.size());
 		memcpy(ret.skip(header.size() + json.size()).data(), data.data(), data.size());
+		return ret;
+	} ();
+
+	transport_control control;
+	control.set_key(id.id());
+	control.set_command(DNET_CMD_WRITE_NEW);
+	control.set_cflags(get_cflags() | DNET_FLAGS_NEED_ACK);
+	control.set_data(packet.data(), packet.size());
+
+	auto session = clean_clone();
+	return async_result_cast<write_result_entry>(*this, send_to_groups(session, control));
+}
+
+async_lookup_result session::update_json(const key &id, const argument_data &json) {
+	transform(id);
+
+	try {
+		validate_json(std::string((const char*)json.data(), json.size()));
+	} catch (const std::exception &e) {
+		async_write_result result(*this);
+		async_result_handler<write_result_entry> handler(result);
+		handler.complete(create_error(-EINVAL, "invalid json: %s", e.what()));
+		return result;
+	}
+
+	auto packet = [&] () {
+		auto header = [&] () {
+			dnet_write_request request;
+			memset(&request, 0, sizeof(request));
+
+			request.ioflags = get_ioflags() | DNET_IO_FLAGS_UPDATE_JSON;
+			request.ioflags &= ~(DNET_IO_FLAGS_COMMIT | DNET_IO_FLAGS_PREPARE | DNET_IO_FLAGS_PLAIN_WRITE);
+			request.user_flags = get_user_flags();
+
+			get_timestamp(&request.timestamp);
+			if (dnet_time_is_empty(&request.timestamp)) {
+				dnet_current_time(&request.timestamp);
+			}
+
+			request.json_size = json.size();
+
+			return serialize(request);
+		} ();
+
+		auto ret = data_pointer::allocate(header.size() + json.size());
+		memcpy(ret.data(), header.data(), header.size());
+		memcpy(ret.skip(header.size()).data(), json.data(), json.size());
 		return ret;
 	} ();
 
