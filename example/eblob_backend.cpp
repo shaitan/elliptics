@@ -470,7 +470,7 @@ int blob_write_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *da
 			                 "%s: EBLOB: blob-write-new: WRITE_NEW: "
 			                 "json (%" PRIu64 ") exceed capacity (%" PRIu64"): %s [%d]",
 			                 dnet_dump_id(&cmd->id), request.json_size, jhdr.capacity,
-			                 strerror(-err), err)
+			                 strerror(-err), err);
 			return err;
 		}
 		const auto offset = sizeof(ehdr) + ehdr.size;
