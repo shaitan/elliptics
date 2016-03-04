@@ -1,3 +1,12 @@
+elliptics (2.26.10.2~6) unstable; urgency=low
+
+  * dc recovery: fix skipping keys when a whole server-send is failed
+  * server-send: add client address to 'sending response' log
+  * add tests for reading corrupted record
+  * json: fix verification checksum of read data
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Fri, 04 Mar 2016 20:56:21 +0400
+
 elliptics (2.26.10.2~5) unstable; urgency=low
 
   * verify checksum for the data only if data is requested
