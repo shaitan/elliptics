@@ -137,7 +137,7 @@ void test_update_bigger_json(const record &record) {
 	auto big_json = [&record] () {
 		std::ostringstream str;
 		str << "{\"big_key\":\"";
-		while (str.tellp() < record.json_capacity) {
+		while (str.tellp() < (off_t)record.json_capacity) {
 			str << "garbage";
 		}
 		str << "\"}";
@@ -716,6 +716,269 @@ void test_new_write_old_read_compatibility() {
 	}
 }
 
+void corrupt_record(const std::string &path, off_t offset, const std::string &injection) {
+	int fd = open(path.c_str(), O_RDWR, 0644);
+
+	BOOST_REQUIRE(fd > 0);
+	BOOST_REQUIRE_EQUAL(pwrite(fd, injection.c_str(), injection.size(), offset), injection.size());
+
+	close(fd);
+}
+
+void write_and_corrupt_record(ioremap::elliptics::newapi::session &s, const std::string &key,
+                              const std::string &json, uint64_t json_capacity,
+                              const std::string &data, uint64_t data_capacity,
+                              uint64_t injection_offset) {
+	auto async = s.write(key, json, json_capacity, data, data_capacity);
+
+	BOOST_REQUIRE_EQUAL(async.get().size(), 1);
+
+	auto result =  async.get()[0];
+
+	corrupt_record(result.path(), result.record_info().json_offset + injection_offset, "asjdhfpapof");
+}
+
+void write_and_corrupt_json(ioremap::elliptics::newapi::session &s, const std::string &key,
+                            const std::string &json, uint64_t json_capacity,
+                            const std::string &data, uint64_t data_capacity) {
+	write_and_corrupt_record(s, key, json, json_capacity, data, data_capacity, 0);
+}
+
+void write_and_corrupt_data(ioremap::elliptics::newapi::session &s, const std::string &key,
+                            const std::string &json, uint64_t json_capacity,
+                            const std::string &data, uint64_t data_capacity) {
+	write_and_corrupt_record(s, key, json, json_capacity, data, data_capacity, json_capacity);
+}
+
+void test_read_corrupted_json() {
+	static const auto group = groups[0];
+
+	ioremap::elliptics::newapi::session s(*servers->node);
+	s.set_groups({group});
+	s.set_trace_id(rand());
+	s.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
+	s.set_filter(ioremap::elliptics::filters::all_with_ack);
+
+	static const std::string key{"test_read_corrupted_json key"};
+	static const std::string data{"write_and_corrupt_json data"};
+	static const std::string json{R"json(
+	{
+		"key": "write_and_corrupt_json json key"
+	}
+	)json"};
+	write_and_corrupt_json(s, key, json, 0, data, 0);
+
+	auto async = s.read_json(key);
+	BOOST_REQUIRE_EQUAL(async.get().size(), 1);
+
+	auto result = async.get()[0];
+	BOOST_REQUIRE_EQUAL(result.status(), -EILSEQ);
+}
+
+void test_read_json_with_corrupted_data_part() {
+	static const auto group = groups[0];
+
+	ioremap::elliptics::newapi::session s(*servers->node);
+	s.set_groups({group});
+	s.set_trace_id(rand());
+	s.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
+	s.set_filter(ioremap::elliptics::filters::all_with_ack);
+
+	static const std::string key{"test_read_json_with_corrupted_data_part key"};
+	static const std::string data{"test_read_json_with_corrupted_data_part data"};
+	static const std::string json{R"json(
+	{
+		"key": "test_read_json_with_corrupted_data_part json key"
+	}
+	)json"};
+
+	write_and_corrupt_data(s, key, json, 0, data, 0);
+
+	auto async = s.read_json(key);
+	BOOST_REQUIRE_EQUAL(async.get().size(), 1);
+
+	auto result = async.get()[0];
+	BOOST_REQUIRE_EQUAL(result.status(), -EILSEQ);
+}
+
+void test_read_json_with_big_capacity_and_corrupted_data_part() {
+	static const auto group = groups[0];
+
+	ioremap::elliptics::newapi::session s(*servers->node);
+	s.set_groups({group});
+	s.set_trace_id(rand());
+
+	static const std::string key{"test_read_json_with_big_capacity_and_corrupted_data_part key"};
+	static const std::string data{"test_read_json_with_big_capacity_and_corrupted_data_part data"};
+	static const std::string json{R"json(
+	{
+		"key": "test_read_json_with_big_capacity_and_corrupted_data_part json"
+	}
+	)json"};
+
+	write_and_corrupt_data(s, key, json, 1<<20, data, 0);
+
+	auto async = s.read_json(key);
+	BOOST_REQUIRE_EQUAL(async.get().size(), 1);
+
+	auto result = async.get()[0];
+
+	BOOST_REQUIRE_EQUAL(result.json().to_string(), json);
+}
+
+void test_read_data_with_corrupted_json() {
+	static const auto group = groups[0];
+
+	ioremap::elliptics::newapi::session s(*servers->node);
+	s.set_groups({group});
+	s.set_trace_id(rand());
+	s.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
+	s.set_filter(ioremap::elliptics::filters::all_with_ack);
+
+	static const std::string key{"test_read_data_with_corrupted_json key"};
+	static const std::string data{"test_read_data_with_corrupted_json data"};
+	static const std::string json{R"json(
+	{
+		"key": "test_read_data_with_corrupted_json json"
+	}
+	)json"};
+
+	write_and_corrupt_json(s, key, json, 0, data, 0);
+
+	auto async = s.read_data(key, 0, 0);
+	BOOST_REQUIRE_EQUAL(async.get().size(), 1);
+
+	auto result = async.get()[0];
+	BOOST_REQUIRE_EQUAL(result.status(), -EILSEQ);
+}
+
+void test_read_data_with_corrupted_json_with_big_capacity() {
+	static const auto group = groups[0];
+
+	ioremap::elliptics::newapi::session s(*servers->node);
+	s.set_groups({group});
+	s.set_trace_id(rand());
+
+	static const std::string key{"test_read_data_with_corrupted_json_with_big_capacity key"};
+	static const std::string data{"test_read_data_with_corrupted_json_with_big_capacity data"};
+	static const std::string json{R"json(
+	{
+		"key": "test_read_data_with_corrupted_json_with_big_capacity json"
+	}
+	)json"};
+
+	write_and_corrupt_json(s, key, json, 1<<20, data, 0);
+
+	auto async = s.read_data(key, 0, 0);
+	BOOST_REQUIRE_EQUAL(async.get().size(), 1);
+
+	auto result = async.get()[0];
+
+	BOOST_REQUIRE_EQUAL(result.data().to_string(), data);
+}
+
+void test_read_data_with_corrupted_data() {
+	static const auto group = groups[0];
+
+	ioremap::elliptics::newapi::session s(*servers->node);
+	s.set_groups({group});
+	s.set_trace_id(rand());
+	s.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
+	s.set_filter(ioremap::elliptics::filters::all_with_ack);
+
+	static const std::string key{"test_read_data_with_corrupted_json key"};
+	static const std::string data{"test_read_data_with_corrupted_json data"};
+	static const std::string json{R"json(
+	{
+		"key": "test_read_data_with_corrupted_json json"
+	}
+	)json"};
+
+	write_and_corrupt_data(s, key, json, 0, data, 0);
+
+	auto async = s.read_data(key, 0, 0);
+	BOOST_REQUIRE_EQUAL(async.get().size(), 1);
+
+	auto result = async.get()[0];
+	BOOST_REQUIRE_EQUAL(result.status(), -EILSEQ);
+}
+
+std::string make_data(const std::string &pattern, off_t size) {
+	std::ostringstream str;
+	while (str.tellp() < size) {
+		str << pattern;
+	}
+	return str.str();
+}
+
+void test_read_data_part_with_corrupted_first_data() {
+	static const auto group = groups[0];
+
+	ioremap::elliptics::newapi::session s(*servers->node);
+	s.set_groups({group});
+	s.set_trace_id(rand());
+	s.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
+	s.set_filter(ioremap::elliptics::filters::all_with_ack);
+
+	static const std::string key{"test_read_data_with_corrupted_json key"};
+	static const std::string data = make_data({"test_read_first_data_with_corrupted_first_data"}, 2<<20);
+	static const std::string json{R"json(
+	{
+		"key": "test_read_data_with_corrupted_json json"
+	}
+	)json"};
+
+	write_and_corrupt_record(s, key, json, 0, data, 0, json.size());
+
+	auto async = s.read_data(key, 0, 0);
+	BOOST_REQUIRE_EQUAL(async.get().size(), 1);
+
+	auto result = async.get()[0];
+	BOOST_REQUIRE_EQUAL(result.status(), -EILSEQ);
+
+	async = s.read_data(key, 1<<20, 100);
+	BOOST_REQUIRE_EQUAL(async.get().size(), 1);
+
+	result = async.get()[0];
+	BOOST_REQUIRE_EQUAL(result.status(), 0);
+	const auto data_part = data.substr(1<<20, 100);
+	BOOST_REQUIRE_EQUAL(result.data().to_string(), data_part);
+}
+
+void test_read_data_part_with_corrupted_second_data() {
+	static const auto group = groups[0];
+
+	ioremap::elliptics::newapi::session s(*servers->node);
+	s.set_groups({group});
+	s.set_trace_id(rand());
+	s.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
+	s.set_filter(ioremap::elliptics::filters::all_with_ack);
+
+	static const std::string key{"test_read_data_with_corrupted_json key"};
+	static const std::string data = make_data({"test_read_first_data_with_corrupted_first_data"}, 2<<20);
+	static const std::string json{R"json(
+	{
+		"key": "test_read_data_with_corrupted_json json"
+	}
+	)json"};
+
+	write_and_corrupt_record(s, key, json, 0, data, 0, json.size() + (1<<20));
+
+	auto async = s.read_data(key, 0, 100);
+	BOOST_REQUIRE_EQUAL(async.get().size(), 1);
+
+	auto result = async.get()[0];
+	BOOST_REQUIRE_EQUAL(result.status(), 0);
+	auto data_part = data.substr(0, 100);
+	BOOST_REQUIRE_EQUAL(result.data().to_string(), data_part);
+
+	async = s.read_data(key, 1<<20, 0);
+	BOOST_REQUIRE_EQUAL(async.get().size(), 1);
+
+	result = async.get()[0];
+	BOOST_REQUIRE_EQUAL(result.status(), -EILSEQ);
+}
+
 namespace test_all_with_ack_filter {
 namespace bu = boost::unit_test;
 
@@ -855,6 +1118,15 @@ void register_tests(bu::test_suite *suite) {
 
 	ELLIPTICS_TEST_CASE_NOARGS(test_old_write_new_read_compatibility);
 	ELLIPTICS_TEST_CASE_NOARGS(test_new_write_old_read_compatibility);
+
+	ELLIPTICS_TEST_CASE_NOARGS(test_read_corrupted_json);
+	ELLIPTICS_TEST_CASE_NOARGS(test_read_json_with_corrupted_data_part);
+	ELLIPTICS_TEST_CASE_NOARGS(test_read_json_with_big_capacity_and_corrupted_data_part);
+	ELLIPTICS_TEST_CASE_NOARGS(test_read_data_with_corrupted_json);
+	ELLIPTICS_TEST_CASE_NOARGS(test_read_data_with_corrupted_json_with_big_capacity);
+	ELLIPTICS_TEST_CASE_NOARGS(test_read_data_with_corrupted_data);
+	ELLIPTICS_TEST_CASE_NOARGS(test_read_data_part_with_corrupted_first_data);
+	ELLIPTICS_TEST_CASE_NOARGS(test_read_data_part_with_corrupted_second_data);
 }
 
 bu::test_suite *setup_tests(int argc, char *argv[]) {

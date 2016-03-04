@@ -304,6 +304,7 @@ int blob_read_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *dat
 
 		data_size -= request.data_offset;
 		data_offset += request.data_offset;
+		record_offset += request.data_offset;
 
 		if (request.data_size != 0 &&
 		    request.data_size < data_size)
