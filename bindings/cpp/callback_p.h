@@ -37,12 +37,6 @@ extern "C" {
 #include "foreign/cmp/cmp.h"
 }
 
-//#ifdef DEVELOPER_BUILD
-//#  define elliptics_assert(expr) assert(expr)
-//#else
-#  define elliptics_assert(expr)
-//#endif
-
 namespace ioremap { namespace elliptics {
 
 class session_scope
@@ -95,8 +89,6 @@ private:
 	blackhole::scoped_attributes_t m_attributes;
 };
 
-typedef int (*complete_func)(struct dnet_net_state *, struct dnet_cmd *, void *);
-
 class callback_result_data
 {
 	public:
@@ -122,40 +114,6 @@ class callback_result_data
 		data_pointer data;
 		error_info error;
 		exec_context context;
-};
-
-enum special_count { unlimited };
-
-struct entry_converter
-{
-	static void convert(exec_result_entry &entry, callback_result_data *data)
-	{
-		data->context = exec_context::parse(entry.data(), &data->error);
-	}
-
-	static void convert(iterator_result_entry &entry, callback_result_data *)
-	{
-		dnet_convert_iterator_response(entry.reply());
-	}
-
-	static void convert(lookup_result_entry &entry, callback_result_data *)
-	{
-		dnet_convert_addr(entry.storage_address());
-		dnet_convert_file_info(entry.file_info());
-	}
-
-	static void convert(read_result_entry &entry, callback_result_data *)
-	{
-		dnet_convert_io_attr(entry.io_attribute());
-	}
-
-	static void convert(backend_status_result_entry &, callback_result_data *)
-	{
-	}
-
-	static void convert(callback_result_entry &, callback_result_data *)
-	{
-	}
 };
 
 struct dnet_net_state_deleter

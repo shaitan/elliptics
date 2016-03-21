@@ -613,8 +613,8 @@ bool async_result_handler<find_indexes_result_entry>::check(error_info *error)
 
 /*!
  * \brief Checks whether async_result was correctly obtained
- * \param error Out parameter filled with error_info if error occured during obtaining async_result
- * \return Returns true iff no error occured during obtaining async_result
+ * \param error Out parameter filled with error_info if error occurred during obtaining async_result
+ * \return Returns true if no error occurred during obtaining async_result
  */
 template <>
 bool async_result_handler<get_index_metadata_result_entry>::check(error_info *error)
