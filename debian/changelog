@@ -1,3 +1,48 @@
+elliptics (2.26.10.2-1) unstable; urgency=low
+
+  * queue_timeout:
+  *     added 'queue_timeout'. If queue_timeout is presented at config, all requests that spent more than queue_timeout in io queue will be skipped.
+  *     added to logs time that request spent in queue
+  *     refactored queue size statistics
+  * feature local node access service:
+  *    localnode: add NOLOCK flag for read operations
+  *    localnode: more optimal search for local groups. Also logging cleanup
+  *    srw: localnode servicek
+  * local copy:
+  *    core: request fixup moved to dnet_io_req_copy. To isolate work with dnet_io_req data pointers request fixup was moved to dnet_io_req_copy function from dnet_io_req_queue.
+  *    fixed typos
+  *    core: bypass write to pipe for local transactions. Reworked dnet_io_req_queue function to pass io_req struct directly to the proper IO pool, eliminating write/read through pipe in net pool.
+  * json:
+  *    Update test suite for json api
+  *    Refactor sending/handling read/write commands
+  *    Add dumping new flags
+  *    Add newapi/session.hpp to cppdef.h
+  *    add tests for reading corrupted record
+  *    json: fix verification checksum of read data
+  *    verify checksum for the data only if data is requested
+  *    fix update_json and add tests for its bad cases
+  *    json: allow to reset json by calling update_json with empty json
+  *    fix build: missed semicolon
+  *    Fix status in ack for request failed with -ENXIO.
+  *    json: add checking json_capacity and data_capacity in write* methods.
+  *    json: add update_json method
+  *    newapi: init
+  *    newapi: add new headers to elliptics-dev package
+  *    json: verify checksum for json and data on read
+  *    wrap dnet_fd_readlink by dnet_get_filename
+  *    fix typo
+  *    add missed implementation for newapi::session::operator =
+  *    tests: check via read sizes/offsets returned by write
+  *    tests: check via read sizes/offsets returned by lookup
+  *    remove NEED_ACK flag for new commands
+  *    tests: add new test cases for all_with_ack filter
+  *    rename info() into record_info() in new read/lookup/write results
+  *    add io_info() to newapi::read_result_entry
+  * misc:
+  *    cleanup code: remove unused code
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Mon, 21 Mar 2016 10:15:30 +0300
+
 elliptics (2.26.10.2) unstable; urgency=low
 
   * dc recovery: fix skipping keys when a whole server-send is failed
