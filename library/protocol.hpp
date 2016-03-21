@@ -9,6 +9,19 @@ namespace ioremap { namespace elliptics {
 #define DNET_READ_FLAGS_JSON (1<<0)
 #define DNET_READ_FLAGS_DATA (1<<1)
 
+static inline const char *dnet_dump_read_flags(uint64_t flags)
+{
+	static __thread char buffer[256];
+	static struct flag_info infos[] = {
+		{ DNET_READ_FLAGS_JSON, "json" },
+		{ DNET_READ_FLAGS_DATA, "data" },
+	};
+
+	dnet_flags_dump_raw(buffer, sizeof(buffer), flags, infos, sizeof(infos) / sizeof(infos[0]));
+
+	return buffer;
+}
+
 struct dnet_read_request {
 	uint64_t ioflags;
 	uint64_t read_flags;

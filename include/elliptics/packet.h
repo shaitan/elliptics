@@ -594,6 +594,7 @@ static inline const char *dnet_flags_dump_ioflags(uint64_t flags)
 		{ DNET_IO_FLAGS_CHECKSUM, "checksum/no_file_info" },
 		{ DNET_IO_FLAGS_CAS_TIMESTAMP, "cas_timestamp" },
 		{ DNET_IO_FLAGS_MIX_STATES, "mix_states" },
+		{ DNET_IO_FLAGS_UPDATE_JSON, "update_json" },
 	};
 
 	dnet_flags_dump_raw(buffer, sizeof(buffer), flags, infos, sizeof(infos) / sizeof(infos[0]));

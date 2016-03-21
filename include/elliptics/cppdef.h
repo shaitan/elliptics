@@ -25,5 +25,6 @@
 #endif
 
 #include "session.hpp"
+#include "newapi/session.hpp"
 
 #endif /* ELLIPTICS_CPPDEF_H */

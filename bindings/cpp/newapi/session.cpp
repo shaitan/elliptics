@@ -1,12 +1,32 @@
 #include "elliptics/newapi/session.hpp"
 
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
+
 #include "elliptics/async_result_cast.hpp"
 #include "bindings/cpp/callback_p.h"
 #include "bindings/cpp/node_p.hpp"
 
 #include "library/protocol.hpp"
 
+#include "bindings/cpp/functional_p.h"
+
 namespace ioremap { namespace elliptics { namespace newapi {
+
+class timer {
+public:
+	timer() {
+		gettimeofday(&point, nullptr);
+	}
+
+	unsigned long long elapsed() {
+		struct timeval curr;
+		gettimeofday(&curr, nullptr);
+		return (curr.tv_sec - point.tv_sec) * 1000000 + curr.tv_usec - point.tv_usec;
+	}
+private:
+	struct timeval point;
+};
 
 session::session(const node &n) : elliptics::session(n) {
 }
@@ -74,108 +94,325 @@ async_lookup_result session::lookup(const key &id) {
 	return result;
 }
 
-class read_handler : public multigroup_handler<read_handler, read_result_entry> {
-public:
-	read_handler(const session &s, const async_read_result &result,
-	             std::vector<int> &&groups, const dnet_trans_control &control)
+/* TODO: refactor read_handler/write_handler because they have a lot in common */
+class read_handler : public std::enable_shared_from_this<read_handler> {
+private:
+	class inner_handler : public multigroup_handler<inner_handler, read_result_entry> {
+	public:
+		inner_handler(const session &s, const async_read_result &result,
+		              std::vector<int> &&groups, const dnet_trans_control &control)
 		: parent_type(s, result, std::move(groups))
-		, m_control(control) {
+		, m_control(control)
+		{}
+
+		async_generic_result send_to_next_group() {
+			m_control.id.group_id = current_group();
+			return send_to_single_state(m_sess, m_control);
+		}
+
+	private:
+		dnet_trans_control m_control;
+	};
+
+	struct response {
+		uint32_t group;
+		int status;
+		uint64_t json_size;
+		uint64_t data_size;
+	};
+
+public:
+	explicit read_handler(const session &orig_sess, const async_read_result &result,
+	                      const key &id)
+	: m_timer()
+	, m_key(id)
+	, m_session(orig_sess.clean_clone())
+	, m_handler(result)
+	{
+		m_session.set_checker(orig_sess.get_checker());
+		m_responses.reserve(m_session.get_groups().size());
 	}
 
-	async_generic_result send_to_next_group() {
-		m_control.id.group_id = current_group();
-		return send_to_single_state(m_sess, m_control);
+	void start(std::vector<int> &&groups, const transport_control &control) {
+		m_handler.set_total(1);
+		async_read_result result(m_session);
+		auto handler = std::make_shared<inner_handler>(m_session, result, std::move(groups), control.get_native());
+		handler->set_total(1);
+		handler->start();
+		result.connect(
+			std::bind(&read_handler::process, shared_from_this(), std::placeholders::_1),
+			std::bind(&read_handler::complete, shared_from_this(), std::placeholders::_1)
+		);
 	}
 
 private:
-	dnet_trans_control m_control;
+	void process(const ioremap::elliptics::callback_result_entry &entry) {
+		const auto &resp = callback_cast<read_result_entry>(entry);
+		m_responses.emplace_back(response{
+			resp.command()->id.group_id,
+			resp.status(),
+			resp.status() ? 0 : resp.io_info().json_size,
+			resp.status() ? 0 : resp.io_info().data_size
+		});
+
+		m_handler.process(resp);
+	}
+
+	void complete(const error_info &error) {
+		m_handler.complete(error);
+
+		std::string groups, status, jsons, datas;
+		std::tie(groups, status, jsons, datas) = dump_responses();
+		BH_LOG(m_session.get_logger(), DNET_LOG_INFO,
+		       "%s: %s: finished: groups: %s, status: %s, json-size: %s, data-size: %s, total_time: %llu",
+		       dnet_dump_id_str(m_key.id().id), dnet_cmd_string(DNET_CMD_READ_NEW),
+		       groups.c_str(), status.c_str(), jsons.c_str(), datas.c_str(), m_timer.elapsed());
+	}
+
+	std::tuple<std::string, std::string, std::string, std::string> dump_responses() const {
+		auto dump = [this] (const char b, const char e, const std::function<std::string(const response &)> &f) {
+			std::ostringstream str;
+			str << b;
+			for (auto it = m_responses.cbegin(); it != m_responses.cend(); ++it) {
+				if (it != m_responses.cbegin())
+					str << ", ";
+				str << f(*it);
+			}
+			str << e;
+			return str.str();
+		};
+
+		auto dump_array = [&dump] (const std::function<std::string(const response &)> &f) {
+			return dump('[', ']', f);
+		};
+
+		auto dump_pairs = [&dump] (const std::function<std::string(const response &)> &f) {
+			return dump('{', '}', [&f] (const response &r) {
+				return std::to_string(r.group) + ": " + f(r);
+			});
+		};
+
+		auto groups = dump_array([] (const response &r) {
+			return std::to_string(r.group);
+		});
+
+		auto status = dump_pairs([] (const response &r) { return std::to_string(r.status); });
+		auto json = dump_pairs([] (const response &r) { return std::to_string(r.json_size); });
+		auto data = dump_pairs([] (const response &r) { return std::to_string(r.data_size); });
+
+		return std::make_tuple(groups, status, json, data);
+	}
+
+	timer m_timer;
+	key m_key;
+	session m_session;
+	async_result_handler<read_result_entry> m_handler;
+	std::vector<response> m_responses;
 };
 
-async_read_result session::read_json(const key &id) {
-	DNET_SESSION_GET_GROUPS(async_read_result);
-	transform(id);
-
-	auto packet = [&] () {
-		dnet_read_request request;
-		memset(&request, 0, sizeof(request));
-
-		request.ioflags = get_ioflags();
-		request.read_flags = DNET_READ_FLAGS_JSON;
-		return serialize(request);
-	} ();
+async_read_result send_read(const session &orig_sess, const key &id, const dnet_read_request &request,
+                            std::vector<int> &&groups) {
+	auto packet = serialize(request);
 
 	transport_control control;
 
 	control.set_key(id.id());
 	control.set_command(DNET_CMD_READ_NEW);
-	control.set_cflags(get_cflags() | DNET_FLAGS_NEED_ACK);
+	control.set_cflags(orig_sess.get_cflags() | DNET_FLAGS_NEED_ACK);
 	control.set_data(packet.data(), packet.size());
 
-	async_read_result result(*this);
-	auto handler = std::make_shared<read_handler>(*this, result, std::move(groups), control.get_native());
-	handler->set_total(1);
-	handler->start();
+	BH_LOG(orig_sess.get_logger(), DNET_LOG_INFO,
+	       "%s: %s: started: flags: %s, read-flags: %s, offset: %" PRIu64 ", size: %" PRIu64,
+	       dnet_dump_id(&id.id()),
+	       dnet_cmd_string(control.get_native().cmd),
+	       dnet_flags_dump_ioflags(request.ioflags),
+	       dnet_dump_read_flags(request.read_flags),
+	       request.data_offset,
+	       request.data_size);
 
+	async_read_result result(orig_sess);
+	auto handler = std::make_shared<read_handler>(orig_sess, result, id);
+	handler->start(std::move(groups), control.get_native());
 	return result;
+}
+
+async_read_result session::read_json(const key &id) {
+	DNET_SESSION_GET_GROUPS(async_read_result);
+	transform(id);
+
+	dnet_read_request request;
+	memset(&request, 0, sizeof(request));
+
+	request.ioflags = get_ioflags();
+	request.read_flags = DNET_READ_FLAGS_JSON;
+
+	return send_read(*this, id, request, std::move(groups));
 }
 
 async_read_result session::read_data(const key &id, uint64_t offset, uint64_t size) {
 	DNET_SESSION_GET_GROUPS(async_read_result);
 	transform(id);
 
-	auto packet = [&] () {
-		dnet_read_request request;
-		memset(&request, 0, sizeof(request));
+	dnet_read_request request;
+	memset(&request, 0, sizeof(request));
 
-		request.ioflags = get_ioflags();
-		request.read_flags = DNET_READ_FLAGS_DATA;
-		request.data_offset = offset;
-		request.data_size = size;
-		return serialize(request);
-	} ();
+	request.ioflags = get_ioflags();
+	request.read_flags = DNET_READ_FLAGS_DATA;
+	request.data_offset = offset;
+	request.data_size = size;
 
-	transport_control control;
-
-	control.set_key(id.id());
-	control.set_command(DNET_CMD_READ_NEW);
-	control.set_cflags(get_cflags() | DNET_FLAGS_NEED_ACK);
-	control.set_data(packet.data(), packet.size());
-
-	async_read_result result(*this);
-	auto handler = std::make_shared<read_handler>(*this, result, std::move(groups), control.get_native());
-	handler->set_total(1);
-	handler->start();
-
-	return result;
+	return send_read(*this, id, request, std::move(groups));
 }
 
 async_read_result session::read(const key &id, uint64_t offset, uint64_t size) {
 	DNET_SESSION_GET_GROUPS(async_read_result);
 	transform(id);
 
-	auto packet = [&] () {
-		dnet_read_request request;
-		memset(&request, 0, sizeof(request));
+	dnet_read_request request;
+	memset(&request, 0, sizeof(request));
 
-		request.ioflags = get_ioflags();
-		request.read_flags = DNET_READ_FLAGS_JSON | DNET_READ_FLAGS_DATA;
-		request.data_offset = offset;
-		request.data_size = size;
-		return serialize(request);
+	request.ioflags = get_ioflags();
+	request.read_flags = DNET_READ_FLAGS_JSON | DNET_READ_FLAGS_DATA;
+	request.data_offset = offset;
+	request.data_size = size;
+
+	return send_read(*this, id, request, std::move(groups));
+}
+
+/* TODO: refactor read_handler/write_handler because they have a lot in common */
+class write_handler : public std::enable_shared_from_this<write_handler> {
+private:
+	struct response {
+		uint32_t group;
+		int status;
+		uint64_t json_size;
+		uint64_t data_size;
+	};
+public:
+	explicit write_handler(const async_write_result &result, const session &orig_sess,
+	                       const key &id)
+	: m_timer()
+	, m_key(id)
+	, m_session(orig_sess.clean_clone())
+	, m_handler(result)
+	{
+		m_session.set_checker(orig_sess.get_checker());
+		m_responses.reserve(m_session.get_groups().size());
+	}
+
+	void start(const transport_control &control, const dnet_write_request &request) {
+		BH_LOG(m_session.get_logger(), DNET_LOG_INFO,
+		       "%s: %s: started: flags: %s, ts: '%s', "
+		       "json: {size: %" PRIu64 ", capacity: %" PRIu64 "}, "
+		       "data: {offset: %" PRIu64 ", size: %" PRIu64 ", "
+		       "capacity: %" PRIu64 ", commit-size: %" PRIu64 "}",
+		       dnet_dump_id(&m_key.id()),
+		       dnet_cmd_string(control.get_native().cmd),
+		       dnet_flags_dump_ioflags(request.ioflags),
+		       dnet_print_time(&request.timestamp),
+		       request.json_size,
+		       request.json_capacity,
+		       request.data_offset,
+		       request.data_size,
+		       request.data_capacity,
+		       request.data_commit_size);
+
+		auto rr = send_to_groups(m_session, control);
+		m_handler.set_total(rr.total());
+
+		rr.connect(
+			std::bind(&write_handler::process, shared_from_this(), std::placeholders::_1),
+			std::bind(&write_handler::complete, shared_from_this(), std::placeholders::_1)
+		);
+	}
+
+private:
+	void process(const ioremap::elliptics::callback_result_entry &entry) {
+		const auto &resp = callback_cast<write_result_entry>(entry);
+		m_responses.emplace_back(response{
+			resp.command()->id.group_id,
+			resp.status(),
+			resp.status() ? 0 : resp.record_info().json_size,
+			resp.status() ? 0 : resp.record_info().data_size
+		});
+
+		m_handler.process(resp);
+	}
+
+	void complete(const error_info &error) {
+		m_handler.complete(error);
+
+		std::string groups, status, jsons, datas;
+		std::tie(groups, status, jsons, datas) = dump_responses();
+		BH_LOG(m_session.get_logger(), DNET_LOG_INFO,
+		       "%s: %s: finished: groups: %s, status: %s, json-size: %s, data-size: %s, total_time: %llu",
+		       dnet_dump_id_str(m_key.id().id), dnet_cmd_string(DNET_CMD_WRITE_NEW),
+		       groups.c_str(), status.c_str(), jsons.c_str(), datas.c_str(), m_timer.elapsed());
+	}
+
+	std::tuple<std::string, std::string, std::string, std::string> dump_responses() const {
+		auto dump = [this] (const char b, const char e, const std::function<std::string(const response &)> &f) {
+			std::ostringstream str;
+			str << b;
+			for (auto it = m_responses.cbegin(); it != m_responses.cend(); ++it) {
+				if (it != m_responses.cbegin())
+					str << ", ";
+				str << f(*it);
+			}
+			str << e;
+			return str.str();
+		};
+
+		auto dump_array = [&dump] (const std::function<std::string(const response &)> &f) {
+			return dump('[', ']', f);
+		};
+
+		auto dump_pairs = [&dump] (const std::function<std::string(const response &)> &f) {
+			return dump('{', '}', [&f] (const response &r) {
+				return std::to_string(r.group) + ": " + f(r);
+			});
+		};
+
+		auto groups = dump_array([] (const response &r) {
+			return std::to_string(r.group);
+		});
+
+		auto status = dump_pairs([] (const response &r) { return std::to_string(r.status); });
+		auto json = dump_pairs([] (const response &r) { return std::to_string(r.json_size); });
+		auto data = dump_pairs([] (const response &r) { return std::to_string(r.data_size); });
+
+		return std::make_tuple(groups, status, json, data);
+	}
+
+	timer m_timer;
+	key m_key;
+	session m_session;
+	async_result_handler<write_result_entry> m_handler;
+	std::vector<response> m_responses;
+};
+
+async_write_result send_write(const session &orig_sess, const key &id, const dnet_write_request &request,
+                              const argument_data &json, const argument_data &data) {
+
+	auto packet = [&] () {
+		auto header = serialize(request);
+
+		auto ret = data_pointer::allocate(header.size() + json.size() + data.size());
+		memcpy(ret.data(), header.data(), header.size());
+		memcpy(ret.skip(header.size()).data(), json.data(), json.size());
+		memcpy(ret.skip(header.size() + json.size()).data(), data.data(), data.size());
+		return ret;
 	} ();
 
 	transport_control control;
-
 	control.set_key(id.id());
-	control.set_command(DNET_CMD_READ_NEW);
-	control.set_cflags(get_cflags() | DNET_FLAGS_NEED_ACK);
+	control.set_command(DNET_CMD_WRITE_NEW);
+	control.set_cflags(orig_sess.get_cflags() | DNET_FLAGS_NEED_ACK);
 	control.set_data(packet.data(), packet.size());
 
-	async_read_result result(*this);
-	auto handler = std::make_shared<read_handler>(*this, result, std::move(groups), control.get_native());
-	handler->set_total(1);
-	handler->start();
-
+	async_write_result result(orig_sess);
+	auto handler = std::make_shared<write_handler>(result, orig_sess, id);
+	handler->start(control, request);
 	return result;
 }
 
@@ -219,48 +456,29 @@ async_write_result session::write(const key &id,
 		                            (unsigned long long)data.size()));
 	}
 
-	auto packet = [&] () {
-		auto header = [&] () {
-			dnet_write_request request;
-			memset(&request, 0, sizeof(request));
+	dnet_write_request request;
+	memset(&request, 0, sizeof(request));
 
-			request.ioflags = get_ioflags() |
-			                  DNET_IO_FLAGS_PREPARE |
-			                  DNET_IO_FLAGS_COMMIT |
-			                  DNET_IO_FLAGS_PLAIN_WRITE;
-			request.ioflags &= ~DNET_IO_FLAGS_UPDATE_JSON;
-			request.user_flags = get_user_flags();
+	request.ioflags = get_ioflags() |
+	                  DNET_IO_FLAGS_PREPARE |
+	                  DNET_IO_FLAGS_COMMIT |
+	                  DNET_IO_FLAGS_PLAIN_WRITE;
+	request.ioflags &= ~DNET_IO_FLAGS_UPDATE_JSON;
+	request.user_flags = get_user_flags();
 
-			get_timestamp(&request.timestamp);
-			if (dnet_time_is_empty(&request.timestamp)) {
-				dnet_current_time(&request.timestamp);
-			}
+	get_timestamp(&request.timestamp);
+	if (dnet_time_is_empty(&request.timestamp)) {
+		dnet_current_time(&request.timestamp);
+	}
 
-			request.json_size = json.size();
-			request.json_capacity = json_capacity;
+	request.json_size = json.size();
+	request.json_capacity = json_capacity;
 
-			request.data_offset = 0;
-			request.data_commit_size = request.data_size = data.size();
-			request.data_capacity = data_capacity;
+	request.data_offset = 0;
+	request.data_commit_size = request.data_size = data.size();
+	request.data_capacity = data_capacity;
 
-			return serialize(request);
-		} ();
-
-		auto ret = data_pointer::allocate(header.size() + json.size() + data.size());
-		memcpy(ret.data(), header.data(), header.size());
-		memcpy(ret.skip(header.size()).data(), json.data(), json.size());
-		memcpy(ret.skip(header.size() + json.size()).data(), data.data(), data.size());
-		return ret;
-	} ();
-
-	transport_control control;
-	control.set_key(id.id());
-	control.set_command(DNET_CMD_WRITE_NEW);
-	control.set_cflags(get_cflags() | DNET_FLAGS_NEED_ACK);
-	control.set_data(packet.data(), packet.size());
-
-	auto session = clean_clone();
-	return async_result_cast<write_result_entry>(*this, send_to_groups(session, control));
+	return send_write(*this, id, request, json, data);
 }
 
 async_lookup_result session::write_prepare(const key &id,
@@ -304,45 +522,26 @@ async_lookup_result session::write_prepare(const key &id,
 		                            (unsigned long long)data.size()));
 	}
 
-	auto packet = [&] () {
-		auto header = [&] () {
-			dnet_write_request request;
-			memset(&request, 0, sizeof(request));
+	dnet_write_request request;
+	memset(&request, 0, sizeof(request));
 
-			request.ioflags = get_ioflags() | DNET_IO_FLAGS_PREPARE | DNET_IO_FLAGS_PLAIN_WRITE;
-			request.ioflags &= ~(DNET_IO_FLAGS_COMMIT | DNET_IO_FLAGS_UPDATE_JSON);
-			request.user_flags = get_user_flags();
+	request.ioflags = get_ioflags() | DNET_IO_FLAGS_PREPARE | DNET_IO_FLAGS_PLAIN_WRITE;
+	request.ioflags &= ~(DNET_IO_FLAGS_COMMIT | DNET_IO_FLAGS_UPDATE_JSON);
+	request.user_flags = get_user_flags();
 
-			get_timestamp(&request.timestamp);
-			if (dnet_time_is_empty(&request.timestamp)) {
-				dnet_current_time(&request.timestamp);
-			}
+	get_timestamp(&request.timestamp);
+	if (dnet_time_is_empty(&request.timestamp)) {
+		dnet_current_time(&request.timestamp);
+	}
 
-			request.json_size = json.size();
-			request.json_capacity = json_capacity;
+	request.json_size = json.size();
+	request.json_capacity = json_capacity;
 
-			request.data_offset = data_offset;
-			request.data_size = data.size();
-			request.data_capacity = data_capacity;
+	request.data_offset = data_offset;
+	request.data_size = data.size();
+	request.data_capacity = data_capacity;
 
-			return serialize(request);
-		} ();
-
-		auto ret = data_pointer::allocate(header.size() + json.size() + data.size());
-		memcpy(ret.data(), header.data(), header.size());
-		memcpy(ret.skip(header.size()).data(), json.data(), json.size());
-		memcpy(ret.skip(header.size() + json.size()).data(), data.data(), data.size());
-		return ret;
-	} ();
-
-	transport_control control;
-	control.set_key(id.id());
-	control.set_command(DNET_CMD_WRITE_NEW);
-	control.set_cflags(get_cflags() | DNET_FLAGS_NEED_ACK);
-	control.set_data(packet.data(), packet.size());
-
-	auto session = clean_clone();
-	return async_result_cast<write_result_entry>(*this, send_to_groups(session, control));
+	return send_write(*this, id, request, json, data);
 }
 
 async_lookup_result session::write_plain(const key &id,
@@ -359,43 +558,24 @@ async_lookup_result session::write_plain(const key &id,
 		return result;
 	}
 
-	auto packet = [&] () {
-		auto header = [&] () {
-			dnet_write_request request;
-			memset(&request, 0, sizeof(request));
+	dnet_write_request request;
+	memset(&request, 0, sizeof(request));
 
-			request.ioflags = get_ioflags() | DNET_IO_FLAGS_PLAIN_WRITE;
-			request.ioflags &= ~(DNET_IO_FLAGS_PREPARE | DNET_IO_FLAGS_COMMIT | DNET_IO_FLAGS_UPDATE_JSON);
-			request.user_flags = get_user_flags();
+	request.ioflags = get_ioflags() | DNET_IO_FLAGS_PLAIN_WRITE;
+	request.ioflags &= ~(DNET_IO_FLAGS_PREPARE | DNET_IO_FLAGS_COMMIT | DNET_IO_FLAGS_UPDATE_JSON);
+	request.user_flags = get_user_flags();
 
-			get_timestamp(&request.timestamp);
-			if (dnet_time_is_empty(&request.timestamp)) {
-				dnet_current_time(&request.timestamp);
-			}
+	get_timestamp(&request.timestamp);
+	if (dnet_time_is_empty(&request.timestamp)) {
+		dnet_current_time(&request.timestamp);
+	}
 
-			request.json_size = json.size();
+	request.json_size = json.size();
 
-			request.data_offset = data_offset;
-			request.data_size = data.size();
+	request.data_offset = data_offset;
+	request.data_size = data.size();
 
-			return serialize(request);
-		} ();
-
-		auto ret = data_pointer::allocate(header.size() + json.size() + data.size());
-		memcpy(ret.data(), header.data(), header.size());
-		memcpy(ret.skip(header.size()).data(), json.data(), json.size());
-		memcpy(ret.skip(header.size() + json.size()).data(), data.data(), data.size());
-		return ret;
-	} ();
-
-	transport_control control;
-	control.set_key(id.id());
-	control.set_command(DNET_CMD_WRITE_NEW);
-	control.set_cflags(get_cflags() | DNET_FLAGS_NEED_ACK);
-	control.set_data(packet.data(), packet.size());
-
-	auto session = clean_clone();
-	return async_result_cast<write_result_entry>(*this, send_to_groups(session, control));
+	return send_write(*this, id, request, json, data);
 }
 
 async_lookup_result session::write_commit(const key &id,
@@ -415,44 +595,25 @@ async_lookup_result session::write_commit(const key &id,
 	if (data_commit_size == 0)
 		data_commit_size = data_offset + data.size();
 
-	auto packet = [&] () {
-		auto header = [&] () {
-			dnet_write_request request;
-			memset(&request, 0, sizeof(request));
+	dnet_write_request request;
+	memset(&request, 0, sizeof(request));
 
-			request.ioflags = get_ioflags() | DNET_IO_FLAGS_COMMIT | DNET_IO_FLAGS_PLAIN_WRITE;
-			request.ioflags &= ~(DNET_IO_FLAGS_PREPARE | DNET_IO_FLAGS_UPDATE_JSON);
-			request.user_flags = get_user_flags();
+	request.ioflags = get_ioflags() | DNET_IO_FLAGS_COMMIT | DNET_IO_FLAGS_PLAIN_WRITE;
+	request.ioflags &= ~(DNET_IO_FLAGS_PREPARE | DNET_IO_FLAGS_UPDATE_JSON);
+	request.user_flags = get_user_flags();
 
-			get_timestamp(&request.timestamp);
-			if (dnet_time_is_empty(&request.timestamp)) {
-				dnet_current_time(&request.timestamp);
-			}
+	get_timestamp(&request.timestamp);
+	if (dnet_time_is_empty(&request.timestamp)) {
+		dnet_current_time(&request.timestamp);
+	}
 
-			request.json_size = json.size();
+	request.json_size = json.size();
 
-			request.data_offset = data_offset;
-			request.data_size = data.size();
-			request.data_commit_size = data_commit_size;
+	request.data_offset = data_offset;
+	request.data_size = data.size();
+	request.data_commit_size = data_commit_size;
 
-			return serialize(request);
-		} ();
-
-		auto ret = data_pointer::allocate(header.size() + json.size() + data.size());
-		memcpy(ret.data(), header.data(), header.size());
-		memcpy(ret.skip(header.size()).data(), json.data(), json.size());
-		memcpy(ret.skip(header.size() + json.size()).data(), data.data(), data.size());
-		return ret;
-	} ();
-
-	transport_control control;
-	control.set_key(id.id());
-	control.set_command(DNET_CMD_WRITE_NEW);
-	control.set_cflags(get_cflags() | DNET_FLAGS_NEED_ACK);
-	control.set_data(packet.data(), packet.size());
-
-	auto session = clean_clone();
-	return async_result_cast<write_result_entry>(*this, send_to_groups(session, control));
+	return send_write(*this, id, request, json, data);
 }
 
 async_lookup_result session::update_json(const key &id, const argument_data &json) {
@@ -467,39 +628,21 @@ async_lookup_result session::update_json(const key &id, const argument_data &jso
 		return result;
 	}
 
-	auto packet = [&] () {
-		auto header = [&] () {
-			dnet_write_request request;
-			memset(&request, 0, sizeof(request));
+	dnet_write_request request;
+	memset(&request, 0, sizeof(request));
 
-			request.ioflags = get_ioflags() | DNET_IO_FLAGS_UPDATE_JSON;
-			request.ioflags &= ~(DNET_IO_FLAGS_COMMIT | DNET_IO_FLAGS_PREPARE | DNET_IO_FLAGS_PLAIN_WRITE);
-			request.user_flags = get_user_flags();
+	request.ioflags = get_ioflags() | DNET_IO_FLAGS_UPDATE_JSON;
+	request.ioflags &= ~(DNET_IO_FLAGS_COMMIT | DNET_IO_FLAGS_PREPARE | DNET_IO_FLAGS_PLAIN_WRITE);
+	request.user_flags = get_user_flags();
 
-			get_timestamp(&request.timestamp);
-			if (dnet_time_is_empty(&request.timestamp)) {
-				dnet_current_time(&request.timestamp);
-			}
+	get_timestamp(&request.timestamp);
+	if (dnet_time_is_empty(&request.timestamp)) {
+		dnet_current_time(&request.timestamp);
+	}
 
-			request.json_size = json.size();
+	request.json_size = json.size();
 
-			return serialize(request);
-		} ();
-
-		auto ret = data_pointer::allocate(header.size() + json.size());
-		memcpy(ret.data(), header.data(), header.size());
-		memcpy(ret.skip(header.size()).data(), json.data(), json.size());
-		return ret;
-	} ();
-
-	transport_control control;
-	control.set_key(id.id());
-	control.set_command(DNET_CMD_WRITE_NEW);
-	control.set_cflags(get_cflags() | DNET_FLAGS_NEED_ACK);
-	control.set_data(packet.data(), packet.size());
-
-	auto session = clean_clone();
-	return async_result_cast<write_result_entry>(*this, send_to_groups(session, control));
+	return send_write(*this, id, request, json, "");
 }
 
 }}} // ioremap::elliptics::newapi
