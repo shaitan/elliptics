@@ -1,79 +1,21 @@
-elliptics (2.26.10.2~6) unstable; urgency=low
+elliptics (2.26.10.2) unstable; urgency=low
 
   * dc recovery: fix skipping keys when a whole server-send is failed
   * server-send: add client address to 'sending response' log
-  * add tests for reading corrupted record
-  * json: fix verification checksum of read data
-
- -- Kirill Smorodinnikov <shaitkir@gmail.com>  Fri, 04 Mar 2016 20:56:21 +0400
-
-elliptics (2.26.10.2~5) unstable; urgency=low
-
-  * verify checksum for the data only if data is requested
-
- -- Kirill Smorodinnikov <shaitkir@gmail.com>  Thu, 03 Mar 2016 19:19:11 +0400
-
-elliptics (2.26.10.2~4) unstable; urgency=low
-
-  * fix update_json and add tests for its bad cases
-  * json: allow to reset json by calling update_json with empty json
-  * fix hanging of backend initialization
-
- -- Kirill Smorodinnikov <shaitkir@gmail.com>  Thu, 03 Mar 2016 15:37:02 +0400
-
-elliptics (2.26.10.2~3) unstable; urgency=low
-
-  * fix build: missed semicolon
-
- -- Kirill Smorodinnikov <shaitkir@gmail.com>  Thu, 03 Mar 2016 06:46:14 +0400
-
-elliptics (2.26.10.2~2) unstable; urgency=low
-
-  * server_send: add tests for bad cases
-  * Fix status in ack for request failed with -ENXIO.
-  * server-send: move the check of write error occurence
-  * json: add checking json_capacity and data_capacity in write* methods.
-  * json: add update_json method
-  * iterator-copy: stop eblob iterator if write error has been occurred
   * cmake: add option to disable long tests
+  * iterator-copy: stop eblob iterator if write error has been occurred
+  * server-send: move the check of write error occurence
+  * Fix status in ack for request failed with -ENXIO
+  * server_send: add tests for bad cases
+  * Fix hanging of backend initialization
+  * route: do not spam logs with debug route table content every time route table is requested
+  * binding: added cflags_checksum & cflags_nocache to python binding
+  * Fixed data size in write response:
+  * python: added `set_delay` method
+  * fixed trans number in a result in case of timeout
+  * spec: fixed version string comparison
 
- -- Kirill Smorodinnikov <shaitkir@gmail.com>  Thu, 03 Mar 2016 06:25:28 +0400
-
-elliptics (2.26.10.2~1) unstable; urgency=low
-
-  * bump version to v2.26.10.2~1
-
- -- Kirill Smorodinnikov <shaitkir@gmail.com>  Mon, 29 Feb 2016 18:28:47 +0400
-
-elliptics (2.26.10.1-x1) unstable; urgency=low
-
-  * queue_timeout:
-  *     added 'queue_timeout'. If queue_timeout is presented at config, all requests that spent more than queue_timeout in io queue will be skipped.
-  *     added to logs time that request spent in queue
-  *     refactored queue size statistics
-  * feature local node access service:
-  *    localnode: add NOLOCK flag for read operations
-  *    localnode: more optimal search for local groups. Also logging cleanup
-  *    srw: localnode service
-  * local copy:
-  *    core: request fixup moved to dnet_io_req_copy. To isolate work with dnet_io_req data pointers request fixup was moved to dnet_io_req_copy function from dnet_io_req_queue.
-  *    fixed typos
-  *    core: bypass write to pipe for local transactions. Reworked dnet_io_req_queue function to pass io_req struct directly to the proper IO pool, eliminating write/read through pipe in net pool.
-  * json:
-  *    newapi: init
-  *    newapi: add new headers to elliptics-dev package
-  *    json: verify checksum for json and data on read
-  *    wrap dnet_fd_readlink by dnet_get_filename
-  *    fix typo
-  *    add missed implementation for newapi::session::operator =
-  *    tests: check via read sizes/offsets returned by write
-  *    tests: check via read sizes/offsets returned by lookup
-  *    remove NEED_ACK flag for new commands
-  *    tests: add new test cases for all_with_ack filter
-  *    rename info() into record_info() in new read/lookup/write results
-  *    add io_info() to newapi::read_result_entry
-
- -- Kirill Smorodinnikov <shaitkir@gmail.com>  Mon, 29 Feb 2016 17:36:39 +0400
+ -- Evgeniy Polyakov <zbr@ioremap.net>  Sat, 05 Mar 2016 18:30:29 +0400
 
 elliptics (2.26.10.1) unstable; urgency=low
 
@@ -858,7 +800,7 @@ elliptics (2.26.1.0) unstable; urgency=low
 elliptics (2.26.0.4) unstable; urgency=low
 
   * library: Fixed race of creating dht states
-  * 
+  *
 
  -- Ruslan Nigmatullin <euroelessar@yandex.ru>  Sun, 03 Aug 2014 19:43:51 +0400
 
@@ -869,7 +811,7 @@ elliptics (2.26.0.3) unstable; urgency=low
   * library: Reimplemented reconnection thread
   * * Now it makes reconnection and route list requests simultaneously, which gradually decreasis time of this operations with low-latency network
   * net: Removed autodiscovery support
-  * 
+  *
 
  -- Ruslan Nigmatullin <euroelessar@yandex.ru>  Sun, 03 Aug 2014 03:50:01 +0400
 
@@ -1049,7 +991,7 @@ elliptics (2.25.4.18) unstable; urgency=low
   * client: Introduced merge_indexes method
   * tests: Docs for test_index_metadata added
   * index: More docs for get_index_metadata helper function
-  * 
+  *
 
  -- Evgeniy Polyakov <zbr@ioremap.net>  Mon, 23 Jun 2014 18:09:46 +0400
 
@@ -1177,7 +1119,7 @@ elliptics (2.25.4.7) unstable; urgency=low
 
 elliptics (2.25.4.6-1) unstable; urgency=low
 
-  * 
+  *
   * Fixed package details
 
  -- Ruslan Nigmatullin <euroelessar@yandex.ru>  Fri, 25 Apr 2014 16:03:10 +0400
@@ -1598,7 +1540,7 @@ elliptics (2.24.14.22) unstable; urgency=low
   * Python: provided python level log based on logging.
   * Cpp: Extended comments and notes about write_prepare, write_plain and write_commit.
   * Cpp: fixed write_data by chunks.
-  * Relicense Elliptics under LGPL 
+  * Relicense Elliptics under LGPL
 
  -- Evgeniy Polyakov <zbr@ioremap.net>  Wed, 13 Nov 2013 00:39:05 +0400
 
@@ -2532,7 +2474,7 @@ elliptics (2.23.6.0) unstable; urgency=low
   *  Only return wait error (usually -ETIMEOUT/-110) if wait internal
   *  status (assigned in write completion handler) was set to something
   *  except -ENXIO.
-  *     
+  *
   *  -ENXIO is set by default and means no transactions were sent
   * dnet_schedule_io() should wakeup only one thread when new packet has been queued
 
@@ -2770,7 +2712,7 @@ elliptics (2.22.0.0) unstable; urgency=low
   * Added logical route groups to support multiple addresses in config.
   * Do not try to initialize srw if no config specified. Otherwise fail whole node initialization if srw init failed.
   * Send discovery at startup
-  * Use bp=boost::python namespace 
+  * Use bp=boost::python namespace
 
  -- Evgeniy Polyakov <zbr@ioremap.net>  Mon, 04 Mar 2013 21:49:27 +0400
 
