@@ -1,18 +1,18 @@
-#include "test_base.hpp"
+#include <boost/program_options.hpp>
 
 #define BOOST_TEST_NO_MAIN
+#define BOOST_TEST_ALTERNATIVE_INIT_API
 #include <boost/test/included/unit_test.hpp>
-
-#include <boost/program_options.hpp>
 
 #include "elliptics/newapi/session.hpp"
 
-namespace {
+#include "test_base.hpp"
+
+namespace tests {
+
 namespace bu = boost::unit_test;
 
-static std::shared_ptr<tests::nodes_data> servers;
-
-void configure_servers(const std::string &path) {
+nodes_data::ptr configure_test_setup(const std::string &path) {
 	constexpr auto server_config = [] (const tests::config_data &c) {
 		return tests::server_config::default_value().apply_options(c);
 	};
@@ -25,8 +25,15 @@ void configure_servers(const std::string &path) {
 	                                 configs,
 	                                 path);
 	config.fork = true;
-	servers = tests::start_nodes(config);
+
+	return tests::start_nodes(config);
 }
+
+}
+
+namespace {
+
+tests::nodes_data* get_setup();
 
 namespace constants {
 	namespace numberof {
@@ -258,7 +265,7 @@ void test_iterator(const ioremap::elliptics::newapi::session &session) {
 	s.set_groups({constants::src_group});
 
 	static const auto time_range = std::make_tuple(dnet_time{0, 0}, dnet_time{0, 0});
-	auto async = s.start_iterator(servers->nodes[0].remote(), 0, 0, {}, time_range);
+	auto async = s.start_iterator(get_setup()->nodes[0].remote(), 0, 0, {}, time_range);
 
 	size_t index = 0;
 	for (const auto &result: async) {
@@ -296,7 +303,7 @@ void test_iterator_with_data(const ioremap::elliptics::newapi::session &session)
 
 	static const auto time_range = std::make_tuple(dnet_time{0, 0}, dnet_time{0, 0});
 	uint64_t flags = DNET_IFLAGS_DATA;
-	auto async = s.start_iterator(servers->nodes[0].remote(), 0, flags, {}, time_range);
+	auto async = s.start_iterator(get_setup()->nodes[0].remote(), 0, flags, {}, time_range);
 
 	size_t index = 0;
 	for (const auto &result: async) {
@@ -335,7 +342,7 @@ void test_iterator_with_json(const ioremap::elliptics::newapi::session &session)
 
 	static const auto time_range = std::make_tuple(dnet_time{0, 0}, dnet_time{0, 0});
 	static const uint64_t flags = DNET_IFLAGS_JSON;
-	auto async = s.start_iterator(servers->nodes[0].remote(), 0, flags, {}, time_range);
+	auto async = s.start_iterator(get_setup()->nodes[0].remote(), 0, flags, {}, time_range);
 
 	size_t index = 0;
 	for (const auto &result: async) {
@@ -375,7 +382,7 @@ void test_iterator_with_json_and_data(const ioremap::elliptics::newapi::session 
 
 	static const auto time_range = std::make_tuple(dnet_time{0, 0}, dnet_time{0, 0});
 	static const uint64_t flags = DNET_IFLAGS_JSON | DNET_IFLAGS_DATA;
-	auto async = s.start_iterator(servers->nodes[0].remote(), 0, flags, {}, time_range);
+	auto async = s.start_iterator(get_setup()->nodes[0].remote(), 0, flags, {}, time_range);
 
 	size_t index = 0;
 	for (const auto &result: async) {
@@ -418,7 +425,7 @@ void test_iterator_with_time_range(const ioremap::elliptics::newapi::session &se
 	const auto time_range = std::make_tuple(record{s, first_index}.data_ts(),
 	                                        record{s, last_index}.data_ts());
 	static const uint64_t flags = DNET_IFLAGS_TS_RANGE;
-	auto async = s.start_iterator(servers->nodes[0].remote(), 0, flags, {}, time_range);
+	auto async = s.start_iterator(get_setup()->nodes[0].remote(), 0, flags, {}, time_range);
 
 	size_t index = first_index;
 	for (const auto &result: async) {
@@ -457,7 +464,7 @@ void test_iterator_no_meta(const ioremap::elliptics::newapi::session &session) {
 	static const dnet_time null_ts{0, 0};
 	static const auto time_range = std::make_tuple(null_ts, null_ts);
 	static const uint64_t flags = DNET_IFLAGS_NO_META;
-	auto async = s.start_iterator(servers->nodes[0].remote(), 0, flags, {}, time_range);
+	auto async = s.start_iterator(get_setup()->nodes[0].remote(), 0, flags, {}, time_range);
 
 	size_t index = 0;
 	for (const auto &result: async) {
@@ -502,30 +509,34 @@ void test_iterator_no_meta(const ioremap::elliptics::newapi::session &session) {
 	BOOST_REQUIRE_EQUAL(index, constants::numberof::all);
 }
 
-void register_tests(bu::test_suite *suite) {
-	ioremap::elliptics::newapi::session session(*servers->node);
-	ELLIPTICS_TEST_CASE(test_write_keys, session);
 
-	ELLIPTICS_TEST_CASE(test_iterator, session);
-	ELLIPTICS_TEST_CASE(test_iterator_with_data, session);
-	ELLIPTICS_TEST_CASE(test_iterator_with_json, session);
-	ELLIPTICS_TEST_CASE(test_iterator_with_json_and_data, session);
+bool register_tests(const tests::nodes_data *setup) {
+	using namespace tests;
+
+	auto n = setup->node->get_native();
+
+	ELLIPTICS_TEST_CASE(test_write_keys, use_session(n));
+
+	ELLIPTICS_TEST_CASE(test_iterator, use_session(n));
+	ELLIPTICS_TEST_CASE(test_iterator_with_data, use_session(n));
+	ELLIPTICS_TEST_CASE(test_iterator_with_json, use_session(n));
+	ELLIPTICS_TEST_CASE(test_iterator_with_json_and_data, use_session(n));
 
 	{
 		using namespace constants::numberof;
 		// iterate first 2 keys
-		ELLIPTICS_TEST_CASE(test_iterator_with_time_range, session, 0, 1);
+		ELLIPTICS_TEST_CASE(test_iterator_with_time_range, use_session(n), 0, 1);
 		// iterate some 2 keys
-		ELLIPTICS_TEST_CASE(test_iterator_with_time_range, session, 10, 11);
+		ELLIPTICS_TEST_CASE(test_iterator_with_time_range, use_session(n), 10, 11);
 		// iterate all committed keys
-		ELLIPTICS_TEST_CASE(test_iterator_with_time_range, session, 0, committed::all - 1);
+		ELLIPTICS_TEST_CASE(test_iterator_with_time_range, use_session(n), 0, committed::all - 1);
 		// iterate all uncommitted keys
-		ELLIPTICS_TEST_CASE(test_iterator_with_time_range, session, committed::all, all - 1);
+		ELLIPTICS_TEST_CASE(test_iterator_with_time_range, use_session(n), committed::all, all - 1);
 		// iterate all keys
-		ELLIPTICS_TEST_CASE(test_iterator_with_time_range, session, 0, all - 1);
+		ELLIPTICS_TEST_CASE(test_iterator_with_time_range, use_session(n), 0, all - 1);
 	}
 
-	ELLIPTICS_TEST_CASE(test_iterator_no_meta, session);
+	ELLIPTICS_TEST_CASE(test_iterator_no_meta, use_session(n));
 
 	/* TODO:
 	 * * iterate with time range and json
@@ -545,9 +556,14 @@ void register_tests(bu::test_suite *suite) {
 	 * * iterate with no_meta, time_range, and few key_ranges
 	 * * examine all combination of time_range, key_ranges, no_meta, json and data
 	 */
+
+	return true;
 }
 
-bu::test_suite *setup_tests(int argc, char *argv[]) {
+} /* namespace */
+
+
+tests::nodes_data::ptr configure_test_setup_from_args(int argc, char *argv[]) {
 	namespace bpo = boost::program_options;
 
 	bpo::variables_map vm;
@@ -568,19 +584,47 @@ bu::test_suite *setup_tests(int argc, char *argv[]) {
 		return nullptr;
 	}
 
-	auto suite = new bu::test_suite("Local Test Suite");
-
-	configure_servers(path);
-
-	register_tests(suite);
-
-	return suite;
+	return tests::configure_test_setup(path);
 }
-} /* namespace */
 
-int main(int argc, char *argv[]) {
-	atexit([] { servers.reset(); });
 
+//
+// Common test initialization routine.
+//
+using namespace tests;
+using namespace boost::unit_test;
+
+//FIXME: forced to use global variable and plain function wrapper
+// because of the way how init_test_main works in boost.test,
+// introducing a global fixture would be a proper way to handle
+// global test setup
+namespace {
+
+std::shared_ptr<nodes_data> setup;
+
+nodes_data* get_setup()
+{
+	return setup.get();
+}
+
+bool init_func()
+{
+	return register_tests(setup.get());
+}
+
+}
+
+int main(int argc, char *argv[])
+{
 	srand(time(nullptr));
-	return bu::unit_test_main(setup_tests, argc, argv);
+
+	// we own our test setup
+	setup = configure_test_setup_from_args(argc, argv);
+
+	int result = unit_test_main(init_func, argc, argv);
+
+	// disassemble setup explicitly, to be sure about where its lifetime ends
+	setup.reset();
+
+	return result;
 }
