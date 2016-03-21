@@ -69,29 +69,40 @@ static const char *ioserv_path()
 	return result;
 }
 
-void test_wrapper::operator() () const
+void test_wrapper_with_session::operator() () const
 {
-	BH_LOG(*logger, DNET_LOG_INFO, "Start test: %s", test_name);
-	test_body();
-	BH_LOG(*logger, DNET_LOG_INFO, "Finish test: %s", test_name);
+	dnet_node *n;
+	std::vector<int> groups;
+	uint64_t cflags;
+	uint64_t ioflags;
+	std::tie(n, groups, cflags, ioflags) = session_args;
+
+	newapi::session client(n);
+
+	uint64_t trace_id = 0;
+	auto buffer = reinterpret_cast<unsigned char *>(&trace_id);
+	for (size_t i = 0; i < sizeof(trace_id); ++i) {
+		buffer[i] = rand();
+	}
+	client.set_trace_id(trace_id);
+
+	// differentiate in the log clients used to do test actions
+	// from other kinds of elliptics clients
+	client.get_logger().log().add_attribute({"source", {"in-test-client"}});
+
+	BH_LOG(client.get_logger(), DNET_LOG_INFO, "Start test: %s", test_name);
+
+	client.set_groups(groups);
+	client.set_cflags(cflags);
+	client.set_ioflags(ioflags);
+
+	client.set_exceptions_policy(session::no_exceptions);
+
+	// It is safe to pass newapi::session to tests which want to operate on old session.
+	test_body(client);
+
+	BH_LOG(client.get_logger(), DNET_LOG_INFO, "Finish test: %s", test_name);
 }
-
-ioremap::elliptics::session create_session(ioremap::elliptics::node n, std::initializer_list<int> groups, uint64_t cflags, uint32_t ioflags)
-{
-	session sess(n);
-
-	sess.set_groups(std::vector<int>(groups));
-	sess.set_cflags(cflags);
-	sess.set_ioflags(ioflags);
-
-	sess.set_exceptions_policy(session::no_exceptions);
-
-	// differentiate this client from others in the log
-	sess.get_logger().log().add_attribute({"source", {"in-test-client"}});
-
-	return sess;
-}
-
 
 directory_handler::directory_handler() : m_remove(false)
 {
@@ -634,6 +645,11 @@ server_config &server_node::config()
 	return m_config;
 }
 
+const server_config &server_node::config() const
+{
+	return m_config;
+}
+
 address server_node::remote() const
 {
 	return m_remote;
@@ -654,7 +670,7 @@ pid_t server_node::pid() const
 	return m_pid;
 }
 
-dnet_node *server_node::get_native()
+dnet_node *server_node::get_native() const
 {
 	return m_node;
 }
@@ -789,7 +805,7 @@ static void create_cocaine_config(const std::string &config_path, const std::str
 	out.write(config_text.c_str(), config_text.size());
 }
 
-static void start_client_nodes(const start_nodes_config &start_config, const nodes_data::ptr &data, const std::vector<std::string> &remotes);
+static void start_client_node(const nodes_data::ptr &data, const std::vector<std::string> &remotes, const start_nodes_config &start_config);
 
 start_nodes_config::start_nodes_config(std::ostream &debug_stream, const std::vector<server_config> &&configs, const std::string &path)
 	: debug_stream(debug_stream)
@@ -1082,7 +1098,7 @@ nodes_data::ptr start_nodes(start_nodes_config &start_config) {
 			remotes.push_back(data->nodes[i].remote().to_string_with_family());
 		}
 
-		start_client_nodes(start_config, data, remotes);
+		start_client_node(data, remotes, start_config);
 
 	} catch (std::exception &e) {
 		start_config.debug_stream << "Failed to connect to servers: " << e.what() << std::endl;
@@ -1096,12 +1112,14 @@ nodes_data::ptr start_nodes(start_nodes_config &start_config) {
 
 #endif // NO_SERVER
 
-static void start_client_nodes(const start_nodes_config &start_config, const nodes_data::ptr &data, const std::vector<std::string> &remotes)
+static void start_client_node(const nodes_data::ptr &data, const std::vector<std::string> &remotes, const start_nodes_config &start_config)
 {
-	data->logger.reset(new logger_base);
 	if (!data->directory.path().empty()) {
 		const std::string path = data->directory.path() + "/testsuite-client.log";
 		data->logger.reset(new file_logger(path.c_str(), DNET_LOG_DEBUG));
+
+	} else {
+		data->logger.reset(new logger_base);
 	}
 
 	dnet_config config;
@@ -1128,7 +1146,8 @@ nodes_data::ptr start_nodes(std::ostream &debug_stream, const std::vector<std::s
 	nodes_data::ptr data = std::make_shared<nodes_data>();
 	data->directory = directory_handler(path, false);
 
-	start_client_nodes(start_config, data, remotes);
+	start_client_node(data, remotes, start_config);
+
 	return data;
 }
 
