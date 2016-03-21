@@ -100,9 +100,10 @@ void check_lookup_result(ioremap::elliptics::newapi::async_lookup_result &async,
 	BOOST_REQUIRE_EQUAL(count, expected_count);
 }
 
-void test_write(const record &record) {
-	ioremap::elliptics::newapi::session s(*servers->node);
+void test_write(const ioremap::elliptics::newapi::session &session, const record &record) {
+	auto s = session.clone();
 	s.set_groups(groups);
+	s.set_trace_id(rand());
 	s.set_user_flags(record.user_flags);
 
 	s.set_timestamp(record.timestamp);
@@ -114,9 +115,10 @@ void test_write(const record &record) {
 	check_lookup_result(async, DNET_CMD_WRITE_NEW, record, groups.size());
 }
 
-void test_update_json(const record &record) {
-	ioremap::elliptics::newapi::session s(*servers->node);
+void test_update_json(const ioremap::elliptics::newapi::session &session, const record &record) {
+	auto s = session.clone();
 	s.set_groups(groups);
+	s.set_trace_id(rand());
 	s.set_user_flags(record.user_flags);
 
 	s.set_timestamp(record.json_timestamp);
@@ -126,9 +128,10 @@ void test_update_json(const record &record) {
 	check_lookup_result(async, DNET_CMD_WRITE_NEW, record, groups.size());
 }
 
-void test_update_bigger_json(const record &record) {
-	ioremap::elliptics::newapi::session s(*servers->node);
+void test_update_bigger_json(const ioremap::elliptics::newapi::session &session, const record &record) {
+	auto s = session.clone();
 	s.set_groups(groups);
+	s.set_trace_id(rand());
 	s.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
 	s.set_filter(ioremap::elliptics::filters::all_with_ack);
 
@@ -155,9 +158,10 @@ void test_update_bigger_json(const record &record) {
 	BOOST_REQUIRE_EQUAL(count, groups.size());
 }
 
-void test_update_json_noexist() {
-	ioremap::elliptics::newapi::session s(*servers->node);
+void test_update_json_noexist(const ioremap::elliptics::newapi::session &session) {
+	auto s = session.clone();
 	s.set_groups(groups);
+	s.set_trace_id(rand());
 	s.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
 	s.set_filter(ioremap::elliptics::filters::all_with_ack);
 
@@ -173,9 +177,10 @@ void test_update_json_noexist() {
 	BOOST_REQUIRE_EQUAL(count, groups.size());
 }
 
-void test_update_json_uncommitted() {
-	ioremap::elliptics::newapi::session s(*servers->node);
+void test_update_json_uncommitted(const ioremap::elliptics::newapi::session &session) {
+	auto s = session.clone();
 	s.set_groups(groups);
+	s.set_trace_id(rand());
 	s.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
 	s.set_filter(ioremap::elliptics::filters::all_with_ack);
 
@@ -195,17 +200,19 @@ void test_update_json_uncommitted() {
 	BOOST_REQUIRE_EQUAL(count, groups.size());
 }
 
-void test_lookup(const record &record) {
-	ioremap::elliptics::newapi::session s(*servers->node);
+void test_lookup(const ioremap::elliptics::newapi::session &session, const record &record) {
+	auto s = session.clone();
 	s.set_groups(groups);
+	s.set_trace_id(rand());
 
 	auto async = s.lookup(record.key);
 
 	check_lookup_result(async, DNET_CMD_LOOKUP_NEW, record, 1);
 }
 
-void test_read_json(const record &record) {
-	ioremap::elliptics::newapi::session s(*servers->node);
+void test_read_json(const ioremap::elliptics::newapi::session &session, const record &record) {
+	auto s = session.clone();
+	s.set_trace_id(rand());
 
 	size_t count = 0;
 
@@ -250,8 +257,9 @@ void test_read_json(const record &record) {
 	BOOST_REQUIRE_EQUAL(count, groups.size());
 }
 
-void test_read_data(const record &record, uint64_t offset, uint64_t size) {
-	ioremap::elliptics::newapi::session s(*servers->node);
+void test_read_data(const ioremap::elliptics::newapi::session &session, const record &record, uint64_t offset, uint64_t size) {
+	auto s = session.clone();
+	s.set_trace_id(rand());
 
 	size_t count = 0;
 
@@ -297,8 +305,9 @@ void test_read_data(const record &record, uint64_t offset, uint64_t size) {
 	BOOST_REQUIRE_EQUAL(count, groups.size());
 }
 
-void test_read(const record &record, uint64_t offset, uint64_t size) {
-	ioremap::elliptics::newapi::session s(*servers->node);
+void test_read(const ioremap::elliptics::newapi::session &session, const record &record, uint64_t offset, uint64_t size) {
+	auto s = session.clone();
+	s.set_trace_id(rand());
 
 	size_t count = 0;
 
@@ -344,9 +353,10 @@ void test_read(const record &record, uint64_t offset, uint64_t size) {
 	BOOST_REQUIRE_EQUAL(count, groups.size());
 }
 
-void test_write_chunked(const record &record) {
-	ioremap::elliptics::newapi::session s(*servers->node);
+void test_write_chunked(const ioremap::elliptics::newapi::session &session, const record &record) {
+	auto s = session.clone();
 	s.set_groups(groups);
+	s.set_trace_id(rand());
 	s.set_user_flags(record.user_flags);
 	s.set_timestamp(record.timestamp);
 
@@ -471,7 +481,7 @@ void test_write_chunked(const record &record) {
 	BOOST_REQUIRE_EQUAL(count, groups.size());
 }
 
-void test_old_write_new_read_compatibility() {
+void test_old_write_new_read_compatibility(const ioremap::elliptics::newapi::session &session) {
 	static const ioremap::elliptics::key key{"test_old_write_new_read_compatibility's key"};
 	static const std::string data{"test_old_write_new_read_compatibility's data"};
 	constexpr uint64_t user_flags = 0xfc1234;
@@ -479,9 +489,11 @@ void test_old_write_new_read_compatibility() {
 	constexpr dnet_time empty_time{0, 0};
 	constexpr uint64_t record_flags = DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM;
 	constexpr uint64_t eblob_headers_size = sizeof(eblob_disk_control) + sizeof(dnet_ext_list_hdr);
+	auto s = session.clone();
 	{
 		ioremap::elliptics::session s(*servers->node);
 		s.set_groups(groups);
+		s.set_trace_id(rand());
 		s.set_user_flags(user_flags);
 		s.set_timestamp(timestamp);
 
@@ -505,8 +517,8 @@ void test_old_write_new_read_compatibility() {
 	}
 
 	{
-		ioremap::elliptics::newapi::session s(*servers->node);
 		s.set_groups(groups);
+		s.set_trace_id(rand());
 
 		auto async = s.lookup(key);
 
@@ -535,8 +547,8 @@ void test_old_write_new_read_compatibility() {
 	}
 
 	{
-		ioremap::elliptics::newapi::session s(*servers->node);
 		s.set_groups(groups);
+		s.set_trace_id(rand());
 
 		auto async = s.read_json(key);
 
@@ -574,8 +586,8 @@ void test_old_write_new_read_compatibility() {
 	}
 
 	{
-		ioremap::elliptics::newapi::session s(*servers->node);
 		s.set_groups(groups);
+		s.set_trace_id(rand());
 
 		auto async = s.read(key, 0, 0);
 
@@ -617,7 +629,7 @@ void test_old_write_new_read_compatibility() {
 	}
 }
 
-void test_new_write_old_read_compatibility() {
+void test_new_write_old_read_compatibility(const ioremap::elliptics::newapi::session &session) {
 	static const ioremap::elliptics::key key{"test_new_write_old_read_compatibility's key"};
 	static const std::string json{"{\"some_field\":\"some_field's data\"}"};
 	uint64_t json_capacity = 100;
@@ -628,9 +640,10 @@ void test_new_write_old_read_compatibility() {
 	constexpr uint64_t record_flags = DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM;
 	constexpr uint64_t eblob_headers_size = sizeof(eblob_disk_control) + sizeof(dnet_ext_list_hdr);
 
+	auto s = session.clone();
 	{
-		ioremap::elliptics::newapi::session s(*servers->node);
 		s.set_groups(groups);
+		s.set_trace_id(rand());
 		s.set_user_flags(user_flags);
 
 		s.set_timestamp(timestamp);
@@ -668,6 +681,7 @@ void test_new_write_old_read_compatibility() {
 	{
 		ioremap::elliptics::session s(*servers->node);
 		s.set_groups(groups);
+		s.set_trace_id(rand());
 
 		auto async = s.lookup(key);
 
@@ -692,6 +706,7 @@ void test_new_write_old_read_compatibility() {
 	{
 		ioremap::elliptics::session s(*servers->node);
 		s.set_groups(groups);
+		s.set_trace_id(rand());
 
 		auto async = s.read_data(key, 0, 0);
 
@@ -750,10 +765,10 @@ void write_and_corrupt_data(ioremap::elliptics::newapi::session &s, const std::s
 	write_and_corrupt_record(s, key, json, json_capacity, data, data_capacity, json_capacity);
 }
 
-void test_read_corrupted_json() {
+void test_read_corrupted_json(const ioremap::elliptics::newapi::session &session) {
 	static const auto group = groups[0];
 
-	ioremap::elliptics::newapi::session s(*servers->node);
+	auto s = session.clone();
 	s.set_groups({group});
 	s.set_trace_id(rand());
 	s.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
@@ -775,10 +790,10 @@ void test_read_corrupted_json() {
 	BOOST_REQUIRE_EQUAL(result.status(), -EILSEQ);
 }
 
-void test_read_json_with_corrupted_data_part() {
+void test_read_json_with_corrupted_data_part(const ioremap::elliptics::newapi::session &session) {
 	static const auto group = groups[0];
 
-	ioremap::elliptics::newapi::session s(*servers->node);
+	auto s = session.clone();
 	s.set_groups({group});
 	s.set_trace_id(rand());
 	s.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
@@ -801,10 +816,10 @@ void test_read_json_with_corrupted_data_part() {
 	BOOST_REQUIRE_EQUAL(result.status(), -EILSEQ);
 }
 
-void test_read_json_with_big_capacity_and_corrupted_data_part() {
+void test_read_json_with_big_capacity_and_corrupted_data_part(const ioremap::elliptics::newapi::session &session) {
 	static const auto group = groups[0];
 
-	ioremap::elliptics::newapi::session s(*servers->node);
+	auto s = session.clone();
 	s.set_groups({group});
 	s.set_trace_id(rand());
 
@@ -826,10 +841,10 @@ void test_read_json_with_big_capacity_and_corrupted_data_part() {
 	BOOST_REQUIRE_EQUAL(result.json().to_string(), json);
 }
 
-void test_read_data_with_corrupted_json() {
+void test_read_data_with_corrupted_json(const ioremap::elliptics::newapi::session &session) {
 	static const auto group = groups[0];
 
-	ioremap::elliptics::newapi::session s(*servers->node);
+	auto s = session.clone();
 	s.set_groups({group});
 	s.set_trace_id(rand());
 	s.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
@@ -852,10 +867,10 @@ void test_read_data_with_corrupted_json() {
 	BOOST_REQUIRE_EQUAL(result.status(), -EILSEQ);
 }
 
-void test_read_data_with_corrupted_json_with_big_capacity() {
+void test_read_data_with_corrupted_json_with_big_capacity(const ioremap::elliptics::newapi::session &session) {
 	static const auto group = groups[0];
 
-	ioremap::elliptics::newapi::session s(*servers->node);
+	auto s = session.clone();
 	s.set_groups({group});
 	s.set_trace_id(rand());
 
@@ -877,10 +892,10 @@ void test_read_data_with_corrupted_json_with_big_capacity() {
 	BOOST_REQUIRE_EQUAL(result.data().to_string(), data);
 }
 
-void test_read_data_with_corrupted_data() {
+void test_read_data_with_corrupted_data(const ioremap::elliptics::newapi::session &session) {
 	static const auto group = groups[0];
 
-	ioremap::elliptics::newapi::session s(*servers->node);
+	auto s = session.clone();
 	s.set_groups({group});
 	s.set_trace_id(rand());
 	s.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
@@ -911,10 +926,10 @@ std::string make_data(const std::string &pattern, off_t size) {
 	return str.str();
 }
 
-void test_read_data_part_with_corrupted_first_data() {
+void test_read_data_part_with_corrupted_first_data(const ioremap::elliptics::newapi::session &session) {
 	static const auto group = groups[0];
 
-	ioremap::elliptics::newapi::session s(*servers->node);
+	auto s = session.clone();
 	s.set_groups({group});
 	s.set_trace_id(rand());
 	s.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
@@ -945,10 +960,10 @@ void test_read_data_part_with_corrupted_first_data() {
 	BOOST_REQUIRE_EQUAL(result.data().to_string(), data_part);
 }
 
-void test_read_data_part_with_corrupted_second_data() {
+void test_read_data_part_with_corrupted_second_data(const ioremap::elliptics::newapi::session &session) {
 	static const auto group = groups[0];
 
-	ioremap::elliptics::newapi::session s(*servers->node);
+	auto s = session.clone();
 	s.set_groups({group});
 	s.set_trace_id(rand());
 	s.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
@@ -1053,6 +1068,7 @@ void test_read(ioremap::elliptics::newapi::session &s) {
 void register_tests(bu::test_suite *suite) {
 	ioremap::elliptics::newapi::session s(*servers->node);
 	s.set_groups(groups);
+	s.set_trace_id(rand());
 	s.set_filter(ioremap::elliptics::filters::all_with_ack);
 	s.set_user_flags(record.user_flags);
 	s.set_timestamp(record.timestamp);
@@ -1075,21 +1091,22 @@ void register_tests(bu::test_suite *suite) {
 		std::string{"key data"},
 		1024};
 
-	ELLIPTICS_TEST_CASE(test_write, record);
-	ELLIPTICS_TEST_CASE(test_lookup, record);
-	ELLIPTICS_TEST_CASE(test_read_json, record);
-	ELLIPTICS_TEST_CASE(test_read_data, record, 0, 0);
-	ELLIPTICS_TEST_CASE(test_read_data, record, 0, 1);
-	ELLIPTICS_TEST_CASE(test_read_data, record, 0, std::numeric_limits<uint64_t>::max());
-	ELLIPTICS_TEST_CASE(test_read_data, record, 1, 0);
-	ELLIPTICS_TEST_CASE(test_read_data, record, 2, 1);
-	ELLIPTICS_TEST_CASE(test_read_data, record, 3, std::numeric_limits<uint64_t>::max());
-	ELLIPTICS_TEST_CASE(test_read, record, 0, 0);
-	ELLIPTICS_TEST_CASE(test_read, record, 0, 1);
-	ELLIPTICS_TEST_CASE(test_read, record, 0, std::numeric_limits<uint64_t>::max());
-	ELLIPTICS_TEST_CASE(test_read, record, 1, 0);
-	ELLIPTICS_TEST_CASE(test_read, record, 2, 1);
-	ELLIPTICS_TEST_CASE(test_read, record, 3, std::numeric_limits<uint64_t>::max());
+	ioremap::elliptics::newapi::session session(*servers->node);
+	ELLIPTICS_TEST_CASE(test_write, session, record);
+	ELLIPTICS_TEST_CASE(test_lookup, session, record);
+	ELLIPTICS_TEST_CASE(test_read_json, session, record);
+	ELLIPTICS_TEST_CASE(test_read_data, session, record, 0, 0);
+	ELLIPTICS_TEST_CASE(test_read_data, session, record, 0, 1);
+	ELLIPTICS_TEST_CASE(test_read_data, session, record, 0, std::numeric_limits<uint64_t>::max());
+	ELLIPTICS_TEST_CASE(test_read_data, session, record, 1, 0);
+	ELLIPTICS_TEST_CASE(test_read_data, session, record, 2, 1);
+	ELLIPTICS_TEST_CASE(test_read_data, session, record, 3, std::numeric_limits<uint64_t>::max());
+	ELLIPTICS_TEST_CASE(test_read, session, record, 0, 0);
+	ELLIPTICS_TEST_CASE(test_read, session, record, 0, 1);
+	ELLIPTICS_TEST_CASE(test_read, session, record, 0, std::numeric_limits<uint64_t>::max());
+	ELLIPTICS_TEST_CASE(test_read, session, record, 1, 0);
+	ELLIPTICS_TEST_CASE(test_read, session, record, 2, 1);
+	ELLIPTICS_TEST_CASE(test_read, session, record, 3, std::numeric_limits<uint64_t>::max());
 
 	record.json = R"json({
 		"record": {
@@ -1097,36 +1114,36 @@ void register_tests(bu::test_suite *suite) {
 			"useful": "some useful info about the key"}
 	})json";
 	record.json_timestamp = dnet_time{11,22};
-	ELLIPTICS_TEST_CASE(test_update_json, record);
-	ELLIPTICS_TEST_CASE(test_read_json, record);
-	ELLIPTICS_TEST_CASE(test_read_data, record, 0, 0);
+	ELLIPTICS_TEST_CASE(test_update_json, session, record);
+	ELLIPTICS_TEST_CASE(test_read_json, session, record);
+	ELLIPTICS_TEST_CASE(test_read_data, session, record, 0, 0);
 
 	record.json = "";
 	record.json_timestamp = dnet_time{12,23};
-	ELLIPTICS_TEST_CASE(test_update_json, record);
-	ELLIPTICS_TEST_CASE(test_read_json, record);
-	ELLIPTICS_TEST_CASE(test_read_data, record, 0, 0);
+	ELLIPTICS_TEST_CASE(test_update_json, session, record);
+	ELLIPTICS_TEST_CASE(test_read_json, session, record);
+	ELLIPTICS_TEST_CASE(test_read_data, session, record, 0, 0);
 
-	ELLIPTICS_TEST_CASE(test_update_bigger_json, record);
+	ELLIPTICS_TEST_CASE(test_update_bigger_json, session, record);
 
 	record.key = {"chunked_key"};
 	record.json_timestamp = record.timestamp;
-	ELLIPTICS_TEST_CASE(test_write_chunked, record);
+	ELLIPTICS_TEST_CASE(test_write_chunked, session, record);
 
-	ELLIPTICS_TEST_CASE(test_update_json_noexist);
-	ELLIPTICS_TEST_CASE(test_update_json_uncommitted);
+	ELLIPTICS_TEST_CASE(test_update_json_noexist, session);
+	ELLIPTICS_TEST_CASE(test_update_json_uncommitted, session);
 
-	ELLIPTICS_TEST_CASE_NOARGS(test_old_write_new_read_compatibility);
-	ELLIPTICS_TEST_CASE_NOARGS(test_new_write_old_read_compatibility);
+	ELLIPTICS_TEST_CASE(test_old_write_new_read_compatibility, session);
+	ELLIPTICS_TEST_CASE(test_new_write_old_read_compatibility, session);
 
-	ELLIPTICS_TEST_CASE_NOARGS(test_read_corrupted_json);
-	ELLIPTICS_TEST_CASE_NOARGS(test_read_json_with_corrupted_data_part);
-	ELLIPTICS_TEST_CASE_NOARGS(test_read_json_with_big_capacity_and_corrupted_data_part);
-	ELLIPTICS_TEST_CASE_NOARGS(test_read_data_with_corrupted_json);
-	ELLIPTICS_TEST_CASE_NOARGS(test_read_data_with_corrupted_json_with_big_capacity);
-	ELLIPTICS_TEST_CASE_NOARGS(test_read_data_with_corrupted_data);
-	ELLIPTICS_TEST_CASE_NOARGS(test_read_data_part_with_corrupted_first_data);
-	ELLIPTICS_TEST_CASE_NOARGS(test_read_data_part_with_corrupted_second_data);
+	ELLIPTICS_TEST_CASE(test_read_corrupted_json, session);
+	ELLIPTICS_TEST_CASE(test_read_json_with_corrupted_data_part, session);
+	ELLIPTICS_TEST_CASE(test_read_json_with_big_capacity_and_corrupted_data_part, session);
+	ELLIPTICS_TEST_CASE(test_read_data_with_corrupted_json, session);
+	ELLIPTICS_TEST_CASE(test_read_data_with_corrupted_json_with_big_capacity, session);
+	ELLIPTICS_TEST_CASE(test_read_data_with_corrupted_data, session);
+	ELLIPTICS_TEST_CASE(test_read_data_part_with_corrupted_first_data, session);
+	ELLIPTICS_TEST_CASE(test_read_data_part_with_corrupted_second_data, session);
 }
 
 bu::test_suite *setup_tests(int argc, char *argv[]) {

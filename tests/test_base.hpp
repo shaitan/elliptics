@@ -84,6 +84,26 @@ std::function<void ()> make(const char *test_name, Method method, session sess, 
 }
 
 template <typename Method, typename... Args>
+std::function<void ()> make(const char *test_name, Method method, newapi::session sess, Args... args)
+{
+	uint64_t trace_id = 0;
+	auto buffer = reinterpret_cast<unsigned char *>(&trace_id);
+	for (size_t i = 0; i < sizeof(trace_id); ++i) {
+		buffer[i] = rand();
+	}
+
+	sess.set_trace_id(trace_id);
+
+	test_wrapper wrapper = {
+		std::make_shared<ioremap::elliptics::logger>(sess.get_logger(), blackhole::log::attributes_t()),
+		test_name,
+		std::bind(method, sess, std::forward<Args>(args)...)
+	};
+
+	return wrapper;
+}
+
+template <typename Method, typename... Args>
 std::function<void ()> make(const char *, Method method, Args... args)
 {
 	return std::bind(method, std::forward<Args>(args)...);
