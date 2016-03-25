@@ -1,3 +1,9 @@
+elliptics (2.26.10.3-1) unstable; urgency=low
+
+  * Update backend weight on DNET_CMD_READ_NEW
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Fri, 25 Mar 2016 10:53:53 +0400
+
 elliptics (2.26.10.3) unstable; urgency=low
 
   * io: do not handle lookup by cache if it does not have the key, propagate error to dnet_cmd_process_raw() and call backend callback
