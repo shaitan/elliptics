@@ -1,3 +1,9 @@
+elliptics (2.26.10.3-2) unstable; urgency=low
+
+  * Fix data size in iterator response for records with json
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Wed, 30 Mar 2016 16:02:35 +0400
+
 elliptics (2.26.10.3-1) unstable; urgency=low
 
   * Update backend weight on DNET_CMD_READ_NEW
