@@ -103,6 +103,10 @@ static int blob_iterate_callback_common(struct eblob_disk_control *dc, int fd, u
 
 	/* If it's an extended record - extract header, move data pointer */
 	if (dc->flags & BLOB_DISK_CTL_EXTHDR) {
+		struct dnet_json_header jhdr;
+		memset(&jhdr, 0, sizeof(jhdr));
+
+		memset(&ehdr, 0, sizeof(ehdr));
 		/*
 		 * Skip reading/extracting header of the committed records if iterator runs with no_meta.
 		 * Header of uncommitted records should be read in any cases for correct recovery.
@@ -126,7 +130,18 @@ static int blob_iterate_callback_common(struct eblob_disk_control *dc, int fd, u
 			}
 		}
 
-		data_offset += sizeof(struct dnet_ext_list_hdr);
+		if (ehdr.size) {
+			err = dnet_read_json_header(fd, data_offset + sizeof(ehdr), ehdr.size, &jhdr);
+			if (!err) {
+				char buffer[2*DNET_ID_SIZE + 1] = {0};
+				dnet_backend_log(c->blog, DNET_LOG_ERROR,
+					"blob: iter: %s: dnet_read_json_header failed: %d. Use empty json for this key\n",
+					dnet_dump_id_len_raw(dc->key.id, DNET_ID_SIZE, buffer), err);
+				err = 0;
+			}
+		}
+
+		data_offset += sizeof(ehdr) + ehdr.size + jhdr.capacity;
 
 		/*
 		 * When record has not been committed (no matter whether data has been written or not)
@@ -142,8 +157,8 @@ static int blob_iterate_callback_common(struct eblob_disk_control *dc, int fd, u
 		 * it just hasn't yet been committed to disk and thus @data_size hasn't yet been updated.
 		 */
 
-		if (size >= sizeof(struct dnet_ext_list_hdr)) {
-			size -= sizeof(struct dnet_ext_list_hdr);
+		if (size >= (sizeof(ehdr) + ehdr.size + jhdr.capacity)) {
+			size -= sizeof(ehdr) + ehdr.size + jhdr.capacity;
 		}
 	}
 
