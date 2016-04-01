@@ -167,6 +167,7 @@ static char *dnet_cmd_strings[] = {
 	[DNET_CMD_LOOKUP_NEW] = "LOOKUP_NEW",
 	[DNET_CMD_READ_NEW] = "READ_NEW",
 	[DNET_CMD_WRITE_NEW] = "WRITE_NEW",
+	[DNET_CMD_ITERATOR_NEW] = "ITERATOR_NEW",
 	[DNET_CMD_UNKNOWN] = "UNKNOWN",
 };
 

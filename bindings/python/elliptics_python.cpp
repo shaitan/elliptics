@@ -50,7 +50,8 @@ enum elliptics_iterator_flags {
 	iflag_ts_range		= DNET_IFLAGS_TS_RANGE,
 	iflag_no_meta		= DNET_IFLAGS_NO_META,
 	iflags_move		= DNET_IFLAGS_MOVE,
-	iflags_overwrite	= DNET_IFLAGS_OVERWRITE
+	iflags_overwrite	= DNET_IFLAGS_OVERWRITE,
+	iflags_json		= DNET_IFLAGS_JSON
 };
 
 enum elliptics_cflags {

@@ -161,7 +161,8 @@ void init_async_results() {
 	                 index_entry,
 	                 backend_status_result_entry,
 	                 newapi::lookup_result_entry,
-	                 newapi::read_result_entry
+	                 newapi::read_result_entry,
+	                 newapi::iterator_result_entry
 	                 >::init();
 
 }

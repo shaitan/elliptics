@@ -638,6 +638,7 @@ template class async_result<get_index_metadata_result_entry>;
 
 template class async_result<newapi::lookup_result_entry>;
 template class async_result<newapi::read_result_entry>;
+template class async_result<newapi::iterator_result_entry>;
 
 template class async_result_handler<callback_result_entry>;
 template class async_result_handler<read_result_entry>;
@@ -653,5 +654,6 @@ template class async_result_handler<get_index_metadata_result_entry>;
 
 template class async_result_handler<newapi::lookup_result_entry>;
 template class async_result_handler<newapi::read_result_entry>;
+template class async_result_handler<newapi::iterator_result_entry>;
 
 } }

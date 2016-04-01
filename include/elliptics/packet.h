@@ -80,6 +80,7 @@ enum dnet_commands {
 	DNET_CMD_LOOKUP_NEW,
 	DNET_CMD_READ_NEW,
 	DNET_CMD_WRITE_NEW,
+	DNET_CMD_ITERATOR_NEW,
 
 	DNET_CMD_UNKNOWN,			/* This slot is allocated for statistics gathered for unknown commands */
 	__DNET_CMD_MAX,
@@ -1058,7 +1059,7 @@ enum {
 /*
  * Server-send iterator should move data not copy.
  * This will force iterator/server-send logic to queue REMOVE command locally
- * if remote write has succeeeded.
+ * if remote write has succeeded.
  */
 #define DNET_IFLAGS_MOVE		(1<<4)
 /*
@@ -1068,13 +1069,16 @@ enum {
  */
 #define DNET_IFLAGS_OVERWRITE		(1<<5)
 
+#define DNET_IFLAGS_JSON		(1<<6)
+
 /* Sanity */
 #define DNET_IFLAGS_ALL			(DNET_IFLAGS_DATA | \
 					 DNET_IFLAGS_KEY_RANGE | \
 					 DNET_IFLAGS_TS_RANGE | \
 					 DNET_IFLAGS_NO_META | \
 					 DNET_IFLAGS_MOVE | \
-					 DNET_IFLAGS_OVERWRITE)
+					 DNET_IFLAGS_OVERWRITE | \
+					 DNET_IFLAGS_JSON)
 
 /*
  * Defines how iterator should behave
