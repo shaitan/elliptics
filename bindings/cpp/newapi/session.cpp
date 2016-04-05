@@ -645,4 +645,31 @@ async_lookup_result session::update_json(const key &id, const argument_data &jso
 	return send_write(*this, id, request, json, "");
 }
 
+async_iterator_result session::start_iterator(const address &addr, uint32_t backend_id,
+                                              uint64_t flags,
+                                              const std::vector<dnet_iterator_range> &key_ranges,
+                                              const std::tuple<dnet_time, dnet_time> &time_range) {
+	if (key_ranges.empty()) {
+		flags &= ~DNET_IFLAGS_KEY_RANGE;
+	} else {
+		flags |= DNET_IFLAGS_KEY_RANGE;
+	}
+
+	auto request = serialize(dnet_iterator_request{
+		DNET_ITYPE_NETWORK,
+		flags,
+		key_ranges,
+		time_range,
+	});
+
+	transport_control control;
+	control.set_command(DNET_CMD_ITERATOR_NEW);
+	control.set_cflags(get_cflags() | DNET_FLAGS_NEED_ACK);
+	control.set_data(request.data(), request.size());
+
+	auto session = clean_clone();
+	session.set_direct_id(addr, backend_id);
+	return async_result_cast<iterator_result_entry>(*this, send_to_single_state(session, control));
+}
+
 }}} // ioremap::elliptics::newapi
