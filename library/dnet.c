@@ -339,7 +339,7 @@ static void dnet_queue_wait_threshold(struct dnet_net_state *st)
 
 /*
  * Queue replies to send queue wrt high and low watermark limits.
- * This is usefull to avoid memory bloat (and hence OOM) when data gets queued
+ * This is useful to avoid memory bloat (and hence OOM) when data gets queued
  * into send queue faster than it could be send over wire.
  */
 int dnet_send_reply_threshold(void *state, struct dnet_cmd *cmd,
@@ -353,6 +353,21 @@ int dnet_send_reply_threshold(void *state, struct dnet_cmd *cmd,
 
 	/* Send reply */
 	err = dnet_send_reply(state, cmd, odata, size, more);
+	if (err == 0) {
+		atomic_inc(&st->send_queue_size);
+		dnet_queue_wait_threshold(st);
+	}
+
+	return err;
+}
+
+int dnet_send_fd_threshold(struct dnet_net_state *st, void *header, uint64_t hsize,
+                           int fd, uint64_t offset, uint64_t dsize) {
+	int err;
+	if (st == st->n->st)
+		return 0;
+
+	err = dnet_send_fd(st, header, hsize, fd, offset, dsize, 0);
 	if (err == 0) {
 		atomic_inc(&st->send_queue_size);
 		dnet_queue_wait_threshold(st);
@@ -847,26 +862,6 @@ static int dnet_iterator_callback_server_send(void *priv, void *data, uint64_t d
 }
 
 /*!
- * This routine decides whenever it's time for iterator to pause/cancel.
- *
- * While state is 'paused' - wait on condition variable.
- * If state is 'canceled' - exit with error.
- */
-static int dnet_iterator_flow_control(struct dnet_iterator_common_private *ipriv)
-{
-	int err = 0;
-
-	pthread_mutex_lock(&ipriv->it->lock);
-	while (ipriv->it->state == DNET_ITERATOR_ACTION_PAUSE)
-		err = pthread_cond_wait(&ipriv->it->wait, &ipriv->it->lock);
-	if (ipriv->it->state == DNET_ITERATOR_ACTION_CANCEL)
-		err = -ENOEXEC;
-	pthread_mutex_unlock(&ipriv->it->lock);
-
-	return err;
-}
-
-/*!
  * Common callback part that is run by all iterator types.
  * It's responsible for sanity checks and flow control.
  *
@@ -943,7 +938,7 @@ static int dnet_iterator_callback_common(void *priv, struct dnet_raw_id *key, ui
 		goto err_out_exit;
 
 	/* Check that we are allowed to run */
-	err = dnet_iterator_flow_control(ipriv);
+	err = dnet_iterator_flow_control(ipriv->it);
 
 	goto err_out_exit;
 

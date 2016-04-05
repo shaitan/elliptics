@@ -1254,6 +1254,22 @@ err_out_exit:
 	return err;
 }
 
+int dnet_iterator_flow_control(struct dnet_iterator *it) {
+	int err = 0;
+
+	pthread_mutex_lock(&it->lock);
+	while(it->state == DNET_ITERATOR_ACTION_PAUSE) {
+		err = pthread_cond_wait(&it->wait, &it->lock);
+	}
+
+	if(it->state == DNET_ITERATOR_ACTION_CANCEL) {
+		err = -ENOEXEC;
+	}
+	pthread_mutex_unlock(&it->lock);
+
+	return err;
+}
+
 /* Sets state of iterator given it's id */
 int dnet_iterator_set_state(struct dnet_node *n,
 		enum dnet_iterator_action action, uint64_t id)

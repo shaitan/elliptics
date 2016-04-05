@@ -1217,6 +1217,9 @@ static int eblob_backend_command_handler(void *state, void *priv, struct dnet_cm
 		case DNET_CMD_WRITE_NEW:
 			err = blob_write_new(c, state, cmd, data);
 			break;
+		case DNET_CMD_ITERATOR_NEW:
+			err = blob_iterate(c, state, cmd, data);
+			break;
 		default:
 			err = -ENOTSUP;
 			break;

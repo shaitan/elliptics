@@ -903,6 +903,9 @@ int dnet_send_reply(void *state, struct dnet_cmd *cmd, const void *odata, unsign
 int dnet_send_reply_threshold(void *state, struct dnet_cmd *cmd,
 		const void *odata, unsigned int size, int more);
 
+int dnet_send_fd_threshold(struct dnet_net_state *st, void *header, uint64_t hsize,
+                           int fd, uint64_t offset, uint64_t dsize);
+
 struct dnet_route_entry
 {
 	struct dnet_raw_id id;
