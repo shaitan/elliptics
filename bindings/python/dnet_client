@@ -2,6 +2,9 @@
 import elliptics
 import sys
 import json
+from optparse import OptionParser, OptionGroup
+from collections import OrderedDict
+import socket
 
 
 def print_result(data):
@@ -11,16 +14,16 @@ def add_node_options(parser):
     '''
     Common command line parser for all commands
     '''
-    from optparse import OptionGroup
 
     group = OptionGroup(parser, "Connection options",
                         "Options for Elliptics client node. It is used to connect to server cluster")
     group.add_option("-g", "--groups", action="store_true", help="Group option.")
     group.add_option("-l", "--log", dest="log", default='/dev/stderr', metavar="FILE",
                      help="Output log messages from library to file [default: %default]")
-    group.add_option("-L", "--log-level", action="store", type="int", dest="log_level", default=elliptics.log_level.error,
+    group.add_option("-L", "--log-level", action="store", type="int", dest="log_level",
+                     default=elliptics.log_level.error,
                      help="Elliptics client verbosity [default: %default]")
-    group.add_option("-r", "--remote", action="append", dest="remote",
+    group.add_option("-r", "--remote", action="append", dest="remote", default=[],
                      help="Elliptics node address in format host:port:family [default: %default]")
     group.add_option("--wait-timeout", action="store", type="int", dest="wait_timeout", default=5,
                      help="Timeout for performing operations [default: %default]")
@@ -30,7 +33,7 @@ def add_node_options(parser):
     parser.add_option_group(group)
 
 
-def create_session(parser, options, single_remote=False):
+def create_session(parser, options, single_remote=False, new_session=False):
     '''
     Method for initializing node, session and adding remotes by @options and @single_remote
     '''
@@ -76,7 +79,7 @@ def create_session(parser, options, single_remote=False):
     return session
 
 
-def print_backend_result(result):
+def print_backend_result(options, result):
     '''
     Pretty printer for backend status
     '''
@@ -90,6 +93,7 @@ def print_backend_result(result):
                 'last_start_err': backend.last_start_err,
                 'readonly': backend.read_only,
             } for backend in result.get()[0].backends
+            if options.backend_id == -1 or options.backend_id == backend.backend_id
         ]
     })
 
@@ -105,7 +109,7 @@ def process_backend_control(options, session, address, method):
     assert isinstance(session, elliptics.Session)
 
     result = method(session, address, options.backend_id)
-    print_backend_result(result)
+    print_backend_result(options, result)
 
 
 def process_backend_status(options, session, address):
@@ -116,7 +120,7 @@ def process_backend_status(options, session, address):
     assert isinstance(session, elliptics.Session)
 
     result = session.request_backends_status(address)
-    print_backend_result(result)
+    print_backend_result(options, result)
 
 
 def process_backend():
@@ -124,7 +128,6 @@ def process_backend():
     Basic handler for all backend commands called by:
     dnet_client backend
     '''
-    from optparse import OptionParser
 
     actions = {
         'enable': lambda x, y, z: process_backend_control(x, y, z, elliptics.Session.enable_backend),
@@ -167,7 +170,7 @@ def process_monitor_control(options, session, method):
     or
     dnet_client monitor one     // for requesting monitor statistics only from specified by -r/-remote node
     '''
-    import json
+
     assert isinstance(session, elliptics.Session)
     categories = elliptics.monitor_stat_categories.all if options.categories == -1 else options.categories
     output = {}
@@ -181,7 +184,6 @@ def process_monitor():
     Basic handler for all monitor commands called by:
     dnet_client monitor
     '''
-    from optparse import OptionParser
     from functools import partial
 
     parser = OptionParser()
@@ -193,8 +195,8 @@ def process_monitor():
     (options, args) = parser.parse_args()
 
     actions = {
-        'all' : lambda x, y: process_monitor_control(x, y, partial(elliptics.Session.monitor_stat, address=None)),
-        'one' : lambda x, y: process_monitor_control(x, y, partial(elliptics.Session.monitor_stat, address=elliptics.Address.from_host_port_family(options.remote[0])))
+        'all': lambda x, y: process_monitor_control(x, y, partial(elliptics.Session.monitor_stat, address=None)),
+        'one': lambda x, y: process_monitor_control(x, y, partial(elliptics.Session.monitor_stat, address=elliptics.Address.from_host_port_family(options.remote[0])))
     }
 
     if len(args) > 2:
@@ -309,10 +311,3 @@ if __name__ == '__main__':
             }
         })
         sys.exit(1)
-    #except Exception as e:
-    #    print_result({
-    #        'error': {
-    #            'code': -12,
-    #            'message': str(e)
-    #        }
-    #    })
