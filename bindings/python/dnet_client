@@ -66,7 +66,7 @@ def create_session(parser, options, single_remote=False):
 
     node = elliptics.create_node(remotes=options.remote, log_level=options.log_level, log_file=options.log, cfg=cfg)
 
-    session = elliptics.Session(node)
+    session = elliptics.newapi.Session(node) if new_session else elliptics.Session(node)
 
     if len(groups) == 0:
         groups = session.routes.groups()
@@ -207,12 +207,81 @@ def process_monitor():
     session = create_session(parser, options, single_remote=True)
     actions[action](options, session)
 
-def main():
-    from optparse import OptionParser
 
+def process_iterator():
+    """Handler for iterate commands called by: dnet_client iterate."""
+    parser = OptionParser()
+    parser.usage = '%prog iterate action [options]'
+    parser.add_option('--json', action='store_true', dest='json', default=False,
+                      help='request and print json of iterated keys')
+    parser.add_option('--full', action='store_true', dest='full_print', default=False,
+                      help='fully print iterated key')
+    parser.add_option('--pretty', action='store_true', dest='pretty_print', default=False,
+                      help='pretty print jsons and timestamps')
+    parser.add_option('--backend', dest='backend_id', type='int',
+                      help='id of the backend where keys should be iterated')
+    add_node_options(parser)
+
+    (options, args) = parser.parse_args()
+
+    session = create_session(parser, options, new_session=True, single_remote=True)
+
+    flags = 0
+    if options.json:
+        flags |= elliptics.iterator_flags.json
+
+    if options.backend_id is None:
+        parser.error('Please specify backend (--backend=BACKEND_ID option) which should be iterated')
+
+    if options.backend_id < 0:
+        parser.error('Invalid value for backend option: "{}". It should be positive decimal'
+                     .format(options.backend_id))
+
+    async = session.start_iterator(
+        address=elliptics.Address.from_host_port_family(options.remote[0]),
+        backend_id=options.backend_id,
+        flags=flags,
+        key_ranges=None,
+        time_range=None)
+
+    def dumps(obj):
+        if options.pretty_print:
+            return json.dumps(obj, indent=4, separators=(',', ': '))
+        else:
+            return json.dumps(obj)
+
+    def dump_key(key):
+        skey = str(key)
+        return skey if options.full_print else '{}...{}'.format(skey[:12], skey[-12:])
+
+    def dump_ts(ts):
+        return str(ts) if options.pretty_print else ts.tsec
+
+    for result in async:
+        print dumps(OrderedDict((
+            ('key', dump_key(result.key)),
+            ('attrs', OrderedDict((
+                ('record_flags', elliptics.dump_record_flags(result.record_info.record_flags)),
+                # ('user_flags', 0),
+                ('json', OrderedDict((
+                    ('ts', dump_ts(result.record_info.json_timestamp)),
+                    ('size', result.record_info.json_size),
+                    ('capacity', result.record_info.json_capacity),
+                )) if result.record_info.json_capacity else None),
+                ('data', OrderedDict((
+                    ('ts', dump_ts(result.record_info.data_timestamp)),
+                    ('size', result.record_info.data_size),
+                )))
+            ))),
+            ('json', json.loads(result.json) if result.json else None),
+        )))
+
+
+def main():
     commands = {
         'backend': process_backend,
         'monitor': process_monitor,
+        'iterate': process_iterator,
     }
 
     parser = OptionParser()

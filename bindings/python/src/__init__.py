@@ -23,7 +23,7 @@ from elliptics.core import Error, NotFoundError, TimeoutError, filters, checkers
 from elliptics.route import Address, Route, RouteList
 from elliptics.session import Session
 from elliptics.node import Node
-from elliptics.misc import create_node
+from elliptics.misc import create_node, dump_record_flags
 from elliptics.config import Config
 from elliptics.log import Handler
 from elliptics.id import Id
