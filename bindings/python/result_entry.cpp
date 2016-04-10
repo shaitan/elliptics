@@ -286,6 +286,15 @@ namespace newapi {
 using namespace ioremap::elliptics::newapi;
 
 namespace {
+
+elliptics_time dnet_record_info_get_json_timestamp(const dnet_record_info &info) {
+	return elliptics_time(info.json_timestamp);
+}
+
+elliptics_time dnet_record_info_get_data_timestamp(const dnet_record_info &info) {
+	return elliptics_time(info.data_timestamp);
+}
+
 std::string callback_result_get_raw(const newapi::callback_result_entry &result) {
 	return result.raw().to_string();
 }
@@ -298,40 +307,16 @@ std::string lookup_result_get_path(const newapi::lookup_result_entry &result) {
 	return result.path();
 }
 
-uint64_t lookup_result_get_record_flags(const newapi::lookup_result_entry &result) {
-	return result.record_info().record_flags;
+dnet_record_info lookup_result_get_record_info(const newapi::lookup_result_entry &result) {
+	return result.record_info();
 }
 
-uint64_t lookup_result_get_user_flags(const newapi::lookup_result_entry &result) {
-	return result.record_info().user_flags;
+dnet_record_info read_result_get_record_info(const newapi::read_result_entry &result) {
+	return result.record_info();
 }
 
-elliptics_time lookup_result_get_json_timestamp(const newapi::lookup_result_entry &result) {
-	return elliptics_time{result.record_info().json_timestamp};
-}
-
-uint64_t lookup_result_get_json_offset(const newapi::lookup_result_entry &result) {
-	return result.record_info().json_offset;
-}
-
-uint64_t lookup_result_get_json_size(const newapi::lookup_result_entry &result) {
-	return result.record_info().json_size;
-}
-
-uint64_t lookup_result_get_json_capacity(const newapi::lookup_result_entry &result) {
-	return result.record_info().json_capacity;
-}
-
-elliptics_time lookup_result_get_data_timestamp(const newapi::lookup_result_entry &result) {
-	return elliptics_time{result.record_info().data_timestamp};
-}
-
-uint64_t lookup_result_get_data_offset(const newapi::lookup_result_entry &result) {
-	return result.record_info().data_offset;
-}
-
-uint64_t lookup_result_get_data_size(const newapi::lookup_result_entry &result) {
-	return result.record_info().data_size;
+dnet_io_info read_result_get_io_info(const newapi::read_result_entry &result) {
+	return result.io_info();
 }
 
 std::string read_result_get_json(const newapi::read_result_entry &result) {
@@ -520,29 +505,34 @@ void init_result_entry() {
 		.add_property("raw_data", newapi::callback_result_get_raw_data)
 	;
 
+	bp::class_<dnet_record_info>("RecordInfo")
+		.add_property("record_flags", &dnet_record_info::record_flags)
+		.add_property("user_flags", &dnet_record_info::user_flags)
+		.add_property("json_timestamp", newapi::dnet_record_info_get_json_timestamp)
+		.add_property("json_offset", &dnet_record_info::json_offset)
+		.add_property("json_size", &dnet_record_info::json_size)
+		.add_property("json_capacity", &dnet_record_info::json_capacity)
+		.add_property("data_timestamp", newapi::dnet_record_info_get_data_timestamp)
+		.add_property("data_offset", &dnet_record_info::data_offset)
+		.add_property("data_size", &dnet_record_info::data_size)
+	;
+
+	bp::class_<dnet_io_info>("IOInfo")
+		.add_property("json_size", &dnet_io_info::json_size)
+		.add_property("data_offset", &dnet_io_info::data_offset)
+		.add_property("data_size", &dnet_io_info::data_size)
+	;
+
 	bp::class_<newapi::lookup_result_entry, bp::bases<newapi::callback_result_entry>>("LookupResultEntry")
 		.add_property("path", newapi::lookup_result_get_path)
-		.add_property("record_flags", newapi::lookup_result_get_record_flags)
-		.add_property("user_flags", newapi::lookup_result_get_user_flags)
-		.add_property("json_timestamp", newapi::lookup_result_get_json_timestamp)
-		.add_property("json_offset", newapi::lookup_result_get_json_offset)
-		.add_property("json_size", newapi::lookup_result_get_json_size)
-		.add_property("json_capacity", newapi::lookup_result_get_json_capacity)
-		.add_property("data_timestamp", newapi::lookup_result_get_data_timestamp)
-		.add_property("data_offset", newapi::lookup_result_get_data_offset)
-		.add_property("data_size", newapi::lookup_result_get_data_size)
+		.add_property("record_info", newapi::lookup_result_get_record_info)
 	;
 
 	bp::class_<newapi::read_result_entry, bp::bases<newapi::callback_result_entry>>("ReadResultEntry")
+		.add_property("record_info", newapi::read_result_get_record_info)
+		.add_property("io_info", newapi::read_result_get_io_info)
 		.add_property("json", newapi::read_result_get_json)
 		.add_property("data", newapi::read_result_get_data)
-		.add_property("record_flags", newapi::read_result_get_record_flags)
-		.add_property("user_flags", newapi::read_result_get_user_flags)
-		.add_property("json_timestamp", newapi::read_result_get_json_timestamp)
-		.add_property("json_size", newapi::read_result_get_json_size)
-		.add_property("json_capacity", newapi::read_result_get_json_capacity)
-		.add_property("data_timestamp", newapi::read_result_get_data_timestamp)
-		.add_property("data_size", newapi::read_result_get_data_size)
 	;
 
 	bp::class_<newapi::iterator_result_entry, bp::bases<newapi::callback_result_entry>>("IteratorResultEntry")
