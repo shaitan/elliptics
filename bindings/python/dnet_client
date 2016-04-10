@@ -29,6 +29,13 @@ def add_node_options(parser):
                      help="Timeout for performing operations [default: %default]")
     group.add_option("--check-timeout", action="store", type="int", dest="check_timeout", default=30,
                      help="Timeout for route list requests [default: %default]")
+    group.add_option('--port', action='store', type='int', default=1025,
+                     help='Port which is listen by local dnet_ioserv [default: %default]. '
+                     'If at least one remove is specified by -r/--remote this option will be ignored')
+    group.add_option('-4', action='store_true', dest='ipv4', default=False,
+                     help='Force to use IPv4 address for connecting to local elliptics node')
+    group.add_option('-6', action='store_true', dest='ipv6', default=False,
+                     help='Force to use IPv6 address for connecting to local elliptics node')
 
     parser.add_option_group(group)
 
@@ -37,6 +44,11 @@ def create_session(parser, options, single_remote=False, new_session=False):
     '''
     Method for initializing node, session and adding remotes by @options and @single_remote
     '''
+    if not options.remote:
+        family = 2 if options.ipv4 and not options.ipv6 else 10
+        options.remote.append('{host}:{port}:{family}'.format(host=socket.gethostname(),
+                                                              port=options.port,
+                                                              family=family))
     if single_remote and len(options.remote) != 1:
         parser.error("Please specify exactly one remote address")
     elif not options.remote:
@@ -56,7 +68,7 @@ def create_session(parser, options, single_remote=False, new_session=False):
 
     try:
         for r in options.remote:
-            remotes.append(elliptics.Address.from_host_port_family(r))
+            remotes.append(str(elliptics.Address.from_host_port_family(r)))
     except Exception as e:
         parser.error("Can't parse host:port:family: '{0}': {1}".format(options.remote, repr(e)))
 
@@ -67,7 +79,7 @@ def create_session(parser, options, single_remote=False, new_session=False):
     if single_remote:
         cfg.flags |= elliptics.config_flags.no_route_list
 
-    node = elliptics.create_node(remotes=options.remote, log_level=options.log_level, log_file=options.log, cfg=cfg)
+    node = elliptics.create_node(remotes=remotes, log_level=options.log_level, log_file=options.log, cfg=cfg)
 
     session = elliptics.newapi.Session(node) if new_session else elliptics.Session(node)
 
