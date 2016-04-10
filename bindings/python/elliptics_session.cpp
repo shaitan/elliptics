@@ -26,8 +26,7 @@
 
 #include <boost/make_shared.hpp>
 
-#include <elliptics/newapi/session.hpp>
-// #include <elliptics/session.hpp>
+#include <elliptics/cppdef.h>
 
 #include "elliptics_id.h"
 #include "async_result.h"
@@ -862,11 +861,32 @@ public:
 			                                    data, data_offset, data_commit_size)
 		);
 	}
+
+	python_iterator_result start_iterator(const std::string &host, int port, int family, uint32_t backend_id,
+	                                      uint64_t flags,
+	                                      const bp::api::object &key_ranges,
+	                                      const bp::api::object &time_range) {
+		auto std_key_ranges = convert_to_vector<dnet_iterator_range>(key_ranges);
+		auto std_time_range = [&] () {
+			if (time_range.ptr() == Py_None) {
+				return std::make_tuple(dnet_time{0, 0}, dnet_time{0, 0});
+			}
+
+			auto begin_ts = bp::extract<const elliptics_time&>(time_range[0])();
+			auto end_ts = bp::extract<const elliptics_time&>(time_range[1])();
+			return std::make_tuple(begin_ts.m_time, end_ts.m_time);
+
+		} ();
+
+		return create_result(
+			newapi::session{*this}.start_iterator(address(host, port, family), backend_id, flags,
+			                                      std_key_ranges, std_time_range)
+		);
+	}
 };
 } /* namespace newapi */
 
 void init_elliptics_session() {
-
 	bp::enum_<elliptics_filters>("filters",
 	    "Built-in replies filters. It is used at session.set_filter:\n\n"
 	    "positive\n    Filters only positive replies\n"
@@ -2048,6 +2068,41 @@ void init_elliptics_session() {
 		     (bp::arg("key"),
 		      bp::arg("json"),
 		      bp::arg("data"), bp::arg("data_offset"), bp::arg("data_commit_size")))
+
+		.def("start_iterator", &newapi::elliptics_session::start_iterator,
+		     bp::args("host", "port", "family", "backend_id",
+		              "flags", "key_ranges", "time_range"),
+		     "start_iterator(host, port, family, backend_id, flags, key_ranges, time_range)\n"
+		     "    Start iterator on the Elliptics node specified by @host, @port, @family and @backend_id."
+		     "    Return elliptics.AsyncResult.\n"
+		     "    -- host, port, family - the node where iteration should be executed\n"
+		     "    -- backend_id - id of backend where iteration should be executed\n"
+		     "    -- flags - bits set of elliptics.iterator_flags\n"
+		     "    -- key_ranges - list of elliptics.IteratorRange by which keys on the node should be filtered\n"
+		     "    -- time_range - time range by which keys on the node should be filtered\n\n"
+		     "    flags = elliptics.iterator_flags.key_range\n"
+		     "    range = elliptics.IteratorRange()\n"
+		     "    range.key_begin = elliptics.Id([0] * 64, 1)\n"
+		     "    range.key_end = elliptics.Id([255] * 64, 1)\n"
+		     "    iterator = session.start_iterator(\n"
+		     "        host='host.com',\n"
+		     "        port=1025,\n"
+		     "        family=10,\n"
+		     "        backend_id=1,\n"
+		     "        flags = elliptics.iterator_flags.key_range,\n"
+		     "        key_ranges=[range],\n"
+		     "        [elliptics.Time(0,0), elliptics.Time(0,0)])\n\n"
+		     "    for result in iterator:\n"
+		     "        if result.status != 0:\n"
+		     "            raise AssertionError('Wrong status: {0}'.format(result.status))\n\n"
+		     "        iterator_id = result.id\n"
+		     "        print ('node: {0}, key: {1}, flags: {2}, ts: {3}/{4}, data: {5}'\n"
+		     "               .format(node,\n"
+		     "                       result.key,\n"
+		     "                       result.status,\n"
+		     "                       result.record_info.json_timestamp,\n"
+		     "                       result.record_info.data_timestamp,\n"
+		     "                       result.json))\n")
 
 	;
 }

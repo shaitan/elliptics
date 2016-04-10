@@ -342,32 +342,29 @@ std::string read_result_get_data(const newapi::read_result_entry &result) {
 	return result.data().to_string();
 }
 
-uint64_t read_result_get_record_flags(const newapi::read_result_entry &result) {
-	return result.record_info().record_flags;
+uint64_t iterator_result_get_iterator_id(const newapi::iterator_result_entry &result) {
+	return result.iterator_id();
 }
 
-uint64_t read_result_get_user_flags(const newapi::read_result_entry &result) {
-	return result.record_info().user_flags;
+int iterator_result_get_status(const newapi::iterator_result_entry &result) {
+	return result.status();
 }
 
-elliptics_time read_result_get_json_timestamp(const newapi::read_result_entry &result) {
-	return elliptics_time{result.record_info().json_timestamp};
+elliptics_id iterator_result_get_key(const newapi::iterator_result_entry &result) {
+	auto key = result.key();
+	return elliptics_id(key);
 }
 
-uint64_t read_result_get_json_capacity(const newapi::read_result_entry &result) {
-	return result.record_info().json_capacity;
+dnet_record_info iterator_result_get_record_info(const newapi::iterator_result_entry &result) {
+	return result.record_info();
 }
 
-uint64_t read_result_get_json_size(const newapi::read_result_entry &result) {
-	return result.record_info().json_size;
+std::string iterator_result_get_json(const newapi::iterator_result_entry &result) {
+	return result.json().to_string();
 }
 
-elliptics_time read_result_get_data_timestamp(const newapi::read_result_entry &result) {
-	return elliptics_time{result.record_info().data_timestamp};
-}
-
-uint64_t read_result_get_data_size(const newapi::read_result_entry &result) {
-	return result.record_info().data_size;
+std::string iterator_result_get_data(const newapi::iterator_result_entry &result) {
+	return result.data().to_string();
 }
 
 } /* unnamed namespace */
@@ -546,6 +543,15 @@ void init_result_entry() {
 		.add_property("json_capacity", newapi::read_result_get_json_capacity)
 		.add_property("data_timestamp", newapi::read_result_get_data_timestamp)
 		.add_property("data_size", newapi::read_result_get_data_size)
+	;
+
+	bp::class_<newapi::iterator_result_entry, bp::bases<newapi::callback_result_entry>>("IteratorResultEntry")
+		.add_property("iterator_id", newapi::iterator_result_get_iterator_id)
+		.add_property("status", newapi::iterator_result_get_status)
+		.add_property("key", newapi::iterator_result_get_key)
+		.add_property("record_info", newapi::iterator_result_get_record_info)
+		.add_property("json", newapi::iterator_result_get_json)
+		.add_property("data", newapi::iterator_result_get_data)
 	;
 
 }

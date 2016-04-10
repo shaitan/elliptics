@@ -282,3 +282,13 @@ class Session(elliptics.core.newapi.Session):
         else:
             address = tuple(address)
         return super(Session, self).monitor_stat(address, categories)
+
+    def start_iterator(self, address, backend_id, flags, key_ranges=None, time_range=None):
+        """Start iterator on node @address and backend @backend_id."""
+        return super(Session, self).start_iterator(host=address.host,
+                                                   port=address.port,
+                                                   family=address.family,
+                                                   backend_id=backend_id,
+                                                   flags=flags,
+                                                   key_ranges=key_ranges,
+                                                   time_range=time_range)
