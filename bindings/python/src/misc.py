@@ -17,6 +17,11 @@ from elliptics.core import *
 from elliptics.route import Address
 from elliptics.node import Node
 from elliptics import log_level
+from elliptics import record_flags
+
+
+def dump_record_flags(flags):
+    return '|'.join(name for name, flag in record_flags.names.iteritems() if flags & flag)
 
 
 @property

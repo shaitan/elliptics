@@ -73,6 +73,48 @@ struct dnet_lookup_response {
 	uint64_t data_size;
 };
 
+struct dnet_iterator_request {
+	dnet_iterator_request();
+	dnet_iterator_request(uint32_t type, uint64_t flags,
+	                      const std::vector<dnet_iterator_range> &key_range,
+	                      const std::tuple<dnet_time, dnet_time> &time_range);
+
+	uint64_t iterator_id;
+	uint32_t action;
+	uint32_t type;
+	uint64_t flags;
+	std::vector<dnet_iterator_range> key_ranges;
+	std::tuple<dnet_time, dnet_time> time_range;
+	std::vector<uint32_t> groups;
+};
+
+struct dnet_iterator_response {
+	uint64_t iterator_id;
+	dnet_raw_id key;
+	int status;
+
+	uint64_t iterated_keys;
+	uint64_t total_keys;
+
+	uint64_t record_flags;
+	uint64_t user_flags;
+
+	dnet_time json_timestamp;
+	uint64_t json_size;
+	uint64_t json_capacity;
+	uint64_t read_json_size;
+
+	dnet_time data_timestamp;
+	uint64_t data_size;
+	uint64_t read_data_size;
+};
+
+struct dnet_server_send_request {
+	std::vector<dnet_raw_id> keys;
+	std::vector<int> groups;
+	uint64_t flags;
+};
+
 template<typename T>
 data_pointer serialize(const T &value);
 

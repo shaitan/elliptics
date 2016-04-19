@@ -1217,6 +1217,12 @@ static int eblob_backend_command_handler(void *state, void *priv, struct dnet_cm
 		case DNET_CMD_WRITE_NEW:
 			err = blob_write_new(c, state, cmd, data);
 			break;
+		case DNET_CMD_ITERATOR_NEW:
+			err = blob_iterate(c, state, cmd, data);
+			break;
+		case DNET_CMD_SEND_NEW:
+			err = blob_send_new(c, state, cmd, data);
+			break;
 		default:
 			err = -ENOTSUP;
 			break;
@@ -1591,11 +1597,11 @@ err_out_exit:
  *   1. config parsing
  *   2. eblob initialization
  *   3. cleaning up eblob and config
- * In common case backend goes throught all 3 steps.
+ * In common case backend goes through all 3 steps.
  * But there is specific case (backends_stat_provider.cpp: @fill_disabled_backend_config()):
  *   monitor subsystem for disabled backends makes only 1 and 3 stages and skips stage 2.
  *   So when monitor makes stage 3, it has uninitialized eblob and
- *   should cleanus up only config data.
+ *   should cleanups up only config data.
  */
 static void dnet_blob_config_cleanup(struct dnet_config_backend *b)
 {

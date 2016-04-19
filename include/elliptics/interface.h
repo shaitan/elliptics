@@ -903,6 +903,9 @@ int dnet_send_reply(void *state, struct dnet_cmd *cmd, const void *odata, unsign
 int dnet_send_reply_threshold(void *state, struct dnet_cmd *cmd,
 		const void *odata, unsigned int size, int more);
 
+int dnet_send_fd_threshold(struct dnet_net_state *st, void *header, uint64_t hsize,
+                           int fd, uint64_t offset, uint64_t dsize);
+
 struct dnet_route_entry
 {
 	struct dnet_raw_id id;
@@ -968,6 +971,14 @@ static inline const char *dnet_print_io(const struct dnet_io_attr *io) {
 	         (unsigned long long)io->num,
 	         dnet_print_time(&io->timestamp));
 	return __dnet_print_io;
+}
+
+static inline const char *dnet_print_error(int err) {
+	static __thread char __dnet_print_error[256];
+	snprintf(__dnet_print_error, sizeof(__dnet_print_error),
+	         "%s [%d]",
+	         strerror(-err), err);
+	return __dnet_print_error;
 }
 
 #ifdef __cplusplus

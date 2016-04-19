@@ -909,6 +909,8 @@ int dnet_iterator_set_state(struct dnet_node *n,
 		enum dnet_iterator_action action, uint64_t id);
 void dnet_iterator_cancel_all(struct dnet_node *n);
 
+int dnet_iterator_flow_control(struct dnet_iterator *it);
+
 /*
  * Low level iterator API
  * TODO: make static?

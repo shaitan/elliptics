@@ -27,8 +27,11 @@ namespace bp = boost::python;
 namespace ioremap { namespace elliptics { namespace python {
 
 template <typename T>
-static std::vector<T> convert_to_vector(const bp::api::object &list)
-{
+static std::vector<T> convert_to_vector(const bp::api::object &list) {
+	if (list.ptr() == Py_None) {
+		return std::vector<T>();
+	}
+
 	bp::stl_input_iterator<T> begin(list), end;
 	return std::vector<T>(begin, end);
 }

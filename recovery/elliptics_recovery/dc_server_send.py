@@ -118,7 +118,7 @@ class ServerSendRecovery(object):
         self.node = node
         self.buckets = BucketsManager(ctx)
 
-        self.session = elliptics.Session(node)
+        self.session = elliptics.newapi.Session(node)
         self.session.trace_id = ctx.trace_id
         self.session.exceptions_policy = elliptics.exceptions_policy.no_exceptions
         self.session.timeout = 60
@@ -169,8 +169,6 @@ class ServerSendRecovery(object):
                 keys_bunch[index] = []
             keys_bunch[index].append((key, key_infos))
 
-        self.session.set_groups([group_id])
-
         for b in keys_bunch.iteritems():
             remote_groups = b[0]
             newest_keys = list()
@@ -187,7 +185,10 @@ class ServerSendRecovery(object):
                     if i > 0:
                         self.ctx.stats.counter('retry_recover_keys', len(timeouted_keys))
                     log.info("Server-send: group_id: {0}, remote_groups: {1}, num_keys: {2}".format(group_id, remote_groups, len(newest_keys)))
-                    iterator = self.session.server_send(newest_keys, 0, remote_groups)
+                    try:
+                        iterator = self.session.server_send(newest_keys, 0, group_id, remote_groups)
+                    except Exception as e:
+                        log.error("Failed to server_send traceback: %s", traceback.format_exc())
                     timeouted_keys, corrupted_keys = self._check_server_send_results(iterator, key_infos_map, group_id)
                     newest_keys = timeouted_keys
                     if corrupted_keys:
@@ -209,17 +210,17 @@ class ServerSendRecovery(object):
         succeeded_keys = Set()
         index = -1
         for index, result in enumerate(iterator, 1):
-            status = result.response.status
+            status = result.status
             self._update_stats(start_time, index, recovers_in_progress, status)
 
-            key = result.response.key
+            key = result.key
             if status < 0:
                 key_infos = key_infos_map[str(key)]
                 self._on_server_send_fail(status, key, key_infos, timeouted_keys, corrupted_keys, group_id)
                 continue
             elif status == 0:
                 succeeded_keys.add(str(key))
-                log.debug("Recovered key: %s, status %d", result.response.key, status)
+                log.debug("Recovered key: %s, status %d", result.key, status)
 
         if index < len(key_infos_map):
             log.error("Server-send operation failed: group_id: %d, received results: %d, expected: %d",

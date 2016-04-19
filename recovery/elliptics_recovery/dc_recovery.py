@@ -43,11 +43,11 @@ class KeyRecover(object):
         self.diff_groups = []
         self.missed_groups = list(missed_groups)
 
-        self.read_session = elliptics.Session(node)
+        self.read_session = elliptics.newapi.Session(node)
         self.read_session.trace_id = ctx.trace_id
         self.read_session.set_filter(elliptics.filters.all)
 
-        self.write_session = elliptics.Session(node)
+        self.write_session = elliptics.newapi.Session(node)
         self.write_session.trace_id = ctx.trace_id
         self.write_session.set_checker(elliptics.checkers.all)
 
@@ -150,9 +150,16 @@ class KeyRecover(object):
                       .format(self.key, self.read_session.groups, self.chunked,
                               self.recovered_size, size, self.total_size))
 
-            read_result = self.read_session.read_data(self.key,
-                                                      offset=self.recovered_size,
-                                                      size=size)
+            if self.recovered_size == 0:
+                # read first chunk of data with json
+                read_result = self.read_session.read(key=self.key,
+                                                     offset=0,
+                                                     size=size)
+            else:
+                # read none-first chunks of data without json
+                read_result = self.read_session.read_data(key=self.key,
+                                                          offset=self.recovered_size,
+                                                          size=size)
             read_result.connect(self.onread)
         except Exception as e:
             log.error("Read key: {0} by offset: {1} and size: {2} raised exception: {3}, traceback: {4}"
@@ -164,39 +171,53 @@ class KeyRecover(object):
             if self.index_shard:
                 merge_groups = self.diff_groups + self.same_groups
                 write_groups = merge_groups + self.missed_groups
-                log.debug("Merging index shard: {0} from groups: {1} and writting it to groups: {2}"
-                          .format(repr(self.key), merge_groups, write_groups))
+                log.debug('Merging index shard: %s from groups: %s and writing it to groups: %s',
+                          repr(self.key), merge_groups, write_groups)
                 write_result = self.write_session.merge_indexes(self.key, merge_groups, write_groups)
             else:
-                log.debug("Writing key: {0} to groups: {1}"
-                          .format(repr(self.key), self.diff_groups + self.missed_groups))
+                log.debug('Writing key: %s to groups: %s',
+                          repr(self.key), self.diff_groups + self.missed_groups)
                 params = {'key': self.key,
+                          'json': self.json,
                           'data': self.write_data,
-                          'remote_offset': self.recovered_size}
+                          'data_offset': self.recovered_size}
                 if self.chunked:
                     if self.recovered_size == 0:
-                        params['psize'] = self.total_size
-                        log.debug("Write_prepare key: {0} to groups: {1}, remote_offset: {2}, write_size: {3}, prepare_size: {4}"
-                                  .format(params['key'], self.write_session.groups, params['remote_offset'], len(params['data']), params['psize']))
+                        params['json_capacity'] = self.json_capacity
+                        params['data_capacity'] = self.total_size
+                        log.debug('Write_prepare key: %s to groups: %s, json: %d, json_capacity: %d, '
+                                  'data: %d, data_offset: %d, data_capacity: %d',
+                                  params['key'], self.write_session.groups, len(params['json']),
+                                  params['json_capacity'], len(params['data']), params['data_offset'],
+                                  params['data_capacity'])
                         write_result = self.write_session.write_prepare(**params)
                     elif self.recovered_size + len(params['data']) < self.total_size:
-                        log.debug("Write_plain key: {0} to groups: {1}, remote_offset: {2}, write_size: {3}, total_size: {4}"
-                                  .format(params['key'], self.write_session.groups, params['remote_offset'], len(params['data']), self.total_size))
+                        log.debug('Write_plain key: %s to groups: %s, json: %d, data: %d, data_offset: %d',
+                                  params['key'], self.write_session.groups,
+                                  len(params['json']), len(params['data']), params['data_offset'])
                         write_result = self.write_session.write_plain(**params)
                     else:
-                        params['csize'] = self.total_size
-                        log.debug("Write_commit key: {0} to groups: {1}, remote_offset: {2}, write_size: {3}, commit_size: {4}"
-                                  .format(params['key'], self.write_session.groups, params['remote_offset'], len(params['data']), params['csize']))
+                        params['data_commit_size'] = self.total_size
+                        log.debug('Write_commit key: %s to groups: %s, json: %d, data: %d, data_offset: %d'
+                                  'data_commit_size: %d',
+                                  params['key'], self.write_session.groups,
+                                  len(params['json']), len(params['data']), params['data_offset'],
+                                  params['data_commit_size'])
                         write_result = self.write_session.write_commit(**params)
                 else:
-                    params['offset'] = params.pop('remote_offset')
-                    log.debug("Write_data key: {0} to groups: {1}, offset: {2}, write_size: {3}, total_size: {4}"
-                              .format(params['key'], self.write_session.groups, params['offset'], len(params['data']), self.total_size))
-                    write_result = self.write_session.write_data(**params)
+                    del params['data_offset']
+                    params['json_capacity'] = self.json_capacity
+                    params['data_capacity'] = self.total_size
+                    log.debug('Write key: %s to groups: %s, json: %d, json_capacity: %d, '
+                              'data: %d, data_capacity: %d',
+                              params['key'], self.write_session.groups,
+                              len(params['json']), params['json_capacity'], len(params['data']),
+                              params['data_capacity'])
+                    write_result = self.write_session.write(**params)
             write_result.connect(self.onwrite)
         except Exception as e:
-            log.error("Writing key: {0} raised exception: {1}, traceback: {2}"
-                      .format(self.key, repr(e), traceback.format_exc()))
+            log.error('Writing key: %s raised exception: %s, traceback: %s',
+                      self.key, repr(e), traceback.format_exc())
             self.stop(False)
 
     def remove(self):
@@ -231,7 +252,7 @@ class KeyRecover(object):
                                           self.read_session.timeout, old_timeout))
                         self.read()
                     else:
-                        log.error("Read has been timed out {0} times, all {1} attemps are used. "
+                        log.error("Read has been timed out {0} times, all {1} attempts are used. "
                                   "The key: {1} can't be recovery now. Skip it"
                                   .format(self.attempt, self.key))
                         self.stats.skipped += 1
@@ -254,13 +275,14 @@ class KeyRecover(object):
             self.stats.read_bytes += results[-1].size
 
             if self.recovered_size == 0:
-                self.write_session.user_flags = results[-1].user_flags
-                self.write_session.timestamp = results[-1].timestamp
+                self.write_session.user_flags = results[-1].record_info.user_flags
+                self.write_session.timestamp = results[-1].record_info.data_timestamp
                 self.read_session.ioflags |= elliptics.io_flags.nocsum
                 self.read_session.groups = [results[-1].group_id]
-                self.key_flags = results[-1].record_flags
-                if self.total_size != results[-1].total_size:
-                    self.total_size = results[-1].total_size
+                self.key_flags = results[-1].record_info.record_flags
+                self.json_capacity = results[-1].record_info.json_capacity
+                if self.total_size != results[-1].record_info.data_size:
+                    self.total_size = results[-1].record_info.data_size
                     self.chunked = self.total_size > self.ctx.chunk_size
             self.attempt = 0
 
@@ -275,6 +297,7 @@ class KeyRecover(object):
                           .format(repr(self.key), self.same_groups, self.write_session.groups))
                 self.index_shard = False
                 self.write_data = results[-1].data
+                self.json = results[-1].json
             self.write()
         except Exception as e:
             log.error("Failed to handle origin key: {0}, exception: {1}, traceback: {2}"

@@ -164,9 +164,13 @@ static char *dnet_cmd_strings[] = {
 	[DNET_CMD_BACKEND_CONTROL] = "BACKEND_CONTROL",
 	[DNET_CMD_BACKEND_STATUS] = "BACKEND_STATUS",
 	[DNET_CMD_SEND] = "SERVER_SEND",
+
 	[DNET_CMD_LOOKUP_NEW] = "LOOKUP_NEW",
 	[DNET_CMD_READ_NEW] = "READ_NEW",
 	[DNET_CMD_WRITE_NEW] = "WRITE_NEW",
+	[DNET_CMD_ITERATOR_NEW] = "ITERATOR_NEW",
+	[DNET_CMD_SEND_NEW] = "SERVER_SEND_NEW",
+
 	[DNET_CMD_UNKNOWN] = "UNKNOWN",
 };
 
@@ -1250,6 +1254,22 @@ static int dnet_iterator_set_state_nolock(struct dnet_node *n,
 err_out_unlock_it:
 	pthread_mutex_unlock(&it->lock);
 err_out_exit:
+	return err;
+}
+
+int dnet_iterator_flow_control(struct dnet_iterator *it) {
+	int err = 0;
+
+	pthread_mutex_lock(&it->lock);
+	while(it->state == DNET_ITERATOR_ACTION_PAUSE) {
+		err = pthread_cond_wait(&it->wait, &it->lock);
+	}
+
+	if(it->state == DNET_ITERATOR_ACTION_CANCEL) {
+		err = -ENOEXEC;
+	}
+	pthread_mutex_unlock(&it->lock);
+
 	return err;
 }
 

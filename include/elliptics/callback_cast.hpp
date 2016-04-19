@@ -66,6 +66,12 @@ INIT_CALLBACK_TYPE(iterator_result_entry,
 	DNET_CMD_SEND
 )
 
+INIT_CALLBACK_TYPE(newapi::iterator_result_entry,
+	DNET_CMD_ITERATOR_NEW,
+	DNET_CMD_SEND_NEW
+)
+
+
 INIT_CALLBACK_TYPE(backend_status_result_entry,
 	DNET_CMD_BACKEND_CONTROL,
 	DNET_CMD_BACKEND_STATUS

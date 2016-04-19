@@ -50,7 +50,8 @@ enum elliptics_iterator_flags {
 	iflag_ts_range		= DNET_IFLAGS_TS_RANGE,
 	iflag_no_meta		= DNET_IFLAGS_NO_META,
 	iflags_move		= DNET_IFLAGS_MOVE,
-	iflags_overwrite	= DNET_IFLAGS_OVERWRITE
+	iflags_overwrite	= DNET_IFLAGS_OVERWRITE,
+	iflags_json		= DNET_IFLAGS_JSON
 };
 
 enum elliptics_cflags {
@@ -385,10 +386,11 @@ BOOST_PYTHON_MODULE(core)
 	    "ts_range\n    Time range should be used for filtering keys on the node while iteration\n"
 	    "no_meta\n    Iteration results will have empty key's metadata (user_flags and timestamp)\n"
 	    "move\n    Server-send iterator should move data not copy. This will force iterator/server-send logic\n"
-                  "    to queue REMOVE command locally if remote write has succeeeded.\n"
+	    "          to queue REMOVE command locally if remote write has succeeded.\n"
 	    "overwrite\n    Overwrite data. If this flag is NOT set, we only write data if remote timestamp is less\n"
-	               "    than in data being written. When NOT set, data will still be transferred over the network,\n"
-		       "    even if remote timestamp doesn't allow us to overwrite data.")
+	    "               than in data being written. When NOT set, data will still be transferred over the network,\n"
+	    "               even if remote timestamp doesn't allow us to overwrite data.\n"
+	    "json\n    Iteration results should also includes objects json")
 		.value("default", iflag_default)
 		.value("data", iflag_data)
 		.value("key_range", iflag_key_range)
@@ -396,12 +398,13 @@ BOOST_PYTHON_MODULE(core)
 		.value("no_meta", iflag_no_meta)
 		.value("move", iflags_move)
 		.value("overwrite", iflags_overwrite)
+		.value("json", iflags_json)
 	;
 
 	bp::enum_<elliptics_iterator_types>("iterator_types",
 	    "Flags which specifies how iteration results should be transmitted:\n\n"
 	    "disk\n    Iterator saves data chunks (index/metadata + (optionally) data)\n"
-	          "    locally on server to $root/iter/$id instead of sending chunks to client\n"
+	    "          locally on server to $root/iter/$id instead of sending chunks to client\n"
 	    "network\n    Iterator sends data chunks to client")
 		.value("disk", itype_disk)
 		.value("network", itype_network)
@@ -412,7 +415,7 @@ BOOST_PYTHON_MODULE(core)
 	    "default\n    The key is locked before performing an operation and unlocked when an operation will done\n"
 	    "direct\n    Request is sent to the specified Node bypassing the DHT ring\n"
 	    "nolock\n    Server will not check the key is locked and will not lock it during this transaction.\n"
-	            "    The operation will be handled in separated io thread pool\n"
+	    "            The operation will be handled in separated io thread pool\n"
 	    "checksum\n  Only valid flag for LOOKUP command - when set, return checksum in file_info structure\n"
 	    "nocache\n   Currently only valid flag for LOOKUP command - when set, don't check fileinfo in cache\n"
 	    "no_queue_timeout\n Do not check queue timeout for this operation\n")
@@ -435,15 +438,14 @@ BOOST_PYTHON_MODULE(core)
 		"plain_write\n    This flag is used when we want backend not to perform any additional actions\n"
 		             "    except than write data at given offset\n"
 		"nodata\n    Do not really send data in range request.\n"
-		        "    Send only statistics instead.\n"
+		"            Send only statistics instead.\n"
 		"cache\n    Says we should first check cache: read/write or delete\n"
 		"cache_only\n    Means we do not want to sink to disk,\n"
-		            "    just return whatever cache processing returned (even error)\n"
+		"                just return whatever cache processing returned (even error)\n"
 		"cache_remove_from_disk\n    is set and object is being removed from cache,\n"
-		                        "    then remove object from disk too"
+		"                            then remove object from disk too"
 		"cas_timestamp\n    When set, write will only succeed if data timestamp is higher than timestamp stored on disk\n"
 		"mix_states\n    Read request with this flag forces replica selection according to their weights\n")
-
 		.value("default", ioflags_default)
 		.value("append", ioflags_append)
 		.value("prepare", ioflags_prepare)
@@ -523,7 +525,7 @@ BOOST_PYTHON_MODULE(core)
 	    "Bit flags which used for changing node status:\n\n"
 	    "change\n    Elliptics node status - if set, status will be changed\n"
 	    "exit\n    Elliptics node should exit\n"
-	    "ro\n    Ellipitcs node goes ro/rw")
+	    "ro\n    Elliptics node goes ro/rw")
 		.value("change", node_status_flags_change)
 		.value("exit", node_status_flags_exit)
 		.value("ro", node_status_flags_ro)

@@ -22,6 +22,22 @@
 #  include <cocaine/framework/services/storage.hpp>
 #endif
 
+bool operator ==(const dnet_time &lhs, const dnet_time &rhs) {
+	return dnet_time_cmp(&lhs, &rhs) == 0;
+}
+
+std::ostream& operator<<(std::ostream &stream, const dnet_time & value) {
+	return stream << dnet_print_time(&value) << (value.tnsec % 1000);
+}
+
+bool operator ==(const dnet_raw_id &lhs, const dnet_raw_id &rhs) {
+	return dnet_id_cmp_str(lhs.id, rhs.id) == 0;
+}
+
+std::ostream& operator<<(std::ostream &stream, const dnet_raw_id &value) {
+	return stream << dnet_dump_id_str_full(value.id);
+}
+
 namespace tests {
 
 static std::string cocaine_config_path()

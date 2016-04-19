@@ -183,6 +183,7 @@ using namespace ioremap::elliptics::newapi;
 typedef python_async_result<newapi::lookup_result_entry>		python_lookup_result;
 typedef python_async_result<newapi::read_result_entry>			python_read_result;
 typedef python_async_result<newapi::write_result_entry>			python_write_result;
+typedef python_async_result<newapi::iterator_result_entry>		python_iterator_result;
 
 } /* namespace newapi */
 void init_async_results();

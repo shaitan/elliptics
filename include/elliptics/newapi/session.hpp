@@ -82,6 +82,20 @@ public:
 	 * Calling update_json with empty \a json will reset stored json to 0 but leave its capacity.
 	 */
 	async_lookup_result update_json(const key &id, const argument_data &json);
+
+
+	async_iterator_result start_iterator(const address &addr, uint32_t backend_id, uint64_t flags,
+	                                     const std::vector<dnet_iterator_range> &key_ranges,
+	                                     const std::tuple<dnet_time, dnet_time> &time_range);
+
+	async_iterator_result server_send(const std::vector<dnet_raw_id> &keys, uint64_t flags,
+	                                  const int src_group, const std::vector<int> &dst_groups);
+
+	async_iterator_result server_send(const std::vector<std::string> &keys, uint64_t flags,
+	                                  const int src_group, const std::vector<int> &dst_groups);
+
+	async_iterator_result server_send(const std::vector<key> &keys, uint64_t flags,
+	                                  const int src_group, const std::vector<int> &dst_groups);
 };
 
 }}} /* namespace ioremap::elliptics::newapi */
