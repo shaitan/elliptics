@@ -382,7 +382,7 @@ def lookup_keys(ctx):
                                  net_thread_num=1,
                                  io_thread_num=1,
                                  remotes=ctx.remotes)
-    session = elliptics.Session(node)
+    session = elliptics.newapi.Session(node)
     session.trace_id = ctx.trace_id
     filename = os.path.join(ctx.tmp_dir, 'merged_result')
     rest_keys_filename = os.path.join(ctx.tmp_dir, 'rest_keys')
@@ -395,7 +395,7 @@ def lookup_keys(ctx):
             lookups = []
             for g in ctx.groups:
                 session.groups = [g]
-                lookups.append(session.read_data(id, size=1))
+                lookups.append(session.lookup(id))
             key_infos = []
 
             for i, l in enumerate(lookups):
@@ -404,10 +404,10 @@ def lookup_keys(ctx):
                     address = result.address
                     key_infos.append(KeyInfo(address,
                                              ctx.groups[i],
-                                             result.timestamp,
-                                             result.total_size,
-                                             result.user_flags,
-                                             result.record_flags))
+                                             result.record_info.data_timestamp,
+                                             result.record_info.data_size,
+                                             result.record_info.user_flags,
+                                             result.record_info.record_flags))
                 except Exception, e:
                     log.debug("Failed to lookup key: {0} in group: {1}: {2}, traceback: {3}"
                               .format(id, ctx.groups[i], repr(e), traceback.format_exc()))
