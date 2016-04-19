@@ -195,6 +195,11 @@ set_target_properties(dnet_new_api_iterator_test ${TEST_PROPERTIES})
 target_link_libraries(dnet_new_api_iterator_test ${TEST_LIBRARIES})
 add_test_target(test_new_api_iterator dnet_new_api_iterator_test DEPENDS ${TESTS_DEPS})
 
+add_executable(dnet_new_api_server_send_test new_api_server_send_test.cpp)
+set_target_properties(dnet_new_api_server_send_test ${TEST_PROPERTIES})
+target_link_libraries(dnet_new_api_server_send_test ${TEST_LIBRARIES})
+add_test_target(test_new_api_server_send dnet_new_api_server_send_test DEPENDS ${TESTS_DEPS})
+
 #
 # General list of test modules (implemented in C++).
 #
