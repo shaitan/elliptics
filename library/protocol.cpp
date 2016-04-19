@@ -311,6 +311,31 @@ inline msgpack::packer<Stream> &operator <<(msgpack::packer<Stream> &o,
 	return o;
 }
 
+inline ioremap::elliptics::dnet_server_send_request &operator >>(msgpack::object o,
+                                                                 ioremap::elliptics::dnet_server_send_request &v) {
+	if (o.type != msgpack::type::ARRAY || o.via.array.size < 3) {
+		throw msgpack::type_error();
+	}
+
+	object *p = o.via.array.ptr;
+	p[0].convert(&v.keys);
+	p[1].convert(&v.groups);
+	p[2].convert(&v.flags);
+
+	return v;
+}
+
+template <typename Stream>
+inline msgpack::packer<Stream> &operator <<(msgpack::packer<Stream> &o,
+                                            const ioremap::elliptics::dnet_server_send_request &v) {
+	o.pack_array(3);
+	o.pack(v.keys);
+	o.pack(v.groups);
+	o.pack(v.flags);
+
+	return o;
+}
+
 
 } // namespace msgpack
 
@@ -381,6 +406,8 @@ DEFINE_HEADER(dnet_lookup_response);
 
 DEFINE_HEADER(dnet_iterator_request);
 DEFINE_HEADER(dnet_iterator_response);
+
+DEFINE_HEADER(dnet_server_send_request);
 
 DEFINE_HEADER(dnet_json_header);
 }} // namespace ioremap::elliptics

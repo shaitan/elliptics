@@ -57,6 +57,7 @@ int blob_file_info_new(struct eblob_backend_config *c, void *state, struct dnet_
 int blob_read_new(struct eblob_backend_config *c, void *state, struct dnet_cmd *cmd, void *data);
 int blob_write_new(struct eblob_backend_config *c, void *state, struct dnet_cmd *cmd, void *data);
 int blob_iterate(struct eblob_backend_config *c, void *state, struct dnet_cmd *cmd, void *data);
+int blob_send_new(struct eblob_backend_config *c, void *state, struct dnet_cmd *cmd, void *data);
 
 int dnet_read_json_header(int fd, uint64_t offset, uint64_t size, struct dnet_json_header *jhdr);
 

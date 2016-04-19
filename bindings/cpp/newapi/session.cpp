@@ -672,4 +672,104 @@ async_iterator_result session::start_iterator(const address &addr, uint32_t back
 	return async_result_cast<iterator_result_entry>(*this, send_to_single_state(session, control));
 }
 
+async_iterator_result session::server_send(const std::vector<dnet_raw_id> &keys, uint64_t flags,
+                                           const int src_group, const std::vector<int> &dst_groups) {
+	std::vector<key> converted_keys;
+	converted_keys.reserve(keys.size());
+
+	for (const auto &key: keys) {
+		converted_keys.emplace_back(key);
+	}
+
+	return server_send(converted_keys, flags, src_group, dst_groups);
+}
+
+async_iterator_result session::server_send(const std::vector<std::string> &keys, uint64_t flags,
+                                           const int src_group, const std::vector<int> &dst_groups) {
+	std::vector<key> converted_keys;
+	converted_keys.reserve(keys.size());
+
+	for (const auto &key: keys) {
+		converted_keys.emplace_back(key);
+	}
+
+	return server_send(converted_keys, flags, src_group, dst_groups);
+}
+
+async_iterator_result session::server_send(const std::vector<key> &keys, uint64_t flags,
+                                           const int src_group, const std::vector<int> &dst_groups) {
+	if (dst_groups.empty()) {
+		async_iterator_result result{*this};
+		async_result_handler<iterator_result_entry> handler{result};
+		handler.complete(create_error(-ENXIO, "server_send: remote groups list is empty"));
+		return result;
+	}
+
+	if (keys.empty()) {
+		async_iterator_result result{*this};
+		async_result_handler<iterator_result_entry> handler{result};
+		handler.complete(create_error(-ENXIO, "server_send: keys list is empty"));
+		return result;
+	}
+
+	struct remote {
+		dnet_addr address;
+		int backend_id;
+
+		bool operator<(const remote &other) const {
+			const int cmp = dnet_addr_cmp(&address, &other.address);
+			return cmp == 0 ? (backend_id < other.backend_id) : (cmp < 0);
+		}
+	};
+
+	std::map<remote, std::vector<dnet_raw_id>> remotes_ids;
+
+	dnet_addr address;
+	int backend_id;
+	for (auto &key: keys) {
+		transform(key);
+		const int err = dnet_lookup_addr(get_native(), nullptr, 0, &key.id(), src_group, &address, &backend_id);
+		if (err != 0) {
+			async_iterator_result result{*this};
+			async_result_handler<iterator_result_entry> handler{result};
+			handler.complete(create_error(-ENXIO,
+			                              "server_send: could not locate address & backend for requested key: %d:%s",
+			                              src_group, dnet_dump_id(&key.id())));
+			return result;
+		}
+
+		remotes_ids[remote{address, backend_id}].emplace_back(key.raw_id());
+	}
+
+	std::vector<async_iterator_result> results;
+	results.reserve(remotes_ids.size());
+
+	{
+		remote remote;
+		std::vector<dnet_raw_id> ids;
+		for (auto &pair: remotes_ids) {
+			std::tie(remote, ids) = pair;
+
+			auto request = serialize(dnet_server_send_request{
+				ids,
+				dst_groups,
+				flags,
+			});
+
+			transport_control control;
+			control.set_command(DNET_CMD_SEND_NEW);
+			control.set_cflags(DNET_FLAGS_NEED_ACK | DNET_FLAGS_NOLOCK);
+			control.set_data(request.data(), request.size());
+
+			session session = clean_clone();
+			session.set_direct_id(remote.address, remote.backend_id);
+			results.emplace_back(
+				async_result_cast<iterator_result_entry>(*this, send_to_single_state(session, control))
+			);
+		}
+	}
+
+	return aggregated(*this, results.begin(), results.end());
+}
+
 }}} // ioremap::elliptics::newapi

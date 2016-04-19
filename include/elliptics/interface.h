@@ -973,6 +973,14 @@ static inline const char *dnet_print_io(const struct dnet_io_attr *io) {
 	return __dnet_print_io;
 }
 
+static inline const char *dnet_print_error(int err) {
+	static __thread char __dnet_print_error[256];
+	snprintf(__dnet_print_error, sizeof(__dnet_print_error),
+	         "%s [%d]",
+	         strerror(-err), err);
+	return __dnet_print_error;
+}
+
 #ifdef __cplusplus
 }
 #endif

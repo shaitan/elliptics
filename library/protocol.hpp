@@ -109,6 +109,12 @@ struct dnet_iterator_response {
 	uint64_t read_data_size;
 };
 
+struct dnet_server_send_request {
+	std::vector<dnet_raw_id> keys;
+	std::vector<int> groups;
+	uint64_t flags;
+};
+
 template<typename T>
 data_pointer serialize(const T &value);
 
