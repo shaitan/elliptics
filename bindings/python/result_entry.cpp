@@ -335,6 +335,14 @@ int iterator_result_get_status(const newapi::iterator_result_entry &result) {
 	return result.status();
 }
 
+uint64_t iterator_result_get_iterated_keys(const newapi::iterator_result_entry &result) {
+	return result.iterated_keys();
+}
+
+uint64_t iterator_result_get_total_keys(const newapi::iterator_result_entry &result) {
+	return result.total_keys();
+}
+
 elliptics_id iterator_result_get_key(const newapi::iterator_result_entry &result) {
 	auto key = result.key();
 	return elliptics_id(key);
@@ -538,6 +546,8 @@ void init_result_entry() {
 	bp::class_<newapi::iterator_result_entry, bp::bases<newapi::callback_result_entry>>("IteratorResultEntry")
 		.add_property("iterator_id", newapi::iterator_result_get_iterator_id)
 		.add_property("status", newapi::iterator_result_get_status)
+		.add_property("iterated_keys", newapi::iterator_result_get_iterated_keys)
+		.add_property("total_keys", newapi::iterator_result_get_total_keys)
 		.add_property("key", newapi::iterator_result_get_key)
 		.add_property("record_info", newapi::iterator_result_get_record_info)
 		.add_property("json", newapi::iterator_result_get_json)

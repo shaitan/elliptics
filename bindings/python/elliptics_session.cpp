@@ -883,6 +883,21 @@ public:
 			                                      std_key_ranges, std_time_range)
 		);
 	}
+
+	python_iterator_result server_send(const bp::api::object &keys, uint64_t flags,
+	                                   int src_group, const bp::api::object &dst_groups) {
+		auto std_dst_groups = convert_to_vector<int>(dst_groups);
+		std::vector<dnet_raw_id> std_keys;
+		std_keys.reserve(bp::len(keys));
+
+		for (bp::stl_input_iterator<bp::api::object> it(keys), end; it != end; ++it) {
+			std_keys.push_back(transform(*it).raw_id());
+		}
+
+		return create_result(
+			newapi::session{*this}.server_send(std_keys, flags, src_group, std_dst_groups)
+		);
+	}
 };
 } /* namespace newapi */
 
@@ -2103,6 +2118,9 @@ void init_elliptics_session() {
 		     "                       result.record_info.json_timestamp,\n"
 		     "                       result.record_info.data_timestamp,\n"
 		     "                       result.json))\n")
+
+		.def("server_send", &newapi::elliptics_session::server_send,
+		     bp::args("keys", "flags", "src_group", "dst_groups"))
 
 	;
 }
