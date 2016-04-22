@@ -843,7 +843,9 @@ public:
 							event,
 							cocaine::hpack::header_storage_t()
 						),
-						cocaine::service::node::slave::id_t(tag)
+						//TODO: there is some problem with tags in cocaine 12.7, disable them for now
+						// cocaine::service::node::slave::id_t(tag)
+						boost::none
 					);
 
 					send_stream->write(cocaine::hpack::header_storage_t(), chunk);
