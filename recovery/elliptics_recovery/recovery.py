@@ -66,6 +66,7 @@ def get_routes(ctx):
     node = elliptics_create_node(address=ctx.address,
                                  elog=elog,
                                  wait_timeout=ctx.wait_timeout,
+                                 flags=elliptics.config_flags.no_route_list,
                                  remotes=ctx.remotes)
 
     log.debug("Creating session for: {0}".format(ctx.address))

@@ -45,7 +45,8 @@ def iterate_node(arg):
     node = elliptics_create_node(address=address,
                                  elog=elog,
                                  wait_timeout=ctx.wait_timeout,
-                                 net_thread_num=4,
+                                 flags=elliptics.config_flags.no_route_list,
+                                 net_thread_num=1,
                                  io_thread_num=1)
 
     try:
@@ -387,6 +388,7 @@ def lookup_keys(ctx):
     node = elliptics_create_node(address=ctx.address,
                                  elog=elog,
                                  wait_timeout=ctx.wait_timeout,
+                                 flags=elliptics.config_flags.no_route_list,
                                  net_thread_num=1,
                                  io_thread_num=1,
                                  remotes=ctx.remotes)

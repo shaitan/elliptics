@@ -413,6 +413,7 @@ def process_node_backend(ctx, address, backend_id, group, ranges):
     node = elliptics_create_node(address=ctx.address,
                                  elog=elog,
                                  wait_timeout=ctx.wait_timeout,
+                                 flags=elliptics.config_flags.no_route_list,
                                  remotes=ctx.remotes,
                                  io_thread_num=4)
 
@@ -818,6 +819,7 @@ def dump_process_group((ctx, group)):
     node = elliptics_create_node(address=ctx.address,
                                  elog=elog,
                                  wait_timeout=ctx.wait_timeout,
+                                 flags=elliptics.config_flags.no_route_list,
                                  net_thread_num=1,
                                  io_thread_num=1,
                                  remotes=ctx.remotes)

@@ -442,6 +442,7 @@ def recover(ctx):
     node = elliptics_create_node(address=ctx.address,
                                  elog=elliptics.Logger(ctx.log_file, int(ctx.log_level)),
                                  wait_timeout=ctx.wait_timeout,
+                                 flags=elliptics.config_flags.no_route_list,
                                  net_thread_num=4,
                                  io_thread_num=24,
                                  remotes=ctx.remotes)
