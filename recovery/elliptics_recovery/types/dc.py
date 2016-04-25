@@ -70,8 +70,11 @@ def iterate_node(arg):
             stats=stats,
             flags=flags,
             leave_file=True)
-        if results is None or results_len == 0:
+
+        if results is None:
             return None
+        elif results_len == 0:
+            return []
 
     except Exception as e:
         log.error("Iteration failed for node {0}/{1}: {2}, traceback: {3}"
@@ -326,6 +329,11 @@ def main(ctx):
         results = list(iresults)
     except KeyboardInterrupt:
         log.error("Caught Ctrl+C. Terminating.")
+        ctx.stats.timer('main', 'finished')
+        return False
+
+    if any(result is None for result in results):
+        log.error('Some iteration has been failed. Terminating.')
         ctx.stats.timer('main', 'finished')
         return False
 
