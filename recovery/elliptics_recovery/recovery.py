@@ -66,6 +66,7 @@ def get_routes(ctx):
     node = elliptics_create_node(address=ctx.address,
                                  elog=elog,
                                  wait_timeout=ctx.wait_timeout,
+                                 flags=elliptics.config_flags.no_route_list,
                                  remotes=ctx.remotes)
 
     log.debug("Creating session for: {0}".format(ctx.address))
@@ -108,13 +109,13 @@ def main(options, args):
     if options.dump_file:
         ctx.dump_file = os.path.abspath(options.dump_file)
         if not os.path.exists(ctx.dump_file):
-            raise ValueError('Dump file:`{}` does not exsists'.format(options.dump_file))
+            raise ValueError('Dump file:`{}` does not exists'.format(options.dump_file))
     else:
         ctx.dump_file = None
 
     try:
         ctx.chunk_size = int(options.chunk_size)
-    except Exception, e:
+    except Exception as e:
         raise ValueError("Can't parse chunk_size: '{0}': {1}, traceback: {2}"
                          .format(options.chunk_size, repr(e), traceback.format_exc()))
 

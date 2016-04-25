@@ -45,7 +45,8 @@ def iterate_node(arg):
     node = elliptics_create_node(address=address,
                                  elog=elog,
                                  wait_timeout=ctx.wait_timeout,
-                                 net_thread_num=4,
+                                 flags=elliptics.config_flags.no_route_list,
+                                 net_thread_num=1,
                                  io_thread_num=1)
 
     try:
@@ -70,8 +71,11 @@ def iterate_node(arg):
             stats=stats,
             flags=flags,
             leave_file=True)
-        if results is None or results_len == 0:
+
+        if results is None:
             return None
+        elif results_len == 0:
+            return []
 
     except Exception as e:
         log.error("Iteration failed for node {0}/{1}: {2}, traceback: {3}"
@@ -332,6 +336,11 @@ def main(ctx):
         ctx.stats.timer('main', 'finished')
         return False
 
+    if any(result is None for result in results):
+        log.error('Some iteration has been failed. Terminating.')
+        ctx.stats.timer('main', 'finished')
+        return False
+
     ctx.stats.timer('main', 'transpose')
     log.info("Transposing iteration results")
     results = transpose_results(results)
@@ -382,6 +391,7 @@ def lookup_keys(ctx):
     node = elliptics_create_node(address=ctx.address,
                                  elog=elog,
                                  wait_timeout=ctx.wait_timeout,
+                                 flags=elliptics.config_flags.no_route_list,
                                  net_thread_num=1,
                                  io_thread_num=1,
                                  remotes=ctx.remotes)
