@@ -1,3 +1,9 @@
+elliptics (2.26.10.3-6) unstable; urgency=medium
+
+  * Disable exceptions for session used by server-send
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Tue, 26 Apr 2016 19:13:10 +0300
+
 elliptics (2.26.10.3-5) unstable; urgency=medium
 
   * Fix hanging backend intialization
