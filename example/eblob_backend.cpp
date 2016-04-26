@@ -738,6 +738,7 @@ static iterator_callback make_iterator_server_send_callback(eblob_backend_config
 		}
 
 		auto session = std::make_shared<newapi::session>(st->n);
+		session->set_exceptions_policy(session::no_exceptions);
 		session->set_trace_id(cmd->trace_id);
 		session->set_trace_id(!!(cmd->flags & DNET_FLAGS_TRACE_BIT));
 		session->set_groups(request.groups);
