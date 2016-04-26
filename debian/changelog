@@ -1,3 +1,9 @@
+elliptics (2.26.10.3-5) unstable; urgency=medium
+
+  * Fix hanging backend intialization
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Tue, 26 Apr 2016 13:23:27 +0300
+
 elliptics (2.26.10.3-4) unstable; urgency=medium
 
   * recovery: Fail recovery if any iteration has been failed
