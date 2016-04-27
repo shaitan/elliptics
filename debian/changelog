@@ -1,3 +1,61 @@
+elliptics (2.26.10.3-6~srw3) unstable; urgency=medium
+
+  [ Ivan Chelubeev ]
+  * plugins: fix adaptation to cocaine-v12, blackhole-v1
+  * comment texts correction
+  * logging: little cleanup and double-free error avoidence
+  * build: full library name in cmake module for cocaine-framework-native
+  * build: search for msgpack once only
+  * make methods to create exec_context accessible to srw module
+  * exec_context: add set_flags() method
+  * create node: differenciate config errors from other causes
+  * mask annoying warning happening at the deep of blackhole v0.2
+  * foreign/asio: new submodule moved out of cocaine/ to the top level
+  * localnode: adapt to cocaine-v12, blackhole-v1
+  * srw: move init/fini methods out of dnet.c completely to srw.cpp
+  * srw: refactor and adapt to cocaine-v12, blackhole-v1 (preliminary state)
+  * tests: srw tests updated to changes in srw and localnode
+  * tests: simplify after write/lookup size mismatch was fixed in @480bb39
+  * tests: cocaine-framework-native stopped forcing apps to link with cocaine-core
+  * srw: edit comments and log messages
+  * tests: srw test app profile should also be migrated
+  * tests: remove libev, add binding/cpp dependencies
+  * tests: clean framework a little
+  * srw: new tests for push and exec+push chains; also cleanup
+  * build: use proper cmake construct for relative paths
+  * tests: use compression on srw test app (just because)
+  * srw: proper backstream logic and debug logging
+  * tests: fix python srw tests (fixture cleanup and proper call order)
+  * tests: target `test` should depend on `core_python` (elliptics python binding)
+  * tests: proper multinode support for srw and srw apps
+  * tests: srw_test.cpp: `sess` renamed to `client`
+  * cleanup, comments and spelling fixes
+  * tests: safer way to set environment variables
+  * tests: fix target name typo: dnet_queue_timeoue_test
+  * build: drop direct dependency on libelliptics_cocaine from libelliptics
+  * build: rename target elliptics_cocaine to elliptics_srw
+  * tests: impoved test output readability
+  * debian: update dependencies, make dependency on cocaine rigid for now
+  * debian: bump minimum blackhole version (>= 1.0.0-0alpha10)
+  * tests: fix out of sync output when building packages
+  * srw: mark destroy phase in the log
+  * server: mark the end of server node destruction
+  * tests: test.cpp falls out of test naming pattern
+  * tests: remove empty file
+  * tests: fix sessions and server nodes lifetime issues
+  * tests: fix race in reconnect test
+  * srw: basic adaptation to cocaine-v12.7
+  * srw: temporary fix for cocaine-v12.7
+
+  [ Anton Matveenko ]
+  * fix(): adapt to cocaine v0.12.8
+
+  [ Ivan Chelubeev ]
+  * debian: update cocaine depepdencies to 0.12.8
+  * fix return value of dnet_update_backend_weight
+
+ -- Ivan Chelubeev <ijon@yandex-team.ru>  Wed, 27 Apr 2016 23:46:41 +0300
+
 elliptics (2.26.10.3-6) unstable; urgency=medium
 
   * Disable exceptions for session used by server-send
