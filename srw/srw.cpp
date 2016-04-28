@@ -305,6 +305,8 @@ public:
 	virtual auto error(cocaine::hpack::header_storage_t, const std::error_code& code, const std::string& reason) -> void {
 		SRW_LOG(*logger_, DNET_LOG_ERROR, app_, "%s: stream: got error from app, %s: (%d) %s", signature_, reason, code.value(), code.message());
 		if (auto client = client_.lock()) {
+			//TODO: translate cocaine errors into elliptics error code space (errno),
+			// for some errors, e.g. for "unknown/unhandled event" error
 			client->finish(code.value());
 
 			// notify that we are done and this cocaine session closed
