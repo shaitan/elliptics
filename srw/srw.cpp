@@ -416,6 +416,19 @@ class srw
 		std::shared_ptr<cocaine::api::stream_t> back_stream_;
 	};
 
+	struct headers
+	{
+		struct sph
+		{
+			static
+			constexpr
+			cocaine::hpack::header::data_t
+	        name() {
+	            return cocaine::hpack::header::create_data("sph");
+	        }
+		};
+	};
+
 	struct dnet_node   *m_node;
 
 	// main cocaine core object -- context
@@ -800,14 +813,17 @@ public:
 					return exec_context_data::copy(other, other.event(), data_pointer());
 				};
 
+				// clean copy drops payload
+				auto exec_clean_copy = clean_copy(exec);
+
 				auto session = std::make_shared<client_session>(
-					st, cmd, app, signature, clean_copy(exec)
+					st, cmd, app, signature, exec_clean_copy
 				);
 				dnet_log(m_node, DNET_LOG_DEBUG, "%s: srw: exec_context original, size: total %ld, event %ld(%d), payload %ld", signature.c_str(),
 					exec.native_data().size(), exec.event().size(), exec.native_data().data<sph>()->event_size, exec.data().size()
 				);
 				dnet_log(m_node, DNET_LOG_DEBUG, "%s: srw: exec_context session copy, size: total %ld, event %ld(%d), payload %ld", signature.c_str(),
-					session->exec_copy_.native_data().size(), session->exec_copy_.event().size(), session->exec_copy_.native_data().data<sph>()->event_size, session->exec_copy_.data().size()
+					exec_clean_copy.native_data().size(), exec_clean_copy.event().size(), exec_clean_copy.native_data().data<sph>()->event_size, exec_clean_copy.data().size()
 				);
 
 				// optional tag to stick processing to a certain worker
@@ -837,26 +853,40 @@ public:
 				}
 
 				try {
+					namespace h = cocaine::hpack;
+
+					const auto headers = h::header_storage_t({
+						h::header_t::create<headers::sph>(h::header::create_data(
+							exec_clean_copy.native_data().data<char>(), exec_clean_copy.native_data().size()
+						))
+					});
+
+					{
+						dnet_log(m_node, DNET_LOG_DEBUG, "%s: header count %lu", __func__, headers.get_headers().size());
+						for (const auto &i : headers.get_headers()) {
+							const std::string name(i.get_name().blob, i.get_name().size);
+							const std::string value(i.get_value().blob, i.get_value().size);
+							dnet_log(m_node, DNET_LOG_DEBUG, "%s:   name: %s, value: %x", __func__, name.c_str(), *(int*)value.data());
+						}
+					}
+
 					//FIXME: get rid of this copy from data_pointer to a std::string
-					const std::string chunk = exec.native_data().to_string();
+					const std::string chunk = exec.data().to_string();
 
 					dnet_log(m_node, DNET_LOG_DEBUG, "%s: srw: enqueueing, tag '%s', event '%s', chunk size %lu", signature.c_str(), tag.c_str(), event.c_str(), chunk.size());
 
 					auto send_stream = app_overseer->enqueue(
 						back_stream,
-						cocaine::service::node::app::event_t(
-							event,
-							cocaine::hpack::header_storage_t()
-						),
+						cocaine::service::node::app::event_t(event, std::move(headers)),
 						//TODO: there is some problem with tags in cocaine 12.7, disable them for now
 						// cocaine::service::node::slave::id_t(tag)
 						boost::none
 					);
 
-					send_stream->write(cocaine::hpack::header_storage_t(), chunk);
+					send_stream->write(h::header_storage_t(), chunk);
 
 					// Request stream should be closed after all data was sent to prevent resource leakage.
-					send_stream->close(cocaine::hpack::header_storage_t());
+					send_stream->close(h::header_storage_t());
 
 					dnet_log(m_node, DNET_LOG_INFO, "%s: srw: enqueued, src_key %d, job %d, payload size %zd, block %d",
 						signature.c_str(),

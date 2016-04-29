@@ -74,7 +74,7 @@ void app_context::log(int severity, const blackhole::v1::lazy_message_t &message
 		cocaine::logging::priorities(severity),
 		id_,
 		message.supplier().to_string()
-	);
+	).get();
 }
 
 #undef LOG_DEBUG
@@ -87,17 +87,53 @@ void app_context::log(int severity, const blackhole::v1::lazy_message_t &message
 #define LOG_ERROR(logger, ...) \
 	blackhole::v1::logger_facade<app_context>(logger).log(cocaine::logging::error, __VA_ARGS__)
 
+const cocaine::hpack::header_t& find_header(const std::vector<cocaine::hpack::header_t> &headers, const std::string &name)
+{
+	auto found = std::find_if(headers.begin(), headers.end(), [&name](const cocaine::hpack::header_t& h) {
+		return name == std::string(h.get_name().blob, h.get_name().size);
+	});
+	if (found != headers.end()) {
+		return (*found);
+	} else {
+		throw std::invalid_argument(name + " header not found");
+	}
+}
+
+//XXX: cocaine must provide simpler way to deal with headers
+elliptics::exec_context get_exec_context(const std::vector<cocaine::hpack::header_t> &headers)
+{
+	const auto &h = find_header(headers, "sph");
+	return elliptics::exec_context::from_raw(h.get_value().blob, h.get_value().size);
+}
+
 void app_context::init_elliptics_client(worker::sender tx, worker::receiver rx)
 {
 	LOG_DEBUG(*this, "{}: ENTER", __func__);
 
+	{
+		auto headers = rx.invocation_headers().get_headers();
+		LOG_DEBUG(*this, "{}: header count {}", __func__, headers.size());
+		for (const auto &i : headers) {
+			const std::string name(i.get_name().blob, i.get_name().size);
+			LOG_DEBUG(*this, "{}:   name: {}", __func__, name);
+		}
+	}
+
+	elliptics::exec_context context;
+	try {
+		context = get_exec_context(rx.invocation_headers().get_headers());
+
+	} catch(const std::exception &e) {
+		tx.error(-EINVAL, e.what()).get();
+		return;
+	}
+
 	const std::string input(std::move(rx.recv().get().get()));
-	LOG_DEBUG(*this, "{}: input-size: {}", __func__, input.size());
-	LOG_DEBUG(*this, "{}: event-size: {}, data-size: {}", __func__, ((const sph*)input.data())->event_size, ((const sph*)input.data())->data_size);
-	auto context = elliptics::exec_context::from_raw(input.data(), input.size());
+
+	LOG_INFO(*this, "{}: data '{}', size {}", __func__, input, input.size());
 
 	tests::node_info info;
-	info.unpack(context.data().to_string());
+	info.unpack(input);
 
 	const std::string log_path = info.path + "/" + "app-client.log";
 
@@ -130,12 +166,20 @@ void app_context::echo_via_elliptics(worker::sender tx, worker::receiver rx)
 		return;
 	}
 
+	elliptics::exec_context context;
+	try {
+		context = get_exec_context(rx.invocation_headers().get_headers());
+
+	} catch(const std::exception &e) {
+		tx.error(-EINVAL, e.what()).get();
+		return;
+	}
+
 	const std::string input(std::move(rx.recv().get().get()));
-	auto context = elliptics::exec_context::from_raw(input.data(), input.size());
 
-	LOG_INFO(*this, "{}: data '{}', size {}", __func__, context.data().to_string(), context.data().size());
+	LOG_INFO(*this, "{}: data '{}', size {}", __func__, input, input.size());
 
-	auto async = reply_client->reply(context, context.data(), elliptics::exec_context::final);
+	auto async = reply_client->reply(context, input, elliptics::exec_context::final);
 	keep_tx_live_till_done(async, tx);
 
 	LOG_DEBUG(*this, "{}: EXIT", __func__);
@@ -147,11 +191,10 @@ void app_context::echo_via_cocaine(worker::sender tx, worker::receiver rx)
 	LOG_DEBUG(*this, "{}: ENTER", __func__);
 
 	const std::string input(std::move(rx.recv().get().get()));
-	auto context = elliptics::exec_context::from_raw(input.data(), input.size());
 
-	LOG_INFO(*this, "{}: data '{}', size {}", __func__, context.data().to_string(), context.data().size());
+	LOG_INFO(*this, "{}: data '{}', size {}", __func__, input, input.size());
 
-	tx.write(context.data().to_string()).get().close().get();
+	tx.write(input).get().close().get();
 
 	LOG_DEBUG(*this, "{}: EXIT", __func__);
 }
@@ -164,9 +207,8 @@ void app_context::noreply(worker::sender tx, worker::receiver rx)
 	(void)tx;
 
 	const std::string input(std::move(rx.recv().get().get()));
-	auto context = elliptics::exec_context::from_raw(input.data(), input.size());
 
-	LOG_INFO(*this, "{}: data '{}', size {}", __func__, context.data().to_string(), context.data().size());
+	LOG_INFO(*this, "{}: data '{}', size {}", __func__, input, input.size());
 
 	LOG_DEBUG(*this, "{}: EXIT", __func__);
 }
@@ -189,9 +231,8 @@ void app_context::noreply_30seconds_wait(worker::sender tx, worker::receiver rx)
 	(void)tx;
 
 	const std::string input = rx.recv().get().get();
-	auto context = elliptics::exec_context::from_raw(input.data(), input.size());
 
-	LOG_INFO(*this, "{}: data '{}', size {}", __func__, context.data().to_string(), context.data().size());
+	LOG_INFO(*this, "{}: data '{}', size {}", __func__, input, input.size());
 
 	sleep(30);
 
@@ -208,17 +249,34 @@ void app_context::chain_via_elliptics(worker::sender tx, worker::receiver rx, co
 		return;
 	}
 
-	const std::string input(std::move(rx.recv().get().get()));
-	auto context = elliptics::exec_context::from_raw(input.data(), input.size());
+	{
+		auto headers = rx.invocation_headers().get_headers();
+		LOG_DEBUG(*this, "{}: header count {}", __func__, headers.size());
+		for (const auto &i : headers) {
+			const std::string name(i.get_name().blob, i.get_name().size);
+			LOG_DEBUG(*this, "{}:   name: {}", __func__, name);
+		}
+	}
 
-	LOG_INFO(*this, "{}: data '{}', size {}", __func__, context.data().to_string(), context.data().size());
+	elliptics::exec_context context;
+	try {
+		context = get_exec_context(rx.invocation_headers().get_headers());
+
+	} catch(const std::exception &e) {
+		tx.error(-EINVAL, e.what()).get();
+		return;
+	}
+
+	const std::string input(std::move(rx.recv().get().get()));
+
+	LOG_INFO(*this, "{}: data '{}', size {}", __func__, input, input.size());
 
 	auto client = reply_client->clone();
 	client.set_trace_id(step);
 
 	dnet_id next_id = {{0}, 0, 0};
 	client.transform(next_event, next_id);
-	auto async = client.push(&next_id, context, next_event, context.data());
+	auto async = client.push(&next_id, context, next_event, input);
 
 	tx.write("").get();
 	keep_tx_live_till_done(async, tx); // invalidates `tx`
