@@ -1,3 +1,13 @@
+elliptics (2.26.10.3-6~srw4) unstable; urgency=medium
+
+  * srw: add test for dispatch errors (unknown app, unknown event)
+  * srw: pass sph to worker in cocaine invocation headers
+  * srw: change log level to debug in tests
+  * srw: comments and spell checking
+  * srw: more specific logging for errors raised in srw->process
+
+ -- Ivan Chelubeev <ijon@yandex-team.ru>  Fri, 06 May 2016 16:56:51 +0300
+
 elliptics (2.26.10.3-6~srw3) unstable; urgency=medium
 
   [ Ivan Chelubeev ]
