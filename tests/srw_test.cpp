@@ -145,9 +145,7 @@ static nodes_data::ptr configure_test_setup_from_args(int argc, char *argv[])
 }
 
 ///
-/// Checks worker response via cocaine response stream.
-/// From original client's point of view there should be no difference.
-/// Original client is able to receive reply.
+/// Checks retrieving info about application (via elliptics channel).
 ///
 static void test_info(session &client, const std::string &app_name)
 {
@@ -162,6 +160,49 @@ static void test_info(session &client, const std::string &app_name)
 	BOOST_REQUIRE_GT(result.size(), 0);
 	BOOST_REQUIRE_EQUAL(result[0], '{');
 	BOOST_REQUIRE_EQUAL(result[result.size() - 1], '}');
+}
+
+///
+/// Checks response on event dispatching errors.
+///
+static void test_dispatch_errors(session &client, const std::string &app_name)
+{
+	// -2 on system `info` event to unknown app
+	{
+		key key(std::string(__func__) + "info");
+		key.transform(client);
+		dnet_id id = key.id();
+
+		auto async = client.exec(&id, "unknown-app@info", "");
+		async.wait();
+		BOOST_REQUIRE_EQUAL(async.error().code(), -2);
+	}
+
+	// -2 on any event to unknown app
+	{
+		key key(std::string(__func__) + "any-event");
+		key.transform(client);
+		dnet_id id = key.id();
+
+		auto async = client.exec(&id, "unknown-app@any-event", "");
+		async.wait();
+		BOOST_REQUIRE_EQUAL(async.error().code(), -2);
+	}
+
+	// -2 on unknown event to known app
+	//FIXME: right now error code is 1 because srw passes code received from the worker
+	// and this code is too uncertain now (also across different frameworks) to rely on it
+	// and to make a permanent translation into -2.
+	// Fix when cocaine will stabilize it.
+	{
+		key key(std::string(__func__) + "unknown-event");
+		key.transform(client);
+		dnet_id id = key.id();
+
+		auto async = client.exec(&id, app_name + "@unknown-event", "");
+		async.wait();
+		BOOST_REQUIRE_EQUAL(async.error().code(), 1);
+	}
 }
 
 ///
@@ -480,9 +521,12 @@ bool register_tests(const nodes_data *setup)
 	for (const auto &i : setup->nodes) {
 		ELLIPTICS_TEST_CASE(start_application, i.locator_port(), app);
 	}
+
 	ELLIPTICS_TEST_CASE(init_application_impl, use_session(n, { 1 }), app, setup);
 
 	ELLIPTICS_TEST_CASE(test_info, use_session(n, { 1 }), app);
+
+	ELLIPTICS_TEST_CASE(test_dispatch_errors, use_session(n, { 1 }), app);
 
 	/// various ways to send a reply to an `exec` command
 	ELLIPTICS_TEST_CASE(test_echo_via_elliptics, use_session(n, { 1 }), app, "some-data");
@@ -509,10 +553,10 @@ bool register_tests(const nodes_data *setup)
 
 	/// continuous load handles properly
 	//TODO: micro stress test similar to timeout test:
-	// - send wast stream of commands, big enough to affect concurrency rate
+	// - send vast stream of commands, big enough to affect concurrency rate
 	//   and number of spawned workers;
 	// - wait for completion;
-	// - check app info if load stat return to zero
+	// - check app info if load stat returned to zero
 
 	/// localnode service
 	// * data structures
