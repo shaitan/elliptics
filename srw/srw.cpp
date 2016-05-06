@@ -58,6 +58,14 @@
 
 namespace ioremap { namespace elliptics {
 
+/// Elliptics to cocaine logger adapter.
+///
+/// Current elliptics logger is actually a wrapper over on blackhole v0.2 logger,
+/// Current cocaine logger is generalized logger interface from blackhole v1.0 (which was rewritten from scratch).
+///
+/// This logger_adapter wraps v0.2 logger into v1.0 logger interface.
+///
+
 inline
 blackhole::v1::severity_t convert_severity(dnet_log_level level)
 {
@@ -90,14 +98,6 @@ dnet_log_level convert_severity(blackhole::v1::severity_t severity)
 			return DNET_LOG_ERROR;
 	}
 }
-
-/// Elliptics to cocaine logger adapter.
-///
-/// Current elliptics logger is actually a wrapper over on blackhole v0.2 logger,
-/// Current cocaine logger is generalized logger interface from blackhole v1.0 (which was rewritten from scratch).
-///
-/// This logger_adapter wraps v0.2 logger into v1.0 logger interface.
-///
 
 /// Scope manager.
 //
@@ -408,6 +408,10 @@ public:
 	}
 };
 
+
+//
+// Main class which implements `exec` command processing and glues elliptics with cocaine.
+//
 class srw
 {
 	struct exec_session
@@ -533,7 +537,6 @@ class srw
 		}
 		return std::make_tuple(s, std::string());
 	};
-
 
 public:
 	srw(struct dnet_node *n, const std::string &config)
