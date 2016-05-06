@@ -521,6 +521,7 @@ bool register_tests(const nodes_data *setup)
 	for (const auto &i : setup->nodes) {
 		ELLIPTICS_TEST_CASE(start_application, i.locator_port(), app);
 	}
+
 	ELLIPTICS_TEST_CASE(init_application_impl, use_session(n, { 1 }), app, setup);
 
 	ELLIPTICS_TEST_CASE(test_info, use_session(n, { 1 }), app);
@@ -552,10 +553,10 @@ bool register_tests(const nodes_data *setup)
 
 	/// continuous load handles properly
 	//TODO: micro stress test similar to timeout test:
-	// - send wast stream of commands, big enough to affect concurrency rate
+	// - send vast stream of commands, big enough to affect concurrency rate
 	//   and number of spawned workers;
 	// - wait for completion;
-	// - check app info if load stat return to zero
+	// - check app info if load stat returned to zero
 
 	/// localnode service
 	// * data structures
