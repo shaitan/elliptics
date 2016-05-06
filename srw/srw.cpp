@@ -978,6 +978,10 @@ int dnet_cmd_exec(struct dnet_net_state *st, struct dnet_cmd *cmd, const void *p
 	try {
 		return srw->process(st, cmd, payload);
 
+	} catch(const std::exception &e) {
+		dnet_log(n, DNET_LOG_ERROR, "srw: processing failed: %s", e.what());
+		return -EINVAL;
+
 	} catch (...) {
 		dnet_log(n, DNET_LOG_ERROR, "srw: processing failed by unknown reason");
 		return -EINVAL;
