@@ -643,16 +643,58 @@ class session
 		 */
 		async_node_status_result request_node_status(const address &addr);
 
+		/*!
+		 * Enables backend with @backend_id at node @addr.
+		 */
 		async_backend_control_result enable_backend(const address &addr, uint32_t backend_id);
+
+		/*!
+		 * Disables backend with @backend_id at node @addr.
+		 */
 		async_backend_control_result disable_backend(const address &addr, uint32_t backend_id);
+
+		/*!
+		 * Starts defragmentation at backend with @backend_id at node @addr.
+		 */
 		async_backend_control_result start_defrag(const address &addr, uint32_t backend_id);
+
+		/*!
+		 * Starts compact (lightweight defragmentation) at backend with @backend_id at node @addr.
+		 */
 		async_backend_control_result start_compact(const address &addr, uint32_t backend_id);
+
+		/*!
+		 * Stops defragmentation at backend with @backend_id at node @addr.
+		 */
 		async_backend_control_result stop_defrag(const address &addr, uint32_t backend_id);
+
+		/*!
+		 * Updates ids which backend with @backend_id at node @addr serves.
+		 */
 		async_backend_control_result set_backend_ids(const address &addr, uint32_t backend_id,
 				const std::vector<dnet_raw_id> &ids);
+
+		/*!
+		 * Makes backend with @backend_id at node @addr readonly.
+		 * Backend in readonly mode fails all requests which modify data.
+		 */
 		async_backend_control_result make_readonly(const address &addr, uint32_t backend_id);
+
+		/*!
+		 * Makes backend with @backend_id at node @addr writeable.
+		 * Turns off read-only mode.
+		 */
 		async_backend_control_result make_writable(const address &addr, uint32_t backend_id);
+
+		/*!
+		 * Sets delay in milliseconds to backend with @backend_id at node @addr.
+		 * Backend with a delay will sleep @delay milliseconds before executing any request.
+		 */
 		async_backend_control_result set_delay(const address &addr, uint32_t backend_id, uint32_t delay);
+
+		/*!
+		 * Requests status of all backends at node @addr.
+		 */
 		async_backend_status_result request_backends_status(const address &addr);
 
 		/*!
