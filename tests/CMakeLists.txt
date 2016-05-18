@@ -249,6 +249,7 @@ if(WITH_COCAINE)
         ${Boost_LIBRARIES}
         ${CocaineNative_LIBRARIES}
         #FIXME: should add it properly
+        cocaine-io-util
         blackhole
     )
 

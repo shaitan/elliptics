@@ -27,5 +27,6 @@ target_link_libraries(elliptics_srw
     ${COCAINE_NODE_SERVICE_LIBRARIES}
 
     #FIXME: should add it properly
+    cocaine-io-util
     blackhole
 )
