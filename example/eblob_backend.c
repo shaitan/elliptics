@@ -794,7 +794,7 @@ static int blob_file_info(struct eblob_backend_config *c, void *state, struct dn
 	struct eblob_write_control wc;
 	struct dnet_ext_list elist;
 	static const size_t ehdr_size = sizeof(struct dnet_ext_list_hdr);
-	uint64_t offset, size;
+	uint64_t offset = 0, size = 0, record_offset = 0;
 	int fd, err;
 
 	dnet_ext_list_init(&elist);
@@ -842,8 +842,10 @@ static int blob_file_info(struct eblob_backend_config *c, void *state, struct dn
 			goto err_out_exit;
 		}
 
+		/* Take into an account extended header's len */
 		size -= sizeof(ehdr) + ehdr.size + jhdr.capacity;
 		offset += sizeof(ehdr) + ehdr.size + jhdr.capacity;
+		record_offset += sizeof(ehdr) + ehdr.size + jhdr.capacity;
 	}
 
 	if (size == 0) {
@@ -851,6 +853,16 @@ static int blob_file_info(struct eblob_backend_config *c, void *state, struct dn
 		dnet_backend_log(c->blog, DNET_LOG_INFO, "%s: EBLOB: blob-file-info: info-read: ZERO-SIZE-FILE.",
 				dnet_dump_id(&cmd->id));
 		goto err_out_exit;
+	}
+
+	/* Validate record's data if its checksum is requested */
+	if (cmd->flags & DNET_FLAGS_CHECKSUM) {
+		wc.offset = record_offset;
+		wc.size = size;
+		err = eblob_verify_checksum(b, &key, &wc);
+		if (err) {
+			goto err_out_exit;
+		}
 	}
 
 	err = dnet_send_file_info_ts(state, cmd, fd, offset, size, &elist.timestamp, wc.flags);
@@ -1061,11 +1073,15 @@ static int blob_send(struct eblob_backend_config *cfg, void *state, struct dnet_
 	cmd->flags |= DNET_FLAGS_NEED_ACK;
 
 	backend_id = cfg->data.stat_id;
-	ctl = dnet_server_send_alloc(state, cmd, req->iflags, groups, req->group_num, backend_id);
+	ctl = dnet_server_send_alloc(state, cmd, groups, req->group_num);
 	if (!ctl) {
 		err = -ENOMEM;
 		goto err_out_exit;
 	}
+
+	ctl->iflags = req->iflags;
+	ctl->backend_id = backend_id;
+	ctl->timeout = req->timeout;
 
 	/*
 	 * Deliberately clear NEED_ACK bit

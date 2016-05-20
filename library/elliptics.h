@@ -745,7 +745,7 @@ int __attribute__((weak)) dnet_process_cmd_raw(struct dnet_backend_io *backend,
                                                int recursive,
                                                long queue_time);
 int dnet_process_recv(struct dnet_backend_io *backend, struct dnet_net_state *st, struct dnet_io_req *r);
-void dnet_trans_update_timestamp(struct dnet_net_state *st, struct dnet_trans *t);
+void dnet_trans_update_timestamp(struct dnet_trans *t);
 
 int dnet_recv(struct dnet_net_state *st, void *data, unsigned int size);
 int dnet_sendfile(struct dnet_net_state *st, int fd, uint64_t *offset, uint64_t size);
@@ -1062,6 +1062,8 @@ struct dnet_server_send_ctl {
 	int				backend_id;	/* Source backend_id */
 	int				*groups;	/* Groups to send WRITE commands */
 	int				group_num;
+
+	int				timeout;	/* write timeout */
 
 	pthread_mutex_t			write_lock;	/* Lock for @write_wait */
 	pthread_cond_t			write_wait;	/* Waiting for pending writes */
