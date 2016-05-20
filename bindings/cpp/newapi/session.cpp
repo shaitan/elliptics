@@ -119,6 +119,7 @@ private:
 		int status;
 		uint64_t json_size;
 		uint64_t data_size;
+		uint64_t trans;
 	};
 
 public:
@@ -152,7 +153,8 @@ private:
 			resp.command()->id.group_id,
 			resp.status(),
 			resp.status() ? 0 : resp.io_info().json_size,
-			resp.status() ? 0 : resp.io_info().data_size
+			resp.status() ? 0 : resp.io_info().data_size,
+			resp.command()->trans,
 		});
 
 		m_handler.process(resp);
@@ -161,15 +163,17 @@ private:
 	void complete(const error_info &error) {
 		m_handler.complete(error);
 
-		std::string groups, status, jsons, datas;
-		std::tie(groups, status, jsons, datas) = dump_responses();
+		std::string groups, status, jsons, datas, trans;
+		std::tie(groups, status, jsons, datas, trans) = dump_responses();
 		BH_LOG(m_session.get_logger(), DNET_LOG_INFO,
-		       "%s: %s: finished: groups: %s, status: %s, json-size: %s, data-size: %s, total_time: %llu",
+		       "%s: %s: finished: groups: %s, trans: %s, status: %s, json-size: %s, data-size: %s, "
+		       "total_time: %llu",
 		       dnet_dump_id_str(m_key.id().id), dnet_cmd_string(DNET_CMD_READ_NEW),
-		       groups.c_str(), status.c_str(), jsons.c_str(), datas.c_str(), m_timer.elapsed());
+		       groups.c_str(), trans.c_str(), status.c_str(), jsons.c_str(), datas.c_str(),
+		       m_timer.elapsed());
 	}
 
-	std::tuple<std::string, std::string, std::string, std::string> dump_responses() const {
+	std::tuple<std::string, std::string, std::string, std::string, std::string> dump_responses() const {
 		auto dump = [this] (const char b, const char e, const std::function<std::string(const response &)> &f) {
 			std::ostringstream str;
 			str << b;
@@ -199,8 +203,9 @@ private:
 		auto status = dump_pairs([] (const response &r) { return std::to_string(r.status); });
 		auto json = dump_pairs([] (const response &r) { return std::to_string(r.json_size); });
 		auto data = dump_pairs([] (const response &r) { return std::to_string(r.data_size); });
+		auto trans = dump_pairs([] (const response &r) { return std::to_string(r.trans); });
 
-		return std::make_tuple(groups, status, json, data);
+		return std::make_tuple(groups, status, json, data, trans);
 	}
 
 	timer m_timer;
@@ -287,6 +292,7 @@ private:
 		int status;
 		uint64_t json_size;
 		uint64_t data_size;
+		uint64_t trans;
 	};
 public:
 	explicit write_handler(const async_write_result &result, const session &orig_sess,
@@ -333,7 +339,8 @@ private:
 			resp.command()->id.group_id,
 			resp.status(),
 			resp.status() ? 0 : resp.record_info().json_size,
-			resp.status() ? 0 : resp.record_info().data_size
+			resp.status() ? 0 : resp.record_info().data_size,
+			resp.command()->trans,
 		});
 
 		m_handler.process(resp);
@@ -342,15 +349,17 @@ private:
 	void complete(const error_info &error) {
 		m_handler.complete(error);
 
-		std::string groups, status, jsons, datas;
-		std::tie(groups, status, jsons, datas) = dump_responses();
+		std::string groups, status, jsons, datas, trans;
+		std::tie(groups, status, jsons, datas, trans) = dump_responses();
 		BH_LOG(m_session.get_logger(), DNET_LOG_INFO,
-		       "%s: %s: finished: groups: %s, status: %s, json-size: %s, data-size: %s, total_time: %llu",
+		       "%s: %s: finished: groups: %s, trans: %s, status: %s, json-size: %s, data-size: %s, "
+		       "total_time: %llu",
 		       dnet_dump_id_str(m_key.id().id), dnet_cmd_string(DNET_CMD_WRITE_NEW),
-		       groups.c_str(), status.c_str(), jsons.c_str(), datas.c_str(), m_timer.elapsed());
+		       groups.c_str(), trans.c_str(), status.c_str(), jsons.c_str(), datas.c_str(),
+		       m_timer.elapsed());
 	}
 
-	std::tuple<std::string, std::string, std::string, std::string> dump_responses() const {
+	std::tuple<std::string, std::string, std::string, std::string, std::string> dump_responses() const {
 		auto dump = [this] (const char b, const char e, const std::function<std::string(const response &)> &f) {
 			std::ostringstream str;
 			str << b;
@@ -380,8 +389,9 @@ private:
 		auto status = dump_pairs([] (const response &r) { return std::to_string(r.status); });
 		auto json = dump_pairs([] (const response &r) { return std::to_string(r.json_size); });
 		auto data = dump_pairs([] (const response &r) { return std::to_string(r.data_size); });
+		auto trans = dump_pairs([] (const response &r) { return std::to_string(r.trans); });
 
-		return std::make_tuple(groups, status, json, data);
+		return std::make_tuple(groups, status, json, data, trans);
 	}
 
 	timer m_timer;
