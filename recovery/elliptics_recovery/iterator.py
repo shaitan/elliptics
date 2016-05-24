@@ -305,6 +305,8 @@ class Iterator(object):
 
             iterated_keys = 0
             total_keys = 0
+            positive_responses = 0
+            negative_responses = 0
 
             start = time.time()
 
@@ -316,16 +318,20 @@ class Iterator(object):
 
                 iterated_keys = record.response.iterated_keys
                 total_keys = record.response.total_keys
+                if record.response.status == 0:
+                    positive_responses += 1
+                else:
+                    negative_responses += 1
 
                 if iterated_keys % batch_size == 0:
-                    yield (iterated_keys, total_keys, start, end)
+                    yield (iterated_keys, total_keys, positive_responses, negative_responses, start, end)
 
-                self._on_key_response(results, record)
+                self._on_key_response(results, record, address, backend_id)
             end = time.time()
 
             elapsed_time = records.elapsed_time()
             self.log.debug("Time spended for iterator: {0}/{1}".format(elapsed_time.tsec, elapsed_time.tnsec))
-            yield (iterated_keys, total_keys, start, end)
+            yield (iterated_keys, total_keys, positive_responses, negative_responses, start, end)
             if self.separately:
                 yield results
             else:
@@ -343,7 +349,7 @@ class Iterator(object):
                                            timestamp_range[0],
                                            timestamp_range[1])
 
-    def _on_key_response(self, results, record):
+    def _on_key_response(self, results, record, address, backend_id):
         if record.response.status == 0:
             self._save_record(results, record)
 
@@ -372,11 +378,8 @@ class Iterator(object):
                 result = it
                 break
 
-            iterated_keys, total_keys, start, end = it
-            result_len = iterated_keys
-            stats.set_counter('iteration_speed', round(iterated_keys / (end - start), 2))
-            stats.set_counter('iterated_keys', iterated_keys)
-            stats.set_counter('total_keys', total_keys)
+            result_len = it[0]
+            self._update_stats(stats, it)
 
         if result is None:
             stats.set_counter('iterations', -1)
@@ -384,6 +387,12 @@ class Iterator(object):
             stats.set_counter('iterations', 1)
 
         return result, result_len
+
+    def _update_stats(self, stats, it):
+        iterated_keys, total_keys, _, _, start, end = it
+        stats.set_counter('iteration_speed', round(iterated_keys / (end - start), 2))
+        stats.set_counter('iterated_keys', iterated_keys)
+        stats.set_counter('total_keys', total_keys)
 
 
 class MergeRecoveryIterator(Iterator):
@@ -399,9 +408,18 @@ class MergeRecoveryIterator(Iterator):
         flags |= elliptics.iterator_flags.move
         return self.session.start_copy_iterator(eid, ranges, [eid.group_id], flags, timestamp_range[0], timestamp_range[1])
 
-    def _on_key_response(self, results, record):
+    def _on_key_response(self, results, record, address, backend_id):
         if record.response.status != 0:
+            self.log.error("Key recovery on node: {0}/{1} failed: {2}, key: {3}"
+                           .format(address, backend_id, record.response.status, record.response.key))
             self._save_record(results, record)
+
+    def _update_stats(self, stats, it):
+        iterated_keys, total_keys, positive_responses, negative_responses, start, end = it
+        stats.set_counter('recovery_speed', round(iterated_keys / (end - start), 2))
+        stats.set_counter('recovered_keys', positive_responses)
+        stats.set_counter('recovered_keys', -negative_responses)
+        stats.set_counter('total_keys', total_keys)
 
 
 class MergeData(object):
