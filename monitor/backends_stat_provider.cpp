@@ -40,17 +40,17 @@ backends_stat_provider::backends_stat_provider(struct dnet_node *node)
  */
 static void fill_backend_backend(rapidjson::Value &stat_value,
                                  rapidjson::Document::AllocatorType &allocator,
-                                 const struct dnet_backend_io &backend,
-                                 const dnet_backend_info &config_backend) {
+                                 const struct dnet_backend_io *backend,
+                                 const dnet_backend_info *config_backend) {
 	char *json_stat = NULL;
 	size_t size = 0;
-	struct dnet_backend_callbacks *cb = backend.cb;
+	struct dnet_backend_callbacks *cb = backend->cb;
 	if (cb->storage_stat_json) {
 		cb->storage_stat_json(cb->command_private, &json_stat, &size);
 		if (json_stat && size) {
 			rapidjson::Document backend_value(&allocator);
 			backend_value.Parse<0>(json_stat);
-			backend_value["config"].AddMember("group", config_backend.group, allocator);
+			backend_value["config"].AddMember("group", config_backend->group, allocator);
 			stat_value.AddMember("backend",
 			                     static_cast<rapidjson::Value&>(backend_value),
 			                     allocator);
@@ -69,18 +69,18 @@ static void dump_list_stats(rapidjson::Value &stat, list_stat &list_stats, rapid
  */
 static void fill_backend_io(rapidjson::Value &stat_value,
                             rapidjson::Document::AllocatorType &allocator,
-                            const struct dnet_backend_io &backend) {
+                            const struct dnet_backend_io *backend) {
 	rapidjson::Value io_value(rapidjson::kObjectType);
 
 	struct list_stat stats;
 
 	rapidjson::Value blocking_stat(rapidjson::kObjectType);
-	dnet_get_pool_list_stats(backend.pool.recv_pool.pool, &stats);
+	dnet_get_pool_list_stats(backend->pool.recv_pool.pool, &stats);
 	dump_list_stats(blocking_stat, stats, allocator);
 	io_value.AddMember("blocking", blocking_stat, allocator);
 
 	rapidjson::Value nonblocking_stat(rapidjson::kObjectType);
-	dnet_get_pool_list_stats(backend.pool.recv_pool_nb.pool, &stats);
+	dnet_get_pool_list_stats(backend->pool.recv_pool_nb.pool, &stats);
 	dump_list_stats(nonblocking_stat, stats, allocator);
 	io_value.AddMember("nonblocking", nonblocking_stat, allocator);
 
@@ -92,9 +92,9 @@ static void fill_backend_io(rapidjson::Value &stat_value,
  */
 static void fill_backend_cache(rapidjson::Value &stat_value,
                                rapidjson::Document::AllocatorType &allocator,
-                               const struct dnet_backend_io &backend) {
-	if (backend.cache) {
-		ioremap::cache::cache_manager *cache = (ioremap::cache::cache_manager *)backend.cache;
+                               const struct dnet_backend_io *backend) {
+	if (backend->cache) {
+		ioremap::cache::cache_manager *cache = (ioremap::cache::cache_manager *)backend->cache;
 		rapidjson::Document caches_value(&allocator);
 		caches_value.Parse<0>(cache->stat_json().c_str());
 		stat_value.AddMember("cache",
@@ -110,8 +110,8 @@ static void fill_backend_status(rapidjson::Value &stat_value,
                                 rapidjson::Document::AllocatorType &allocator,
                                 struct dnet_node *node,
                                 dnet_backend_status &status,
-                                size_t backend_id) {
-	backend_fill_status_nolock(node, &status, backend_id);
+                                const dnet_backend_info *config_backend) {
+	backend_fill_status_nolock(node, &status, config_backend);
 
 	rapidjson::Value status_value(rapidjson::kObjectType);
 	status_value.AddMember("state", status.state, allocator);
@@ -143,20 +143,20 @@ static void fill_backend_status(rapidjson::Value &stat_value,
  */
 static void fill_disabled_backend_config(rapidjson::Value &stat_value,
                                          rapidjson::Document::AllocatorType &allocator,
-                                         const dnet_backend_info &config_backend) {
+                                         const dnet_backend_info *config_backend) {
 	rapidjson::Value backend_value(rapidjson::kObjectType);
 
 	/* If config template provides API for serializing parsed config values to json - use it */
-	if (config_backend.config_template.to_json) {
+	if (config_backend->config_template.to_json) {
 		char *json_stat = NULL;
 		size_t size = 0;
 
-		dnet_config_backend config = config_backend.config_template;
+		dnet_config_backend config = config_backend->config_template;
 		std::vector<char> data(config.size, '\0');
 		config.data = data.data();
-		config.log = config_backend.log.get();
+		config.log = config_backend->log.get();
 
-		for (auto it = config_backend.options.begin(); it != config_backend.options.end(); ++it) {
+		for (auto it = config_backend->options.begin(); it != config_backend->options.end(); ++it) {
 			const dnet_backend_config_entry &entry = *it;
 			entry.entry->callback(&config, entry.entry->key, entry.value_template.data());
 		}
@@ -165,7 +165,7 @@ static void fill_disabled_backend_config(rapidjson::Value &stat_value,
 		if (json_stat && size) {
 			rapidjson::Document config_value(&allocator);
 			config_value.Parse<0>(json_stat);
-			config_value.AddMember("group", config_backend.group, allocator);
+			config_value.AddMember("group", config_backend->group, allocator);
 			backend_value.AddMember("config",
 			                        static_cast<rapidjson::Value&>(config_value),
 			                        allocator);
@@ -174,13 +174,13 @@ static void fill_disabled_backend_config(rapidjson::Value &stat_value,
 		config.cleanup(&config);
 	} else {
 		rapidjson::Value config_value(rapidjson::kObjectType);
-		for (auto it = config_backend.options.begin(); it != config_backend.options.end(); ++it) {
+		for (auto it = config_backend->options.begin(); it != config_backend->options.end(); ++it) {
 			const dnet_backend_config_entry &entry = *it;
 
 			rapidjson::Value tmp_val(entry.value_template.data(), allocator);
 			config_value.AddMember(entry.entry->key, tmp_val, allocator);
 		}
-		config_value.AddMember("group", config_backend.group, allocator);
+		config_value.AddMember("group", config_backend->group, allocator);
 		backend_value.AddMember("config_template", config_value, allocator);
 	}
 
@@ -194,42 +194,40 @@ static rapidjson::Value& backend_stats_json(uint64_t categories,
                                             rapidjson::Value &stat_value,
                                             rapidjson::Document::AllocatorType &allocator,
                                             struct dnet_node *node,
-                                            size_t backend_id) {
+                                            const dnet_backend_info *config_backend) {
 	dnet_backend_status status;
 	memset(&status, 0, sizeof(status));
 
-	const auto &config_backend = node->config_data->backends->backends[backend_id];
-
+	auto backend_id = config_backend->backend_id;
 	stat_value.AddMember("backend_id", backend_id, allocator);
-	fill_backend_status(stat_value, allocator, node, status, backend_id);
+	fill_backend_status(stat_value, allocator, node, status, config_backend);
 
+	struct dnet_backend_io *backend_io = nullptr;
 	if (status.state == DNET_BACKEND_ENABLED && node->io) {
-		const struct dnet_backend_io & backend = node->io->backends[backend_id];
+		backend_io = dnet_get_backend_io(node->io, backend_id);
+	}
 
+	if (backend_io) {
 		if (categories & DNET_MONITOR_COMMANDS) {
-			const command_stats *stats = (command_stats *)(backend.command_stats);
+			const command_stats *stats = (command_stats *)(backend_io->command_stats);
 			rapidjson::Value commands_value(rapidjson::kObjectType);
 			stat_value.AddMember("commands", stats->commands_report(NULL, commands_value, allocator), allocator);
 		}
 
 		if (categories & DNET_MONITOR_BACKEND) {
-			fill_backend_backend(stat_value, allocator, backend, config_backend);
+			fill_backend_backend(stat_value, allocator, backend_io, config_backend);
 		}
 		if (categories & DNET_MONITOR_IO) {
-			fill_backend_io(stat_value, allocator, backend);
+			fill_backend_io(stat_value, allocator, backend_io);
 		}
 		if (categories & DNET_MONITOR_CACHE) {
-			fill_backend_cache(stat_value, allocator, backend);
+			fill_backend_cache(stat_value, allocator, backend_io);
 		}
 	} else if (categories & DNET_MONITOR_BACKEND) {
 		fill_disabled_backend_config(stat_value, allocator, config_backend);
 	}
 
 	return stat_value;
-}
-
-static bool backend_check_state_nolock(struct dnet_node *node, size_t backend_id) {
-	return node->config_data->backends->backends[backend_id].state != DNET_BACKEND_UNITIALIZED;
 }
 
 /*
@@ -239,16 +237,19 @@ static void backends_stats_json(uint64_t categories,
                                 rapidjson::Value &stat_value,
                                 rapidjson::Document::AllocatorType &allocator,
                                 struct dnet_node *node) {
-	const auto &backends = node->config_data->backends->backends;
-	for (size_t i = 0; i < backends.size(); ++i) {
-		std::lock_guard<std::mutex> guard(*node->config_data->backends->backends[i].state_mutex);
-		if (!backend_check_state_nolock(node, i))
-			continue;
-		rapidjson::Value backend_stat(rapidjson::kObjectType);
-		stat_value.AddMember(std::to_string(static_cast<unsigned long long>(i)).c_str(),
-		                     allocator,
-		                     backend_stats_json(categories, backend_stat, allocator, node, i),
-		                     allocator);
+	auto backends = node->config_data->backends->get_all_backends();
+	for (auto &backend_ptr : backends) {
+		auto config_backend = backend_ptr.get();
+		auto backend_id = config_backend->backend_id;
+
+		std::lock_guard<std::mutex> guard(*config_backend->state_mutex);
+		if (config_backend->state != DNET_BACKEND_UNITIALIZED) {
+			rapidjson::Value backend_stat(rapidjson::kObjectType);
+			stat_value.AddMember(std::to_string(static_cast<unsigned long long>(backend_id)).c_str(),
+					     allocator,
+					     backend_stats_json(categories, backend_stat, allocator, node, config_backend),
+					     allocator);
+		}
 	}
 }
 

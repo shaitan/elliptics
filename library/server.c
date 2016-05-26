@@ -231,12 +231,12 @@ void dnet_server_node_destroy(struct dnet_node *n)
 	 */
 	dnet_monitor_exit(n);
 
-	dnet_node_cleanup_common_resources(n);
-
 	dnet_route_list_destroy(n->route);
 	n->route = NULL;
 
 	dnet_backend_cleanup_all(n);
+
+	dnet_node_cleanup_common_resources(n);
 
 	dnet_srw_cleanup(n);
 

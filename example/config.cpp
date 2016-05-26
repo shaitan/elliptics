@@ -311,10 +311,28 @@ void parse_options(config_data *data, const config &options)
 	}
 }
 
+std::shared_ptr<dnet_backend_info> dnet_parse_backend(config_data *data, uint32_t backend_id, const config &backend)
+{
+	auto info = std::make_shared<dnet_backend_info>(data->logger, backend_id);
+
+	info->enable_at_start = backend.at<bool>("enable", true);
+	info->read_only_at_start = backend.at<bool>("read_only", false);
+	info->state = DNET_BACKEND_DISABLED;
+	info->history = backend.at("history", std::string());
+
+	if (info->enable_at_start) {
+		// It's parsed to check configuration at start
+		// It will be reparsed again at backend's initialization anyway
+		info->parse(data, backend);
+	}
+
+	return info;
+}
+
 void parse_backends(config_data *data, const config &backends)
 {
 	std::set<uint32_t> backends_ids;
-	auto &backends_info = data->backends->backends;
+	auto config_backends = data->backends;
 
 	for (size_t index = 0; index < backends.size(); ++index) {
 		const config backend = backends.at(index);
@@ -327,19 +345,11 @@ void parse_backends(config_data *data, const config &backends)
 				<< " duplicates one of previous backend_id";
 		}
 
-		while (backend_id + 1 > backends_info.size())
-			backends_info.emplace_back(data->logger, backends_info.size());
-
-		dnet_backend_info &info = backends_info[backend_id];
-		info.enable_at_start = backend.at<bool>("enable", true);
-		info.read_only_at_start = backend.at<bool>("read_only", false);
-		info.state = DNET_BACKEND_DISABLED;
-		info.history = backend.at("history", std::string());
-
-		if (info.enable_at_start) {
-			// It's parsed to check configuration at start
-			// It will be reparsed again at backend's initialization anyway
-			info.parse(data, backend);
+		if (!config_backends->get_backend(backend_id)) {
+			auto info = dnet_parse_backend(data, backend_id, backend);
+			if (info) {
+				config_backends->add_backend(info);
+			}
 		}
 	}
 }

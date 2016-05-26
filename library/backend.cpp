@@ -201,20 +201,19 @@ int dnet_backend_init(struct dnet_node *node, size_t backend_id, int *state)
 	int ids_num;
 	struct dnet_raw_id *ids;
 
-	auto &backends = node->config_data->backends->backends;
-	if (backends.size() <= backend_id) {
+	auto backend = node->config_data->backends->get_backend(backend_id);
+	if (!backend) {
 		dnet_log(node, DNET_LOG_ERROR, "backend_init: backend: %zu, invalid backend id", backend_id);
 		return -EINVAL;
 	}
 
-	dnet_backend_info &backend = backends[backend_id];
 	dnet_time start;
 	dnet_current_time(&start);
 
 	{
-		std::lock_guard<std::mutex> guard(*backend.state_mutex);
-		*state = backend.state;
-		if (backend.state != DNET_BACKEND_DISABLED) {
+		std::lock_guard<std::mutex> guard(*backend->state_mutex);
+		*state = backend->state;
+		if (backend->state != DNET_BACKEND_DISABLED) {
 			dnet_log(node, DNET_LOG_ERROR, "backend_init: backend: %zu, "
 					"trying to activate not disabled backend, elapsed: %s",
 				backend_id, elapsed(start));
@@ -230,7 +229,7 @@ int dnet_backend_init(struct dnet_node *node, size_t backend_id, int *state)
 					return -EINVAL;
 			}
 		}
-		backend.state = DNET_BACKEND_ACTIVATING;
+		backend->state = DNET_BACKEND_ACTIVATING;
 	}
 
 	dnet_log(node, DNET_LOG_INFO, "backend_init: backend: %zu, initializing", backend_id);
@@ -250,7 +249,7 @@ int dnet_backend_init(struct dnet_node *node, size_t backend_id, int *state)
 			const config backend_config = backends_config.at(index);
 			const uint32_t config_backend_id = backend_config.at<uint32_t>("backend_id");
 			if (backend_id == config_backend_id) {
-				backend.parse(&data, backend_config);
+				backend->parse(&data, backend_config);
 				found = true;
 				break;
 			}
@@ -275,39 +274,39 @@ int dnet_backend_init(struct dnet_node *node, size_t backend_id, int *state)
 		goto err_out_exit;
 	}
 
-	backend.config = backend.config_template;
-	backend.data.assign(backend.data.size(), '\0');
-	backend.config.data = backend.data.data();
-	backend.config.log = backend.log.get();
+	backend->config = backend->config_template;
+	backend->data.assign(backend->data.size(), '\0');
+	backend->config.data = backend->data.data();
+	backend->config.log = backend->log.get();
 
-	backend_io = &node->io->backends[backend_id];
+	backend_io = dnet_get_backend_io(node->io, backend_id);
 	backend_io->need_exit = 0;
-	backend_io->read_only = backend.read_only_at_start;
+	backend_io->read_only = backend->read_only_at_start;
 
-	for (auto it = backend.options.begin(); it != backend.options.end(); ++it) {
+	for (auto it = backend->options.begin(); it != backend->options.end(); ++it) {
 		const dnet_backend_config_entry &entry = *it;
-		entry.entry->callback(&backend.config, entry.entry->key, entry.value_template.data());
+		entry.entry->callback(&backend->config, entry.entry->key, entry.value_template.data());
 	}
 
-	err = backend.config.init(&backend.config);
+	err = backend->config.init(&backend->config);
 	if (err) {
 		dnet_log(node, DNET_LOG_ERROR, "backend_init: backend: %zu, failed to init backend: %d, elapsed: %s",
 			backend_id, err, elapsed(start));
 		goto err_out_exit;
 	}
 
-	backend_io->cb = &backend.config.cb;
+	backend_io->cb = &backend->config.cb;
 
-	err = dnet_backend_io_init(node, backend_io, backend.io_thread_num, backend.nonblocking_io_thread_num);
+	err = dnet_backend_io_init(node, backend_io, backend->io_thread_num, backend->nonblocking_io_thread_num);
 	if (err) {
 		dnet_log(node, DNET_LOG_ERROR, "backend_init: backend: %zu, failed to init io pool, err: %d, elapsed: %s",
 			backend_id, err, elapsed(start));
 		goto err_out_backend_cleanup;
 	}
 
-	if (backend.cache_config) {
-		backend_io->cache = backend.cache = dnet_cache_init(node, backend_io, backend.cache_config.get());
-		if (!backend.cache) {
+	if (backend->cache_config) {
+		backend_io->cache = backend->cache = dnet_cache_init(node, backend_io, backend->cache_config.get());
+		if (!backend->cache) {
 			err = -ENOMEM;
 			dnet_log(node, DNET_LOG_ERROR, "backend_init: backend: %zu, failed to init cache, err: %d, elapsed: %s",
 				backend_id, err, elapsed(start));
@@ -316,15 +315,15 @@ int dnet_backend_init(struct dnet_node *node, size_t backend_id, int *state)
 	}
 
 	ids_num = 0;
-	ids = dnet_ids_init(node, backend.history.c_str(), &ids_num, backend.config.storage_free, node->addrs, backend_id);
+	ids = dnet_ids_init(node, backend->history.c_str(), &ids_num, backend->config.storage_free, node->addrs, backend_id);
 	if (ids == NULL) {
 		err = -EINVAL;
 		dnet_log(node, DNET_LOG_ERROR, "backend_init: backend: %zu, history path: %s, "
 				"failed to initialize ids, elapsed: %s: %s [%d]",
-				backend_id, backend.history.c_str(), elapsed(start), strerror(-err), err);
+				backend_id, backend->history.c_str(), elapsed(start), strerror(-err), err);
 		goto err_out_cache_cleanup;
 	}
-	err = dnet_route_list_enable_backend(node->route, backend_id, backend.group, ids, ids_num);
+	err = dnet_route_list_enable_backend(node->route, backend_id, backend->group, ids, ids_num);
 	free(ids);
 
 	if (err) {
@@ -336,50 +335,49 @@ int dnet_backend_init(struct dnet_node *node, size_t backend_id, int *state)
 	dnet_log(node, DNET_LOG_INFO, "backend_init: backend: %zu, initialized, elapsed: %s", backend_id, elapsed(start));
 
 	{
-		std::lock_guard<std::mutex> guard(*backend.state_mutex);
-		dnet_current_time(&backend.last_start);
-		backend.last_start_err = 0;
-		backend.state = DNET_BACKEND_ENABLED;
+		std::lock_guard<std::mutex> guard(*backend->state_mutex);
+		dnet_current_time(&backend->last_start);
+		backend->last_start_err = 0;
+		backend->state = DNET_BACKEND_ENABLED;
 	}
 	return 0;
 
 	dnet_route_list_disable_backend(node->route, backend_id);
 err_out_cache_cleanup:
-	if (backend.cache) {
+	if (backend->cache) {
 		/* Set need_exit to stop cache's threads */
 		backend_io->need_exit = 1;
-		dnet_cache_cleanup(backend.cache);
-		backend.cache = NULL;
+		dnet_cache_cleanup(backend->cache);
+		backend->cache = NULL;
 		backend_io->cache = NULL;
 	}
 err_out_backend_io_cleanup:
 	backend_io->need_exit = 1;
 	dnet_backend_io_cleanup(node, backend_io);
-	node->io->backends[backend_id].cb = NULL;
+	backend_io->cb = nullptr;
 err_out_backend_cleanup:
-	backend.config.cleanup(&backend.config);
+	backend->config.cleanup(&backend->config);
 err_out_exit:
 	{
-		std::lock_guard<std::mutex> guard(*backend.state_mutex);
-		dnet_current_time(&backend.last_start);
-		backend.last_start_err = err;
-		backend.state = DNET_BACKEND_DISABLED;
+		std::lock_guard<std::mutex> guard(*backend->state_mutex);
+		dnet_current_time(&backend->last_start);
+		backend->last_start_err = err;
+		backend->state = DNET_BACKEND_DISABLED;
 	}
 	return err;
 }
 
 int dnet_backend_cleanup(struct dnet_node *node, size_t backend_id, int *state)
 {
-	if (backend_id >= node->config_data->backends->backends.size()) {
+	auto backend = node->config_data->backends->get_backend(backend_id);
+	if (!backend) {
 		return -EINVAL;
 	}
 
-	dnet_backend_info &backend = node->config_data->backends->backends[backend_id];
-
 	{
-		std::lock_guard<std::mutex> guard(*backend.state_mutex);
-		*state = backend.state;
-		if (backend.state != DNET_BACKEND_ENABLED) {
+		std::lock_guard<std::mutex> guard(*backend->state_mutex);
+		*state = backend->state;
+		if (backend->state != DNET_BACKEND_ENABLED) {
 			dnet_log(node, DNET_LOG_ERROR, "backend_cleanup: backend: %zu, trying to destroy not activated backend",
 				backend_id);
 			switch (*state) {
@@ -394,7 +392,7 @@ int dnet_backend_cleanup(struct dnet_node *node, size_t backend_id, int *state)
 					return -EINVAL;
 			}
 		}
-		backend.state = DNET_BACKEND_DEACTIVATING;
+		backend->state = DNET_BACKEND_DEACTIVATING;
 	}
 
 	dnet_log(node, DNET_LOG_INFO, "backend_cleanup: backend: %zu, destroying", backend_id);
@@ -402,7 +400,7 @@ int dnet_backend_cleanup(struct dnet_node *node, size_t backend_id, int *state)
 	if (node->route)
 		dnet_route_list_disable_backend(node->route, backend_id);
 
-	dnet_backend_io *backend_io = node->io ? &node->io->backends[backend_id] : NULL;
+	dnet_backend_io *backend_io = node->io ? dnet_get_backend_io(node->io, backend_id) : nullptr;
 
 	// set @need_exit to true to force cache lifecheck thread to exit and slru cacge to sync all elements to backend
 	// this also leads to IO threads to stop, but since we already removed itself from route table,
@@ -412,8 +410,8 @@ int dnet_backend_cleanup(struct dnet_node *node, size_t backend_id, int *state)
 		backend_io->need_exit = 1;
 
 	dnet_log(node, DNET_LOG_INFO, "backend_cleanup: backend: %zu: cleaning cache", backend_id);
-	dnet_cache_cleanup(backend.cache);
-	backend.cache = NULL;
+	dnet_cache_cleanup(backend->cache);
+	backend->cache = NULL;
 
 	dnet_log(node, DNET_LOG_INFO, "backend_cleanup: backend: %zu: cleaning io: %p", backend_id, backend_io);
 	if (backend_io) {
@@ -421,17 +419,60 @@ int dnet_backend_cleanup(struct dnet_node *node, size_t backend_id, int *state)
 		backend_io->cb = NULL;
 	}
 
-	backend.config.cleanup(&backend.config);
-	memset(&backend.config.cb, 0, sizeof(backend.config.cb));
+	backend->config.cleanup(&backend->config);
+	memset(&backend->config.cb, 0, sizeof(backend->config.cb));
 
 	{
-		std::lock_guard<std::mutex> guard(*backend.state_mutex);
-		backend.state = DNET_BACKEND_DISABLED;
+		std::lock_guard<std::mutex> guard(*backend->state_mutex);
+		backend->state = DNET_BACKEND_DISABLED;
 	}
 
 	dnet_log(node, DNET_LOG_INFO, "backend_cleanup: backend: %zu, destroyed", backend_id);
 
 	return 0;
+}
+
+int dnet_backend_create(struct dnet_node *node, size_t backend_id)
+{
+	auto backends = node->config_data->backends;
+	if (backends->get_backend(backend_id))
+		return 0;
+
+	std::shared_ptr<dnet_backend_info> backend;
+
+	try {
+		using namespace ioremap::elliptics::config;
+		auto data = static_cast<config_data *>(node->config_data);
+		auto parser = data->parse_config();
+		config cfg = parser->root();
+		const config backends_config = cfg.at("backends");
+
+		for (size_t index = 0; index < backends_config.size(); ++index) {
+			const config backend_config = backends_config.at(index);
+
+			if (backend_id == backend_config.at<uint32_t>("backend_id")) {
+				backend = dnet_parse_backend(data, backend_id, backend_config);
+			}
+		}
+	} catch (std::bad_alloc &) {
+		dnet_log(node, DNET_LOG_ERROR, "backend_create: backend: %zu, failed as not enouh memory",
+			backend_id);
+		return -ENOMEM;
+	} catch (std::exception &exc) {
+		dnet_log(node, DNET_LOG_ERROR, "backend_create: backend: %zu, failed to read configuration file: %s",
+			backend_id, exc.what());
+		return -EBADF;
+	}
+
+	if (!backend)
+		return -ENOENT;
+
+	int err = dnet_server_backend_init(node, backend_id);
+	if (!err) {
+		backends->add_backend(backend);
+	}
+
+	return err;
 }
 
 int dnet_backend_init_all(struct dnet_node *node)
@@ -440,7 +481,7 @@ int dnet_backend_init_all(struct dnet_node *node)
 	bool all_ok = true;
 	int state = DNET_BACKEND_ENABLED;
 
-	auto &backends = node->config_data->backends->backends;
+	auto backends = node->config_data->backends;
 	using namespace ioremap::elliptics::config;
 	auto &data = *static_cast<config_data *>(node->config_data);
 	auto parser = data.parse_config();
@@ -464,9 +505,9 @@ int dnet_backend_init_all(struct dnet_node *node)
 			for (size_t index = 0; index < backends_config.size(); ++index) {
 				const config backend_config = backends_config.at(index);
 				const uint32_t backend_id = backend_config.at<uint32_t>("backend_id");
-				dnet_backend_info &backend = backends[backend_id];
-				if (!backend.enable_at_start) {
-					backend.parse(&data, backend_config);
+				auto backend = backends->get_backend(backend_id);
+				if (!backend->enable_at_start) {
+					backend->parse(&data, backend_config);
 					continue;
 				}
 
@@ -485,9 +526,9 @@ int dnet_backend_init_all(struct dnet_node *node)
 		for (size_t index = 0; index < backends_config.size(); ++index) {
 			const config backend_config = backends_config.at(index);
 			const uint32_t backend_id = backend_config.at<uint32_t>("backend_id");
-			dnet_backend_info &backend = backends[backend_id];
-			if (!backend.enable_at_start) {
-				backend.parse(&data, backend_config);
+			auto backend = backends->get_backend(backend_id);
+			if (!backend->enable_at_start) {
+				backend->parse(&data, backend_config);
 				continue;
 			}
 
@@ -516,23 +557,20 @@ void dnet_backend_cleanup_all(struct dnet_node *node)
 {
 	int state = DNET_BACKEND_ENABLED;
 
-	auto &backends = node->config_data->backends->backends;
-	for (size_t backend_id = 0; backend_id < backends.size(); ++backend_id) {
-		if (backends[backend_id].state != DNET_BACKEND_DISABLED)
-			dnet_backend_cleanup(node, backend_id, &state);
+	for (auto backend : node->config_data->backends->get_all_backends()) {
+		if (backend->state != DNET_BACKEND_DISABLED)
+			dnet_backend_cleanup(node, backend->backend_id, &state);
 	}
 }
 
 static int dnet_backend_set_ids(dnet_node *node, uint32_t backend_id, dnet_raw_id *ids, uint32_t ids_count)
 {
-	auto &backends = node->config_data->backends->backends;
-	if (backend_id >= backends.size()) {
+	auto backend = node->config_data->backends->get_backend(backend_id);
+	if (!backend) {
 		return -EINVAL;
 	}
 
-	dnet_backend_info &backend = backends[backend_id];
-
-	if (backend.history.empty()) {
+	if (backend->history.empty()) {
 		dnet_log(node, DNET_LOG_ERROR, "backend_set_ids: backend_id: %u, "
 				"failed to open temporary ids file: history is not specified",
 				backend_id);
@@ -541,8 +579,8 @@ static int dnet_backend_set_ids(dnet_node *node, uint32_t backend_id, dnet_raw_i
 
 	char tmp_ids[1024];
 	char target_ids[1024];
-	snprintf(tmp_ids, sizeof(tmp_ids), "%s/ids_%08x%08x", backend.history.c_str(), rand(), rand());
-	snprintf(target_ids, sizeof(target_ids), "%s/ids", backend.history.c_str());
+	snprintf(tmp_ids, sizeof(tmp_ids), "%s/ids_%08x%08x", backend->history.c_str(), rand(), rand());
+	snprintf(target_ids, sizeof(target_ids), "%s/ids", backend->history.c_str());
 	int err = 0;
 
 	std::ofstream out(tmp_ids, std::ofstream::binary | std::ofstream::trunc);
@@ -567,14 +605,14 @@ static int dnet_backend_set_ids(dnet_node *node, uint32_t backend_id, dnet_raw_i
 		} else {
 
 			if (!err) {
-				std::lock_guard<std::mutex> guard(*backend.state_mutex);
-				switch (backend.state) {
+				std::lock_guard<std::mutex> guard(*backend->state_mutex);
+				switch (backend->state) {
 					case DNET_BACKEND_ENABLED:
 						err = std::rename(tmp_ids, target_ids);
 						if (err)
 							break;
 						err = dnet_route_list_enable_backend(node->route,
-								backend_id, backend.group, ids, ids_count);
+								backend_id, backend->group, ids, ids_count);
 						break;
 					case DNET_BACKEND_DISABLED:
 						err = std::rename(tmp_ids, target_ids);
@@ -594,44 +632,77 @@ static int dnet_backend_set_ids(dnet_node *node, uint32_t backend_id, dnet_raw_i
 	return err;
 }
 
-void backend_fill_status_nolock(struct dnet_node *node, struct dnet_backend_status *status, size_t backend_id)
+void backend_fill_status_nolock(struct dnet_node *node, struct dnet_backend_status *status, const struct dnet_backend_info *config_backend)
 {
-	if (!status)
+	if (!status || !config_backend)
 		return;
 
-	const auto &backends = node->config_data->backends->backends;
-	const dnet_backend_info &backend = backends[backend_id];
-	const dnet_backend_io &io = node->io->backends[backend_id];
+	auto backend_id = config_backend->backend_id;
+	const dnet_backend_io *io = dnet_get_backend_io(node->io, backend_id);
 
-	const auto &cb = backend.config.cb;
+	const auto &cb = config_backend->config.cb;
 
 	status->backend_id = backend_id;
-	status->state = backend.state;
-	if (backend.state == DNET_BACKEND_ENABLED && cb.defrag_status)
+	status->state = config_backend->state;
+	if (config_backend->state == DNET_BACKEND_ENABLED && cb.defrag_status)
 		status->defrag_state = cb.defrag_status(cb.command_private);
-	status->last_start = backend.last_start;
-	status->last_start_err = backend.last_start_err;
-	status->read_only = io.read_only;
-	status->delay = io.delay;
+	status->last_start = config_backend->last_start;
+	status->last_start_err = config_backend->last_start_err;
+	status->read_only = io->read_only;
+	status->delay = io->delay;
 }
 
-void backend_fill_status(dnet_node *node, dnet_backend_status *status, size_t backend_id)
+void dnet_backend_info_manager::backend_fill_status(dnet_node *node, dnet_backend_status *status, size_t backend_id) const
 {
-	const auto &backends = node->config_data->backends->backends;
-	const dnet_backend_info &backend = backends[backend_id];
-	std::lock_guard<std::mutex> guard(*backend.state_mutex);
+	std::shared_ptr<dnet_backend_info> backend;
+	{
+		std::lock_guard<std::mutex> guard(backends_mutex);
+		auto it = backends.find(backend_id);
+		if (it != backends.end()) {
+			backend = it->second;
+		}
+	}
+	if (backend)
+	{
+		std::lock_guard<std::mutex> guard(*backend->state_mutex);
+		backend_fill_status_nolock(node, status, backend.get());
+	}
+}
 
-	backend_fill_status_nolock(node, status, backend_id);
+std::shared_ptr<dnet_backend_info> dnet_backend_info_manager::get_backend(size_t backend_id) const
+{
+	std::lock_guard<std::mutex> guard(backends_mutex);
+	auto it = backends.find(backend_id);
+	if (it != backends.end()) {
+		return it->second;
+	}
+	return std::shared_ptr<dnet_backend_info>();
+}
+
+void dnet_backend_info_manager::add_backend(std::shared_ptr<dnet_backend_info> &backend)
+{
+	std::lock_guard<std::mutex> guard(backends_mutex);
+	backends.insert({backend->backend_id, backend});
 }
 
 static int dnet_cmd_backend_control_dangerous(struct dnet_net_state *st, struct dnet_cmd *cmd, void *data)
 {
+	int err = 0;
 	dnet_node *node = st->n;
-	const auto &backends = node->config_data->backends->backends;
-
 	struct dnet_backend_control *control = reinterpret_cast<dnet_backend_control *>(data);
 
-	if (control->backend_id >= backends.size()) {
+	if (dnet_backend_command(control->command) == DNET_BACKEND_ENABLE) {
+		err = dnet_backend_create(node, control->backend_id);
+		if (err) {
+			dnet_log(node, DNET_LOG_ERROR, "backend_control: backend creation failed: %u, state: %s: %d",
+				 control->backend_id, dnet_state_dump_addr(st), err);
+			return err;
+		}
+	}
+
+	auto backends = node->config_data->backends;
+	auto backend = backends->get_backend(control->backend_id);
+	if (!backend) {
 		dnet_log(node, DNET_LOG_ERROR, "backend_control: there is no such backend: %u, state: %s",
 				control->backend_id, dnet_state_dump_addr(st));
 		return -EINVAL;
@@ -646,19 +717,17 @@ static int dnet_cmd_backend_control_dangerous(struct dnet_net_state *st, struct 
 	dnet_log(node, DNET_LOG_INFO, "backend_control: received BACKEND_CONTROL: backend_id: %u, command: %u, state: %s",
 		control->backend_id, control->command, dnet_state_dump_addr(st));
 
-	const dnet_backend_info &backend = backends[control->backend_id];
-	if (backend.state == DNET_BACKEND_UNITIALIZED) {
+	if (backend->state == DNET_BACKEND_UNITIALIZED) {
 		dnet_log(node, DNET_LOG_ERROR, "backend_control: there is no such backend: %u, state: %s",
 				control->backend_id, dnet_state_dump_addr(st));
 		return -EINVAL;
 	}
 
-	dnet_backend_io &io = node->io->backends[control->backend_id];
+	dnet_backend_io *io = dnet_get_backend_io(node->io, control->backend_id);
 
 	int state = DNET_BACKEND_DISABLED;
-	const dnet_backend_callbacks &cb = backend.config.cb;
+	const dnet_backend_callbacks &cb = backend->config.cb;
 
-	int err = -ENOTSUP;
 	switch (dnet_backend_command(control->command)) {
 	case DNET_BACKEND_ENABLE:
 		err = dnet_backend_init(node, control->backend_id, &state);
@@ -685,24 +754,27 @@ static int dnet_cmd_backend_control_dangerous(struct dnet_net_state *st, struct 
 		err = dnet_backend_set_ids(st->n, control->backend_id, control->ids, control->ids_count);
 		break;
 	case DNET_BACKEND_READ_ONLY:
-		if (io.read_only) {
+		if (io->read_only) {
 			err = -EALREADY;
 		} else {
-			io.read_only = 1;
+			io->read_only = 1;
 			err = 0;
 		}
 		break;
 	case DNET_BACKEND_WRITEABLE:
-		if (!io.read_only) {
+		if (!io->read_only) {
 			err = -EALREADY;
 		} else {
-			io.read_only = 0;
+			io->read_only = 0;
 			err = 0;
 		}
 		break;
 	case DNET_BACKEND_CTL:
-		io.delay = control->delay;
+		io->delay = control->delay;
 		err = 0;
+		break;
+	default:
+		err = -ENOTSUP;
 		break;
 	}
 
@@ -713,7 +785,7 @@ static int dnet_cmd_backend_control_dangerous(struct dnet_net_state *st, struct 
 	dnet_backend_status *status = reinterpret_cast<dnet_backend_status *>(list + 1);
 
 	list->backends_count = 1;
-	backend_fill_status(node, status, control->backend_id);
+	backends->backend_fill_status(node, status, control->backend_id);
 
 	if (err) {
 		dnet_send_reply(st, cmd, list, sizeof(buffer), true);
@@ -764,7 +836,12 @@ int dnet_cmd_backend_status(struct dnet_net_state *st, struct dnet_cmd *cmd, voi
 	(void) data;
 	dnet_node *node = st->n;
 
-	const auto &backends = node->config_data->backends->backends;
+	auto backends = node->config_data->backends->get_all_backends();
+	auto cmp_backends = [](const std::shared_ptr<dnet_backend_info> &lhs, const std::shared_ptr<dnet_backend_info> &rhs) -> bool {
+		return lhs->backend_id < rhs->backend_id;
+	};
+	std::sort(backends.begin(), backends.end(), cmp_backends);
+
 	const size_t total_size = sizeof(dnet_backend_status_list) + backends.size() * sizeof(dnet_backend_status);
 
 	std::unique_ptr<dnet_backend_status_list, free_destroyer>
@@ -773,18 +850,16 @@ int dnet_cmd_backend_status(struct dnet_net_state *st, struct dnet_cmd *cmd, voi
 		return -ENOMEM;
 	}
 
-	list->backends_count = backends.size();
+	size_t i = 0;
 
-	size_t j = 0;
-
-	for (size_t i = 0; i < backends.size(); ++i) {
-		dnet_backend_status &status = list->backends[j];
-		backend_fill_status(st->n, &status, i);
+	for (auto &backend : backends) {
+		dnet_backend_status &status = list->backends[i];
+		node->config_data->backends->backend_fill_status(st->n, &status, backend->backend_id);
 		if (status.state != DNET_BACKEND_UNITIALIZED)
-			++j;
+			++i;
 	}
 
-	list->backends_count = j;
+	list->backends_count = i;
 
 	cmd->flags &= ~DNET_FLAGS_NEED_ACK;
 
