@@ -46,7 +46,11 @@ static server_config default_value(int group)
 
 	server.backends[0]("enable", false)("group", group);
 
-	server.backends.resize(backends_count, server.backends.front());
+	server.backends.resize(backends_count + 1, server.backends.front());
+
+	auto &hidden_backend = server.backends.back();
+	hidden_backend("enable", true);
+	hidden_backend.set_serializable(false);
 
 	return server;
 }
@@ -116,20 +120,19 @@ static void test_enable_at_start(session &sess)
 	}
 }
 
-static void test_enable_backend(session &sess)
+static void test_enable_backend(session &sess, uint32_t backend_id)
 {
 	server_node &node = global_data->nodes[0];
 
 	std::string host = node.remote().to_string();
-	auto tuple = std::make_tuple(host, 0, 1);
+	auto tuple = std::make_tuple(host, 0, backend_id);
 
 	auto unique_hosts = get_unique_hosts(sess);
 
 	BOOST_REQUIRE_MESSAGE(unique_hosts.find(tuple) == unique_hosts.end(),
-		"Host must not exist: " + host + ", group: 0, backend: 1");
+		"Host must not exist: " + host + ", group: 0, backend: " + std::to_string(static_cast<long long>(backend_id)));
 
-	ELLIPTICS_REQUIRE(enable_result, sess.enable_backend(node.remote(), 1));
-	BOOST_REQUIRE_EQUAL(enable_result.get().size(), 1);
+	ELLIPTICS_REQUIRE(enable_result, sess.enable_backend(node.remote(), backend_id));
 
 	// Wait 0.1 secs to ensure that route list was changed
 	usleep(100 * 1000);
@@ -137,7 +140,7 @@ static void test_enable_backend(session &sess)
 	unique_hosts = get_unique_hosts(sess);
 
 	BOOST_REQUIRE_MESSAGE(unique_hosts.find(tuple) != unique_hosts.end(),
-		"Host must exist: " + host + ", group: 0, backend: 1");
+		"Host must exist: " + host + ", group: 0, backend: " + std::to_string(static_cast<long long>(backend_id)));
 }
 
 static void test_backend_status(session &sess)
@@ -222,6 +225,22 @@ static void test_enable_backend_at_empty_node(session &sess)
 
 	BOOST_REQUIRE_MESSAGE(unique_hosts.find(tuple) != unique_hosts.end(),
 		"Host must exist: " + host + ", group: 2, backend: 1");
+}
+
+static void test_enable_backend_after_config_change(session &sess)
+{
+	server_node &node = global_data->nodes[0];
+
+	server_config &config = node.config();
+	config_data &hidden_backend = config.backends.back();
+	uint32_t backend_id = std::stoi(hidden_backend.string_value("backend_id"));
+
+	ELLIPTICS_REQUIRE_ERROR(enable_result, sess.enable_backend(node.remote(), backend_id), -ENOENT);
+
+	hidden_backend.set_serializable(true);
+	config.write(node.config_path());
+
+	test_enable_backend(sess, backend_id);
 }
 
 static void test_direct_backend(session &sess)
@@ -444,12 +463,13 @@ static void test_change_group(session &sess)
 bool register_tests(test_suite *suite, node n)
 {
 	ELLIPTICS_TEST_CASE(test_enable_at_start, create_session(n, { 1, 2, 3 }, 0, 0));
-	ELLIPTICS_TEST_CASE(test_enable_backend, create_session(n, { 1, 2, 3 }, 0, 0));
+	ELLIPTICS_TEST_CASE(test_enable_backend, create_session(n, { 1, 2, 3 }, 0, 0), 1);
 	ELLIPTICS_TEST_CASE(test_backend_status, create_session(n, { 1, 2, 3 }, 0, 0));
 	ELLIPTICS_TEST_CASE(test_enable_backend_again, create_session(n, { 1, 2, 3 }, 0, 0));
 	ELLIPTICS_TEST_CASE(test_disable_backend, create_session(n, { 1, 2, 3 }, 0, 0));
 	ELLIPTICS_TEST_CASE(test_disable_backend_again, create_session(n, { 1, 2, 3 }, 0, 0));
 	ELLIPTICS_TEST_CASE(test_enable_backend_at_empty_node, create_session(n, { 1, 2, 3 }, 0, 0));
+	ELLIPTICS_TEST_CASE(test_enable_backend_after_config_change, create_session(n, { 1, 2, 3 }, 0, 0));
 	ELLIPTICS_TEST_CASE(test_direct_backend, create_session(n, { 0 }, 0, 0));
 	ELLIPTICS_TEST_CASE(test_set_backend_ids_for_disabled, create_session(n, { 0 }, 0, 0));
 	ELLIPTICS_TEST_CASE(test_set_backend_ids_for_enabled, create_session(n, { 0 }, 0, 0));

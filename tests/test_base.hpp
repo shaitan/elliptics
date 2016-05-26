@@ -135,6 +135,8 @@ protected:
 	typedef std::vector<std::pair<std::string, variant> > container_t;
 
 public:
+	config_data();
+
 	config_data &operator() (const std::string &name, const std::vector<std::string> &value);
 	config_data &operator() (const std::string &name, const std::string &value);
 	config_data &operator() (const std::string &name, const char *value);
@@ -146,6 +148,9 @@ public:
 	bool has_value(const std::string &name) const;
 	std::string string_value(const std::string &name) const;
 
+	void set_serializable(bool serializable);
+	bool is_serializable() const;
+
 	typedef container_t::const_iterator const_iterator;
 	const_iterator cbegin() const;
 	const_iterator cend() const;
@@ -154,6 +159,7 @@ protected:
 	config_data &operator() (const std::string &name, const variant &value);
 	const variant *value_impl(const std::string &name) const;
 
+	bool m_serializable;
 	container_t m_data;
 	friend class server_config;
 };
@@ -193,7 +199,7 @@ public:
 	bool is_stopped() const;
 
 	std::string config_path() const;
-	server_config config() const;
+	server_config &config();
 
 	address remote() const;
 	int monitor_port() const;
