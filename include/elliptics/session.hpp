@@ -654,6 +654,12 @@ class session
 		async_backend_control_result disable_backend(const address &addr, uint32_t backend_id);
 
 		/*!
+		 * Removes backend with @backend_id at node @addr.
+		 * The backend will be stopped and uninitialized.
+		 */
+		async_backend_control_result remove_backend(const address &addr, uint32_t backend_id);
+
+		/*!
 		 * Starts defragmentation at backend with @backend_id at node @addr.
 		 */
 		async_backend_control_result start_defrag(const address &addr, uint32_t backend_id);

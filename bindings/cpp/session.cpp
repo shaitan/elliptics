@@ -1896,6 +1896,11 @@ async_backend_control_result session::disable_backend(const address &addr, uint3
 	return update_backend_status(backend_status_params(*this, addr, backend_id, DNET_BACKEND_DISABLE));
 }
 
+async_backend_control_result session::remove_backend(const address &addr, uint32_t backend_id)
+{
+	return update_backend_status(backend_status_params(*this, addr, backend_id, DNET_BACKEND_REMOVE));
+}
+
 async_backend_control_result session::start_defrag(const address &addr, uint32_t backend_id)
 {
 	backend_status_params params(*this, addr, backend_id, DNET_BACKEND_START_DEFRAG);
