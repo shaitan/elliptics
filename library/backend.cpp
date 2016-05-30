@@ -264,7 +264,7 @@ int dnet_backend_init(struct dnet_node *node, size_t backend_id, int *state)
 		}
 	} catch (std::bad_alloc &) {
 		err = -ENOMEM;
-		dnet_log(node, DNET_LOG_ERROR, "backend_init: backend: %zu, failed as not enouh memory, elapsed: %s",
+		dnet_log(node, DNET_LOG_ERROR, "backend_init: backend: %zu, failed as not enough memory, elapsed: %s",
 			backend_id, elapsed(start));
 		goto err_out_exit;
 	} catch (std::exception &exc) {
@@ -402,7 +402,7 @@ int dnet_backend_cleanup(struct dnet_node *node, size_t backend_id, int *state)
 
 	dnet_backend_io *backend_io = node->io ? dnet_get_backend_io(node->io, backend_id) : nullptr;
 
-	// set @need_exit to true to force cache lifecheck thread to exit and slru cacge to sync all elements to backend
+	// set @need_exit to true to force cache lifecheck thread to exit and slru cache to sync all elements to backend
 	// this also leads to IO threads to stop, but since we already removed itself from route table,
 	// and cache syncs data to backend either in lifecheck thread or in destructor context,
 	// it is safe to set @need_exit early
@@ -454,7 +454,7 @@ int dnet_backend_create(struct dnet_node *node, size_t backend_id)
 			}
 		}
 	} catch (std::bad_alloc &) {
-		dnet_log(node, DNET_LOG_ERROR, "backend_create: backend: %zu, failed as not enouh memory",
+		dnet_log(node, DNET_LOG_ERROR, "backend_create: backend: %zu, failed as not enough memory",
 			backend_id);
 		return -ENOMEM;
 	} catch (std::exception &exc) {

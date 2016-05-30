@@ -37,7 +37,7 @@ struct cache_config
  *
  * When backend is being initialized, it calls @entry.callback() function for each config entry
  *
- * Please note that backend initalization copies value into temporal copy,
+ * Please note that backend initialization copies value into temporal copy,
  * since @entry.callback() can modify this data.
  */
 struct dnet_backend_config_entry

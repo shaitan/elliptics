@@ -76,8 +76,8 @@ void none(const error_info &error, const std::vector<dnet_cmd> &statuses);
 /*!
  * This handler allows to remove couple of replicas in case of bad writing
  *
- * If you write to 3 groups and at least 2 succesfull writings are mandotary and
- * in case of fail all succesffully written entries must be removed the
+ * If you write to 3 groups and at least 2 successful writings are mandatory and
+ * in case of fail all successfully written entries must be removed the
  * following code may be used:
  *
  * ```cpp
@@ -482,7 +482,7 @@ class session
 
 		/*!
 		 * Reads data by \a id and passes it through \a converter. If converter returns the same data
-		 * it's threated as data is already up-to-date, othwerwise low-level write-cas with proper
+		 * it's threated as data is already up-to-date, otherwise low-level write-cas with proper
 		 * checksum and \a remote_offset is invoked.
 		 *
 		 * If server returns -EBADFD data is read and processed again.
@@ -584,7 +584,7 @@ class session
 		 * Lookups information for key \a id, picks lookup_result_enties by following rules:
 		 * 1. If there are quorum lookup_result_enties with the same timestamp, they are the final result
 		 * 2. Otherwise the final result is lookup_result_enties with the greatest timestamp
-		 * This method is a wrapper over parallel_lookup and usefull in case of you need to find
+		 * This method is a wrapper over parallel_lookup and useful in case of you need to find
 		 * quorum identical replicas
 		 *
 		 * Returns async_lookup_result.
@@ -818,7 +818,7 @@ class session
 		 * \brief Set \a indexes for object \a id.
 		 *
 		 * It removes object from all indexes which are not in the list \a indexes.
-		 * All data in existen indexes are replaced by so from \a indexes.
+		 * All data in existing indexes are replaced by so from \a indexes.
 		 *
 		 * Returns async_set_indexes_result.
 		 */
