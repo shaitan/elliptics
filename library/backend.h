@@ -164,6 +164,7 @@ public:
 	std::shared_ptr<dnet_backend_info> get_backend(size_t backend_id) const;
 
 	void add_backend(std::shared_ptr<dnet_backend_info> &backend);
+	void remove_backend(size_t backend_id);
 
 private:
 	std::unordered_map<uint32_t, std::shared_ptr<dnet_backend_info> > backends;
@@ -177,9 +178,6 @@ extern "C" {
 typedef struct dnet_backend_info_manager dnet_backend_info_manager;
 struct dnet_io;
 #endif // __cplusplus
-
-int dnet_backend_init(struct dnet_node *n, size_t backend_id);
-int dnet_backend_cleanup(struct dnet_node *n, size_t backend_id);
 
 int dnet_backend_init_all(struct dnet_node *n);
 void dnet_backend_cleanup_all(struct dnet_node *n);

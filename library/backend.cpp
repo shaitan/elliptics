@@ -196,7 +196,7 @@ static const char *elapsed(const dnet_time &start)
 	return buffer;
 }
 
-int dnet_backend_init(struct dnet_node *node, size_t backend_id)
+static int dnet_backend_init(struct dnet_node *node, size_t backend_id)
 {
 	int ids_num;
 	struct dnet_raw_id *ids;
@@ -366,7 +366,7 @@ err_out_exit:
 	return err;
 }
 
-int dnet_backend_cleanup(struct dnet_node *node, size_t backend_id)
+static int dnet_backend_cleanup(struct dnet_node *node, size_t backend_id)
 {
 	auto backend = node->config_data->backends->get_backend(backend_id);
 	if (!backend) {
@@ -429,6 +429,23 @@ int dnet_backend_cleanup(struct dnet_node *node, size_t backend_id)
 
 	return 0;
 }
+
+/* Disable and remove backend */
+static int dnet_backend_remove(struct dnet_node *node, size_t backend_id) {
+	const int err = dnet_backend_cleanup(node, backend_id);
+	if (err && err != -EALREADY) {
+		dnet_log(node, DNET_LOG_INFO,
+		         "backend_remove: backend: %zu, failed to disable backend: %s [%d]",
+		         backend_id, strerror(-err), err);
+		return err;
+	}
+
+	node->config_data->backends->remove_backend(backend_id);
+
+	dnet_log(node, DNET_LOG_INFO, "backend_remove: backend: %zu, removed", backend_id);
+	return 0;
+}
+
 
 int dnet_backend_create(struct dnet_node *node, size_t backend_id)
 {
@@ -549,10 +566,7 @@ int dnet_backend_init_all(struct dnet_node *node)
 	return err;
 }
 
-void dnet_backend_cleanup_all(struct dnet_node *node)
-{
-	int state = DNET_BACKEND_ENABLED;
-
+void dnet_backend_cleanup_all(struct dnet_node *node) {
 	for (auto backend : node->config_data->backends->get_all_backends()) {
 		if (backend->state != DNET_BACKEND_DISABLED)
 			dnet_backend_cleanup(node, backend->backend_id);
@@ -681,6 +695,11 @@ void dnet_backend_info_manager::add_backend(std::shared_ptr<dnet_backend_info> &
 	backends.insert({backend->backend_id, backend});
 }
 
+void dnet_backend_info_manager::remove_backend(size_t backend_id) {
+	std::lock_guard<std::mutex> guard(backends_mutex);
+	backends.erase(backend_id);
+}
+
 static int dnet_cmd_backend_control_dangerous(struct dnet_net_state *st, struct dnet_cmd *cmd, void *data)
 {
 	int err = 0;
@@ -729,6 +748,9 @@ static int dnet_cmd_backend_control_dangerous(struct dnet_net_state *st, struct 
 		break;
 	case DNET_BACKEND_DISABLE:
 		err = dnet_backend_cleanup(node, control->backend_id);
+		break;
+	case DNET_BACKEND_REMOVE:
+		err = dnet_backend_remove(node, control->backend_id);
 		break;
 	case DNET_BACKEND_START_DEFRAG:
 		if (cb.defrag_start) {
