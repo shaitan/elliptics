@@ -243,6 +243,30 @@ static void test_enable_backend_after_config_change(session &sess)
 	test_enable_backend(sess, backend_id);
 }
 
+static void test_remove_backend(session &sess) {
+	server_node &node = global_data->nodes[0];
+
+
+	server_config &config = node.config();
+	config_data &last_backend = config.backends.back();
+	const uint32_t backend_id = std::stoi(last_backend.string_value("backend_id"));
+
+	ELLIPTICS_REQUIRE(enable_result, sess.remove_backend(node.remote(), backend_id));
+
+	/* Request all backends status and check that removed backend is missed */
+	ELLIPTICS_REQUIRE(async_status_result, sess.request_backends_status(node.remote()));
+	sync_backend_status_result result = async_status_result;
+
+	BOOST_REQUIRE_EQUAL(result.size(), 1);
+
+	backend_status_result_entry entry = result.front();
+
+	for (size_t i = 0; i < backends_count; ++i) {
+		auto status = entry.backend(i);
+		BOOST_REQUIRE_NE(status->backend_id, backend_id);
+	}
+}
+
 static void test_direct_backend(session &sess)
 {
 	const key id = std::string("direct-backend-test");
@@ -470,6 +494,7 @@ bool register_tests(test_suite *suite, node n)
 	ELLIPTICS_TEST_CASE(test_disable_backend_again, create_session(n, { 1, 2, 3 }, 0, 0));
 	ELLIPTICS_TEST_CASE(test_enable_backend_at_empty_node, create_session(n, { 1, 2, 3 }, 0, 0));
 	ELLIPTICS_TEST_CASE(test_enable_backend_after_config_change, create_session(n, { 1, 2, 3 }, 0, 0));
+	ELLIPTICS_TEST_CASE(test_remove_backend, create_session(n, { 1, 2, 3 }, 0, 0));
 	ELLIPTICS_TEST_CASE(test_direct_backend, create_session(n, { 0 }, 0, 0));
 	ELLIPTICS_TEST_CASE(test_set_backend_ids_for_disabled, create_session(n, { 0 }, 0, 0));
 	ELLIPTICS_TEST_CASE(test_set_backend_ids_for_enabled, create_session(n, { 0 }, 0, 0));
