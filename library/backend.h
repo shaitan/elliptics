@@ -178,8 +178,8 @@ typedef struct dnet_backend_info_manager dnet_backend_info_manager;
 struct dnet_io;
 #endif // __cplusplus
 
-int dnet_backend_init(struct dnet_node *n, size_t backend_id, int *state);
-int dnet_backend_cleanup(struct dnet_node *n, size_t backend_id, int *state);
+int dnet_backend_init(struct dnet_node *n, size_t backend_id);
+int dnet_backend_cleanup(struct dnet_node *n, size_t backend_id);
 
 int dnet_backend_init_all(struct dnet_node *n);
 void dnet_backend_cleanup_all(struct dnet_node *n);

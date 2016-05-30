@@ -196,7 +196,7 @@ static const char *elapsed(const dnet_time &start)
 	return buffer;
 }
 
-int dnet_backend_init(struct dnet_node *node, size_t backend_id, int *state)
+int dnet_backend_init(struct dnet_node *node, size_t backend_id)
 {
 	int ids_num;
 	struct dnet_raw_id *ids;
@@ -212,12 +212,11 @@ int dnet_backend_init(struct dnet_node *node, size_t backend_id, int *state)
 
 	{
 		std::lock_guard<std::mutex> guard(*backend->state_mutex);
-		*state = backend->state;
 		if (backend->state != DNET_BACKEND_DISABLED) {
 			dnet_log(node, DNET_LOG_ERROR, "backend_init: backend: %zu, "
 					"trying to activate not disabled backend, elapsed: %s",
 				backend_id, elapsed(start));
-			switch (*state) {
+			switch (backend->state) {
 				case DNET_BACKEND_ENABLED:
 					return -EALREADY;
 				case DNET_BACKEND_ACTIVATING:
@@ -367,7 +366,7 @@ err_out_exit:
 	return err;
 }
 
-int dnet_backend_cleanup(struct dnet_node *node, size_t backend_id, int *state)
+int dnet_backend_cleanup(struct dnet_node *node, size_t backend_id)
 {
 	auto backend = node->config_data->backends->get_backend(backend_id);
 	if (!backend) {
@@ -376,11 +375,10 @@ int dnet_backend_cleanup(struct dnet_node *node, size_t backend_id, int *state)
 
 	{
 		std::lock_guard<std::mutex> guard(*backend->state_mutex);
-		*state = backend->state;
 		if (backend->state != DNET_BACKEND_ENABLED) {
 			dnet_log(node, DNET_LOG_ERROR, "backend_cleanup: backend: %zu, trying to destroy not activated backend",
 				backend_id);
-			switch (*state) {
+			switch (backend->state) {
 				case DNET_BACKEND_DISABLED:
 					return -EALREADY;
 				case DNET_BACKEND_DEACTIVATING:
@@ -478,7 +476,6 @@ int dnet_backend_init_all(struct dnet_node *node)
 {
 	int err = 1;
 	bool all_ok = true;
-	int state = DNET_BACKEND_ENABLED;
 
 	auto backends = node->config_data->backends;
 	using namespace ioremap::elliptics::config;
@@ -531,7 +528,7 @@ int dnet_backend_init_all(struct dnet_node *node)
 				continue;
 			}
 
-			int tmp = dnet_backend_init(node, backend_id, &state);
+			int tmp = dnet_backend_init(node, backend_id);
 			if (!tmp) {
 				err = 0;
 			} else if (err == 1) {
@@ -558,7 +555,7 @@ void dnet_backend_cleanup_all(struct dnet_node *node)
 
 	for (auto backend : node->config_data->backends->get_all_backends()) {
 		if (backend->state != DNET_BACKEND_DISABLED)
-			dnet_backend_cleanup(node, backend->backend_id, &state);
+			dnet_backend_cleanup(node, backend->backend_id);
 	}
 }
 
@@ -724,15 +721,14 @@ static int dnet_cmd_backend_control_dangerous(struct dnet_net_state *st, struct 
 
 	dnet_backend_io *io = dnet_get_backend_io(node->io, control->backend_id);
 
-	int state = DNET_BACKEND_DISABLED;
 	const dnet_backend_callbacks &cb = backend->config.cb;
 
 	switch (dnet_backend_command(control->command)) {
 	case DNET_BACKEND_ENABLE:
-		err = dnet_backend_init(node, control->backend_id, &state);
+		err = dnet_backend_init(node, control->backend_id);
 		break;
 	case DNET_BACKEND_DISABLE:
-		err = dnet_backend_cleanup(node, control->backend_id, &state);
+		err = dnet_backend_cleanup(node, control->backend_id);
 		break;
 	case DNET_BACKEND_START_DEFRAG:
 		if (cb.defrag_start) {
