@@ -37,7 +37,7 @@ struct cache_config
  *
  * When backend is being initialized, it calls @entry.callback() function for each config entry
  *
- * Please note that backend initalization copies value into temporal copy,
+ * Please note that backend initialization copies value into temporal copy,
  * since @entry.callback() can modify this data.
  */
 struct dnet_backend_config_entry
@@ -58,7 +58,8 @@ struct dnet_backend_info
 
 	dnet_backend_info(dnet_logger &logger, uint32_t backend_id) :
 		log(new dnet_logger(logger, make_attributes(backend_id))),
-		group(0), cache(NULL), enable_at_start(false), read_only_at_start(false),
+		backend_id(backend_id), group(0), cache(NULL),
+		enable_at_start(false), read_only_at_start(false),
 		state_mutex(new std::mutex), state(DNET_BACKEND_UNITIALIZED),
 		io_thread_num(0), nonblocking_io_thread_num(0)
 	{
@@ -75,6 +76,7 @@ struct dnet_backend_info
 		config_template(other.config_template),
 		log(std::move(other.log)),
 		options(std::move(other.options)),
+		backend_id(other.backend_id),
 		group(other.group),
 		cache(other.cache),
 		history(other.history),
@@ -97,6 +99,7 @@ struct dnet_backend_info
 		config_template = other.config_template;
 		log = std::move(other.log);
 		options = std::move(other.options);
+		backend_id = other.backend_id;
 		group = other.group;
 		cache = other.cache;
 		history = other.history;
@@ -120,6 +123,7 @@ struct dnet_backend_info
 	dnet_config_backend config_template;
 	std::unique_ptr<dnet_logger> log;
 	std::vector<dnet_backend_config_entry> options;
+	uint32_t backend_id;
 	uint32_t group;
 	void *cache;
 	std::string history;
@@ -139,36 +143,51 @@ struct dnet_backend_info
 	int nonblocking_io_thread_num;
 };
 
-struct dnet_backend_info_list
+class dnet_backend_info_manager
 {
-	std::vector<dnet_backend_info> backends;
+public:
+	/*
+	 * Locks backend with \a backend_id state mutex and fills \a status
+	 */
+	void backend_fill_status(struct dnet_node *node, struct dnet_backend_status *status, size_t backend_id) const;
+
+	std::vector<std::shared_ptr<dnet_backend_info> > get_all_backends() const
+	{
+		std::vector<std::shared_ptr<dnet_backend_info> > result;
+		std::lock_guard<std::mutex> guard(backends_mutex);
+		for (auto it : backends) {
+			result.push_back(it.second);
+		}
+		return result;
+	}
+
+	std::shared_ptr<dnet_backend_info> get_backend(size_t backend_id) const;
+
+	void add_backend(std::shared_ptr<dnet_backend_info> &backend);
+	void remove_backend(size_t backend_id);
+
+private:
+	std::unordered_map<uint32_t, std::shared_ptr<dnet_backend_info> > backends;
+	mutable std::mutex backends_mutex;
 };
+
+void backend_fill_status_nolock(struct dnet_node *node, struct dnet_backend_status *status, const struct dnet_backend_info *config_backend);
 
 extern "C" {
 #else // __cplusplus
-typedef struct dnet_backend_info_list_t dnet_backend_info_list;
+typedef struct dnet_backend_info_manager dnet_backend_info_manager;
+struct dnet_io;
 #endif // __cplusplus
-
-int dnet_backend_init(struct dnet_node *n, size_t backend_id, int *state);
-int dnet_backend_cleanup(struct dnet_node *n, size_t backend_id, int *state);
 
 int dnet_backend_init_all(struct dnet_node *n);
 void dnet_backend_cleanup_all(struct dnet_node *n);
 
-size_t dnet_backend_info_list_count(dnet_backend_info_list *backends);
+int dnet_get_backend_ids(const dnet_backend_info_manager *backends, size_t **backend_ids, size_t *num_backend_ids);
 
 int dnet_cmd_backend_control(struct dnet_net_state *st, struct dnet_cmd *cmd, void *data);
 int dnet_cmd_backend_status(struct dnet_net_state *st, struct dnet_cmd *cmd, void *data);
 
-/*
- * Fills \a status of backend with \a backend_id without any locks
- */
-void backend_fill_status_nolock(struct dnet_node *node, struct dnet_backend_status *status, size_t backend_id);
-
-/*
- * Locks backend with \a backend_id state mutex and fills \a status
- */
-void backend_fill_status(struct dnet_node *node, struct dnet_backend_status *status, size_t backend_id);
+struct dnet_backend_io *dnet_get_backend_io(struct dnet_io *io, size_t backend_id);
 
 #ifdef __cplusplus
 }

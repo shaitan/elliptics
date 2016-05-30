@@ -197,6 +197,16 @@ class Session(Session):
                                                     family=address.family,
                                                     backend_id=backend_id)
 
+    def remove_backend(self, address, backend_id):
+        """
+        Removes backend @backend_id on @address.
+        Return elliptics.AsyncResult that provides new status of backend.
+        """
+        return super(Session, self).remove_backend(host=address.host,
+                                                   port=address.port,
+                                                   family=address.family,
+                                                   backend_id=backend_id)
+
     def start_defrag(self, address, backend_id):
         """
         Starts defragmentation of backend @backend_id on @address.
