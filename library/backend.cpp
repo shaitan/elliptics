@@ -435,10 +435,9 @@ int dnet_backend_cleanup(struct dnet_node *node, size_t backend_id, int *state)
 int dnet_backend_create(struct dnet_node *node, size_t backend_id)
 {
 	auto backends = node->config_data->backends;
-	if (backends->get_backend(backend_id))
+	auto backend = backends->get_backend(backend_id);
+	if (backend)
 		return 0;
-
-	std::shared_ptr<dnet_backend_info> backend;
 
 	try {
 		using namespace ioremap::elliptics::config;

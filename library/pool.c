@@ -1265,8 +1265,8 @@ int dnet_server_io_init(struct dnet_node *n)
 
 	backends_count = backend_ids[0];
 	for (j = 1; j < num_backend_ids; ++j) {
-		if (backend_ids[0] > backends_count)
-			backends_count = backend_ids[0];
+		if (backend_ids[j] > backends_count)
+			backends_count = backend_ids[j];
 	}
 	++backends_count;
 
