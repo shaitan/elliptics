@@ -1,3 +1,23 @@
+elliptics (2.26.11.0-1) unstable; urgency=medium
+
+  * tests: fix compilation warning in server-send tests
+  * tests: add test for removing backend
+  * Provide 'remove_backend' via Python binding
+  * Provide 'remove_backend' via C++ binding
+  * Add 'remove' backend command
+  * docs: add comments to session methods
+  * Cleanup code by removing useless 'state' argument
+  * Fix typos
+  * tests: added description of m_serializable var in config_data class
+  * ioserv: fixed incorrect detection of backends count in dnet_server_io_init
+  * tests: backends: add backend to ioserv.conf after ioserv launch and enable this backend
+  * ioserv: dynamically parse & insert backend on DNET_BACKEND_ENABLE command
+  * json: Add 'trans' to 'finished' logs for {READ,WRITE}_NEW
+  * Add test for lookuping corrupted key
+  * Validate record on lookup if its checksum is requested
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Mon, 30 May 2016 23:16:47 +0300
+
 elliptics (2.26.11.0) unstable; urgency=low
 
   * trans: always set @wait_ts at allocation time to node's wait timeout
