@@ -445,6 +445,12 @@ public:
 		return create_result(std::move(session::disable_backend(address(host, port, family), backend_id)));
 	}
 
+	python_backend_status_result remove_backend(const std::string &host, int port, int family, uint64_t backend_id) {
+		return create_result(
+			session::remove_backend(address(host, port, family), backend_id)
+		);
+	}
+
 	python_backend_status_result start_defrag(const std::string &host, int port, int family, uint32_t backend_id) {
 		return create_result(std::move(session::start_defrag(address(host, port, family), backend_id)));
 	}
@@ -1430,6 +1436,13 @@ void init_elliptics_session() {
 		     "    Disables backend @backend_id at node addressed by @host, @port, @family\n"
 		     "    Returns AsyncResult which provides new status of the backend\n\n"
 		     "    new_status = session.disable_backend(elliptics.Address.from_host_port_family(host='host.com', port=1025, family=AF_INET), 0).get()[0].backends[0]")
+
+		.def("remove_backend", &elliptics_session::remove_backend,
+		     (bp::arg("host"), bp::arg("port"), bp::arg("family"), bp::arg("backend_id")),
+		     "remove_backend(host, port, family, backend_id)\n"
+		     "    Removes backend @backend_id at node addressed by @host, @port, @family\n"
+		     "    Returns AsyncResult which provides new status of the backend\n\n"
+		     "    new_status = session.remove_backend(elliptics.Address.from_host_port_family(host='host.com', port=1025, family=AF_INET), 0).get()[0].backends[0]")
 
 		.def("start_defrag", &elliptics_session::start_defrag,
 		     (bp::arg("host"), bp::arg("port"), bp::arg("family"), bp::arg("backend_id")),
