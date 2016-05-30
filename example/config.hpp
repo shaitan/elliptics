@@ -354,7 +354,7 @@ struct config_data : public dnet_config_data
 	std::mutex					parser_mutex;
 	std::shared_ptr<config_parser>			parser;
 	dnet_time					config_timestamp;
-	dnet_backend_info_list				backends_guard;
+	dnet_backend_info_manager			backends_guard;
 	std::string					logger_value;
 	ioremap::elliptics::logger_base			logger_base;
 	ioremap::elliptics::logger			logger;
@@ -363,6 +363,8 @@ struct config_data : public dnet_config_data
 	std::unique_ptr<monitor::monitor_config>	monitor_config;
 	uint64_t					queue_timeout;
 };
+
+std::shared_ptr<dnet_backend_info> dnet_parse_backend(config_data *data, uint32_t backend_id, const config &backend);
 
 } } } // namespace ioremap::elliptics::config
 

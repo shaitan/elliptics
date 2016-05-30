@@ -121,6 +121,11 @@ void create_directory(const std::string &path)
 
 #ifndef NO_SERVER
 
+config_data::config_data()
+: m_serializable(true)
+{
+}
+
 config_data &config_data::operator() (const std::string &name, const std::vector<std::string> &value)
 {
 	return (*this)(name, variant(value));
@@ -182,6 +187,16 @@ std::string config_data::string_value(const std::string &name) const
 {
 	auto value = value_impl(name);
 	return value ? boost::apply_visitor(stringify_visitor(), *value) : std::string();
+}
+
+void config_data::set_serializable(bool serializable)
+{
+	m_serializable = serializable;
+}
+
+bool config_data::is_serializable() const
+{
+	return m_serializable;
 }
 
 config_data::const_iterator config_data::cbegin() const
@@ -396,6 +411,9 @@ void server_config::write(const std::string &path)
 	backends_json.SetArray();
 
 	for (auto it = backends.begin(); it != backends.end(); ++it) {
+		if (!it->is_serializable())
+			continue;
+
 		rapidjson::Value backend;
 		backend.SetObject();
 
@@ -578,7 +596,7 @@ std::string server_node::config_path() const
 	return m_path;
 }
 
-server_config server_node::config() const
+server_config &server_node::config()
 {
 	return m_config;
 }
@@ -832,13 +850,6 @@ nodes_data::ptr start_nodes(start_nodes_config &start_config) {
 
 		create_directory(server_path);
 
-		for (size_t j = 0; j < config.backends.size(); ++j) {
-			std::string prefix = server_path + "/" + boost::lexical_cast<std::string>(j);
-			create_directory(prefix);
-			create_directory(prefix + "/history");
-			create_directory(prefix + "/blob");
-		}
-
 		std::vector<std::string> remotes;
 		for (size_t j = 0; j < start_config.configs.size(); ++j) {
 			if (j == i)
@@ -887,7 +898,11 @@ nodes_data::ptr start_nodes(start_nodes_config &start_config) {
 				;
 
 		for (size_t i = 0; i < config.backends.size(); ++i) {
-			std::string prefix = server_path + "/" + boost::lexical_cast<std::string>(i);
+			std::string prefix = server_path + '/' + std::to_string(i);
+			create_directory(prefix);
+			create_directory(prefix + "/history");
+			create_directory(prefix + "/blob");
+
 			config.backends[i]
 					("history", prefix + "/history")
 					("data", prefix + "/blob")

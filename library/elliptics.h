@@ -432,6 +432,7 @@ struct dnet_work_io {
 	int			thread_index;
 	uint64_t		trans;
 	pthread_t		tid;
+	int			joined;
 	struct dnet_work_pool	*pool;
 };
 
@@ -504,9 +505,9 @@ struct dnet_io {
 	struct dnet_net_io	*net;
 
 
-	struct dnet_backend_io	*backends;
+	struct dnet_backend_io	**backends;
 	size_t			backends_count;
-	pthread_mutex_t		backends_lock;
+	pthread_rwlock_t	backends_lock;
 
 	struct dnet_io_pool	pool;
 
@@ -521,6 +522,7 @@ struct dnet_io {
 int dnet_state_accept_process(struct dnet_net_state *st, struct epoll_event *ev);
 int dnet_io_init(struct dnet_node *n, struct dnet_config *cfg);
 void *dnet_io_process(void *data_);
+int dnet_server_backend_init(struct dnet_node *n, size_t backend_id);
 int dnet_server_io_init(struct dnet_node *n);
 /* Set need_exit flag, stop and join pool threads */
 void dnet_io_stop(struct dnet_node *n);
@@ -541,7 +543,7 @@ struct dnet_config_data {
 	int daemon_mode;
 	int parallel_start;
 
-	dnet_backend_info_list *backends;
+	dnet_backend_info_manager *backends;
 };
 
 struct dnet_config_data *dnet_config_data_create();
