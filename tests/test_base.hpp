@@ -159,6 +159,7 @@ protected:
 	config_data &operator() (const std::string &name, const variant &value);
 	const variant *value_impl(const std::string &name) const;
 
+	// it is used to prevent serialization of this object to a config (json)
 	bool m_serializable;
 	container_t m_data;
 	friend class server_config;
