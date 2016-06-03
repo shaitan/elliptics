@@ -89,42 +89,6 @@ inline dnet_raw_id& operator >>(const msgpack::object &o, dnet_raw_id &v)
     return v;
 }
 
-// struct dnet_addr
-// {
-//  uint8_t         addr[DNET_ADDR_SIZE];
-//  uint16_t        addr_len;
-//  uint16_t        family;
-// } __attribute__ ((packed));
-//
-// Defined in elliptics/packet.h.
-//
-template <typename Stream>
-inline msgpack::packer<Stream>& operator <<(msgpack::packer<Stream> &o, const dnet_addr &v)
-{
-    o.pack_array(3);
-    o.pack_raw(sizeof(v.addr));
-    o.pack_raw_body(reinterpret_cast<const char *>(v.addr), sizeof(v.addr));
-    o.pack_uint16(v.addr_len);
-    o.pack_uint16(v.family);
-    return o;
-}
-inline dnet_addr& operator >>(const msgpack::object &o, dnet_addr &v)
-{
-    if (o.type != msgpack::type::ARRAY || o.via.array.size != 3) {
-        throw msgpack::type_error();
-    }
-    {
-        const auto &f = o.via.array.ptr[0];
-        if (f.type != msgpack::type::RAW || f.via.raw.size != sizeof(v.addr)) {
-            throw msgpack::type_error();
-        }
-        memcpy(&v.addr, f.via.raw.ptr, sizeof(v.addr));
-    }
-    v.addr_len = o.via.array.ptr[1].as<uint16_t>();
-    v.family = o.via.array.ptr[2].as<uint16_t>();
-    return v;
-}
-
 // struct dnet_time {
 //  uint64_t        tsec, tnsec;
 // };
@@ -149,82 +113,85 @@ inline dnet_time& operator >>(const msgpack::object &o, dnet_time &v)
     return v;
 }
 
-// struct dnet_file_info {
-//  int             flen;       /* filename length, which goes after this structure */
-//  unsigned char   checksum[DNET_CSUM_SIZE];
+// struct dnet_record_info {
+//     uint64_t    record_flags;       /* combination of DNET_RECORD_FLAGS_* */
+//     uint64_t    user_flags;     /* user-defined flags */
 //
-//  uint64_t        record_flags;   /* combination of DNET_RECORD_FLAGS_* */
-//  uint64_t        size;       /* size of file on disk */
-//  uint64_t        offset;     /* offset of file on disk */
+//     struct dnet_time json_timestamp;    /* timestamp of stored json */
+//     uint64_t    json_offset;        /* offset of json within blob */
+//     uint64_t    json_size;      /* size of stored json */
+//     uint64_t    json_capacity;      /* reserved space for json */
 //
-//  struct dnet_time    mtime;
+//     struct dnet_time data_timestamp;    /* timestamp of stored data */
+//     uint64_t    data_offset;        /* offset of data within the blob */
+//     uint64_t    data_size;      /* size of stored data */
+//     // uint64_t data_capacity;      /* reserved space for data */
 // };
 //
 // Defined in elliptics/packet.h.
 //
 template <typename Stream>
-inline msgpack::packer<Stream>& operator <<(msgpack::packer<Stream> &o, const dnet_file_info &v)
+inline msgpack::packer<Stream>& operator <<(msgpack::packer<Stream> &o, const dnet_record_info &v)
 {
-    o.pack_array(6);
-    // There is no actual need in keeping dnet_file_info::flen --
-    // -- its used to indicate length of file path tailing dnet_file_info
-    // objects in replies from elliptics node, but we handle that file path
-    // separately, so we could have dropped flen entirely.
-    // But still its better to keep it and thus support symmetricity of
-    // serialize/deserialize operations.
-    o.pack_int(v.flen);
-    o.pack_raw(sizeof(v.checksum));
-    o.pack_raw_body(reinterpret_cast<const char *>(v.checksum), sizeof(v.checksum));
+    o.pack_array(9);
     o.pack_uint64(v.record_flags);
-    o.pack_uint64(v.size);
-    o.pack_uint64(v.offset);
-    o.pack(v.mtime);
+    o.pack_uint64(v.user_flags);
+    o.pack(v.json_timestamp);
+    o.pack_uint64(v.json_offset);
+    o.pack_uint64(v.json_size);
+    o.pack_uint64(v.json_capacity);
+    o.pack(v.data_timestamp);
+    o.pack_uint64(v.data_offset);
+    o.pack_uint64(v.data_size);
+    // o.pack_uint64(v.data_capacity);
     return o;
 }
-inline dnet_file_info& operator >>(const msgpack::object &o, dnet_file_info &v)
+inline dnet_record_info& operator >>(const msgpack::object &o, dnet_record_info &v)
 {
-    if (o.type != msgpack::type::ARRAY || o.via.array.size != 6) {
+    if (o.type != msgpack::type::ARRAY || o.via.array.size != 9) {
         throw msgpack::type_error();
     }
     int N = 0;
-    o.via.array.ptr[N++] >> v.flen;
-    {
-        const auto &f = o.via.array.ptr[N++];
-        if (f.type != msgpack::type::RAW || f.via.raw.size != sizeof(v.checksum)) {
-            throw msgpack::type_error();
-        }
-        memcpy(&v.checksum, f.via.raw.ptr, sizeof(v.checksum));
-    }
     o.via.array.ptr[N++] >> v.record_flags;
-    o.via.array.ptr[N++] >> v.size;
-    o.via.array.ptr[N++] >> v.offset;
-    o.via.array.ptr[N++] >> v.mtime;
+    o.via.array.ptr[N++] >> v.user_flags;
+    o.via.array.ptr[N++] >> v.json_timestamp;
+    o.via.array.ptr[N++] >> v.json_offset;
+    o.via.array.ptr[N++] >> v.json_size;
+    o.via.array.ptr[N++] >> v.json_capacity;
+    o.via.array.ptr[N++] >> v.data_timestamp;
+    o.via.array.ptr[N++] >> v.data_offset;
+    o.via.array.ptr[N++] >> v.data_size;
+    // o.via.array.ptr[N++] >> v.data_capacity;
     return v;
 }
 
-// dnet_async_service_result
+// struct dnet_io_info {
+//     uint64_t json_size; /* size of json which has been read or written */
 //
-// Defined in cocaine/idl/localnode.hpp.
+//     uint64_t data_offset; /* offset with which data part has been read or written */
+//     uint64_t data_size; /* size of data part which has been read or written */
+// };
 //
-using ioremap::elliptics::dnet_async_service_result;
-
+// Defined in elliptics/packet.h.
+//
 template <typename Stream>
-inline msgpack::packer<Stream>& operator <<(msgpack::packer<Stream> &o, const dnet_async_service_result &v)
+inline msgpack::packer<Stream>& operator <<(msgpack::packer<Stream> &o, const dnet_io_info &v)
 {
     o.pack_array(3);
-    o.pack(v.addr);
-    o.pack(v.file_info);
-    o.pack(v.file_path);
+    o.pack_uint64(v.json_size);
+    o.pack_uint64(v.data_offset);
+    o.pack_uint64(v.data_size);
     return o;
 }
-inline dnet_async_service_result& operator >>(const msgpack::object &o, dnet_async_service_result &v)
+inline dnet_io_info& operator >>(const msgpack::object &o, dnet_io_info &v)
 {
     if (o.type != msgpack::type::ARRAY || o.via.array.size != 3) {
         throw msgpack::type_error();
     }
-    o.via.array.ptr[0] >> v.addr;
-    o.via.array.ptr[1] >> v.file_info;
-    o.via.array.ptr[2] >> v.file_path;
+    int N = 0;
+    o.via.array.ptr[N++] >> v.json_size;
+    o.via.array.ptr[N++] >> v.data_offset;
+    o.via.array.ptr[N++] >> v.data_size;
     return v;
 }
 

@@ -23,12 +23,6 @@
 
 namespace ioremap { namespace elliptics {
 
-struct dnet_async_service_result {
-	dnet_addr addr;
-	dnet_file_info file_info;
-	std::string file_path;
-};
-
 namespace io {
 
 struct localnode_tag;
@@ -52,6 +46,8 @@ struct localnode {
 		> argument_type;
 
 		typedef cocaine::io::option_of<
+			/// Info about stored key
+			dnet_record_info,
 			/// Raw bytes of read result
 			data_pointer
 		>::tag upstream_type;
@@ -68,14 +64,14 @@ struct localnode {
 			/// Writing group list
 			std::vector<int>,
 			/// Raw bytes of the value
-			std::string,
-			/// Offset
-			uint64_t
+			std::string
 		> argument_type;
 
 		typedef cocaine::io::option_of<
 			/// Info about stored key
-			dnet_async_service_result
+			dnet_record_info,
+			/// Path to the blob file
+			std::string
 		>::tag upstream_type;
 	};
 
@@ -93,7 +89,9 @@ struct localnode {
 
 		typedef cocaine::io::option_of<
 			/// Info about stored key
-			dnet_async_service_result
+			dnet_record_info,
+			/// Path to the blob file
+			std::string
 		>::tag upstream_type;
 	};
 };

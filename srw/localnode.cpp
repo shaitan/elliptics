@@ -80,8 +80,8 @@ localnode::localnode(
 {
 	COCAINE_LOG_DEBUG(log_, "{}: ENTER", __func__);
 
-	on<ioremap::elliptics::io::localnode::read>(std::bind(&localnode::read, this, ph::_1, ph::_2, ph::_3, ph::_4));
-	on<io::localnode::write>(std::bind(&localnode::write, this, ph::_1, ph::_2, ph::_3, ph::_4));
+	on<io::localnode::read>(std::bind(&localnode::read, this, ph::_1, ph::_2, ph::_3, ph::_4));
+	on<io::localnode::write>(std::bind(&localnode::write, this, ph::_1, ph::_2, ph::_3));
 	on<io::localnode::lookup>(std::bind(&localnode::lookup, this, ph::_1, ph::_2));
 
 	// In the simplest case when node serves exactly one group, we want to free
@@ -112,7 +112,7 @@ inline void override_groups(session &s, const std::vector<int> &groups)
 	}
 }
 
-deferred<data_pointer> localnode::read(const dnet_raw_id &key, const std::vector<int> &groups, uint64_t offset, uint64_t size)
+deferred<localnode::read_result> localnode::read(const dnet_raw_id &key, const std::vector<int> &groups, uint64_t offset, uint64_t size)
 {
 	COCAINE_LOG_DEBUG(log_, "{}: ENTER", __func__);
 
@@ -128,7 +128,7 @@ deferred<data_pointer> localnode::read(const dnet_raw_id &key, const std::vector
 	// and its safe to perform a read without locking on a key)
 	s.set_cflags(DNET_FLAGS_NOLOCK);
 
-	deferred<data_pointer> promise;
+	deferred<read_result> promise;
 
 	s.read_data(elliptics::key(key), offset, size).connect(
 		std::bind(&localnode::on_read_completed, this, promise, ph::_1, ph::_2)
@@ -139,7 +139,7 @@ deferred<data_pointer> localnode::read(const dnet_raw_id &key, const std::vector
 	return promise;
 }
 
-deferred<dnet_async_service_result> localnode::write(const dnet_raw_id &key, const std::vector<int> &groups, const std::string &bytes, uint64_t offset)
+deferred<localnode::write_result> localnode::write(const dnet_raw_id &key, const std::vector<int> &groups, const std::string &bytes)
 {
 	COCAINE_LOG_DEBUG(log_, "{}: ENTER", __func__);
 
@@ -147,9 +147,10 @@ deferred<dnet_async_service_result> localnode::write(const dnet_raw_id &key, con
 	s.set_exceptions_policy(session::no_exceptions);
 	override_groups(s, groups);
 
-	deferred<dnet_async_service_result> promise;
+	deferred<write_result> promise;
 
-	s.write_data(elliptics::key(key), bytes, offset).connect(
+	//FIXME: add support for json, json_capacity and data_capacity?
+	s.write(elliptics::key(key), "", 0, bytes, 0).connect(
 		std::bind(&localnode::on_write_completed, this, promise, ph::_1, ph::_2)
 	);
 
@@ -158,13 +159,13 @@ deferred<dnet_async_service_result> localnode::write(const dnet_raw_id &key, con
 	return promise;
 }
 
-deferred<dnet_async_service_result> localnode::lookup(const dnet_raw_id &key, const std::vector<int> &groups)
+deferred<localnode::lookup_result> localnode::lookup(const dnet_raw_id &key, const std::vector<int> &groups)
 {
 	auto s = session_proto_.clone();
 	s.set_exceptions_policy(session::no_exceptions);
 	override_groups(s, groups);
 
-	deferred<dnet_async_service_result> promise;
+	deferred<lookup_result> promise;
 
 	s.lookup(elliptics::key(key)).connect(
 		std::bind(&localnode::on_write_completed, this, promise, ph::_1, ph::_2)
@@ -173,8 +174,8 @@ deferred<dnet_async_service_result> localnode::lookup(const dnet_raw_id &key, co
 	return promise;
 }
 
-void localnode::on_read_completed(deferred<data_pointer> promise,
-		const std::vector<read_result_entry> &result,
+void localnode::on_read_completed(deferred<localnode::read_result> promise,
+		const std::vector<newapi::read_result_entry> &results,
 		const error_info &error)
 {
 	COCAINE_LOG_DEBUG(log_, "{}: ENTER", __func__);
@@ -185,14 +186,15 @@ void localnode::on_read_completed(deferred<data_pointer> promise,
 
 	} else {
 		COCAINE_LOG_DEBUG(log_, "{}: return success", __func__);
-		promise.write(result[0].file());
+		const auto &r = results[0];
+		promise.write(std::make_tuple(r.record_info(), r.data()));
 	}
 
 	COCAINE_LOG_DEBUG(log_, "{}: EXIT", __func__);
 }
 
-void localnode::on_write_completed(deferred<dnet_async_service_result> promise,
-		const std::vector<lookup_result_entry> &results,
+void localnode::on_write_completed(deferred<write_result> promise,
+		const std::vector<newapi::write_result_entry> &results,
 		const error_info &error)
 {
 	COCAINE_LOG_DEBUG(log_, "{}: ENTER", __func__);
@@ -202,13 +204,9 @@ void localnode::on_write_completed(deferred<dnet_async_service_result> promise,
 		promise.abort(std::error_code(-error.code(), std::generic_category()), error.message());
 
 	} else {
-		dnet_async_service_result r;
-		const auto &single_result = results[0];
-		r.addr = *single_result.storage_address();
-		r.file_info = *single_result.file_info();
-		r.file_path = single_result.file_path();
+		const auto &r = results[0];
 		COCAINE_LOG_DEBUG(log_, "{}: return success", __func__);
-		promise.write(r);
+		promise.write(std::make_tuple(r.record_info(), r.path()));
 	}
 
 	COCAINE_LOG_DEBUG(log_, "{}: EXIT", __func__);

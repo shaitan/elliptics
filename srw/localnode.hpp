@@ -20,7 +20,7 @@
 #include <cocaine/api/service.hpp>
 #include <cocaine/rpc/dispatch.hpp>
 
-#include "elliptics/session.hpp"
+#include "elliptics/newapi/session.hpp"
 #include "cocaine/idl/localnode.hpp"
 
 namespace ioremap { namespace elliptics {
@@ -34,7 +34,7 @@ using cocaine::deferred;
 class localnode : public cocaine::api::service_t, public cocaine::dispatch<io::localnode_tag>
 {
 private:
-	session session_proto_;
+	newapi::session session_proto_;
 	std::shared_ptr<cocaine::logging::logger_t> log_;
 
 public:
@@ -47,16 +47,20 @@ public:
 	}
 
 private:
-	deferred<data_pointer> read(const dnet_raw_id &key, const std::vector<int> &groups, uint64_t offset, uint64_t size);
-	deferred<dnet_async_service_result> lookup(const dnet_raw_id &key, const std::vector<int> &groups);
-	deferred<dnet_async_service_result> write(const dnet_raw_id &key, const std::vector<int> &groups, const std::string &bytes, uint64_t offset);
+	typedef std::tuple<dnet_record_info, data_pointer> read_result;
+	typedef std::tuple<dnet_record_info, std::string> lookup_result;
+	typedef lookup_result write_result;
 
-	void on_read_completed(deferred<data_pointer> promise,
-		const std::vector<ioremap::elliptics::read_result_entry> &result,
+	deferred<read_result> read(const dnet_raw_id &key, const std::vector<int> &groups, uint64_t offset, uint64_t size);
+	deferred<lookup_result> lookup(const dnet_raw_id &key, const std::vector<int> &groups);
+	deferred<write_result> write(const dnet_raw_id &key, const std::vector<int> &groups, const std::string &bytes);
+
+	void on_read_completed(deferred<read_result> promise,
+		const std::vector<newapi::read_result_entry> &results,
 		const ioremap::elliptics::error_info &error
 	);
-	void on_write_completed(deferred<dnet_async_service_result> promise,
-		const std::vector<ioremap::elliptics::lookup_result_entry> &result,
+	void on_write_completed(deferred<write_result> promise,
+		const std::vector<newapi::write_result_entry> &results,
 		const ioremap::elliptics::error_info &error
 	);
 };

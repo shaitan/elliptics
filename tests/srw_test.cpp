@@ -61,34 +61,64 @@ std::string gen_random(const int len) {
 	return result;
 }
 
-}
+} // anonymous namespace
 
 // required for localnode_test
 //
-namespace ioremap { namespace elliptics {
 
-inline bool operator==(const dnet_async_service_result &a, const dnet_async_service_result &b)
+inline bool operator==(const dnet_record_info &a, const dnet_record_info &b)
 {
-	return ((0 == dnet_addr_cmp(&a.addr, &b.addr))
-		&& (0 == memcmp(&a.file_info, &b.file_info, sizeof(a.file_info)))
-		&& a.file_path == b.file_path
-	);
+	return (0 == memcmp(&a, &b, sizeof(a)));
 }
 
-inline std::ostream& operator<<(std::ostream& ostr, const dnet_async_service_result &v)
+inline std::ostream& operator<<(std::ostream& ostr, const dnet_record_info &v)
 {
-	ostr << "{\n addr=" << dnet_addr_string(&v.addr)
-		<< ",\n " << "record_flags=" << v.file_info.record_flags
-		<< ",\n " << "size=" << v.file_info.size
-		<< ",\n " << "time=" << dnet_print_time(&v.file_info.mtime)
-		<< ",\n " << "file=" << v.file_path
-		<< ",\n " << "checksum=" << to_hex_string(v.file_info.checksum, sizeof(v.file_info.checksum))
+	ostr << "{\n record_flags=" << v.record_flags
+		<< ",\n " << "user_flags=" << v.user_flags
+		<< ",\n " << "json_timestamp=" << std::string(dnet_print_time(&v.json_timestamp))
+		<< ",\n " << "json_offset=" << v.json_offset
+		<< ",\n " << "json_size=" << v.json_size
+		<< ",\n " << "json_capacity=" << v.json_capacity
+		<< ",\n " << "data_timestamp=" << std::string(dnet_print_time(&v.data_timestamp))
+		<< ",\n " << "data_offset=" << v.data_offset
+		<< ",\n " << "data_size=" << v.data_size
 		<< "\n}"
 		;
 	return ostr;
 }
 
-}}
+inline bool operator==(const dnet_io_info &a, const dnet_io_info &b)
+{
+	return (0 == memcmp(&a, &b, sizeof(a)));
+}
+
+inline std::ostream& operator<<(std::ostream& ostr, const dnet_io_info &v)
+{
+	ostr << "{\n json_size=" << v.json_size
+		<< ",\n " << "data_offset=" << v.data_offset
+		<< ",\n " << "data_size=" << v.data_size
+		<< "\n}"
+		;
+	return ostr;
+}
+
+inline std::ostream& operator<<(std::ostream& ostr, const std::tuple<dnet_record_info, std::string> &v)
+{
+	ostr << "{\n record_info=" << std::get<0>(v)
+		<< ",\n " << "value=" << std::get<1>(v)
+		<< "\n}"
+		;
+	return ostr;
+}
+inline std::ostream& operator<<(std::ostream& ostr, const std::tuple<dnet_record_info, ioremap::elliptics::data_pointer> &v)
+{
+	ostr << "{\n record_info=" << std::get<0>(v)
+		<< ",\n " << "value=" << std::get<1>(v).to_string()
+		<< "\n}"
+		;
+	return ostr;
+}
+
 
 namespace tests {
 
@@ -413,41 +443,19 @@ static void test_localnode_data_serialization()
 		BOOST_REQUIRE_EQUAL(std::string((const char *)a.id), std::string((const char *)b.id));
 	}
 	{
-		dnet_addr a = { "abc", 5, 8 };
-		dnet_addr b = pack_unpack(a);
-		BOOST_REQUIRE_EQUAL(a.addr_len, b.addr_len);
-		BOOST_REQUIRE_EQUAL(std::string((const char *)a.addr, a.addr_len), std::string((const char *)b.addr, b.addr_len));
-		BOOST_REQUIRE_EQUAL(a.family, b.family);
-	}
-	{
 		dnet_time a = { 5, 8 };
 		dnet_time b = pack_unpack(a);
 		BOOST_REQUIRE_EQUAL(a.tsec, b.tsec);
 		BOOST_REQUIRE_EQUAL(a.tnsec, b.tnsec);
 	}
 	{
-		dnet_file_info a = { 3, "abc", 5, 8, 10, { 2, 3} };
-		dnet_file_info b = pack_unpack(a);
-#define CMP(x) BOOST_REQUIRE_EQUAL(a.x, b.x)
-		CMP(flen);
-		CMP(record_flags);
-		CMP(size);
-		CMP(offset);
-		CMP(mtime.tsec);
-		CMP(mtime.tnsec);
-#undef CMP
-		BOOST_REQUIRE_EQUAL(
-			std::string((const char *)a.checksum, sizeof(a.checksum)),
-			std::string((const char *)b.checksum, sizeof(b.checksum))
-		);
+		dnet_record_info a = { 1, 2, { 3, 4 }, 5, 6, 7, { 8, 9 }, 10, 11 };
+		dnet_record_info b = pack_unpack(a);
+		BOOST_REQUIRE_EQUAL(a, b);
 	}
 	{
-		dnet_async_service_result a = {
-			{ "abc", 5, 8 },
-			{ 3, "abc", 5, 8, 10, { 2, 3} },
-			"file path"
-		};
-		dnet_async_service_result b = pack_unpack(a);
+		dnet_io_info a = { 1, 2, 3 };
+		dnet_io_info b = pack_unpack(a);
 		BOOST_REQUIRE_EQUAL(a, b);
 	}
 }
@@ -469,36 +477,59 @@ static void test_localnode(session &client, const std::vector<int> &groups, int 
 
 	auto value = gen_random(15);
 
-	dnet_async_service_result write_result;
-	dnet_async_service_result lookup_result;
+	std::tuple<dnet_record_info, std::string> write_result;
+	std::tuple<dnet_record_info, std::string> lookup_result;
 	{
 		auto &result = write_result;
-		auto future = localnode.invoke<io::localnode::write>(key.raw_id(), groups, value, 0);
+		auto future = localnode.invoke<io::localnode::write>(key.raw_id(), groups, value);
 		BOOST_REQUIRE_EQUAL(future.valid(), true);
-		BOOST_REQUIRE_NO_THROW(result = future.get());
-		BOOST_CHECK_GT(result.file_info.size, 0);
-		BOOST_CHECK_GT(result.file_path.size(), 0);
+		BOOST_REQUIRE_NO_THROW(result = std::move(future.get()));
+		dnet_record_info record_info;
+		std::string path;
+		std::tie(record_info, path) = result;
+		BOOST_CHECK_GT(record_info.data_size, 0);
+		BOOST_CHECK_GT(path.size(), 0);
 	}
 	{
 		auto &result = lookup_result;
 		auto future = localnode.invoke<io::localnode::lookup>(key.raw_id(), groups);
 		BOOST_REQUIRE_EQUAL(future.valid(), true);
-		BOOST_REQUIRE_NO_THROW(result = future.get());
-		BOOST_CHECK_GT(result.file_info.size, 0);
-		BOOST_CHECK_GT(result.file_path.size(), 0);
+		BOOST_REQUIRE_NO_THROW(result = std::move(future.get()));
+		dnet_record_info record_info;
+		std::string path;
+		std::tie(record_info, path) = result;
+		BOOST_CHECK_GT(record_info.data_size, 0);
+		BOOST_CHECK_GT(path.size(), 0);
 	}
 
 	BOOST_CHECK_EQUAL(write_result, lookup_result);
 
-	ioremap::elliptics::data_pointer read_result;
+	std::tuple<dnet_record_info, ioremap::elliptics::data_pointer> read_result;
 	{
 		auto &result = read_result;
 		auto future = localnode.invoke<io::localnode::read>(key.raw_id(), groups, 0, 0);
 		BOOST_REQUIRE_EQUAL(future.valid(), true);
-		BOOST_REQUIRE_NO_THROW(result = future.get());
+		BOOST_REQUIRE_NO_THROW(result = std::move(future.get()));
 	}
 
-	BOOST_CHECK_EQUAL(read_result.to_string(), value);
+	// BOOST_REQUIRE_EQUAL(std::get<0>(read_result), std::get<0>(write_result));
+    //FIXME: can't compare whole read_result to a write_result
+    // because right now read_result.data_offset is always 0 while write_result.data_offset
+    // carries proper data offset in a blob.
+    // There should be an issue on the matter.
+#define CMP(x) BOOST_REQUIRE_EQUAL(std::get<0>(write_result).x, std::get<0>(lookup_result).x)
+    CMP(record_flags);
+    CMP(user_flags);
+    CMP(json_timestamp);
+    CMP(json_offset);
+    CMP(json_size);
+    CMP(json_capacity);
+    CMP(data_timestamp);
+    // CMP(data_offset);
+    CMP(data_size);
+#undef CMP
+
+	BOOST_CHECK_EQUAL(std::get<1>(read_result).to_string(), value);
 }
 
 
