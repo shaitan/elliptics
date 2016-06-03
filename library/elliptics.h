@@ -673,6 +673,7 @@ struct dnet_session {
 	struct timespec		wait_ts;
 
 	struct dnet_time	ts;
+	struct dnet_time	json_ts;
 
 	uint64_t		cflags;
 	uint64_t		user_flags;

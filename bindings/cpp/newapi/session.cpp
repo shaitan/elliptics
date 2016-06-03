@@ -59,6 +59,23 @@ session &session::operator =(const session &other) {
 	return *this;
 }
 
+void session::set_json_timestamp(const dnet_time &ts)
+{
+	dnet_session_set_json_timestamp(m_data->session_ptr, &ts);
+}
+
+void session::get_json_timestamp(dnet_time &ts) const
+{
+	dnet_session_get_json_timestamp(m_data->session_ptr, &ts);
+}
+
+void session::reset_json_timestamp()
+{
+	struct dnet_time empty;
+	dnet_empty_time(&empty);
+	dnet_session_set_json_timestamp(m_data->session_ptr, &empty);
+}
+
 class lookup_handler: public multigroup_handler<lookup_handler, lookup_result_entry> {
 public:
 	lookup_handler(const session &s, const async_lookup_result &result,
@@ -426,6 +443,27 @@ async_write_result send_write(const session &orig_sess, const key &id, const dne
 	return result;
 }
 
+static dnet_write_request create_write_request(const session &sess)
+{
+	dnet_write_request request;
+	memset(&request, 0, sizeof(request));
+
+	request.ioflags = sess.get_ioflags();
+	request.user_flags = sess.get_user_flags();
+
+	sess.get_timestamp(&request.timestamp);
+	if (dnet_time_is_empty(&request.timestamp)) {
+		dnet_current_time(&request.timestamp);
+	}
+
+	sess.get_json_timestamp(request.json_timestamp);
+	if (dnet_time_is_empty(&request.json_timestamp)) {
+		request.json_timestamp = request.timestamp;
+	}
+
+	return request;
+}
+
 async_write_result session::write(const key &id,
                                   const argument_data &json, uint64_t json_capacity,
                                   const argument_data &data, uint64_t data_capacity) {
@@ -466,20 +504,12 @@ async_write_result session::write(const key &id,
 		                            (unsigned long long)data.size()));
 	}
 
-	dnet_write_request request;
-	memset(&request, 0, sizeof(request));
+	dnet_write_request request = create_write_request(*this);
 
-	request.ioflags = get_ioflags() |
-	                  DNET_IO_FLAGS_PREPARE |
-	                  DNET_IO_FLAGS_COMMIT |
-	                  DNET_IO_FLAGS_PLAIN_WRITE;
+	request.ioflags |= DNET_IO_FLAGS_PREPARE |
+	                   DNET_IO_FLAGS_COMMIT |
+	                   DNET_IO_FLAGS_PLAIN_WRITE;
 	request.ioflags &= ~DNET_IO_FLAGS_UPDATE_JSON;
-	request.user_flags = get_user_flags();
-
-	get_timestamp(&request.timestamp);
-	if (dnet_time_is_empty(&request.timestamp)) {
-		dnet_current_time(&request.timestamp);
-	}
 
 	request.json_size = json.size();
 	request.json_capacity = json_capacity;
@@ -532,17 +562,10 @@ async_lookup_result session::write_prepare(const key &id,
 		                            (unsigned long long)data.size()));
 	}
 
-	dnet_write_request request;
-	memset(&request, 0, sizeof(request));
+	dnet_write_request request = create_write_request(*this);
 
-	request.ioflags = get_ioflags() | DNET_IO_FLAGS_PREPARE | DNET_IO_FLAGS_PLAIN_WRITE;
+	request.ioflags |= DNET_IO_FLAGS_PREPARE | DNET_IO_FLAGS_PLAIN_WRITE;
 	request.ioflags &= ~(DNET_IO_FLAGS_COMMIT | DNET_IO_FLAGS_UPDATE_JSON);
-	request.user_flags = get_user_flags();
-
-	get_timestamp(&request.timestamp);
-	if (dnet_time_is_empty(&request.timestamp)) {
-		dnet_current_time(&request.timestamp);
-	}
 
 	request.json_size = json.size();
 	request.json_capacity = json_capacity;
@@ -568,17 +591,10 @@ async_lookup_result session::write_plain(const key &id,
 		return result;
 	}
 
-	dnet_write_request request;
-	memset(&request, 0, sizeof(request));
+	dnet_write_request request = create_write_request(*this);
 
-	request.ioflags = get_ioflags() | DNET_IO_FLAGS_PLAIN_WRITE;
+	request.ioflags |= DNET_IO_FLAGS_PLAIN_WRITE;
 	request.ioflags &= ~(DNET_IO_FLAGS_PREPARE | DNET_IO_FLAGS_COMMIT | DNET_IO_FLAGS_UPDATE_JSON);
-	request.user_flags = get_user_flags();
-
-	get_timestamp(&request.timestamp);
-	if (dnet_time_is_empty(&request.timestamp)) {
-		dnet_current_time(&request.timestamp);
-	}
 
 	request.json_size = json.size();
 
@@ -605,17 +621,10 @@ async_lookup_result session::write_commit(const key &id,
 	if (data_commit_size == 0)
 		data_commit_size = data_offset + data.size();
 
-	dnet_write_request request;
-	memset(&request, 0, sizeof(request));
+	dnet_write_request request = create_write_request(*this);
 
-	request.ioflags = get_ioflags() | DNET_IO_FLAGS_COMMIT | DNET_IO_FLAGS_PLAIN_WRITE;
+	request.ioflags |= DNET_IO_FLAGS_COMMIT | DNET_IO_FLAGS_PLAIN_WRITE;
 	request.ioflags &= ~(DNET_IO_FLAGS_PREPARE | DNET_IO_FLAGS_UPDATE_JSON);
-	request.user_flags = get_user_flags();
-
-	get_timestamp(&request.timestamp);
-	if (dnet_time_is_empty(&request.timestamp)) {
-		dnet_current_time(&request.timestamp);
-	}
 
 	request.json_size = json.size();
 
@@ -638,17 +647,10 @@ async_lookup_result session::update_json(const key &id, const argument_data &jso
 		return result;
 	}
 
-	dnet_write_request request;
-	memset(&request, 0, sizeof(request));
+	dnet_write_request request = create_write_request(*this);
 
-	request.ioflags = get_ioflags() | DNET_IO_FLAGS_UPDATE_JSON;
+	request.ioflags |= DNET_IO_FLAGS_UPDATE_JSON;
 	request.ioflags &= ~(DNET_IO_FLAGS_COMMIT | DNET_IO_FLAGS_PREPARE | DNET_IO_FLAGS_PLAIN_WRITE);
-	request.user_flags = get_user_flags();
-
-	get_timestamp(&request.timestamp);
-	if (dnet_time_is_empty(&request.timestamp)) {
-		dnet_current_time(&request.timestamp);
-	}
 
 	request.json_size = json.size();
 
