@@ -412,6 +412,9 @@ uint64_t dnet_session_get_cflags(struct dnet_session *s);
 void dnet_session_set_timestamp(struct dnet_session *s, const struct dnet_time *ts);
 void dnet_session_get_timestamp(struct dnet_session *s, struct dnet_time *ts);
 
+void dnet_session_set_json_timestamp(struct dnet_session *s, const struct dnet_time *ts);
+void dnet_session_get_json_timestamp(struct dnet_session *s, struct dnet_time *ts);
+
 struct dnet_id *dnet_session_get_direct_id(struct dnet_session *s);
 void dnet_session_set_direct_id(struct dnet_session *s, const struct dnet_id *id);
 

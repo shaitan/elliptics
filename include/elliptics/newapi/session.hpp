@@ -19,6 +19,15 @@ public:
 	session clean_clone() const;
 	session &operator =(const session &other);
 
+	/*!
+	 * Sets json timestamp for given session.
+	 * All write operations will use this json timestamp, instead of data timestamp.
+	 * If set to zero (default), data timestamp will be used.
+	 */
+	void set_json_timestamp(const dnet_time &ts);
+	void get_json_timestamp(dnet_time &ts) const;
+	void reset_json_timestamp();
+
 	/* Lookup information for key \a id.
 	 */
 	async_lookup_result lookup(const key &id);
