@@ -25,7 +25,7 @@ public:
 	 * If set to zero (default), data timestamp will be used.
 	 */
 	void set_json_timestamp(const dnet_time &ts);
-	void get_json_timestamp(dnet_time &ts) const;
+	dnet_time get_json_timestamp() const;
 	void reset_json_timestamp();
 
 	/* Lookup information for key \a id.

@@ -64,9 +64,11 @@ void session::set_json_timestamp(const dnet_time &ts)
 	dnet_session_set_json_timestamp(m_data->session_ptr, &ts);
 }
 
-void session::get_json_timestamp(dnet_time &ts) const
+dnet_time session::get_json_timestamp() const
 {
+	struct dnet_time ts;
 	dnet_session_get_json_timestamp(m_data->session_ptr, &ts);
+	return ts;
 }
 
 void session::reset_json_timestamp()
@@ -443,7 +445,7 @@ async_write_result send_write(const session &orig_sess, const key &id, const dne
 	return result;
 }
 
-static dnet_write_request create_write_request(const session &sess)
+static dnet_write_request create_write_request(session &sess)
 {
 	dnet_write_request request;
 	memset(&request, 0, sizeof(request));
@@ -456,7 +458,7 @@ static dnet_write_request create_write_request(const session &sess)
 		dnet_current_time(&request.timestamp);
 	}
 
-	sess.get_json_timestamp(request.json_timestamp);
+	request.json_timestamp = sess.get_json_timestamp();
 	if (dnet_time_is_empty(&request.json_timestamp)) {
 		request.json_timestamp = request.timestamp;
 	}
