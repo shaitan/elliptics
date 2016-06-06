@@ -59,6 +59,20 @@ session &session::operator =(const session &other) {
 	return *this;
 }
 
+dnet_time session::get_timestamp() const
+{
+	struct dnet_time ts;
+	dnet_session_get_timestamp(m_data->session_ptr, &ts);
+	return ts;
+}
+
+void session::reset_timestamp()
+{
+	struct dnet_time empty;
+	dnet_empty_time(&empty);
+	dnet_session_set_timestamp(m_data->session_ptr, &empty);
+}
+
 void session::set_json_timestamp(const dnet_time &ts)
 {
 	dnet_session_set_json_timestamp(m_data->session_ptr, &ts);
@@ -445,7 +459,7 @@ async_write_result send_write(const session &orig_sess, const key &id, const dne
 	return result;
 }
 
-static dnet_write_request create_write_request(session &sess)
+static dnet_write_request create_write_request(const session &sess)
 {
 	dnet_write_request request;
 	memset(&request, 0, sizeof(request));
@@ -453,7 +467,7 @@ static dnet_write_request create_write_request(session &sess)
 	request.ioflags = sess.get_ioflags();
 	request.user_flags = sess.get_user_flags();
 
-	sess.get_timestamp(&request.timestamp);
+	request.timestamp = sess.get_timestamp();
 	if (dnet_time_is_empty(&request.timestamp)) {
 		dnet_current_time(&request.timestamp);
 	}
