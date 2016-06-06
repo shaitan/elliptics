@@ -20,12 +20,18 @@ public:
 	session &operator =(const session &other);
 
 	/*!
+	 * \overload
+	 */
+	dnet_time get_timestamp() const;
+	void reset_timestamp();
+
+	/*!
 	 * Sets json timestamp for given session.
 	 * All write operations will use this json timestamp, instead of data timestamp.
 	 * If set to zero (default), data timestamp will be used.
 	 */
 	void set_json_timestamp(const dnet_time &ts);
-	void get_json_timestamp(dnet_time &ts) const;
+	dnet_time get_json_timestamp() const;
 	void reset_json_timestamp();
 
 	/* Lookup information for key \a id.

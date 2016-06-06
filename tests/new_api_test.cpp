@@ -1168,6 +1168,13 @@ void register_tests(bu::test_suite *suite) {
 	ELLIPTICS_TEST_CASE(test_read, session, record, 2, 1);
 	ELLIPTICS_TEST_CASE(test_read, session, record, 3, std::numeric_limits<uint64_t>::max());
 
+	auto record_empty_json = record;
+	record_empty_json.key = {"empty_json"};
+	record_empty_json.json.clear();
+	record_empty_json.json_capacity = 0;
+	record_empty_json.json_timestamp = {0, 0};
+	ELLIPTICS_TEST_CASE(test_write, session, record_empty_json);
+
 	record.json = R"json({
 		"record": {
 			"key": "key",

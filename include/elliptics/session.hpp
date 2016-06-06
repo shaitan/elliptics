@@ -363,7 +363,7 @@ class session
 		 * \overload
 		 */
 		void set_timestamp(const dnet_time *ts);
-		void get_timestamp(dnet_time *ts) const;
+		void get_timestamp(dnet_time *ts);
 
 		/*!
 		 * Gets user flags of the session.

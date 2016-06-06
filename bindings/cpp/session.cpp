@@ -699,7 +699,7 @@ void session::set_timestamp(const dnet_time *ts)
 	dnet_session_set_timestamp(m_data->session_ptr, ts);
 }
 
-void session::get_timestamp(dnet_time *ts) const
+void session::get_timestamp(dnet_time *ts)
 {
 	dnet_session_get_timestamp(m_data->session_ptr, ts);
 }

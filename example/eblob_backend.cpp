@@ -397,9 +397,11 @@ int blob_write_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *da
 
 	dnet_json_header jhdr;
 	memset(&jhdr, 0, sizeof(jhdr));
-	jhdr.size = request.json_size;
-	jhdr.capacity = request.json_capacity;
-	jhdr.timestamp = request.json_timestamp;
+	if (request.json_capacity || request.json_size) {
+		jhdr.size = request.json_size;
+		jhdr.capacity = request.json_capacity;
+		jhdr.timestamp = request.json_timestamp;
+	}
 
 	auto json_header = jhdr.capacity ? serialize(jhdr) : data_pointer();
 
