@@ -107,6 +107,7 @@ void test_write(const ioremap::elliptics::newapi::session &session, const record
 	s.set_user_flags(record.user_flags);
 
 	s.set_timestamp(record.timestamp);
+	s.set_json_timestamp(record.json_timestamp);
 
 	auto async = s.write(record.key,
 	                     record.json, record.json_capacity,
@@ -121,7 +122,7 @@ void test_update_json(const ioremap::elliptics::newapi::session &session, const 
 	s.set_trace_id(rand());
 	s.set_user_flags(record.user_flags);
 
-	s.set_timestamp(record.json_timestamp);
+	s.set_json_timestamp(record.json_timestamp);
 
 	auto async = s.update_json(record.key, record.json);
 
@@ -359,6 +360,7 @@ void test_write_chunked(const ioremap::elliptics::newapi::session &session, cons
 	s.set_trace_id(rand());
 	s.set_user_flags(record.user_flags);
 	s.set_timestamp(record.timestamp);
+	s.set_json_timestamp(record.json_timestamp);
 
 	auto async = s.write_prepare(record.key,
 	                             std::string{}, record.json_capacity,
@@ -994,6 +996,63 @@ void test_read_data_part_with_corrupted_second_data(const ioremap::elliptics::ne
 	BOOST_REQUIRE_EQUAL(result.status(), -EILSEQ);
 }
 
+void test_data_and_json_timestamp(const ioremap::elliptics::newapi::session &session) {
+	static const auto group = groups[0];
+
+	static const ioremap::elliptics::key key{"test_data_and_json_timestamp's key"};
+	static const std::string json{"{\"some_field\":\"some_field's data\"}"};
+	uint64_t json_capacity = 100;
+	static const std::string data{"test_data_and_json_timestamp's data"};
+	uint64_t data_capacity = 200;
+	constexpr dnet_time data_timestamp{1, 2};
+	constexpr dnet_time json_timestamp{3, 4};
+	dnet_time empty_timestamp;
+	dnet_empty_time(&empty_timestamp);
+
+	auto s = session.clone();
+	s.set_groups({group});
+	s.set_trace_id(rand());
+
+	auto write = [&] () {
+		auto async = s.write(key, json, json_capacity, data, data_capacity);
+		BOOST_REQUIRE_EQUAL(async.get().size(), 1);
+
+		auto result = async.get()[0];
+		BOOST_REQUIRE_EQUAL(result.status(), 0);
+		return result.record_info();
+	};
+
+	{
+		s.set_timestamp(data_timestamp);
+
+		auto record_info = write();
+
+		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.json_timestamp, &data_timestamp), 0);
+		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.data_timestamp, &data_timestamp), 0);
+	}
+
+	{
+		s.set_timestamp(empty_timestamp);
+		s.set_json_timestamp(json_timestamp);
+
+		auto record_info = write();
+
+		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.json_timestamp, &json_timestamp), 0);
+		BOOST_REQUIRE_NE(dnet_time_cmp(&record_info.data_timestamp, &empty_timestamp), 0);
+		BOOST_REQUIRE_NE(dnet_time_cmp(&record_info.data_timestamp, &record_info.json_timestamp), 0);
+	}
+
+	{
+		s.set_timestamp(empty_timestamp);
+		s.reset_json_timestamp();
+
+		auto record_info = write();
+
+		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.json_timestamp, &record_info.data_timestamp), 0);
+		BOOST_REQUIRE_NE(dnet_time_cmp(&record_info.data_timestamp, &empty_timestamp), 0);
+	}
+}
+
 namespace test_all_with_ack_filter {
 namespace bu = boost::unit_test;
 
@@ -1072,6 +1131,7 @@ void register_tests(bu::test_suite *suite) {
 	s.set_filter(ioremap::elliptics::filters::all_with_ack);
 	s.set_user_flags(record.user_flags);
 	s.set_timestamp(record.timestamp);
+	s.set_json_timestamp(record.json_timestamp);
 
 	ELLIPTICS_TEST_CASE(test_write, s);
 	ELLIPTICS_TEST_CASE(test_lookup, s);
@@ -1107,6 +1167,13 @@ void register_tests(bu::test_suite *suite) {
 	ELLIPTICS_TEST_CASE(test_read, session, record, 1, 0);
 	ELLIPTICS_TEST_CASE(test_read, session, record, 2, 1);
 	ELLIPTICS_TEST_CASE(test_read, session, record, 3, std::numeric_limits<uint64_t>::max());
+
+	auto record_empty_json = record;
+	record_empty_json.key = {"empty_json"};
+	record_empty_json.json.clear();
+	record_empty_json.json_capacity = 0;
+	record_empty_json.json_timestamp = {0, 0};
+	ELLIPTICS_TEST_CASE(test_write, session, record_empty_json);
 
 	record.json = R"json({
 		"record": {
@@ -1144,6 +1211,8 @@ void register_tests(bu::test_suite *suite) {
 	ELLIPTICS_TEST_CASE(test_read_data_with_corrupted_data, session);
 	ELLIPTICS_TEST_CASE(test_read_data_part_with_corrupted_first_data, session);
 	ELLIPTICS_TEST_CASE(test_read_data_part_with_corrupted_second_data, session);
+
+	ELLIPTICS_TEST_CASE(test_data_and_json_timestamp, session);
 }
 
 bu::test_suite *setup_tests(int argc, char *argv[]) {

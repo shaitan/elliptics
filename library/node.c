@@ -888,6 +888,7 @@ struct dnet_session *dnet_session_create(struct dnet_node *n)
 
 	memset(s, 0, sizeof(struct dnet_session));
 	dnet_empty_time(&s->ts);
+	dnet_empty_time(&s->json_ts);
 	s->node = n;
 	s->wait_ts = n->wait_ts;
 
@@ -906,6 +907,7 @@ struct dnet_session *dnet_session_copy(struct dnet_session *s)
 	new_s->cflags = s->cflags;
 	new_s->ioflags = s->ioflags;
 	new_s->ts = s->ts;
+	new_s->json_ts = s->json_ts;
 	new_s->user_flags = s->user_flags;
 	new_s->direct_addr = s->direct_addr;
 	new_s->direct_backend = s->direct_backend;
@@ -1088,6 +1090,16 @@ void dnet_session_set_timestamp(struct dnet_session *s, const struct dnet_time *
 void dnet_session_get_timestamp(struct dnet_session *s, struct dnet_time *ts)
 {
 	*ts = s->ts;
+}
+
+void dnet_session_set_json_timestamp(struct dnet_session *s, const struct dnet_time *ts)
+{
+	s->json_ts = *ts;
+}
+
+void dnet_session_get_json_timestamp(struct dnet_session *s, struct dnet_time *ts)
+{
+	*ts = s->json_ts;
 }
 
 struct dnet_id *dnet_session_get_direct_id(struct dnet_session *s)

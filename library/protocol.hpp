@@ -51,6 +51,7 @@ struct dnet_write_request {
 
 	uint64_t json_size;
 	uint64_t json_capacity;
+	dnet_time json_timestamp;
 
 	uint64_t data_offset;
 	uint64_t data_size;
