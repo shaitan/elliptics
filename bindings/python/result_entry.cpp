@@ -303,28 +303,52 @@ std::string callback_result_get_raw_data(const newapi::callback_result_entry &re
 	return result.raw_data().to_string();
 }
 
-std::string lookup_result_get_path(const newapi::lookup_result_entry &result) {
-	return result.path();
+bp::object lookup_result_get_path(const newapi::lookup_result_entry &result) {
+	if (result.status()) {
+		return bp::object();
+	}
+
+	return bp::object(result.path());
 }
 
-dnet_record_info lookup_result_get_record_info(const newapi::lookup_result_entry &result) {
-	return result.record_info();
+bp::object lookup_result_get_record_info(const newapi::lookup_result_entry &result) {
+	if (result.status()) {
+		return bp::object();
+	}
+
+	return bp::object(result.record_info());
 }
 
-dnet_record_info read_result_get_record_info(const newapi::read_result_entry &result) {
-	return result.record_info();
+bp::object read_result_get_record_info(const newapi::read_result_entry &result) {
+	if (result.status()) {
+		return bp::object();
+	}
+
+	return bp::object(result.record_info());
 }
 
-dnet_io_info read_result_get_io_info(const newapi::read_result_entry &result) {
-	return result.io_info();
+bp::object read_result_get_io_info(const newapi::read_result_entry &result) {
+	if (result.status()) {
+		return bp::object();
+	}
+
+	return bp::object(result.io_info());
 }
 
-std::string read_result_get_json(const newapi::read_result_entry &result) {
-	return result.json().to_string();
+bp::object read_result_get_json(const newapi::read_result_entry &result) {
+	if (result.status()) {
+		return bp::object();
+	}
+
+	return bp::object(result.json().to_string());
 }
 
-std::string read_result_get_data(const newapi::read_result_entry &result) {
-	return result.data().to_string();
+bp::object read_result_get_data(const newapi::read_result_entry &result) {
+	if (result.status()) {
+		return bp::object();
+	}
+
+	return bp::object(result.data().to_string());
 }
 
 uint64_t iterator_result_get_iterator_id(const newapi::iterator_result_entry &result) {
@@ -394,7 +418,7 @@ void init_result_entry() {
 
 	bp::class_<iterator_result_entry, bp::bases<callback_result_entry> >("IteratorResultEntry")
 		.add_property("id", &iterator_result_entry::id,
-		              "Iterator integer ID. Which can be used for pausing, continuing and cancelling iterator")
+		              "Iterator integer ID. Which can be used for pausing, continuing and canceling iterator")
 		.add_property("response", iterator_result_response,
 		              "elliptics.IteratorResultResponse which provides meta information about iterated key")
 		.add_property("response_data", iterator_result_response_data,
