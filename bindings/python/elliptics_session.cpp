@@ -803,6 +803,11 @@ using namespace ioremap::elliptics::newapi;
 class elliptics_session: public python::elliptics_session {
 public:
 	elliptics_session(const node &n) : python::elliptics_session(n) {}
+	elliptics_session(const session &s): python::elliptics_session(s) {}
+
+	elliptics_session* clone() const {
+		return new elliptics_session(session::clone());
+	}
 
 	python_lookup_result lookup(const bp::api::object &id) {
 		return create_result(
@@ -1004,7 +1009,7 @@ void init_elliptics_session() {
 		     bp::return_value_policy<bp::manage_new_object>(),
 		     "clone()\n"
 		     "    Creates and returns session which is equal to current\n"
-		     "    but complitely independent from it.\n\n"
+		     "    but completely independent from it.\n\n"
 		     "    cloned_session = session.clone()\n")
 		.def("transform", &elliptics_session::transform, (bp::args("data")),
 		     "transform(data)\n"
@@ -2064,6 +2069,13 @@ void init_elliptics_session() {
 		                 "__init__(node)\n"
 		                 "    Initializes session by the node\n\n"
 		                 "    session = elliptics.newapi.Session(node)"))
+
+		.def("clone", &newapi::elliptics_session::clone,
+		     bp::return_value_policy<bp::manage_new_object>(),
+		     "clone()\n"
+		     "    Creates and returns session which is equal to current\n"
+		     "    but completely independent from it.\n\n"
+		     "    cloned_session = session.clone()\n")
 
 		.def("lookup", &newapi::elliptics_session::lookup,
 		     bp::args("key"))
