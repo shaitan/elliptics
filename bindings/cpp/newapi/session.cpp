@@ -133,10 +133,14 @@ private:
 	class inner_handler : public multigroup_handler<inner_handler, read_result_entry> {
 	public:
 		inner_handler(const session &s, const async_read_result &result,
-		              std::vector<int> &&groups, const dnet_trans_control &control)
+		              std::vector<int> &&groups, const dnet_trans_control &control,
+		              const dnet_read_request &request)
 		: parent_type(s, result, std::move(groups))
-		, m_control(control)
-		{}
+		, m_control(control) {
+			m_packet = serialize(request);
+			m_control.data = m_packet.data();
+			m_control.size = m_packet.size();
+		}
 
 		async_generic_result send_to_next_group() {
 			m_control.id.group_id = current_group();
@@ -145,6 +149,7 @@ private:
 
 	private:
 		dnet_trans_control m_control;
+		data_pointer m_packet;
 	};
 
 	struct response {
@@ -167,10 +172,11 @@ public:
 		m_responses.reserve(m_session.get_groups().size());
 	}
 
-	void start(std::vector<int> &&groups, const transport_control &control) {
+	void start(std::vector<int> &&groups, const transport_control &control, const dnet_read_request &request) {
 		m_handler.set_total(1);
 		async_read_result result(m_session);
-		auto handler = std::make_shared<inner_handler>(m_session, result, std::move(groups), control.get_native());
+		auto handler = std::make_shared<inner_handler>(m_session, result, std::move(groups),
+		                                               control.get_native(), request);
 		handler->set_total(1);
 		handler->start();
 		result.connect(
@@ -250,14 +256,10 @@ private:
 
 async_read_result send_read(const session &orig_sess, const key &id, const dnet_read_request &request,
                             std::vector<int> &&groups) {
-	auto packet = serialize(request);
-
 	transport_control control;
-
 	control.set_key(id.id());
 	control.set_command(DNET_CMD_READ_NEW);
 	control.set_cflags(orig_sess.get_cflags() | DNET_FLAGS_NEED_ACK);
-	control.set_data(packet.data(), packet.size());
 
 	BH_LOG(orig_sess.get_logger(), DNET_LOG_INFO,
 	       "%s: %s: started: flags: %s, read-flags: %s, offset: %" PRIu64 ", size: %" PRIu64,
@@ -270,7 +272,7 @@ async_read_result send_read(const session &orig_sess, const key &id, const dnet_
 
 	async_read_result result(orig_sess);
 	auto handler = std::make_shared<read_handler>(orig_sess, result, id);
-	handler->start(std::move(groups), control.get_native());
+	handler->start(std::move(groups), control.get_native(), request);
 	return result;
 }
 
