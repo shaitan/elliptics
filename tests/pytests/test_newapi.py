@@ -62,3 +62,20 @@ def test_lookup_read_existent_key(server, simple_node):
         assert result.json == json_string
         assert result.data == data
     assert i == 1
+
+
+def test_use_session_clone(server, simple_node):
+    """Create session, clone and write a key by clone."""
+    session = elliptics.newapi.Session(simple_node)
+    session.trace_id = make_trace_id('test_use_session_after_clone')
+    session.groups = session.routes.groups()
+
+    key = 'test_use_session_after_clone\'s key'
+
+    clone = session.clone()
+    clone.write(key, '{"no": "matter"}', 0, 'no matter', 0).wait()
+    clone.lookup(key).wait()
+    clone.read(key).wait()
+    clone.read_json(key).wait()
+    clone.read_data(key).wait()
+    clone.remove(key)
