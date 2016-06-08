@@ -235,6 +235,9 @@ def process_iterator():
                       help='pretty print jsons and timestamps')
     parser.add_option('--backend', dest='backend_id', type='int',
                       help='id of the backend where keys should be iterated')
+    parser.add_option('--user-flags', action='append', dest='user_flags_set', type='int',
+                      default=[],
+                      help='Filter keys which user_flags are specified by --user-flags.')
     add_node_options(parser)
 
     (options, args) = parser.parse_args()
@@ -273,6 +276,9 @@ def process_iterator():
         return str(ts) if options.pretty_print else ts.tsec
 
     for result in async:
+        if options.user_flags_set and result.record_info.user_flags not in options.user_flags_set:
+            # skip keys with user_flags which aren't specified by --user-flags
+            continue
         print dumps(OrderedDict((
             ('key', dump_key(result.key)),
             ('attrs', OrderedDict((
