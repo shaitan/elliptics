@@ -8,7 +8,8 @@ import pytest
 from conftest import make_trace_id
 
 
-def test_lookup_read_nonexistent_key(server, simple_node):
+@pytest.mark.usefixtures('server')
+def test_lookup_read_nonexistent_key(simple_node):
     """Try to lookup and read a non-existent key and validate fields of results."""
     session = elliptics.newapi.Session(simple_node)
     session.trace_id = make_trace_id('test_lookup_read_nonexistent_key')
@@ -28,7 +29,9 @@ def test_lookup_read_nonexistent_key(server, simple_node):
         assert result.json is None
         assert result.data is None
 
-def test_lookup_read_existent_key(server, simple_node):
+
+@pytest.mark.usefixtures('server')
+def test_lookup_read_existent_key(simple_node):
     """Write a key, lookup and read it and validate fields of results."""
     session = elliptics.newapi.Session(simple_node)
     session.trace_id = make_trace_id('test_lookup_read_existent_key')
@@ -66,7 +69,8 @@ def test_lookup_read_existent_key(server, simple_node):
     assert i == 1
 
 
-def test_use_session_clone(server, simple_node):
+@pytest.mark.usefixtures('server')
+def test_use_session_clone(simple_node):
     """Create session, clone and write a key by clone."""
     session = elliptics.newapi.Session(simple_node)
     session.trace_id = make_trace_id('test_use_session_after_clone')
