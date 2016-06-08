@@ -1164,6 +1164,47 @@ void test_write_cas(const ioremap::elliptics::newapi::session &session) {
 	// TODO: tests for write_prepare, write_plain, write_commit
 }
 
+void test_write_to_readonly_backend(const ioremap::elliptics::newapi::session &session) {
+	auto &server = servers->nodes.front();
+	const auto remote = server.remote();
+	const auto &backend = server.config().backends.front();
+	const auto backend_id = std::stoi(backend.string_value("backend_id"));
+
+	auto s = session.clone();
+	s.set_trace_id(rand());
+	s.set_direct_id(remote, backend_id);
+	s.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
+	s.set_filter(ioremap::elliptics::filters::all_with_ack);
+
+	{
+		auto async = s.make_readonly(remote, backend_id);
+		BOOST_REQUIRE_EQUAL(async.get().size(), 1);
+
+		auto result = async.get()[0];
+		BOOST_REQUIRE_EQUAL(result.status(), 0);
+	}
+
+	{
+		static const std::string key = "test_write_to_readonly_backend's key";
+		static const std::string json = "{\"some_field\":\"some_field's data\"}";
+		static const std::string data = "no matter data";
+		s.set_groups({-1});
+		auto async = s.write(key, json, 100, data, 100);
+		BOOST_REQUIRE_EQUAL(async.get().size(), 1);
+
+		auto result = async.get()[0];
+		BOOST_REQUIRE_EQUAL(result.status(), -EROFS);
+	}
+
+	{
+		auto async = s.make_writable(remote, backend_id);
+		BOOST_REQUIRE_EQUAL(async.get().size(), 1);
+
+		auto result = async.get()[0];
+		BOOST_REQUIRE_EQUAL(result.status(), 0);
+	}
+}
+
 namespace test_all_with_ack_filter {
 namespace bu = boost::unit_test;
 
@@ -1329,6 +1370,8 @@ void register_tests(bu::test_suite *suite) {
 	ELLIPTICS_TEST_CASE(test_write_plain_into_committed_key, session);
 
 	ELLIPTICS_TEST_CASE(test_write_cas, session);
+
+	ELLIPTICS_TEST_CASE(test_write_to_readonly_backend, session);
 }
 
 bu::test_suite *setup_tests(int argc, char *argv[]) {
