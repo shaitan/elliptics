@@ -390,6 +390,58 @@ int blob_write_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *da
 		return -ENOTSUP;
 	}
 
+	bool record_exists = false;
+	dnet_ext_list_hdr disk_ehdr;
+	memset(&disk_ehdr, 0, sizeof(disk_ehdr));
+	dnet_json_header disk_jhdr;
+	memset(&disk_jhdr, 0, sizeof(disk_jhdr));
+	eblob_write_control wc;
+	memset(&wc, 0, sizeof(wc));
+	eblob_key key;
+	memcpy(key.id, cmd->id.id, EBLOB_ID_SIZE);
+
+	auto read_ext_headers = [&] (dnet_ext_list_hdr &ehdr, dnet_json_header &jhdr) {
+		record_exists = (eblob_read_return(b, &key, EBLOB_READ_NOCSUM, &wc) == 0);
+		if (!record_exists)
+			return;
+
+		if (dnet_ext_hdr_read(&ehdr, wc.data_fd, wc.data_offset))
+			return;
+
+		if (ehdr.size)
+			dnet_read_json_header(wc.data_fd, wc.data_offset + sizeof(ehdr), ehdr.size, &jhdr);
+	};
+
+	if (!(request.ioflags & DNET_IO_FLAGS_PREPARE) || (request.ioflags & DNET_IO_FLAGS_CAS_TIMESTAMP)) {
+		read_ext_headers(disk_ehdr, disk_jhdr);
+	}
+
+	if (request.ioflags & DNET_IO_FLAGS_CAS_TIMESTAMP) {
+		if (record_exists) {
+			if (dnet_time_cmp(&disk_ehdr.timestamp, &request.timestamp) > 0) {
+				const std::string request_ts = dnet_print_time(&request.timestamp);
+				const std::string disk_ts = dnet_print_time(&disk_ehdr.timestamp);
+
+				dnet_backend_log(c->blog, DNET_LOG_ERROR, "%s: EBLOB: blob-write-new: WRITE_NEW: cas: disk timestamp is higher "
+						 "than data to be written timestamp: disk-ts: %s, data-ts: %s",
+						 dnet_dump_id(&cmd->id), disk_ts.c_str(), request_ts.c_str());
+
+				return -EBADFD;
+			}
+
+			if (disk_ehdr.size && dnet_time_cmp(&disk_jhdr.timestamp, &request.json_timestamp) > 0) {
+				const std::string request_ts = dnet_print_time(&request.json_timestamp);
+				const std::string disk_ts = dnet_print_time(&disk_jhdr.timestamp);
+
+				dnet_backend_log(c->blog, DNET_LOG_ERROR, "%s: EBLOB: blob-write-new: WRITE_NEW: cas: disk json timestamp is higher "
+						 "than json to be written timestamp: disk-ts: %s, json-ts: %s",
+						 dnet_dump_id(&cmd->id), disk_ts.c_str(), request_ts.c_str());
+
+				return -EBADFD;
+			}
+		}
+	}
+
 	dnet_ext_list_hdr ehdr;
 	memset(&ehdr, 0, sizeof(ehdr));
 	ehdr.timestamp = request.timestamp;
@@ -405,17 +457,11 @@ int blob_write_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *da
 
 	auto json_header = jhdr.capacity ? serialize(jhdr) : data_pointer();
 
-	eblob_key key;
-	memcpy(key.id, cmd->id.id, EBLOB_ID_SIZE);
-
 	uint64_t flags = BLOB_DISK_CTL_EXTHDR;
 	if (request.ioflags & DNET_IO_FLAGS_NOCSUM)
 		flags |= BLOB_DISK_CTL_NOCSUM;
 
 	int err = 0;
-	eblob_write_control wc;
-	memset(&wc, 0, sizeof(wc));
-	bool record_exists = false;
 
 	if (request.ioflags & DNET_IO_FLAGS_PREPARE) {
 		const uint64_t prepare_size = sizeof(ehdr) + json_header.size() + request.json_capacity + request.data_capacity;
@@ -430,23 +476,16 @@ int blob_write_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *da
 		}
 	} else {
 		[&] () {
-			if (eblob_read_return(b, &key, EBLOB_READ_NOCSUM, &wc))
-				return;
-
-			record_exists = true;
-
-			dnet_ext_list_hdr old_ehdr;
-			if (dnet_ext_hdr_read(&old_ehdr, wc.data_fd, wc.data_offset))
+			if (!record_exists)
 				return;
 
 			if (request.ioflags & DNET_IO_FLAGS_UPDATE_JSON)
-				ehdr.timestamp = old_ehdr.timestamp;
+				ehdr.timestamp = disk_ehdr.timestamp;
 
-			if (!old_ehdr.size)
+			if (!disk_ehdr.size)
 				return;
 
-			if (dnet_read_json_header(wc.data_fd, wc.data_offset + sizeof(old_ehdr), old_ehdr.size, &jhdr))
-				return;
+		        jhdr = disk_jhdr;
 
 			if (request.json_size || (request.ioflags & DNET_IO_FLAGS_UPDATE_JSON)) {
 				jhdr.size = request.json_size;

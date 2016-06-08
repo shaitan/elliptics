@@ -1110,6 +1110,60 @@ void test_write_plain_into_committed_key(const ioremap::elliptics::newapi::sessi
 	write_and_check("{\"some\":\"json\"}", "some data");
 }
 
+void test_write_cas(const ioremap::elliptics::newapi::session &session) {
+	static const auto group = groups[0];
+
+	static const ioremap::elliptics::key key{"test_write_cas's key"};
+	static const std::string json{"{\"some_field\":\"some_field's data\"}"};
+	uint64_t json_capacity = 100;
+	static const std::string data{"test_write_cas's data"};
+	uint64_t data_capacity = 200;
+	constexpr dnet_time old_timestamp{1, 2};
+	constexpr dnet_time cur_timestamp{3, 4};
+	constexpr dnet_time new_timestamp{5, 6};
+
+	auto s = session.clone();
+	s.set_groups({group});
+	s.set_trace_id(rand());
+	s.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
+	s.set_filter(ioremap::elliptics::filters::all_with_ack);
+	s.set_ioflags(s.get_ioflags() | DNET_IO_FLAGS_CAS_TIMESTAMP);
+
+	auto write = [&] (const int expected_status) {
+		auto async = s.write(key, json, json_capacity, data, data_capacity);
+		BOOST_REQUIRE_EQUAL(async.get().size(), 1);
+
+		auto result = async.get()[0];
+		BOOST_REQUIRE_EQUAL(result.status(), expected_status);
+	};
+
+	s.set_timestamp(cur_timestamp);
+	s.set_json_timestamp(cur_timestamp);
+	write(0);
+
+	s.set_timestamp(old_timestamp);
+	s.set_json_timestamp(cur_timestamp);
+	write(-EBADFD);
+
+	s.set_timestamp(cur_timestamp);
+	s.set_json_timestamp(old_timestamp);
+	write(-EBADFD);
+
+	s.set_timestamp(new_timestamp);
+	s.set_json_timestamp(cur_timestamp);
+	write(0);
+
+	s.set_timestamp(cur_timestamp);
+	s.set_json_timestamp(new_timestamp);
+	write(-EBADFD);
+
+	s.set_timestamp(new_timestamp);
+	s.set_json_timestamp(new_timestamp);
+	write(0);
+
+	// TODO: tests for write_prepare, write_plain, write_commit
+}
+
 namespace test_all_with_ack_filter {
 namespace bu = boost::unit_test;
 
@@ -1273,6 +1327,8 @@ void register_tests(bu::test_suite *suite) {
 
 	ELLIPTICS_TEST_CASE(test_write_plain_into_nonexistent_key, session);
 	ELLIPTICS_TEST_CASE(test_write_plain_into_committed_key, session);
+
+	ELLIPTICS_TEST_CASE(test_write_cas, session);
 }
 
 bu::test_suite *setup_tests(int argc, char *argv[]) {
