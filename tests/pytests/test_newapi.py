@@ -3,10 +3,13 @@ import elliptics
 import json
 import errno
 
+import pytest
+
 from conftest import make_trace_id
 
 
-def test_lookup_read_nonexistent_key(server, simple_node):
+@pytest.mark.usefixtures('server')
+def test_lookup_read_nonexistent_key(simple_node):
     """Try to lookup and read a non-existent key and validate fields of results."""
     session = elliptics.newapi.Session(simple_node)
     session.trace_id = make_trace_id('test_lookup_read_nonexistent_key')
@@ -26,7 +29,9 @@ def test_lookup_read_nonexistent_key(server, simple_node):
         assert result.json is None
         assert result.data is None
 
-def test_lookup_read_existent_key(server, simple_node):
+
+@pytest.mark.usefixtures('server')
+def test_lookup_read_existent_key(simple_node):
     """Write a key, lookup and read it and validate fields of results."""
     session = elliptics.newapi.Session(simple_node)
     session.trace_id = make_trace_id('test_lookup_read_existent_key')
@@ -64,7 +69,8 @@ def test_lookup_read_existent_key(server, simple_node):
     assert i == 1
 
 
-def test_use_session_clone(server, simple_node):
+@pytest.mark.usefixtures('server')
+def test_use_session_clone(simple_node):
     """Create session, clone and write a key by clone."""
     session = elliptics.newapi.Session(simple_node)
     session.trace_id = make_trace_id('test_use_session_after_clone')
@@ -79,3 +85,50 @@ def test_use_session_clone(server, simple_node):
     clone.read_json(key).wait()
     clone.read_data(key).wait()
     clone.remove(key)
+
+
+@pytest.mark.usefixtures('server')
+def test_session_timestamps(simple_node):
+    """Test session.timestamp and session.json_timestamp."""
+    session = elliptics.newapi.Session(simple_node)
+    session.trace_id = make_trace_id('test_lookup_read_existent_key')
+    session.groups = session.routes.groups()
+
+    key = 'test_lookup_read_existent_key'
+    json_string = json.dumps({'some': 'field'})
+    data = 'some data'
+
+    data_ts = elliptics.Time.now()
+    json_ts = elliptics.Time.now()
+    assert json_ts > data_ts
+
+    assert session.timestamp is None
+    assert session.json_timestamp is None
+    # write and check timestamps from result
+    result = session.write(key, json_string, len(json_string), data, len(data)).get()[0]
+    assert elliptics.Time.now() > result.record_info.data_timestamp > data_ts
+    assert elliptics.Time.now() > result.record_info.json_timestamp > data_ts
+
+    session.timestamp = data_ts
+    assert session.timestamp == data_ts
+    assert session.json_timestamp is None
+    # write and check timestamps from result
+    result = session.write(key, json_string, len(json_string), data, len(data)).get()[0]
+    assert result.record_info.data_timestamp == data_ts
+    assert result.record_info.json_timestamp == data_ts
+
+    session.json_timestamp = json_ts
+    assert session.timestamp == data_ts
+    assert session.json_timestamp == json_ts
+    # write and check timestamps from result
+    result = session.write(key, json_string, len(json_string), data, len(data)).get()[0]
+    assert result.record_info.data_timestamp == data_ts
+    assert result.record_info.json_timestamp == json_ts
+
+    session.timestamp = None
+    assert session.timestamp is None
+    assert session.json_timestamp == json_ts
+    # write and check timestamps from result
+    result = session.write(key, json_string, len(json_string), data, len(data)).get()[0]
+    assert elliptics.Time.now() > result.record_info.data_timestamp > json_ts
+    assert result.record_info.json_timestamp == json_ts
