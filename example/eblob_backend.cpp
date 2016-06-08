@@ -456,11 +456,21 @@ int blob_write_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *da
 	}
 
 	if (request.ioflags & DNET_IO_FLAGS_UPDATE_JSON) {
-		/* update_json can not be applied for nonexistent or uncommitted records.
+		/* update_json can not be applied to nonexistent or uncommitted records.
 		 * we return -ENOENT in such cases.
 		 */
 		if (!record_exists || wc.flags & BLOB_DISK_CTL_UNCOMMITTED) {
 			return -ENOENT;
+		}
+	} else if (!(request.ioflags & DNET_IO_FLAGS_PREPARE)) {
+		/* plain_write and commit without prepare can not be applied to
+		 * nonexistent or committed records.
+		 * Return -ENOENT for nonexistent records and -EPERM for committed records.
+		 */
+		if  (!record_exists) {
+			return -ENOENT;
+		} else if(!(wc.flags & BLOB_DISK_CTL_UNCOMMITTED)) {
+			return -EPERM;
 		}
 	}
 

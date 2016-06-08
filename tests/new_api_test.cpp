@@ -1053,6 +1053,63 @@ void test_data_and_json_timestamp(const ioremap::elliptics::newapi::session &ses
 	}
 }
 
+void test_write_plain_into_nonexistent_key(const ioremap::elliptics::newapi::session &session) {
+	static const auto group = groups[0];
+	static const ioremap::elliptics::key key{"test_write_plain_into_nonexistent_key's key"};
+
+	auto s = session.clone();
+	s.set_groups({group});
+	s.set_trace_id(rand());
+	s.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
+	s.set_filter(ioremap::elliptics::filters::all_with_ack);
+
+	auto write_and_check = [&] (const std::string &json, const std::string &data) {
+		auto async = s.write_plain(key, json, data, 0);
+		BOOST_REQUIRE_EQUAL(async.get().size(), 1);
+
+		auto result = async.get()[0];
+		BOOST_REQUIRE_EQUAL(result.status(), -ENOENT);
+	};
+
+	write_and_check("", "some data");
+	write_and_check("{\"some\":\"json\"}", "");
+	write_and_check("{\"some\":\"json\"}", "some data");
+}
+
+void test_write_plain_into_committed_key(const ioremap::elliptics::newapi::session &session) {
+	static const auto group = groups[0];
+	static const ioremap::elliptics::key key{"test_write_plain_into_committed_key's key"};
+
+	auto s = session.clone();
+	s.set_groups({group});
+	s.set_trace_id(rand());
+	s.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
+	s.set_filter(ioremap::elliptics::filters::all_with_ack);
+
+	{
+		auto async = s.write(key,
+		                     "{\"json\":\"isn't matter\"}", 100,
+		                     "data isn't matter too", 100);
+
+		BOOST_REQUIRE_EQUAL(async.get().size(), 1);
+
+		auto result = async.get()[0];
+		BOOST_REQUIRE_EQUAL(result.status(), 0);
+	}
+
+	auto write_and_check = [&] (const std::string &json, const std::string &data) {
+		auto async = s.write_plain(key, json, data, 0);
+		BOOST_REQUIRE_EQUAL(async.get().size(), 1);
+
+		auto result = async.get()[0];
+		BOOST_REQUIRE_EQUAL(result.status(), -EPERM);
+	};
+
+	write_and_check("", "some data");
+	write_and_check("{\"some\":\"json\"}", "");
+	write_and_check("{\"some\":\"json\"}", "some data");
+}
+
 namespace test_all_with_ack_filter {
 namespace bu = boost::unit_test;
 
@@ -1213,6 +1270,9 @@ void register_tests(bu::test_suite *suite) {
 	ELLIPTICS_TEST_CASE(test_read_data_part_with_corrupted_second_data, session);
 
 	ELLIPTICS_TEST_CASE(test_data_and_json_timestamp, session);
+
+	ELLIPTICS_TEST_CASE(test_write_plain_into_nonexistent_key, session);
+	ELLIPTICS_TEST_CASE(test_write_plain_into_committed_key, session);
 }
 
 bu::test_suite *setup_tests(int argc, char *argv[]) {
