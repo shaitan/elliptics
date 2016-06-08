@@ -1610,6 +1610,11 @@ static int dnet_process_cmd_with_backend_raw(struct dnet_backend_io *backend, st
 				}
 			}
 
+			if ((n->ro || backend->read_only) && (cmd->cmd == DNET_CMD_WRITE_NEW)) {
+				err = -EROFS;
+				break;
+			}
+
 			/* Remove DNET_FLAGS_NEED_ACK flags for READ/WRITE/LOOKUP commands
 			   to eliminate double reply packets
 			   (the first one with dnet_file_info structure or data has been read,

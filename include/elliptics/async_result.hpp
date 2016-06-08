@@ -31,11 +31,11 @@ class session;
 /*!
  * async_result is a template class that provides result of request processing.
  *
- * It provides both synchronious and asynchronious ways of usage.
+ * It provides both synchronous and asynchronous ways of usage.
  *
- * Synchronious is provided by wait/get methods and iterator API.
+ * Synchronous is provided by wait/get methods and iterator API.
  *
- * Asynchronious is provided by connect methods.
+ * Asynchronous is provided by connect methods.
  */
 template <typename T>
 class async_result
@@ -132,7 +132,7 @@ class async_result
 		  * Returnes expected number of received positive final replies from server.
 		  *
 		  * This number is used afterwards in session::checker to determine if
-		  * operation was successfull.
+		  * operation was successful.
 		  */
 		 size_t total() const;
 
