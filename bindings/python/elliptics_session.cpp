@@ -809,6 +809,40 @@ public:
 		return new elliptics_session(session::clone());
 	}
 
+	void set_timestamp(const bp::api::object &time_obj) {
+		if (time_obj.ptr() == Py_None) {
+			newapi::session{*this}.reset_timestamp();
+		} else {
+			elliptics_time &ts = bp::extract<elliptics_time&>(time_obj);
+			newapi::session{*this}.set_timestamp(ts.m_time);
+		}
+	}
+
+	bp::object get_timestamp() const {
+		auto ts = newapi::session{*this}.get_timestamp();
+		if (dnet_time_is_empty(&ts)) {
+			return bp::object();
+		}
+		return bp::object(elliptics_time(ts));
+	}
+
+	void set_json_timestamp(const bp::api::object &time_obj) {
+		if (time_obj.ptr() == Py_None) {
+			newapi::session{*this}.reset_json_timestamp();
+		} else {
+			elliptics_time &ts = bp::extract<elliptics_time&>(time_obj);
+			newapi::session{*this}.set_json_timestamp(ts.m_time);
+		}
+	}
+
+	bp::object get_json_timestamp() const {
+		auto ts = newapi::session{*this}.get_json_timestamp();
+		if (dnet_time_is_empty(&ts)) {
+			return bp::object();
+		}
+		return bp::object(elliptics_time(ts));
+	}
+
 	python_lookup_result lookup(const bp::api::object &id) {
 		return create_result(
 			newapi::session{*this}.lookup(transform(id).id())
@@ -2069,6 +2103,20 @@ void init_elliptics_session() {
 		                 "__init__(node)\n"
 		                 "    Initializes session by the node\n\n"
 		                 "    session = elliptics.newapi.Session(node)"))
+
+		.add_property("timestamp",
+		              &newapi::elliptics_session::get_timestamp,
+		              &newapi::elliptics_session::set_timestamp,
+		    "Timestamp which would be applied to\n"
+		    "all operations executed by the session\n\n"
+		    "session.timestamp = elliptics.Time.now()")
+
+		.add_property("json_timestamp",
+		              &newapi::elliptics_session::get_json_timestamp,
+		              &newapi::elliptics_session::set_json_timestamp,
+		    "Json timestamp which would be applied to\n"
+		    "all operations executed by the session\n\n"
+		    "session.json_timestamp = elliptics.Time.now()")
 
 		.def("clone", &newapi::elliptics_session::clone,
 		     bp::return_value_policy<bp::manage_new_object>(),
