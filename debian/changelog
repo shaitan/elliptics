@@ -1,3 +1,23 @@
+elliptics (2.26.11.0-2) unstable; urgency=medium
+
+  * python: remove unused 'server' argument from test functions
+  * Add json_timestamp to elliptics.newapi.Session
+  * Check RO status of backend on WRITE_NEW
+  * newapi: write CAS with data & json timestamps
+  * Add multi option '--user-flags' to dnet_client iterate
+  * python: Fix cloning newapi.Session
+  * Fix using data after free
+  * Fix returning wrong error status by plain_write and commit
+  * python: return None in read/lookup result entry's property on error
+  * newapi: overloaded get_timestamp() and added reset_timestamp() for interface consistancy
+  * newapi: fixed non-empty json timestamp on empty json
+  * Remove updating json_capacity by WRITE_NEW without DNET_IO_FLAGS_PREPARE
+  * added adjustable json_timestamp to newapi session
+  * mask annoying warning happening at the deep of blackhole v0.2
+  * move blackhole-dev from deps to submodule
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Wed, 08 Jun 2016 22:58:29 +0300
+
 elliptics (2.26.11.0-1) unstable; urgency=medium
 
   * tests: fix compilation warning in server-send tests
