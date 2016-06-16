@@ -99,6 +99,7 @@ class Monitor(object):
             self.stats_file = 'stats.json'
         else:
             self.stats_file = 'stats'
+        self.stats_file = os.path.join(ctx.tmp_dir, self.stats_file)
 
         self.d_thread = Thread(target=self.data_thread, name="MonitorDataThread")
         self.d_thread.daemon = True
@@ -127,7 +128,7 @@ class Monitor(object):
         """
         Writes to file current stats
         """
-        stats_file_tmp = os.path.join(self.ctx.tmp_dir, self.stats_file + '.tmp')
+        stats_file_tmp = os.path.join(self.stats_file + '.tmp')
         with open(stats_file_tmp, 'w') as f:
             if self.ctx.stat_format == STAT_TEXT:
                 f.write(str(self.__stats))
