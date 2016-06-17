@@ -51,6 +51,13 @@ static void fill_backend_backend(rapidjson::Value &stat_value,
 			rapidjson::Document backend_value(&allocator);
 			backend_value.Parse<0>(json_stat);
 			backend_value["config"].AddMember("group", config_backend->group, allocator);
+
+			rapidjson::Document initial_config(&allocator);
+			initial_config.Parse<0>(config_backend->initial_config.c_str());
+			backend_value.AddMember("initial_config",
+			                        static_cast<rapidjson::Value&>(initial_config),
+			                        allocator);
+
 			stat_value.AddMember("backend",
 			                     static_cast<rapidjson::Value&>(backend_value),
 			                     allocator);

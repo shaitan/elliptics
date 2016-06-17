@@ -17,6 +17,8 @@
 #include "../library/elliptics.h"
 #include <algorithm>
 
+#include <kora/dynamic.hpp>
+
 #define BOOST_TEST_NO_MAIN
 #include <boost/test/included/unit_test.hpp>
 
@@ -484,6 +486,30 @@ static void test_change_group(session &sess)
 		"Host must not exist: " + host + ", group: 10, backend: 1");
 }
 
+static void test_check_initial_config(session &sess) {
+	auto &node = global_data->nodes.back();
+	static const uint32_t backend_id = 4;
+
+	ELLIPTICS_REQUIRE(result, sess.monitor_stat(node.remote(), DNET_MONITOR_BACKEND));
+	BOOST_REQUIRE_EQUAL(result.get().size(), 1);
+
+	auto monitor_initial_config = [&] () {
+		std::istringstream stream(result.get().front().statistics());
+		auto monitor_statistics = kora::dynamic::read_json(stream);
+		return monitor_statistics.as_object()["backends"]
+			.as_object()[std::to_string(backend_id)]
+			.as_object()["backend"]
+			.as_object()["initial_config"];
+	} ();
+
+	auto config_initial_config = [&] () {
+		std::ifstream stream(node.config_path());
+		auto config = kora::dynamic::read_json(stream);
+		return config.as_object()["backends"].as_array()[backend_id];
+	} ();
+	BOOST_REQUIRE_EQUAL(monitor_initial_config, config_initial_config);
+}
+
 bool register_tests(test_suite *suite, node n)
 {
 	ELLIPTICS_TEST_CASE(test_enable_at_start, create_session(n, { 1, 2, 3 }, 0, 0));
@@ -501,6 +527,7 @@ bool register_tests(test_suite *suite, node n)
 	ELLIPTICS_TEST_CASE(test_make_backend_readonly, create_session(n, { 0 }, 0, 0));
 	ELLIPTICS_TEST_CASE(test_make_backend_writeable, create_session(n, { 0 }, 0, 0));
 	ELLIPTICS_TEST_CASE(test_change_group, create_session(n, { 0 }, 0, 0));
+	ELLIPTICS_TEST_CASE(test_check_initial_config, create_session(n, { 0 }, 0, 0));
 
 	return true;
 }

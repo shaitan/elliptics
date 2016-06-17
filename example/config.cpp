@@ -98,7 +98,14 @@ extern "C" int dnet_node_reset_log(struct dnet_node *n __unused)
 	return 0;
 }
 
-static void parse_logger(config_data *data, const config &logger)
+static blackhole::dynamic_t convert(const kora::config_t &object) {
+	auto json = kora::to_json(object.underlying_object());
+	rapidjson::Document doc;
+	doc.Parse<0>(json.c_str());
+	return blackhole::repository::config::transformer_t<rapidjson::Value>::transform(doc);
+}
+
+static void parse_logger(config_data *data, const kora::config_t &logger)
 {
 	using namespace blackhole;
 
@@ -125,11 +132,9 @@ static void parse_logger(config_data *data, const config &logger)
 	auto &repository = blackhole::repository_t::instance();
 	repository.configure<sinks_t, formatters_t>();
 
-	config frontends = logger.at("frontends");
-	frontends.assert_array();
+	auto frontends = convert(logger)["frontends"];
 
-	const dynamic_t &dynamic = frontends.raw();
-	log_config_t log_config = repository::config::parser_t<log_config_t>::parse("root", dynamic);
+	log_config_t log_config = repository::config::parser_t<log_config_t>::parse("root", frontends);
 
 	const auto mapper = file_logger::mapping();
 	for(auto it = log_config.frontends.begin(); it != log_config.frontends.end(); ++it) {
@@ -141,8 +146,8 @@ static void parse_logger(config_data *data, const config &logger)
 	data->logger_base = repository.root<dnet_log_level>();
 	data->logger_base.add_attribute(keyword::request_id() = 0);
 
-	const config &level_config = logger.at("level");
-	const std::string &level = level_config.as<std::string>();
+	const auto &level_config = logger["level"];
+	const std::string &level = level_config.to<std::string>();
 	try {
 		data->logger_base.verbosity(file_logger::parse_level(level));
 	} catch (error &exc) {
@@ -253,7 +258,7 @@ static int dnet_set_malloc_options(config_data *data, unsigned long long value)
 	return 0;
 }
 
-void parse_options(config_data *data, const config &options)
+void parse_options(config_data *data, const kora::config_t &options)
 {
 	if (options.has("mallopt_mmap_threshold")) {
 		dnet_set_malloc_options(data, options.at<int>("mallopt_mmap_threshold"));
@@ -295,7 +300,7 @@ void parse_options(config_data *data, const config &options)
 	}
 
 	if (options.has("monitor")) {
-		const config monitor = options.at("monitor");
+		const auto monitor = options["monitor"];
 		data->monitor_config = ioremap::monitor::monitor_config::parse(monitor);
 	}
 
@@ -306,7 +311,7 @@ void parse_options(config_data *data, const config &options)
 	}
 
 	if (options.has("cache")) {
-		const config cache = options.at("cache");
+		const auto cache = options["cache"];
 		data->cache_config = ioremap::cache::cache_config::parse(cache);
 	}
 
@@ -344,7 +349,7 @@ void parse_options(config_data *data, const config &options)
 	}
 }
 
-std::shared_ptr<dnet_backend_info> dnet_parse_backend(config_data *data, uint32_t backend_id, const config &backend)
+std::shared_ptr<dnet_backend_info> dnet_parse_backend(config_data *data, uint32_t backend_id, const kora::config_t &backend)
 {
 	auto info = std::make_shared<dnet_backend_info>(data->logger, backend_id);
 
@@ -362,19 +367,19 @@ std::shared_ptr<dnet_backend_info> dnet_parse_backend(config_data *data, uint32_
 	return info;
 }
 
-void parse_backends(config_data *data, const config &backends)
+void parse_backends(config_data *data, const kora::config_t &backends)
 {
 	std::set<uint32_t> backends_ids;
 	auto config_backends = data->backends;
 
 	for (size_t index = 0; index < backends.size(); ++index) {
-		const config backend = backends.at(index);
+		const auto backend = backends[index];
 		const uint32_t backend_id = backend.at<uint32_t>("backend_id");
 
 		// Check if this is first backend with such backend_id
 		if (!backends_ids.insert(backend_id).second) {
 			throw ioremap::elliptics::config::config_error()
-				<< backend.at("backend_id").path()
+				<< backend["backend_id"].path()
 				<< " duplicates one of previous backend_id";
 		}
 
@@ -400,10 +405,10 @@ extern "C" struct dnet_node *dnet_parse_config(const char *file, int mon)
 		data->config_path = file;
 
 		auto parser = data->parse_config();
-		const config root = parser->root();
-		const config logger = root.at("logger");
-		const config options = root.at("options");
-		const config backends = root.at("backends");
+		const auto root = parser->root();
+		const auto logger = root["logger"];
+		const auto options = root["options"];
+		const auto backends = root["backends"];
 
 		parse_logger(data, logger);
 		parse_options(data, options);

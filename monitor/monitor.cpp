@@ -50,14 +50,14 @@ monitor_config* get_monitor_config(struct dnet_node *n) {
 	return data.monitor_config.get();
 }
 
-std::unique_ptr<monitor_config> monitor_config::parse(const elliptics::config::config &monitor)
+std::unique_ptr<monitor_config> monitor_config::parse(const kora::config_t &monitor)
 {
 	monitor_config cfg;
 	cfg.monitor_port = monitor.at<unsigned int>("port", 0);
 
 	cfg.has_top = monitor.has("top");
 	if (cfg.has_top) {
-		const elliptics::config::config top = monitor.at("top");
+		const auto top = monitor["top"];
 		cfg.top_length = top.at<size_t>("top_length", DNET_DEFAULT_MONITOR_TOP_LENGTH);
 		cfg.events_size = top.at<size_t>("events_size", DNET_DEFAULT_MONITOR_TOP_EVENTS_SIZE);
 		cfg.period_in_seconds = top.at<int>("period_in_seconds", DNET_DEFAULT_MONITOR_TOP_PERIOD);
