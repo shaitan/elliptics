@@ -150,7 +150,7 @@ add_test_target(test_capped dnet_cpp_capped_test DEPENDS ${TESTS_DEPS})
 
 add_executable(dnet_backends_test backends_test.cpp)
 set_target_properties(dnet_backends_test ${TEST_PROPERTIES})
-target_link_libraries(dnet_backends_test ${TEST_LIBRARIES})
+target_link_libraries(dnet_backends_test ${TEST_LIBRARIES} kora-util)
 add_test_target(test_backends dnet_backends_test DEPENDS ${TESTS_DEPS})
 
 add_executable(dnet_weights_test weights_test.cpp)
