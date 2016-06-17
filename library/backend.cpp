@@ -947,4 +947,6 @@ void dnet_backend_info::parse(ioremap::elliptics::config::config_data *data,
 			options.emplace_back(std::move(option));
 		}
 	}
+
+	initial_config = kora::to_json(backend.underlying_object());
 }

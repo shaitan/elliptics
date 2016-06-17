@@ -141,6 +141,7 @@ struct dnet_backend_info
 	std::unique_ptr<ioremap::cache::cache_config> cache_config;
 	int io_thread_num;
 	int nonblocking_io_thread_num;
+	std::string initial_config;
 };
 
 class dnet_backend_info_manager
