@@ -42,7 +42,7 @@ struct monitor_config
 	size_t		events_size;
 	int		period_in_seconds;
 
-	static std::unique_ptr<monitor_config> parse(const ioremap::elliptics::config::config &monitor);
+	static std::unique_ptr<monitor_config> parse(const kora::config_t &monitor);
 };
 
 class stat_provider;

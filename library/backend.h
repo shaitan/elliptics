@@ -11,9 +11,9 @@
 #include <mutex>
 
 #include <elliptics/error.hpp>
+#include <kora/config.hpp>
 
 namespace ioremap { namespace elliptics { namespace config {
-class config;
 class config_data;
 }}}
 
@@ -26,7 +26,7 @@ struct cache_config
 	unsigned		sync_timeout;
 	std::vector<size_t>	pages_proportions;
 
-	static std::unique_ptr<cache_config> parse(const ioremap::elliptics::config::config &cache);
+	static std::unique_ptr<cache_config> parse(const kora::config_t &cache);
 };
 
 }}
@@ -43,7 +43,7 @@ struct cache_config
 struct dnet_backend_config_entry
 {
 	dnet_config_entry *entry;
-	std::vector<char> value_template;
+	std::string value_template;
 };
 
 struct dnet_backend_info
@@ -118,7 +118,7 @@ struct dnet_backend_info
 		return *this;
 	}
 
-	void parse(ioremap::elliptics::config::config_data *data, const ioremap::elliptics::config::config &config);
+	void parse(ioremap::elliptics::config::config_data *data, const kora::config_t &config);
 
 	dnet_config_backend config_template;
 	std::unique_ptr<dnet_logger> log;

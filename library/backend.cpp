@@ -240,12 +240,12 @@ static int dnet_backend_init(struct dnet_node *node, size_t backend_id)
 		using namespace ioremap::elliptics::config;
 		auto &data = *static_cast<config_data *>(node->config_data);
 		auto parser = data.parse_config();
-		config cfg = parser->root();
-		const config backends_config = cfg.at("backends");
+		auto cfg = parser->root();
+		const auto backends_config = cfg["backends"];
 		bool found = false;
 
 		for (size_t index = 0; index < backends_config.size(); ++index) {
-			const config backend_config = backends_config.at(index);
+			const auto backend_config = backends_config[index];
 			const uint32_t config_backend_id = backend_config.at<uint32_t>("backend_id");
 			if (backend_id == config_backend_id) {
 				backend->parse(&data, backend_config);
@@ -458,11 +458,11 @@ int dnet_backend_create(struct dnet_node *node, size_t backend_id)
 		using namespace ioremap::elliptics::config;
 		auto data = static_cast<config_data *>(node->config_data);
 		auto parser = data->parse_config();
-		config cfg = parser->root();
-		const config backends_config = cfg.at("backends");
+		auto cfg = parser->root();
+		const auto backends_config = cfg["backends"];
 
 		for (size_t index = 0; index < backends_config.size(); ++index) {
-			const config backend_config = backends_config.at(index);
+			const auto backend_config = backends_config[index];
 
 			if (backend_id == backend_config.at<uint32_t>("backend_id")) {
 				backend = dnet_parse_backend(data, backend_id, backend_config);
@@ -498,8 +498,8 @@ int dnet_backend_init_all(struct dnet_node *node)
 	using namespace ioremap::elliptics::config;
 	auto &data = *static_cast<config_data *>(node->config_data);
 	auto parser = data.parse_config();
-	config cfg = parser->root();
-	const config backends_config = cfg.at("backends");
+	auto cfg = parser->root();
+	const auto backends_config = cfg["backends"];
 
 	if (node->config_data->parallel_start) {
 		try {
@@ -516,7 +516,7 @@ int dnet_backend_init_all(struct dnet_node *node)
 
 
 			for (size_t index = 0; index < backends_config.size(); ++index) {
-				const config backend_config = backends_config.at(index);
+				const auto backend_config = backends_config[index];
 				const uint32_t backend_id = backend_config.at<uint32_t>("backend_id");
 				auto backend = backends->get_backend(backend_id);
 				if (!backend->enable_at_start) {
@@ -537,7 +537,7 @@ int dnet_backend_init_all(struct dnet_node *node)
 		}
 	} else {
 		for (size_t index = 0; index < backends_config.size(); ++index) {
-			const config backend_config = backends_config.at(index);
+			const auto backend_config = backends_config[index];
 			const uint32_t backend_id = backend_config.at<uint32_t>("backend_id");
 			auto backend = backends->get_backend(backend_id);
 			if (!backend->enable_at_start) {
@@ -890,7 +890,7 @@ int dnet_cmd_backend_status(struct dnet_net_state *st, struct dnet_cmd *cmd, voi
 }
 
 void dnet_backend_info::parse(ioremap::elliptics::config::config_data *data,
-		const ioremap::elliptics::config::config &backend)
+		const kora::config_t &backend)
 {
 	std::string type = backend.at<std::string>("type");
 
@@ -913,7 +913,7 @@ void dnet_backend_info::parse(ioremap::elliptics::config::config_data *data,
 
 	if (!found_backend)
 		throw ioremap::elliptics::config::config_error() <<
-			backend.at("type").path() <<
+			backend["type"].path() <<
 			" is unknown backend";
 
 	group = backend.at<uint32_t>("group");
@@ -921,7 +921,7 @@ void dnet_backend_info::parse(ioremap::elliptics::config::config_data *data,
 	cache = NULL;
 
 	if (backend.has("cache")) {
-		const auto cache = backend.at("cache");
+		const auto cache = backend["cache"];
 		cache_config = ioremap::cache::cache_config::parse(cache);
 	} else if (data->cache_config) {
 		cache_config = blackhole::utils::make_unique<ioremap::cache::cache_config>(*data->cache_config);
@@ -933,17 +933,15 @@ void dnet_backend_info::parse(ioremap::elliptics::config::config_data *data,
 	for (int i = 0; i < config.num; ++i) {
 		dnet_config_entry &entry = config.ent[i];
 		if (backend.has(entry.key)) {
-			std::string key_str = entry.key;
-			std::vector<char> key(key_str.begin(), key_str.end());
-			key.push_back('\0');
-
-			std::string value_str = backend.at(entry.key).to_string();
-			std::vector<char> value(value_str.begin(), value_str.end());
-			value.push_back('\0');
+			const std::string value = [&] () {
+				std::ostringstream stream;
+				stream << backend[entry.key];
+				return stream.str();
+			} ();
 
 			dnet_backend_config_entry option = {
 				&entry,
-				value
+				std::move(value)
 			};
 
 			options.emplace_back(std::move(option));

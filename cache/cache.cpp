@@ -34,15 +34,15 @@
 
 namespace ioremap { namespace cache {
 
-std::unique_ptr<cache_config> cache_config::parse(const elliptics::config::config &cache)
+std::unique_ptr<cache_config> cache_config::parse(const kora::config_t &cache)
 {
 	auto size = cache.at("size");
-	if (size.as<size_t>() == 0) {
+	if (size.to<size_t>() == 0) {
 		throw elliptics::config::config_error(size.path() + " must be non-zero");
 	}
 
 	cache_config config;
-	config.size = size.as<size_t>();
+	config.size = size.to<size_t>();
 	config.count = cache.at<size_t>("shards", DNET_DEFAULT_CACHES_NUMBER);
 	config.sync_timeout = cache.at<unsigned>("sync_timeout", DNET_DEFAULT_CACHE_SYNC_TIMEOUT_SEC);
 	config.pages_proportions = cache.at("pages_proportions", std::vector<size_t>(DNET_DEFAULT_CACHE_PAGES_NUMBER, 1));
