@@ -32,16 +32,15 @@
 
 namespace {
 
-std::string to_string(const std::vector<int> &v)
-{
-    std::ostringstream ss;
-    for (size_t i = 0; i < v.size(); ++i) {
-        if (i > 0) {
-            ss << ", ";
-        }
-        ss << v[i];
-    }
-    return ss.str();
+std::string to_string(const std::vector<int> &v) {
+	std::ostringstream ss;
+	for (size_t i = 0; i < v.size(); ++i) {
+		if (i > 0) {
+			ss << ", ";
+		}
+		ss << v[i];
+	}
+	return ss.str();
 }
 
 }
@@ -66,19 +65,13 @@ std::vector<int> find_local_groups(dnet_node *node)
 	return result;
 }
 
-localnode::localnode(
-		cocaine::context_t& context,
-		asio::io_service& reactor,
-		const std::string& name,
-		const cocaine::dynamic_t &args,
-		dnet_node* node
-)
-	: cocaine::api::service_t(context, reactor, name, args)
-	, cocaine::dispatch<io::localnode_tag>(name)
-	, session_proto_(node)
-	, log_(context.log(name))
-{
-	COCAINE_LOG_DEBUG(log_, "{}: ENTER", __func__);
+localnode::localnode(cocaine::context_t &context, asio::io_service &reactor, const std::string &name,
+                     const cocaine::dynamic_t &args, dnet_node *node)
+: cocaine::api::service_t(context, reactor, name, args)
+, cocaine::dispatch<io::localnode_tag>(name)
+, m_session_proto(node)
+, m_log(context.log(name)) {
+	COCAINE_LOG_DEBUG(m_log, "{}: ENTER", __func__);
 
 	on<io::localnode::read>(std::bind(&localnode::read, this, ph::_1, ph::_2, ph::_3, ph::_4));
 	on<io::localnode::write>(std::bind(&localnode::write, this, ph::_1, ph::_2, ph::_3));
@@ -91,15 +84,15 @@ localnode::localnode(
 		// We are forced to find all local groups anyway because there is no other
 		// way to get the total number of the groups this node serves.
 		const auto local_groups = find_local_groups(node);
-		COCAINE_LOG_INFO(log_, "{}: found local groups: [{}]", __func__, to_string(local_groups).c_str());
+		COCAINE_LOG_INFO(m_log, "{}: found local groups: [{}]", __func__, to_string(local_groups).c_str());
 		if (local_groups.size() == 1) {
-			session_proto_.set_groups(local_groups);
+			m_session_proto.set_groups(local_groups);
 		}
 	}
 
-	COCAINE_LOG_INFO(log_, "{}: service initialized", __func__);
+	COCAINE_LOG_INFO(m_log, "{}: service initialized", __func__);
 
-	COCAINE_LOG_DEBUG(log_, "{}: EXIT", __func__);
+	COCAINE_LOG_DEBUG(m_log, "{}: EXIT", __func__);
 }
 
 inline void override_groups(session &s, const std::vector<int> &groups)
@@ -114,9 +107,9 @@ inline void override_groups(session &s, const std::vector<int> &groups)
 
 deferred<localnode::read_result> localnode::read(const dnet_raw_id &key, const std::vector<int> &groups, uint64_t offset, uint64_t size)
 {
-	COCAINE_LOG_DEBUG(log_, "{}: ENTER", __func__);
+	COCAINE_LOG_DEBUG(m_log, "{}: ENTER", __func__);
 
-	auto s = session_proto_.clone();
+	auto s = m_session_proto.clone();
 	s.set_exceptions_policy(session::no_exceptions);
 	override_groups(s, groups);
 
@@ -134,16 +127,16 @@ deferred<localnode::read_result> localnode::read(const dnet_raw_id &key, const s
 		std::bind(&localnode::on_read_completed, this, promise, ph::_1, ph::_2)
 	);
 
-	COCAINE_LOG_DEBUG(log_, "{}: EXIT", __func__);
+	COCAINE_LOG_DEBUG(m_log, "{}: EXIT", __func__);
 
 	return promise;
 }
 
 deferred<localnode::write_result> localnode::write(const dnet_raw_id &key, const std::vector<int> &groups, const std::string &bytes)
 {
-	COCAINE_LOG_DEBUG(log_, "{}: ENTER", __func__);
+	COCAINE_LOG_DEBUG(m_log, "{}: ENTER", __func__);
 
-	auto s = session_proto_.clone();
+	auto s = m_session_proto.clone();
 	s.set_exceptions_policy(session::no_exceptions);
 	override_groups(s, groups);
 
@@ -154,14 +147,14 @@ deferred<localnode::write_result> localnode::write(const dnet_raw_id &key, const
 		std::bind(&localnode::on_write_completed, this, promise, ph::_1, ph::_2)
 	);
 
-	COCAINE_LOG_DEBUG(log_, "{}: EXIT", __func__);
+	COCAINE_LOG_DEBUG(m_log, "{}: EXIT", __func__);
 
 	return promise;
 }
 
 deferred<localnode::lookup_result> localnode::lookup(const dnet_raw_id &key, const std::vector<int> &groups)
 {
-	auto s = session_proto_.clone();
+	auto s = m_session_proto.clone();
 	s.set_exceptions_policy(session::no_exceptions);
 	override_groups(s, groups);
 
@@ -178,38 +171,38 @@ void localnode::on_read_completed(deferred<localnode::read_result> promise,
 		const std::vector<newapi::read_result_entry> &results,
 		const error_info &error)
 {
-	COCAINE_LOG_DEBUG(log_, "{}: ENTER", __func__);
+	COCAINE_LOG_DEBUG(m_log, "{}: ENTER", __func__);
 
 	if (error) {
-		COCAINE_LOG_ERROR(log_, "{}: return error {}, {}", __func__, error.code(), error.message());
+		COCAINE_LOG_ERROR(m_log, "{}: return error {}, {}", __func__, error.code(), error.message());
 		promise.abort(std::error_code(-error.code(), std::generic_category()), error.message());
 
 	} else {
-		COCAINE_LOG_DEBUG(log_, "{}: return success", __func__);
+		COCAINE_LOG_DEBUG(m_log, "{}: return success", __func__);
 		const auto &r = results[0];
 		promise.write(std::make_tuple(r.record_info(), r.data()));
 	}
 
-	COCAINE_LOG_DEBUG(log_, "{}: EXIT", __func__);
+	COCAINE_LOG_DEBUG(m_log, "{}: EXIT", __func__);
 }
 
 void localnode::on_write_completed(deferred<write_result> promise,
 		const std::vector<newapi::write_result_entry> &results,
 		const error_info &error)
 {
-	COCAINE_LOG_DEBUG(log_, "{}: ENTER", __func__);
+	COCAINE_LOG_DEBUG(m_log, "{}: ENTER", __func__);
 
 	if (error) {
-		COCAINE_LOG_ERROR(log_, "{}: return error {}, {}", __func__, error.code(), error.message());
+		COCAINE_LOG_ERROR(m_log, "{}: return error {}, {}", __func__, error.code(), error.message());
 		promise.abort(std::error_code(-error.code(), std::generic_category()), error.message());
 
 	} else {
 		const auto &r = results[0];
-		COCAINE_LOG_DEBUG(log_, "{}: return success", __func__);
+		COCAINE_LOG_DEBUG(m_log, "{}: return success", __func__);
 		promise.write(std::make_tuple(r.record_info(), r.path()));
 	}
 
-	COCAINE_LOG_DEBUG(log_, "{}: EXIT", __func__);
+	COCAINE_LOG_DEBUG(m_log, "{}: EXIT", __func__);
 }
 
 }} // namespace ioremap::elliptics

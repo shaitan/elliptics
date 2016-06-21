@@ -303,7 +303,8 @@ static int run_servers(const rapidjson::Value &doc)
 	}
 
 	std::vector<tests::server_config> configs;
-	configs.resize(servers.Size(), srw ? tests::server_config::default_srw_value() : tests::server_config::default_value());
+	configs.resize(servers.Size(),
+	               srw ? tests::server_config::default_srw_value() : tests::server_config::default_value());
 
 	std::set<int> unique_groups;
 
@@ -358,7 +359,8 @@ static int run_servers(const rapidjson::Value &doc)
 		const std::vector<int> groups(unique_groups.begin(), unique_groups.end());
 
 		try {
-			tests::upload_application(setup->nodes[0].locator_port(), tests::application_name(), setup->directory.path());
+			tests::upload_application(setup->nodes[0].locator_port(), tests::application_name(),
+			                          setup->directory.path());
 		} catch (std::exception &exc) {
 			test::log << "Can not upload application: " << exc.what() << test::endl;
 			return 1;
@@ -368,7 +370,8 @@ static int run_servers(const rapidjson::Value &doc)
 				tests::start_application(setup->nodes[i].locator_port(), tests::application_name());
 
 			} catch (std::exception &exc) {
-				test::log << "Can not start application on node #" << i << ": " << exc.what() << test::endl;
+				test::log << "Can not start application on node #" << i << ": " << exc.what()
+				          << test::endl;
 				return 1;
 			}
 		}
@@ -387,7 +390,8 @@ static int run_servers(const rapidjson::Value &doc)
 
 	for (size_t i = 0; i < setup->nodes.size(); ++i) {
 		tests::server_node &node = setup->nodes.at(i);
-		test::log << "Started node #" << i << ", addr: " << node.remote().to_string() << ", pid: " << node.pid() << test::endl;
+		test::log << "Started node #" << i << ", addr: " << node.remote().to_string() << ", pid: " << node.pid()
+		          << test::endl;
 	}
 
 	{

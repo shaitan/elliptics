@@ -1,7 +1,8 @@
 #include <stdexcept>
 
-//XXX: in order to give preference to the old blackhole (from foreign/blackhole)
-// includes of elliptics must come before includes of cocaine
+/*XXX: in order to give preference to the old blackhole (from foreign/blackhole)
+ * includes of elliptics must come before includes of cocaine
+ */
 
 #include "elliptics/session.hpp"
 
@@ -25,13 +26,14 @@ namespace {
 
 void keep_tx_live_till_done(elliptics::async_reply_result &async, worker::sender &tx)
 {
-	//XXX: what we want is to prolong life of tx sender until we done sending the reply;
-	// * so we use the fact that std::bind ignores those actual call args which don't match
-	//   inner function args (actual args object will be created but then discarded)
-	// * but we can't capture tx object directly and instead forced to hold it by shared_ptr,
-	//   that is because tx is movable-only, so binded functor is also movable-only
-	//   but std::function which elliptics accepts as a callback requires functors
-	//   to be copy constructable
+	/* XXX: what we want is to prolong life of tx sender until we done sending the reply;
+	 * * so we use the fact that std::bind ignores those actual call args which don't match
+	 *   inner function args (actual args object will be created but then discarded)
+	 * * but we can't capture tx object directly and instead forced to hold it by shared_ptr,
+	 *   that is because tx is movable-only, so binded functor is also movable-only
+	 *   but std::function which elliptics accepts as a callback requires functors
+	 *   to be copy constructable
+	 */
 	async.connect(std::bind(
 		[](std::shared_ptr<worker::sender>) {},
 		std::make_shared<worker::sender>(std::move(tx))
@@ -51,9 +53,8 @@ struct app_context {
 	std::unique_ptr<elliptics::session> reply_client;
 
 	app_context(const std::shared_ptr<logging_service_type> &log, const options_t &options)
-	    : id_(options.name)
-	    , log_(log)
-	{}
+	: id_(options.name)
+	, log_(log) {}
 
 	void log(int severity, const blackhole::v1::lazy_message_t &message, blackhole::v1::attribute_pack& pack);
 
@@ -87,8 +88,8 @@ void app_context::log(int severity, const blackhole::v1::lazy_message_t &message
 #define LOG_ERROR(logger, ...) \
 	blackhole::v1::logger_facade<app_context>(logger).log(cocaine::logging::error, __VA_ARGS__)
 
-const cocaine::hpack::header_t& find_header(const std::vector<cocaine::hpack::header_t> &headers, const std::string &name)
-{
+const cocaine::hpack::header_t &find_header(const std::vector<cocaine::hpack::header_t> &headers,
+                                            const std::string &name) {
 	auto found = std::find_if(headers.begin(), headers.end(), [&name](const cocaine::hpack::header_t& h) {
 		return name == std::string(h.get_name().blob, h.get_name().size);
 	});
@@ -156,7 +157,7 @@ void app_context::init_elliptics_client(worker::sender tx, worker::receiver rx)
 	LOG_DEBUG(*this, "{}: EXIT", __func__);
 }
 
-/// Echo input data via elliptics channel
+// Echo input data via elliptics channel
 void app_context::echo_via_elliptics(worker::sender tx, worker::receiver rx)
 {
 	LOG_DEBUG(*this, "{}: ENTER", __func__);
@@ -185,7 +186,7 @@ void app_context::echo_via_elliptics(worker::sender tx, worker::receiver rx)
 	LOG_DEBUG(*this, "{}: EXIT", __func__);
 }
 
-/// Echo input data via cocaine response stream
+// Echo input data via cocaine response stream
 void app_context::echo_via_cocaine(worker::sender tx, worker::receiver rx)
 {
 	LOG_DEBUG(*this, "{}: ENTER", __func__);
@@ -199,7 +200,7 @@ void app_context::echo_via_cocaine(worker::sender tx, worker::receiver rx)
 	LOG_DEBUG(*this, "{}: EXIT", __func__);
 }
 
-/// Make no reply at all
+// Make no reply at all
 void app_context::noreply(worker::sender tx, worker::receiver rx)
 {
 	LOG_DEBUG(*this, "{}: ENTER", __func__);
@@ -213,17 +214,18 @@ void app_context::noreply(worker::sender tx, worker::receiver rx)
 	LOG_DEBUG(*this, "{}: EXIT", __func__);
 }
 
-/// Used for timeout test.
-/// Make no reply but do not return immediately either (for the client timeout duration at least).
-///
-/// Return from event handler means 'close' event in the channel to the srw and subsequently
-/// 'ack' event back to the elliptics client, which is exactly what we don't want in this test
-/// -- we what elliptics client's transaction to timeout.
-///
-/// Be careful, this function doesn't check whether application was initialized or not
-/// (compare to @echo_via_elliptics function).
-/// It is possible that new cocaine workers will be spawned only to handle this event type,
-/// and client will not send 'init' event to them.
+/* Used for timeout test.
+ * Make no reply but do not return immediately either (for the client timeout duration at least).
+ *
+ * Return from event handler means 'close' event in the channel to the srw and subsequently
+ * 'ack' event back to the elliptics client, which is exactly what we don't want in this test
+ * -- we what elliptics client's transaction to timeout.
+ *
+ * Be careful, this function doesn't check whether application was initialized or not
+ * (compare to @echo_via_elliptics function).
+ * It is possible that new cocaine workers will be spawned only to handle this event type,
+ * and client will not send 'init' event to them.
+ */
 void app_context::noreply_30seconds_wait(worker::sender tx, worker::receiver rx)
 {
 	LOG_DEBUG(*this, "{}: ENTER", __func__);
@@ -239,9 +241,9 @@ void app_context::noreply_30seconds_wait(worker::sender tx, worker::receiver rx)
 	LOG_DEBUG(*this, "{}: EXIT", __func__);
 }
 
-/// Pass input message to the next step in chain with `push` command
-void app_context::chain_via_elliptics(worker::sender tx, worker::receiver rx, const int step, const std::string next_event)
-{
+// Pass input message to the next step in chain with `push` command
+void app_context::chain_via_elliptics(worker::sender tx, worker::receiver rx, const int step,
+                                      const std::string next_event) {
 	LOG_DEBUG(*this, "{}: ENTER ({})", __func__, step);
 
 	if (!reply_client) {

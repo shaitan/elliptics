@@ -144,7 +144,8 @@ static void test_cache_and_no(session &sess, const std::string &id)
 
 	ELLIPTICS_REQUIRE(third_write_result, sess.write_data(id, third_path, 0));
 	ELLIPTICS_COMPARE_REQUIRE(third_read_result, sess.read_data(id, 0, 0), first_part + second_part + third_path);
-	ELLIPTICS_COMPARE_REQUIRE(third_cache_read_result, cache_sess.read_data(id, 0, 0), first_part + second_part + third_path);
+	ELLIPTICS_COMPARE_REQUIRE(third_cache_read_result, cache_sess.read_data(id, 0, 0),
+	                          first_part + second_part + third_path);
 }
 
 static void test_cache_populating(session &sess, const std::string &id, const std::string &data)
@@ -217,7 +218,8 @@ static void test_indexes(session &sess)
 
 	const std::string key = "elliptics";
 
-	ELLIPTICS_REQUIRE(clear_indexes_result, sess.set_indexes(key, std::vector<std::string>(), std::vector<data_pointer>()));
+	ELLIPTICS_REQUIRE(clear_indexes_result,
+	                  sess.set_indexes(key, std::vector<std::string>(), std::vector<data_pointer>()));
 	ELLIPTICS_REQUIRE(set_indexes_result, sess.set_indexes(key, indexes, data));
 
 	ELLIPTICS_REQUIRE(list_indexes_result, sess.list_indexes(key));
@@ -253,7 +255,8 @@ static void test_more_indexes(session &sess)
 
 	for (auto it = keys.begin(); it != keys.end(); ++it) {
 		std::string key = *it;
-		ELLIPTICS_REQUIRE(clear_indexes_result, sess.set_indexes(key, std::vector<std::string>(), std::vector<data_pointer>()));
+		ELLIPTICS_REQUIRE(clear_indexes_result,
+		                  sess.set_indexes(key, std::vector<std::string>(), std::vector<data_pointer>()));
 		ELLIPTICS_REQUIRE(set_indexes_result, sess.set_indexes(key, indexes, data));
 	}
 
@@ -292,7 +295,8 @@ static void test_indexes_metadata(session &sess)
 
 	for (auto it = keys.begin(); it != keys.end(); ++it) {
 		std::string key = *it;
-		ELLIPTICS_REQUIRE(clear_indexes_result, sess.set_indexes(key, std::vector<std::string>(), std::vector<data_pointer>()));
+		ELLIPTICS_REQUIRE(clear_indexes_result,
+		                  sess.set_indexes(key, std::vector<std::string>(), std::vector<data_pointer>()));
 		ELLIPTICS_REQUIRE(set_indexes_result, sess.set_indexes(key, indexes, data));
 	}
 
@@ -1030,8 +1034,9 @@ static void test_partial_lookup(session &sess, const std::string &id)
 	BOOST_REQUIRE_EQUAL(sync_lookup_result[1].file_info()->size, data.size());
 }
 
-// The test checks basic case of using the perallel_lookup
-// If a key presents in every group, number of result_entries will equal to number of groups
+/* The test checks basic case of using the perallel_lookup
+ * If a key presents in every group, number of result_entries will equal to number of groups
+ */
 static void test_parallel_lookup(session &sess, const std::string &id)
 {
 	std::string data = "data";
@@ -1060,11 +1065,12 @@ static void test_parallel_lookup(session &sess, const std::string &id)
 	}
 }
 
-// The test checks basic case of using the quorum_lookup
-// If a key present as follows:
-//  - two groups have the key with the same timestamp
-//  - one group has the key with some other timestamp
-// then only result_entries for the key with the same timestamp will be received
+/* The test checks basic case of using the quorum_lookup
+ * If a key present as follows:
+ *  - two groups have the key with the same timestamp
+ *  - one group has the key with some other timestamp
+ * then only result_entries for the key with the same timestamp will be received
+ */
 static void test_quorum_lookup(session &sess, const std::string &id)
 {
 	const std::string first_data = "first-data";
@@ -1104,8 +1110,9 @@ static void test_quorum_lookup(session &sess, const std::string &id)
 	}
 }
 
-// Test checks the work of quorum_lookup in case of there are two different keys in two groups
-// and no key in third one.
+/* Test checks the work of quorum_lookup in case of there are two different keys in two groups
+ * and no key in third one.
+ */
 static void test_partial_quorum_lookup(session &sess, const std::string &id)
 {
 	const std::string first_data = "first-data";
@@ -1141,8 +1148,9 @@ static void test_partial_quorum_lookup(session &sess, const std::string &id)
 	BOOST_REQUIRE_EQUAL(lookup_result[0].file_info()->mtime.tnsec, io.timestamp.tnsec);
 }
 
-// The test checks quorum_lookup returns an error in case of there are two different keys
-// in two groups and no key in third one and checker::quorum is set
+/* The test checks quorum_lookup returns an error in case of there are two different keys
+ * in two groups and no key in third one and checker::quorum is set
+ */
 static void test_fail_partial_quorum_lookup(session &sess, const std::string &id)
 {
 	const std::string first_data = "first-data";
@@ -1172,16 +1180,18 @@ static void test_fail_partial_quorum_lookup(session &sess, const std::string &id
 	ELLIPTICS_REQUIRE_ERROR(prepare_result, sess.quorum_lookup(id), -ENXIO);
 }
 
-// The test checks parallel_lookup returns an error in case of
-// there were not result_entries without errors
+/* The test checks parallel_lookup returns an error in case of
+ * there were not result_entries without errors
+ */
 static void test_fail_parallel_lookup(session &sess, int error)
 {
 	ELLIPTICS_REQUIRE_ERROR(result,
 			sess.parallel_lookup(std::string("test_fail_parallel_lookup_key")), error);
 }
 
-// The test checks quorum_lookup returns an error in case of
-// there were not result_entries without errors
+/* The test checks quorum_lookup returns an error in case of
+ * there were not result_entries without errors
+ */
 static void test_fail_quorum_lookup(session &sess, int error)
 {
 	ELLIPTICS_REQUIRE_ERROR(result,
@@ -1369,11 +1379,13 @@ void test_index_recovery(session &sess)
 	sess_2.set_groups(std::vector<int>(1, 2));
 
 	for (auto it = objects_1.begin(); it != objects_1.end(); ++it) {
-		ELLIPTICS_REQUIRE(set_indexes_1, sess_1.set_indexes(*it, std::vector<std::string>(1, index.remote()), data_1));
+		ELLIPTICS_REQUIRE(set_indexes_1,
+		                  sess_1.set_indexes(*it, std::vector<std::string>(1, index.remote()), data_1));
 	}
 
 	for (auto it = objects_2.begin(); it != objects_2.end(); ++it) {
-		ELLIPTICS_REQUIRE(set_indexes_2, sess_2.set_indexes(*it, std::vector<std::string>(1, index.remote()), data_2));
+		ELLIPTICS_REQUIRE(set_indexes_2,
+		                  sess_2.set_indexes(*it, std::vector<std::string>(1, index.remote()), data_2));
 	}
 
 	ELLIPTICS_REQUIRE(update_index_internal, sess_1.update_indexes_internal(std::string("doc-5"),
@@ -1397,7 +1409,8 @@ void test_index_recovery(session &sess)
 			BOOST_REQUIRE_EQUAL(entry.data.to_string(), result_data[i].to_string());
 		}
 
-		ELLIPTICS_REQUIRE(async_find_result, group_sess.find_any_indexes(std::vector<dnet_raw_id>(1, index.raw_id())));
+		ELLIPTICS_REQUIRE(async_find_result,
+		                  group_sess.find_any_indexes(std::vector<dnet_raw_id>(1, index.raw_id())));
 		sync_find_indexes_result find_result = async_find_result;
 
 		BOOST_REQUIRE_EQUAL(find_result.size(), result.size());
@@ -1470,9 +1483,13 @@ bool register_tests(const nodes_data *setup)
 {
 	auto n = setup->node->get_native();
 
-	ELLIPTICS_TEST_CASE(test_cache_write, use_session(n, { 1, 2 }, 0, DNET_IO_FLAGS_CACHE | DNET_IO_FLAGS_CACHE_ONLY), 1000);
-	ELLIPTICS_TEST_CASE(test_cache_read, use_session(n, { 1, 2 }, 0, DNET_IO_FLAGS_CACHE | DNET_IO_FLAGS_CACHE_ONLY | DNET_IO_FLAGS_NOCSUM), 1000, 20);
-	ELLIPTICS_TEST_CASE(test_cache_delete, use_session(n, { 1, 2 }, 0, DNET_IO_FLAGS_CACHE | DNET_IO_FLAGS_CACHE_ONLY), 1000, 20);
+	ELLIPTICS_TEST_CASE(test_cache_write, use_session(n, {1, 2}, 0, DNET_IO_FLAGS_CACHE | DNET_IO_FLAGS_CACHE_ONLY),
+	                    1000);
+	ELLIPTICS_TEST_CASE(
+	    test_cache_read,
+	    use_session(n, {1, 2}, 0, DNET_IO_FLAGS_CACHE | DNET_IO_FLAGS_CACHE_ONLY | DNET_IO_FLAGS_NOCSUM), 1000, 20);
+	ELLIPTICS_TEST_CASE(test_cache_delete,
+	                    use_session(n, {1, 2}, 0, DNET_IO_FLAGS_CACHE | DNET_IO_FLAGS_CACHE_ONLY), 1000, 20);
 	ELLIPTICS_TEST_CASE(test_cache_and_no, use_session(n, {1, 2}, 0, 0), "cache-and-no-key");
 	ELLIPTICS_TEST_CASE(test_cache_populating, use_session(n, {1, 2}, 0, 0), "cache-populated-key", "cache-data");
 	ELLIPTICS_TEST_CASE(test_write, use_session(n, {1, 2}, 0, DNET_IO_FLAGS_CACHE), "new-id", "new-data");
@@ -1514,7 +1531,8 @@ bool register_tests(const nodes_data *setup)
 	ELLIPTICS_TEST_CASE(test_parallel_lookup, use_session(n, {1, 2, 3}, 0, 0), "parallel-lookup-key");
 	ELLIPTICS_TEST_CASE(test_quorum_lookup, use_session(n, {1, 2, 3}, 0, 0), "quorum-lookup-key");
 	ELLIPTICS_TEST_CASE(test_partial_quorum_lookup, use_session(n, {1, 2, 3}, 0, 0), "partial-quorum-lookup-key");
-	ELLIPTICS_TEST_CASE(test_fail_partial_quorum_lookup, use_session(n, {1, 2, 3}, 0, 0), "fail-partial-quorum-lookup-key");
+	ELLIPTICS_TEST_CASE(test_fail_partial_quorum_lookup, use_session(n, {1, 2, 3}, 0, 0),
+	                    "fail-partial-quorum-lookup-key");
 	ELLIPTICS_TEST_CASE(test_fail_parallel_lookup, use_session(n, {1, 2, 3}, 0, 0), -ENOENT);
 	ELLIPTICS_TEST_CASE(test_fail_parallel_lookup, use_session(n, {91, 92, 93}, 0, 0), -ENXIO);
 	ELLIPTICS_TEST_CASE(test_fail_quorum_lookup, use_session(n, {1, 2, 3}, 0, 0), -ENOENT);
@@ -1529,9 +1547,11 @@ bool register_tests(const nodes_data *setup)
 	ELLIPTICS_TEST_CASE(test_lookup_non_existing, use_session(n, { 99 }, 0, 0), -ENXIO);
 	ELLIPTICS_TEST_CASE(test_read_mix_states_ioflags, use_session(n, {1, 2}, 0, 0), "read-mix-states-ioflags");
 #ifndef NO_SERVER
-	ELLIPTICS_TEST_CASE(test_requests_to_own_server, use_session(setup->nodes.front().get_native(), { 1, 2, 3 }, 0, 0));
+	ELLIPTICS_TEST_CASE(test_requests_to_own_server,
+	                    use_session(setup->nodes.front().get_native(), {1, 2, 3}, 0, 0));
 #endif
-	ELLIPTICS_TEST_CASE(test_lookup_corrupted, use_session(n, {1}, 0, 0), "lookup corrupted test key", "lookup corrupted test data");
+	ELLIPTICS_TEST_CASE(test_lookup_corrupted, use_session(n, {1}, 0, 0), "lookup corrupted test key",
+	                    "lookup corrupted test data");
 
 	return true;
 }
@@ -1570,16 +1590,17 @@ nodes_data::ptr configure_test_setup_from_args(int argc, char *argv[])
 }
 
 
-//
-// Common test initialization routine.
-//
+/*
+ * Common test initialization routine.
+ */
 using namespace tests;
 using namespace boost::unit_test;
 
-//FIXME: forced to use global variable and plain function wrapper
-// because of the way how init_test_main works in boost.test,
-// introducing a global fixture would be a proper way to handle
-// global test setup
+/*FIXME: forced to use global variable and plain function wrapper
+ * because of the way how init_test_main works in boost.test,
+ * introducing a global fixture would be a proper way to handle
+ * global test setup
+ */
 namespace {
 
 std::shared_ptr<nodes_data> setup;

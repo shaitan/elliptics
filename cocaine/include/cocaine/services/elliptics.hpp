@@ -36,16 +36,16 @@ struct cache_read {
 	}
 
 	typedef boost::mpl::list<
-		/// Key namespace. Currently no ACL checks are performed, so in theory any app can read any
-		/// other app data without restrictions.
+		/* Key namespace. Currently no ACL checks are performed, so in theory any app can read any
+		   other app data without restrictions. */
 		std::string,
-		/// Key.
+		/* Key. */
 		std::string
 	> argument_type;
 
 	typedef option_of<
-		/// The stored value. Typically it will be serialized with msgpack, but it's not a strict
-	   	/// requirement. But as there's no way to know the format, try to unpack it anyway.
+		/* The stored value. Typically it will be serialized with msgpack, but it's not a strict
+		   requirement. But as there's no way to know the format, try to unpack it anyway. */
 		std::string
 	>::tag upstream_type;
 };
@@ -58,16 +58,16 @@ struct read_latest {
 	}
 
 	typedef boost::mpl::list<
-		/// Key namespace. Currently no ACL checks are performed, so in theory any app can read any
-		/// other app data without restrictions.
+		/* Key namespace. Currently no ACL checks are performed, so in theory any app can read any
+		   other app data without restrictions. */
 		std::string,
-		/// Key.
+		/* Key. */
 		std::string
 	> argument_type;
 
 	typedef option_of<
-		/// The stored value. Typically it will be serialized with msgpack, but it's not a strict
-	   	/// requirement. But as there's no way to know the format, try to unpack it anyway.
+		/* The stored value. Typically it will be serialized with msgpack, but it's not a strict
+		   requirement. But as there's no way to know the format, try to unpack it anyway. */
 		std::string
 	>::tag upstream_type;
 };
@@ -80,14 +80,14 @@ struct cache_write {
 	}
 
 	typedef boost::mpl::list<
-		/// Key namespace.
+		/* Key namespace. */
 		std::string,
-		/// Key.
+		/* Key. */
 		std::string,
-		/// Value. Typically, it should be serialized with msgpack, so that the future reader could
-	   	/// assume that it can be deserialized safely.
+		/* Value. Typically, it should be serialized with msgpack, so that the future reader could
+		   assume that it can be deserialized safely. */
 		std::string,
-		/// Timeout. Life-time of the data, if not set it's unlimited.
+		/* Timeout. Life-time of the data, if not set it's unlimited. */
 		io::optional_with_default<int, 0>
 	> argument_type;
 };
@@ -100,16 +100,16 @@ struct bulk_read {
 	}
 
 	typedef boost::mpl::list<
-		/// Key namespace. Currently no ACL checks are performed, so in theory any app can read any
-		/// other app data without restrictions.
+		/* Key namespace. Currently no ACL checks are performed, so in theory any app can read any
+		   other app data without restrictions. */
 		std::string,
-		/// Keys.
+		/* Keys. */
 		std::vector<std::string>
 	> argument_type;
 
 	typedef option_of<
-		/// The stored values. Typically it will be serialized with msgpack, but it's not a strict
-	   	/// requirement. But as there's no way to know the format, try to unpack it anyway.
+		/* The stored values. Typically it will be serialized with msgpack, but it's not a strict
+		   requirement. But as there's no way to know the format, try to unpack it anyway. */
 		std::map<std::string, std::string>
 	>::tag upstream_type;
 };
@@ -122,17 +122,17 @@ struct bulk_write {
 	}
 
 	typedef boost::mpl::list<
-		/// Key namespace.
+		/* Key namespace. */
 		std::string,
-		/// Keys.
+		/* Keys. */
 		std::vector<std::string>,
-		/// Values. Typically, it should be serialized with msgpack, so that the future reader could
-	   	/// assume that it can be deserialized safely.
+		/* Values. Typically, it should be serialized with msgpack, so that the future reader could
+		   assume that it can be deserialized safely. */
 		std::vector<std::string>
 	> argument_type;
 
 	typedef option_of<
-		/// Write results. If write for some key fails errno can be accessed by the key.
+		/* Write results. If write for some key fails errno can be accessed by the key. */
 		std::map<std::string, int>
 	>::tag upstream_type;
 };
@@ -150,7 +150,7 @@ struct protocol<elliptics_tag> : public extends<storage_tag> {
 		elliptics::cache_write,
 		elliptics::bulk_read,
 		elliptics::read_latest
-		// TODO: Disabled for WTF reasons. Call Dropbox for details (elliptics::bulk_write).
+		// elliptics::bulk_write
 	> messages;
 
 	typedef elliptics scope;

@@ -31,23 +31,17 @@
 #include "elliptics/cppdef.h"
 
 namespace cocaine {
-
 class elliptics_service_t;
+}
 
-namespace storage {
+namespace cocaine { namespace storage {
 
-using namespace ioremap;
-
-}  // namespace storage
-}  // namespace cocaine
-
-namespace cocaine {
-namespace storage {
-
-/// Wraps the v1.0 logger into the v0.2 interface to be usable within Elliptics.
-class log_adapter_t : public elliptics::logger_base {
+/*
+ * Wraps the v1.0 logger into the v0.2 interface to be usable within Elliptics.
+ */
+class log_adapter_t : public ioremap::elliptics::logger_base {
 public:
-	log_adapter_t(std::shared_ptr<logging::logger_t> wrapped, elliptics::log_level severity);
+	log_adapter_t(std::shared_ptr<logging::logger_t> wrapped, ioremap::elliptics::log_level severity);
 };
 
 class elliptics_storage_t : public api::storage_t {
@@ -110,6 +104,6 @@ private:
 	friend class cocaine::elliptics_service_t;
 };
 
-}}
+}} /* namespace cocaine::storage */
 
 #endif

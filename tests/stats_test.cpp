@@ -287,7 +287,8 @@ static void test_insertion_with_random_weight()
 	min_heap.reserve(TOP_LENGTH);
 	std::function<decltype(test_event::weight_compare)> comparator_weight(&test_event::weight_compare);
 	for (int i = 0; i < EVENTS_LIMIT; ++i) {
-		test_event e{std::to_string(static_cast<long long>(i)), static_cast<uint64_t>(rand()), 1., default_time};
+		test_event e{std::to_string(static_cast<long long>(i)), static_cast<uint64_t>(rand()), 1.,
+		             default_time};
 		if (min_heap.size() >= TOP_LENGTH) {
 			if (min_heap.front().get_weight() < e.get_weight()) {
 				std::pop_heap(min_heap.begin(), min_heap.end(), std::not2(comparator_weight));
@@ -472,16 +473,17 @@ nodes_data::ptr configure_test_setup_from_args(int argc, char *argv[])
 }
 
 
-//
-// Common test initialization routine.
-//
+/*
+ * Common test initialization routine.
+ */
 using namespace tests;
 using namespace boost::unit_test;
 
-//FIXME: forced to use global variable and plain function wrapper
-// because of the way how init_test_main works in boost.test,
-// introducing a global fixture would be a proper way to handle
-// global test setup
+/*FIXME: forced to use global variable and plain function wrapper
+ * because of the way how init_test_main works in boost.test,
+ * introducing a global fixture would be a proper way to handle
+ * global test setup
+ */
 namespace {
 
 std::shared_ptr<nodes_data> setup;

@@ -27,24 +27,18 @@ namespace ioremap { namespace elliptics {
 
 using cocaine::deferred;
 
-//
-// Service implementation object.
-// This is the actual service working inside cocaine runtime.
-//
+/*
+ * Service implementation object.
+ * This is the actual service working inside cocaine runtime.
+ */
 class localnode : public cocaine::api::service_t, public cocaine::dispatch<io::localnode_tag>
 {
-private:
-	newapi::session session_proto_;
-	std::shared_ptr<cocaine::logging::logger_t> log_;
-
 public:
-	localnode(cocaine::context_t &context, asio::io_service &reactor, const std::string &name, const cocaine::dynamic_t &args, dnet_node *node);
+	localnode(cocaine::context_t &context, asio::io_service &reactor, const std::string &name,
+	          const cocaine::dynamic_t &args, dnet_node *node);
 
 	// service_t interface
-	auto
-	prototype() const -> const cocaine::io::basic_dispatch_t& {
-		return *this;
-	}
+	const cocaine::io::basic_dispatch_t &prototype() const { return *this; }
 
 private:
 	typedef std::tuple<dnet_record_info, data_pointer> read_result;
@@ -63,6 +57,10 @@ private:
 		const std::vector<newapi::write_result_entry> &results,
 		const ioremap::elliptics::error_info &error
 	);
+
+private:
+	newapi::session m_session_proto;
+	std::shared_ptr<cocaine::logging::logger_t> m_log;
 };
 
 }} // namespace ioremap::elliptics

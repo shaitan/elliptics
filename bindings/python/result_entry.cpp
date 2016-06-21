@@ -154,9 +154,9 @@ uint64_t lookup_result_get_record_flags(const lookup_result_entry &result) {
 	return result.file_info()->record_flags;
 }
 
-//
-// exec_context member access methods
-//
+/*
+ * exec_context member access methods
+ */
 
 std::string exec_context_get_event(exec_context &context)
 {
@@ -188,9 +188,9 @@ int exec_context_get_src_key(exec_context &context)
 
 //TODO: think about exposing native_data(), is_final(), is_reply(), is_null()
 
-//
-// exec_result_entry member access methods
-//
+/*
+ * exec_result_entry member access methods
+ */
 
 exec_context exec_result_get_context(exec_result_entry &result)
 {

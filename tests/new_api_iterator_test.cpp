@@ -255,10 +255,9 @@ void test_write_keys(const ioremap::elliptics::newapi::session &session) {
 			                               record.data(), record.data_capacity())
 			                 );
 		} else {
-			ELLIPTICS_REQUIRE(res, s.write_prepare(record.key(),
-			                                       record.json(), record.json_capacity(),
-			                                       record.data(), 0 /* data_offset*/, record.data_capacity())
-			                 );
+			ELLIPTICS_REQUIRE(res,
+			                  s.write_prepare(record.key(), record.json(), record.json_capacity(),
+			                                  record.data(), 0 /* data_offset*/, record.data_capacity()));
 		}
 	}
 }
@@ -592,16 +591,17 @@ tests::nodes_data::ptr configure_test_setup_from_args(int argc, char *argv[]) {
 }
 
 
-//
-// Common test initialization routine.
-//
+/*
+ * Common test initialization routine.
+ */
 using namespace tests;
 using namespace boost::unit_test;
 
-//FIXME: forced to use global variable and plain function wrapper
-// because of the way how init_test_main works in boost.test,
-// introducing a global fixture would be a proper way to handle
-// global test setup
+/*FIXME: forced to use global variable and plain function wrapper
+ * because of the way how init_test_main works in boost.test,
+ * introducing a global fixture would be a proper way to handle
+ * global test setup
+ */
 namespace {
 
 std::shared_ptr<nodes_data> setup;

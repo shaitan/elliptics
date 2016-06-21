@@ -21,9 +21,7 @@
 #include <elliptics/packet.h>
 #include <elliptics/utils.hpp>
 
-namespace ioremap { namespace elliptics {
-
-namespace io {
+namespace ioremap { namespace elliptics { namespace io {
 
 struct localnode_tag;
 
@@ -35,20 +33,20 @@ struct localnode {
 		static const char* alias() { return "read"; }
 
 		typedef boost::mpl::list<
-			/// Elliptics id to read from
+			/* Elliptics id to read from */
 			dnet_raw_id,
-			/// Reading group list
+			/* Reading group list */
 			std::vector<int>,
-			/// Offset
+			/* Offset */
 			uint64_t,
-			/// Size
+			/* Size */
 			uint64_t
 		> argument_type;
 
 		typedef cocaine::io::option_of<
-			/// Info about stored key
+			/* Info about stored key */
 			dnet_record_info,
-			/// Raw bytes of read result
+			/* Raw bytes of read result */
 			data_pointer
 		>::tag upstream_type;
 	};
@@ -59,18 +57,18 @@ struct localnode {
 		static const char* alias() { return "write"; }
 
 		typedef boost::mpl::list<
-			/// Elliptics id to write to
+			/* Elliptics id to write to */
 			dnet_raw_id,
-			/// Writing group list
+			/* Writing group list */
 			std::vector<int>,
-			/// Raw bytes of the value
+			/* Raw bytes of the value */
 			std::string
 		> argument_type;
 
 		typedef cocaine::io::option_of<
-			/// Info about stored key
+			/* Info about stored key */
 			dnet_record_info,
-			/// Path to the blob file
+			/* Path to the blob file */
 			std::string
 		>::tag upstream_type;
 	};
@@ -81,16 +79,16 @@ struct localnode {
 		static const char* alias() { return "lookup"; }
 
 		typedef boost::mpl::list<
-			/// Elliptics id
+			/* Elliptics id */
 			dnet_raw_id,
-			/// Reading group list
+			/* Reading group list */
 			std::vector<int>
 		> argument_type;
 
 		typedef cocaine::io::option_of<
-			/// Info about stored key
+			/* Info about stored key */
 			dnet_record_info,
-			/// Path to the blob file
+			/* Path to the blob file */
 			std::string
 		>::tag upstream_type;
 	};

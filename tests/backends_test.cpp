@@ -121,7 +121,10 @@ static void test_enable_at_start(session &sess)
 				auto tuple = std::make_tuple(host, group_id, backends[j]);
 
 				BOOST_REQUIRE_MESSAGE(unique_hosts.find(tuple) != unique_hosts.end(),
-					"Host must exist: " + host + ", group: " + std::to_string(static_cast<long long>(group_id)) + ", backend: " + std::to_string(static_cast<long long>(backends[j])));
+				                      "Host must exist: " + host + ", group: " +
+				                          std::to_string(static_cast<long long>(group_id)) +
+				                          ", backend: " +
+				                          std::to_string(static_cast<long long>(backends[j])));
 			}
 		}
 	}
@@ -137,7 +140,8 @@ static void test_enable_backend(session &sess, uint32_t backend_id)
 	auto unique_hosts = get_unique_hosts(sess);
 
 	BOOST_REQUIRE_MESSAGE(unique_hosts.find(tuple) == unique_hosts.end(),
-		"Host must not exist: " + host + ", group: 0, backend: " + std::to_string(static_cast<long long>(backend_id)));
+	                      "Host must not exist: " + host + ", group: 0, backend: " +
+	                          std::to_string(static_cast<long long>(backend_id)));
 
 	ELLIPTICS_REQUIRE(enable_result, sess.enable_backend(node.remote(), backend_id));
 
@@ -147,7 +151,8 @@ static void test_enable_backend(session &sess, uint32_t backend_id)
 	unique_hosts = get_unique_hosts(sess);
 
 	BOOST_REQUIRE_MESSAGE(unique_hosts.find(tuple) != unique_hosts.end(),
-		"Host must exist: " + host + ", group: 0, backend: " + std::to_string(static_cast<long long>(backend_id)));
+	                      "Host must exist: " + host + ", group: 0, backend: " +
+	                          std::to_string(static_cast<long long>(backend_id)));
 }
 
 static void test_backend_status(session &sess)
@@ -566,16 +571,17 @@ static nodes_data::ptr configure_test_setup_from_args(int argc, char *argv[])
 
 }
 
-//
-// Common test initialization routine.
-//
+/*
+ * Common test initialization routine.
+ */
 using namespace tests;
 using namespace boost::unit_test;
 
-//FIXME: forced to use global variable and plain function wrapper
-// because of the way how init_test_main works in boost.test,
-// introducing a global fixture would be a proper way to handle
-// global test setup
+/*FIXME: forced to use global variable and plain function wrapper
+ * because of the way how init_test_main works in boost.test,
+ * introducing a global fixture would be a proper way to handle
+ * global test setup
+ */
 namespace {
 
 std::shared_ptr<nodes_data> setup;

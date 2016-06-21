@@ -81,16 +81,17 @@ static void set_backends_delay_for_group(session &sess, const nodes_data *setup,
 	}
 }
 
-// Writing of keys to all groups updates backend weights for every backend they
-// were written. Writes to slow backend leads to significant reduction of this
-// backend weigth comparing to faster ones.
-// read_data() uses backend weights to choose fastest group via dnet_mix_states().
-//
-// Following test checks this mechanics by reading of previously written keys and
-// checking read distribution among backends. Slow backend simulated by setting artificial delay.
-// Expected outcome should be that reads would be rarely sent to that slow backend.
-//
-// We define "rarely" as no more than 1% of total reads. This value was empirically found.
+/* Writing of keys to all groups updates backend weights for every backend they
+ * were written. Writes to slow backend leads to significant reduction of this
+ * backend weigth comparing to faster ones.
+ * read_data() uses backend weights to choose fastest group via dnet_mix_states().
+ *
+ * Following test checks this mechanics by reading of previously written keys and
+ * checking read distribution among backends. Slow backend simulated by setting artificial delay.
+ * Expected outcome should be that reads would be rarely sent to that slow backend.
+ *
+ * We define "rarely" as no more than 1% of total reads. This value was empirically found.
+ */
 static void test_backend_weights(session &sess, const nodes_data *setup)
 {
 	// set backends delay to simulate slow backends i/o behaviour for particular group
@@ -121,9 +122,12 @@ static void test_backend_weights(session &sess, const nodes_data *setup)
 
 	const int max_reads_from_slow_group = 10;
 	BOOST_REQUIRE_MESSAGE(num_slow_group_reads < max_reads_from_slow_group,
-			      "Too much reads from slow group (it means that backend weights are not working or backend hardware is extremely slow): "
-			      "num_slow_group_reads: " + std::to_string(static_cast<long long>(num_slow_group_reads)) +
-			      ", max_reads_from_slow_group: " + std::to_string(static_cast<long long>(max_reads_from_slow_group)));
+	                      "Too much reads from slow group (it means that backend weights are not working or "
+	                      "backend hardware is extremely slow): "
+	                      "num_slow_group_reads: " +
+	                          std::to_string(static_cast<long long>(num_slow_group_reads)) +
+	                          ", max_reads_from_slow_group: " +
+	                          std::to_string(static_cast<long long>(max_reads_from_slow_group)));
 
 	set_backends_delay_for_group(sess, setup, slow_group_id, 0);
 }
@@ -165,16 +169,17 @@ nodes_data::ptr configure_test_setup_from_args(int argc, char *argv[])
 
 }
 
-//
-// Common test initialization routine.
-//
+/*
+ * Common test initialization routine.
+ */
 using namespace tests;
 using namespace boost::unit_test;
 
-//FIXME: forced to use global variable and plain function wrapper
-// because of the way how init_test_main works in boost.test,
-// introducing a global fixture would be a proper way to handle
-// global test setup
+/*FIXME: forced to use global variable and plain function wrapper
+ * because of the way how init_test_main works in boost.test,
+ * introducing a global fixture would be a proper way to handle
+ * global test setup
+ */
 namespace {
 
 std::shared_ptr<nodes_data> setup;

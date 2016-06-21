@@ -19,9 +19,9 @@ namespace tests {
 
 using namespace ioremap::elliptics;
 
-//
-// Test asserts specific to elliptics
-//
+/*
+ * Test asserts specific to elliptics
+ */
 
 #define ELLIPTICS_CHECK_IMPL(R, C, CMD) \
 	auto R = (C); \
@@ -61,25 +61,25 @@ using namespace ioremap::elliptics;
 #define ELLIPTICS_REQUIRE_ERROR(R, C, E) ELLIPTICS_CHECK_ERROR_IMPL(R, (C), (E), BOOST_REQUIRE_MESSAGE)
 
 
-//
-// test_wrapper_with_session hold and report test names
-// and also acts as kind of client session fixture.
-//
-//XXX: consider dropping all this and make a use of Boost.Test auto macros
-// as well as a use of fixtures; or, even better, move to gtest,
-// then all this stuff with test names construction will be unnecessary
-//
+/*
+ * test_wrapper_with_session hold and report test names
+ * and also acts as kind of client session fixture.
+ *
+ * XXX: consider dropping all this and make a use of Boost.Test auto macros
+ * as well as a use of fixtures; or, even better, move to gtest,
+ * then all this stuff with test names construction will be unnecessary
+ */
 
 typedef std::tuple<dnet_node *, std::vector<int>, uint64_t, uint32_t> session_create_args;
 
-// Special kind of wrapper for tests which require client session.
-//
-//NOTE: newapi::session is used for all tests: both requiring newapi session and oldapi session.
-// It is perfectly safe to do so, because:
-// * newapi::session is derived from session
-// * and doesn't add any data members
-// * and no non-special session methods are virtual
-//
+/* Special kind of wrapper for tests which require client session.
+ *
+ * NOTE: newapi::session is used for all tests: both requiring newapi session and oldapi session.
+ * It is perfectly safe to do so, because:
+ * * newapi::session is derived from session
+ * * and doesn't add any data members
+ * * and no non-special session methods are virtual
+ */
 struct test_wrapper_with_session
 {
 	std::string test_name;
@@ -105,21 +105,22 @@ struct has_session<>
 	static const bool value = false;
 };
 
-// Special test maker for tests which require client session (both newapi and oldapi).
-//
-// Session object could not be used as immediate test parameter at test registration time
-// (this is due to lifetime issues with boost.test, in-process server nodes, logger and
-// session objects).
-// Instead `session_create_args` tuple must be used and real session will be created later,
-// at test execution time.
-// `session_create_args` tuple must come second to method argument.
-//
-// (Constraint that session object can't be passed as parameter is enforced at compile time)
-//
+/* Special test maker for tests which require client session (both newapi and oldapi).
+ *
+ * Session object could not be used as immediate test parameter at test registration time
+ * (this is due to lifetime issues with boost.test, in-process server nodes, logger and
+ * session objects).
+ * Instead `session_create_args` tuple must be used and real session will be created later,
+ * at test execution time.
+ * `session_create_args` tuple must come second to method argument.
+ *
+ * (Constraint that session object can't be passed as parameter is enforced at compile time)
+ */
 template <typename Method, typename... Args>
 std::function<void ()> make(const char *test_name, Method method, session_create_args session_args, Args... args)
 {
-	static_assert(has_session<Args...>::value == false, "`session` object cannot be used in test parameter list, use `use_session` instead");
+	static_assert(has_session<Args...>::value == false,
+	              "`session` object cannot be used in test parameter list, use `use_session` instead");
 
 	namespace ph = std::placeholders;
 
@@ -130,31 +131,39 @@ std::function<void ()> make(const char *test_name, Method method, session_create
 	};
 }
 
-// General test maker for tests which do not use client session.
-// (Constraint that session object can't be passed as parameter is enforced at compile time)
+/* General test maker for tests which do not use client session.
+ * (Constraint that session object can't be passed as parameter is enforced at compile time)
+ */
 template <typename Method, typename... Args>
 std::function<void ()> make(const char *, Method method, Args... args)
 {
-	static_assert(has_session<Args...>::value == false, "`session` object cannot be used in test parameter list, use `use_session` instead");
+	static_assert(has_session<Args...>::value == false,
+	              "`session` object cannot be used in test parameter list, use `use_session` instead");
 	return std::bind(method, std::forward<Args>(args)...);
 }
 
 // Simple session_create_args maker, very useful as an explicit marker
-static inline
-session_create_args use_session(dnet_node *n, std::initializer_list<int> groups = {}, uint64_t cflags = 0, uint32_t ioflags = 0)
-{
+static inline session_create_args use_session(dnet_node *n, std::initializer_list<int> groups = {}, uint64_t cflags = 0,
+                                              uint32_t ioflags = 0) {
 	return session_create_args{n, groups, cflags, ioflags};
 }
 
-//
-// Test registration macros.
-//
-#define ELLIPTICS_MAKE_TEST(...) \
-	boost::unit_test::make_test_case(tests::make(BOOST_STRINGIZE((__VA_ARGS__)), __VA_ARGS__), BOOST_TEST_STRINGIZE((__VA_ARGS__)))
+/*
+ * Test registration macros.
+ */
+#define ELLIPTICS_MAKE_TEST(...)                                                                                       \
+	boost::unit_test::make_test_case(tests::make(BOOST_STRINGIZE((__VA_ARGS__)), __VA_ARGS__),                     \
+	                                 BOOST_TEST_STRINGIZE((__VA_ARGS__)))
 
 #ifndef USE_CUSTOM_SUITE
-#  define ELLIPTICS_TEST_CASE(M, C...) do { boost::unit_test::framework::master_test_suite().add(ELLIPTICS_MAKE_TEST(M, ##C )); } while (false)
-#  define ELLIPTICS_TEST_CASE_NOARGS(M) do { boost::unit_test::framework::master_test_suite().add(ELLIPTICS_MAKE_TEST(M)); } while (false)
+#define ELLIPTICS_TEST_CASE(M, C...)                                                                                   \
+	do {                                                                                                           \
+		boost::unit_test::framework::master_test_suite().add(ELLIPTICS_MAKE_TEST(M, ##C));                     \
+	} while (false)
+#define ELLIPTICS_TEST_CASE_NOARGS(M)                                                                                  \
+	do {                                                                                                           \
+		boost::unit_test::framework::master_test_suite().add(ELLIPTICS_MAKE_TEST(M));                          \
+	} while (false)
 #else
 #  define ELLIPTICS_TEST_CASE(M, C...) do { suite->add(ELLIPTICS_MAKE_TEST(M, ##C )); } while (false)
 #  define ELLIPTICS_TEST_CASE_NOARGS(M) do { suite->add(ELLIPTICS_MAKE_TEST(M)); } while (false)
@@ -220,7 +229,8 @@ class server_node
 {
 public:
 	server_node();
-	server_node(const std::string &path, const server_config &config, const address &remote, int monitor_port, int locator_port, bool fork);
+	server_node(const std::string &path, const server_config &config, const address &remote, int monitor_port,
+	            int locator_port, bool fork);
 	server_node(server_node &&other);
 
 	server_node &operator =(server_node &&other);
@@ -311,14 +321,16 @@ struct start_nodes_config {
 	int client_check_timeout;
 	int client_stall_count;
 
-	start_nodes_config(std::ostream &debug_stream, const std::vector<server_config> &&configs, const std::string &path);
+	start_nodes_config(std::ostream &debug_stream, const std::vector<server_config> &&configs,
+	                   const std::string &path);
 };
 
 nodes_data::ptr start_nodes(start_nodes_config &config);
 
 #endif // NO_SERVER
 
-nodes_data::ptr start_nodes(std::ostream &debug_stream, const std::vector<std::string> &remotes, const std::string &path);
+nodes_data::ptr start_nodes(std::ostream &debug_stream, const std::vector<std::string> &remotes,
+                            const std::string &path);
 
 std::string read_file(const char *file_path);
 

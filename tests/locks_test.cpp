@@ -109,20 +109,25 @@ static void test_write_order_execution(session &sess)
 				const int prev_value = new_value - 1;
 				memset(&old_csum, 0, sizeof(old_csum));
 				sess.transform(std::to_string(static_cast<unsigned long long>(prev_value)), old_csum);
-				results[j] = std::move(sess.write_cas(keys[j].first, std::to_string(static_cast<unsigned long long>(new_value)), old_csum, 0));
+				results[j] = std::move(sess.write_cas(
+				    keys[j].first, std::to_string(static_cast<unsigned long long>(new_value)), old_csum,
+				    0));
 			} else {
 				// first write
-				results[j] = std::move(sess.write_data(keys[j].first, std::to_string(static_cast<unsigned long long>(new_value)), 0));
+				results[j] = std::move(sess.write_data(
+				    keys[j].first, std::to_string(static_cast<unsigned long long>(new_value)), 0));
 			}
 		}
 
 		for (size_t j = 0; j < keys.size(); ++j) {
 			results[j].wait();
 			const int err = results[j].error().code();
-			BOOST_REQUIRE_MESSAGE(err == 0,
-					      "write_cas() failed (err=" + std::to_string(static_cast<unsigned long long>(err)) + "): "
-					      "multiple consecutive writes are executed out-of-order "
-					      "or overlapped. Oplock mechanism of backend's request queue is broken.");
+			BOOST_REQUIRE_MESSAGE(
+			    err == 0, "write_cas() failed (err=" +
+			                  std::to_string(static_cast<unsigned long long>(err)) +
+			                  "): "
+			                  "multiple consecutive writes are executed out-of-order "
+			                  "or overlapped. Oplock mechanism of backend's request queue is broken.");
 		}
 	}
 }
@@ -134,7 +139,8 @@ static void test_write_order_execution(session &sess)
  * Following test checks this mechanics by calling write_data(key, data) multiple times with the same data,
  * then writing to cache by calling write_cache(key, cache_data) cache data, waiting cache_sync_timeout seconds
  * until cache is synced back to disk (backend), thereby taking oplock. Then called write_data(key, result_data).
- * If last write_data() operation timeouted, then dnet_opunlock() (after cache sync) is not properly realeased key's oplock.
+ * If last write_data() operation timeouted, then dnet_opunlock() (after cache sync) is not properly realeased key's
+ * oplock.
  */
 static void test_oplock(session &sess)
 {
@@ -200,16 +206,17 @@ nodes_data::ptr configure_test_setup_from_args(int argc, char *argv[])
 }
 
 
-//
-// Common test initialization routine.
-//
+/*
+ * Common test initialization routine.
+ */
 using namespace tests;
 using namespace boost::unit_test;
 
-//FIXME: forced to use global variable and plain function wrapper
-// because of the way how init_test_main works in boost.test,
-// introducing a global fixture would be a proper way to handle
-// global test setup
+/*FIXME: forced to use global variable and plain function wrapper
+ * because of the way how init_test_main works in boost.test,
+ * introducing a global fixture would be a proper way to handle
+ * global test setup
+ */
 namespace {
 
 std::shared_ptr<nodes_data> setup;

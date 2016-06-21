@@ -28,8 +28,7 @@
 #include <blackhole/v1/attribute.hpp>
 #include <blackhole/v1/logger.hpp>
 
-namespace cocaine {
-namespace storage {
+namespace cocaine { namespace storage {
 
 namespace ph = std::placeholders;
 
@@ -38,7 +37,7 @@ using namespace cocaine::logging;
 using namespace cocaine::storage;
 namespace ell = ioremap::elliptics;
 
-static auto convert(elliptics::log_level level) -> logging::priorities {
+static logging::priorities convert(ell::log_level level) {
 	switch (level) {
 	case DNET_LOG_DEBUG:
 		return logging::debug;
@@ -53,34 +52,16 @@ static auto convert(elliptics::log_level level) -> logging::priorities {
 	};
 }
 
-// static auto convert(logging::priorities priority) -> dnet_log_level {
-// 	switch (priority) {
-// 	case logging::debug:
-// 		return DNET_LOG_DEBUG;
-// 	case logging::info:
-// 		return DNET_LOG_INFO;
-// 	case logging::warning:
-// 		return DNET_LOG_WARNING;
-// 	case logging::error:
-// 	default:
-// 		return DNET_LOG_ERROR;
-// 	}
-// }
-
 class frontend_t : public blackhole::base_frontend_t {
-	std::shared_ptr<logging::logger_t> log;
-	elliptics::log_level severity;
-	blackhole::formatter::string_t formatter;
-
 public:
-	frontend_t(std::shared_ptr<logging::logger_t> log, elliptics::log_level severity) :
-		log(std::move(log)),
-		severity(severity),
-		formatter("%(message)s %(...::)s")
-	{}
+	frontend_t(std::shared_ptr<logging::logger_t> log, ell::log_level severity)
+	: log(std::move(log))
+	, severity(severity)
+	, formatter("%(message)s %(...::)s") {}
 
 	virtual void handle(const blackhole::log::record_t& record) {
-		const auto level = record.extract<dnet_log_level>(blackhole::keyword::severity<dnet_log_level>().name());
+		const auto level =
+		    record.extract<dnet_log_level>(blackhole::keyword::severity<dnet_log_level>().name());
 
 		if (level < severity) {
 			return;
@@ -90,11 +71,15 @@ public:
 
 		log->log(static_cast<int>(mapped), formatter.format(record));
 	}
+
+private:
+	std::shared_ptr<logging::logger_t> log;
+	ell::log_level severity;
+	blackhole::formatter::string_t formatter;
 };
 
-log_adapter_t::log_adapter_t(std::shared_ptr<logging::logger_t> log, elliptics::log_level level) :
-	elliptics::logger_base()
-{
+log_adapter_t::log_adapter_t(std::shared_ptr<logging::logger_t> log, ell::log_level level)
+: ell::logger_base() {
 	verbosity(DNET_LOG_DEBUG);
 	add_frontend(std::unique_ptr<frontend_t>(new frontend_t(log, level)));
 }
@@ -116,21 +101,22 @@ dnet_config parse_json_config(const dynamic_t::object_t& args) {
 
 }
 
-elliptics_storage_t::elliptics_storage_t(context_t &context, const std::string &name, const dynamic_t &args) :
-	category_type(context, name, args),
-	m_context(context),
-	m_log(context.log(name)), // TODO: It was with attributes: {{"storage", "elliptics"}}.
-	//XXX: dynamic_t from cocaine can't convert int to uint, and DNET_LOG_INFO being an enum value is int
-	m_log_adapter(m_log, static_cast<ioremap::elliptics::log_level>(args.as_object().at("verbosity", uint(DNET_LOG_INFO)).as_uint())),
-	m_read_latest(args.as_object().at("read_latest", false).as_bool()),
-	m_config(parse_json_config(args.as_object())),
-	m_node(elliptics::logger(m_log_adapter, blackhole::log::attributes_t{{"storage", {"elliptics"}}}), m_config),
-	m_session(m_node)
-{
+elliptics_storage_t::elliptics_storage_t(context_t &context, const std::string &name, const dynamic_t &args)
+: category_type(context, name, args)
+, m_context(context)
+, m_log(context.log(name)) // TODO: It was with attributes: {{"storage", "elliptics"}}.
+, // XXX: dynamic_t from cocaine can't convert int to uint, and DNET_LOG_INFO being an enum value is int
+  m_log_adapter(m_log, static_cast<ioremap::elliptics::log_level>(
+                           args.as_object().at("verbosity", uint(DNET_LOG_INFO)).as_uint()))
+, m_read_latest(args.as_object().at("read_latest", false).as_bool())
+, m_config(parse_json_config(args.as_object()))
+, m_node(ell::logger(m_log_adapter, blackhole::log::attributes_t{{"storage", {"elliptics"}}}), m_config)
+, m_session(m_node) {
 	dynamic_t::array_t nodes = args.as_object().at("nodes").as_array();
 
 	if (nodes.empty()) {
-		throw std::system_error(std::make_error_code(std::errc::invalid_argument), "no nodes has been specified");
+		throw std::system_error(std::make_error_code(std::errc::invalid_argument),
+		                        "no nodes has been specified");
 	}
 
 	std::vector<ioremap::elliptics::address> remotes;
@@ -204,10 +190,7 @@ void elliptics_storage_t::write(const std::string &collection,
 	auto result = async_write(collection, key, blob, tags);
 	result.wait();
 
-	COCAINE_LOG_DEBUG(
-		m_log,
-		"write finished"
-	);
+	COCAINE_LOG_DEBUG(m_log, "write finished");
 
 	if (result.error()) {
 		throw std::system_error(-result.error().code(), std::generic_category(), result.error().message());
@@ -240,12 +223,7 @@ ell::async_read_result elliptics_storage_t::async_read(const std::string &collec
 {
 	using namespace std::placeholders;
 
-	COCAINE_LOG_DEBUG(
-		m_log,
-		"reading the '{}' object, collection: '{}'",
-		key,
-		collection
-	);
+	COCAINE_LOG_DEBUG(m_log, "reading the '{}' object, collection: '{}'", key, collection);
 
 	ell::session session = m_session.clone();
 	session.set_namespace(collection.data(), collection.size());
@@ -258,12 +236,7 @@ ell::async_read_result elliptics_storage_t::async_read_latest(const std::string 
 {
 	using namespace std::placeholders;
 
-	COCAINE_LOG_DEBUG(
-		m_log,
-		"reading the '{}' object, collection: '{}'",
-		key,
-		collection
-	);
+	COCAINE_LOG_DEBUG(m_log, "reading the '{}' object, collection: '{}'", key, collection);
 
 	ell::session session = m_session.clone();
 	session.set_namespace(collection.data(), collection.size());
@@ -277,16 +250,9 @@ static void on_adding_index_finished(const elliptics_storage_t::log_ptr &log,
 	const ell::error_info &err)
 {
 	if (err) {
-		COCAINE_LOG_DEBUG(
-			log,
-			"index adding failed: {}",
-			err.message()
-		);
+		COCAINE_LOG_DEBUG(log, "index adding failed: {}", err.message());
 	} else {
-		COCAINE_LOG_DEBUG(
-			log,
-			"index adding completed"
-		);
+		COCAINE_LOG_DEBUG(log, "index adding completed");
 	}
 	handler.complete(err);
 }
@@ -302,18 +268,11 @@ static void on_write_finished(const elliptics_storage_t::log_ptr &log,
 	using namespace std::placeholders;
 
 	if (err) {
-		COCAINE_LOG_DEBUG(
-			log,
-			"write failed: {}",
-			err.message()
-		);
+		COCAINE_LOG_DEBUG(log, "write failed: {}", err.message());
 		handler.complete(err);
 		return;
 	}
-	COCAINE_LOG_DEBUG(
-		log,
-		"write partially completed"
-	);
+	COCAINE_LOG_DEBUG(log, "write partially completed");
 
 	for (auto it = result.begin(); it != result.end(); ++it) {
 		handler.process(*it);
@@ -330,12 +289,7 @@ ell::async_write_result elliptics_storage_t::async_write(const std::string &coll
 {
 	using namespace std::placeholders;
 
-	COCAINE_LOG_DEBUG(
-		m_log,
-		"writing the '{}' object, collection: '{}'",
-		key,
-		collection
-	);
+	COCAINE_LOG_DEBUG(m_log, "writing the '{}' object, collection: '{}'", key, collection);
 
 	ell::session session = m_session.clone();
 	session.set_namespace(collection.data(), collection.size());
@@ -359,11 +313,7 @@ ell::async_write_result elliptics_storage_t::async_write(const std::string &coll
 
 ell::async_find_indexes_result elliptics_storage_t::async_find(const std::string &collection, const std::vector<std::string> &tags)
 {
-	COCAINE_LOG_DEBUG(
-		m_log,
-		"listing collection: '{}'",
-		collection
-	);
+	COCAINE_LOG_DEBUG(m_log, "listing collection: '{}'", collection);
 	using namespace std::placeholders;
 
 	ell::session session = m_session.clone();
@@ -393,12 +343,7 @@ ell::async_remove_result elliptics_storage_t::async_remove(const std::string &co
 {
 	using namespace std::placeholders;
 
-	COCAINE_LOG_DEBUG(
-		m_log,
-		"removing the '{}' object, collection: '{}'",
-		key,
-		collection
-	);
+	COCAINE_LOG_DEBUG(m_log, "removing the '{}' object, collection: '{}'", key, collection);
 
 	ell::session session = m_session.clone();
 	session.set_namespace(collection.data(), collection.size());
@@ -419,12 +364,7 @@ ell::async_remove_result elliptics_storage_t::async_remove(const std::string &co
 
 ioremap::elliptics::async_read_result elliptics_storage_t::async_cache_read(const std::string &collection, const std::string &key)
 {
-	COCAINE_LOG_DEBUG(
-		m_log,
-		"cache reading the '{}' object, collection: '{}'",
-		key,
-		collection
-	);
+	COCAINE_LOG_DEBUG(m_log, "cache reading the '{}' object, collection: '{}'", key, collection);
 
 	ell::session session = m_session.clone();
 	session.set_namespace(collection.data(), collection.size());
@@ -437,12 +377,7 @@ ioremap::elliptics::async_read_result elliptics_storage_t::async_cache_read(cons
 ioremap::elliptics::async_write_result elliptics_storage_t::async_cache_write(const std::string &collection, const std::string &key,
 	const std::string &blob, int timeout)
 {
-	COCAINE_LOG_DEBUG(
-		m_log,
-		"cache writing the '{}' object, collection: '{}'",
-		key,
-		collection
-	);
+	COCAINE_LOG_DEBUG(m_log, "cache writing the '{}' object, collection: '{}'", key, collection);
 
 	ell::session session = m_session.clone();
 	session.set_namespace(collection.data(), collection.size());
@@ -456,11 +391,7 @@ ioremap::elliptics::async_write_result elliptics_storage_t::async_cache_write(co
 std::pair<ioremap::elliptics::async_read_result, elliptics_storage_t::key_name_map> elliptics_storage_t::async_bulk_read(
 	const std::string &collection, const std::vector<std::string> &keys)
 {
-	COCAINE_LOG_DEBUG(
-		m_log,
-		"bulk reading, collection: '{}'",
-		collection
-	);
+	COCAINE_LOG_DEBUG(m_log, "bulk reading, collection: '{}'", collection);
 
 	ell::session session = m_session.clone();
 	session.set_namespace(collection.data(), collection.size());
@@ -480,11 +411,7 @@ std::pair<ioremap::elliptics::async_read_result, elliptics_storage_t::key_name_m
 ioremap::elliptics::async_write_result elliptics_storage_t::async_bulk_write(const std::string &collection, const std::vector<std::string> &keys,
 	const std::vector<std::string> &blobs)
 {
-	COCAINE_LOG_DEBUG(
-		m_log,
-		"bulk writing, collection: '{}'",
-		collection
-	);
+	COCAINE_LOG_DEBUG(m_log, "bulk writing, collection: '{}'", collection);
 
 	ell::session session = m_session.clone();
 	session.set_namespace(collection.data(), collection.size());
@@ -526,5 +453,4 @@ std::vector<std::string> elliptics_storage_t::convert_list_result(const ioremap:
 	return promise_result;
 }
 
-}  // namespace storage
-}  // namespace cocaine
+}} /* namespace cocaine::storage */

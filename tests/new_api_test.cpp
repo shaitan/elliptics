@@ -58,7 +58,8 @@ void check_lookup_result(ioremap::elliptics::newapi::async_lookup_result &async,
 		auto record_info = result.record_info();
 
 		BOOST_REQUIRE_EQUAL(record_info.user_flags, record.user_flags);
-		BOOST_REQUIRE_EQUAL(record_info.record_flags, DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM);
+		BOOST_REQUIRE_EQUAL(record_info.record_flags,
+		                    DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM);
 
 		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.json_timestamp, &record.json_timestamp), 0);
 		constexpr uint64_t eblob_headers_size = sizeof(eblob_disk_control) + sizeof(dnet_ext_list_hdr);
@@ -232,7 +233,8 @@ void test_read_json(const ioremap::elliptics::newapi::session &session, const re
 			auto info = result.record_info();
 
 			BOOST_REQUIRE_EQUAL(info.user_flags, record.user_flags);
-			BOOST_REQUIRE_EQUAL(info.record_flags, DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM);
+			BOOST_REQUIRE_EQUAL(info.record_flags,
+			                    DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM);
 
 			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.json_timestamp, &record.json_timestamp), 0);
 			BOOST_REQUIRE_EQUAL(info.json_offset, 0);
@@ -259,7 +261,8 @@ void test_read_json(const ioremap::elliptics::newapi::session &session, const re
 	BOOST_REQUIRE_EQUAL(count, groups.size());
 }
 
-void test_read_data(const ioremap::elliptics::newapi::session &session, const record &record, uint64_t offset, uint64_t size) {
+void test_read_data(const ioremap::elliptics::newapi::session &session, const record &record, uint64_t offset,
+                    uint64_t size) {
 	auto s = session.clone();
 	s.set_trace_id(rand());
 
@@ -279,7 +282,8 @@ void test_read_data(const ioremap::elliptics::newapi::session &session, const re
 			auto record_info = result.record_info();
 
 			BOOST_REQUIRE_EQUAL(record_info.user_flags, record.user_flags);
-			BOOST_REQUIRE_EQUAL(record_info.record_flags, DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM);
+			BOOST_REQUIRE_EQUAL(record_info.record_flags,
+			                    DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM);
 
 			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.json_timestamp, &record.json_timestamp), 0);
 			BOOST_REQUIRE_EQUAL(record_info.json_offset, 0);
@@ -307,7 +311,8 @@ void test_read_data(const ioremap::elliptics::newapi::session &session, const re
 	BOOST_REQUIRE_EQUAL(count, groups.size());
 }
 
-void test_read(const ioremap::elliptics::newapi::session &session, const record &record, uint64_t offset, uint64_t size) {
+void test_read(const ioremap::elliptics::newapi::session &session, const record &record, uint64_t offset,
+               uint64_t size) {
 	auto s = session.clone();
 	s.set_trace_id(rand());
 
@@ -327,7 +332,8 @@ void test_read(const ioremap::elliptics::newapi::session &session, const record 
 			auto record_info = result.record_info();
 
 			BOOST_REQUIRE_EQUAL(record_info.user_flags, record.user_flags);
-			BOOST_REQUIRE_EQUAL(record_info.record_flags, DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM);
+			BOOST_REQUIRE_EQUAL(record_info.record_flags,
+			                    DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM);
 
 			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.json_timestamp, &record.json_timestamp), 0);
 			BOOST_REQUIRE_EQUAL(record_info.json_offset, 0);
@@ -378,7 +384,9 @@ void test_write_chunked(const ioremap::elliptics::newapi::session &session, cons
 		auto record_info = result.record_info();
 
 		BOOST_REQUIRE_EQUAL(record_info.user_flags, record.user_flags);
-		BOOST_REQUIRE_EQUAL(record_info.record_flags, DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM | DNET_RECORD_FLAGS_UNCOMMITTED);
+		BOOST_REQUIRE_EQUAL(record_info.record_flags, DNET_RECORD_FLAGS_EXTHDR |
+		                                              DNET_RECORD_FLAGS_CHUNKED_CSUM |
+		                                              DNET_RECORD_FLAGS_UNCOMMITTED);
 
 		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.json_timestamp, &record.json_timestamp), 0);
 		constexpr uint64_t eblob_headers_size = sizeof(eblob_disk_control) + sizeof(dnet_ext_list_hdr);
@@ -408,7 +416,9 @@ void test_write_chunked(const ioremap::elliptics::newapi::session &session, cons
 		auto record_info = result.record_info();
 
 		BOOST_REQUIRE_EQUAL(record_info.user_flags, record.user_flags);
-		BOOST_REQUIRE_EQUAL(record_info.record_flags, DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM | DNET_RECORD_FLAGS_UNCOMMITTED);
+		BOOST_REQUIRE_EQUAL(record_info.record_flags, DNET_RECORD_FLAGS_EXTHDR |
+		                                              DNET_RECORD_FLAGS_CHUNKED_CSUM |
+		                                              DNET_RECORD_FLAGS_UNCOMMITTED);
 
 		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.json_timestamp, &record.json_timestamp), 0);
 		constexpr uint64_t eblob_headers_size = sizeof(eblob_disk_control) + sizeof(dnet_ext_list_hdr);
@@ -438,7 +448,9 @@ void test_write_chunked(const ioremap::elliptics::newapi::session &session, cons
 		auto record_info = result.record_info();
 
 		BOOST_REQUIRE_EQUAL(record_info.user_flags, record.user_flags);
-		BOOST_REQUIRE_EQUAL(record_info.record_flags, DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM | DNET_RECORD_FLAGS_UNCOMMITTED);
+		BOOST_REQUIRE_EQUAL(record_info.record_flags, DNET_RECORD_FLAGS_EXTHDR |
+		                                              DNET_RECORD_FLAGS_CHUNKED_CSUM |
+		                                              DNET_RECORD_FLAGS_UNCOMMITTED);
 
 		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.json_timestamp, &record.json_timestamp), 0);
 		constexpr uint64_t eblob_headers_size = sizeof(eblob_disk_control) + sizeof(dnet_ext_list_hdr);
@@ -468,7 +480,8 @@ void test_write_chunked(const ioremap::elliptics::newapi::session &session, cons
 		auto record_info = result.record_info();
 
 		BOOST_REQUIRE_EQUAL(record_info.user_flags, record.user_flags);
-		BOOST_REQUIRE_EQUAL(record_info.record_flags, DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM);
+		BOOST_REQUIRE_EQUAL(record_info.record_flags,
+		                    DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM);
 
 		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.json_timestamp, &record.json_timestamp), 0);
 		constexpr uint64_t eblob_headers_size = sizeof(eblob_disk_control) + sizeof(dnet_ext_list_hdr);
@@ -1349,7 +1362,8 @@ void test_read(ioremap::elliptics::newapi::session &s) {
 			auto record_info = result.record_info();
 
 			BOOST_REQUIRE_EQUAL(record_info.user_flags, record.user_flags);
-			BOOST_REQUIRE_EQUAL(record_info.record_flags, DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM);
+			BOOST_REQUIRE_EQUAL(record_info.record_flags,
+			                    DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM);
 
 			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.json_timestamp, &record.json_timestamp), 0);
 			BOOST_REQUIRE_EQUAL(record_info.json_offset, 0);
@@ -1415,16 +1429,17 @@ tests::nodes_data::ptr configure_test_setup_from_args(int argc, char *argv[]) {
 }
 
 
-//
-// Common test initialization routine.
-//
+/*
+ * Common test initialization routine.
+ */
 using namespace tests;
 using namespace boost::unit_test;
 
-//FIXME: forced to use global variable and plain function wrapper
-// because of the way how init_test_main works in boost.test,
-// introducing a global fixture would be a proper way to handle
-// global test setup
+/*FIXME: forced to use global variable and plain function wrapper
+ * because of the way how init_test_main works in boost.test,
+ * introducing a global fixture would be a proper way to handle
+ * global test setup
+ */
 namespace {
 
 std::shared_ptr<nodes_data> setup;

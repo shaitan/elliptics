@@ -32,16 +32,17 @@ namespace ph = std::placeholders;
 
 using namespace ioremap;
 
-elliptics_service_t::elliptics_service_t(context_t &context, asio::io_service &reactor, const std::string &name, const dynamic_t &args) :
-	api::service_t(context, reactor, name, args),
-	dispatch<io::elliptics_tag>(name),
-	m_storage(api::storage(context, args.as_object().at("source", "core").as_string())),
-	m_elliptics(dynamic_cast<storage::elliptics_storage_t*>(m_storage.get()))
-{
+elliptics_service_t::elliptics_service_t(context_t &context, asio::io_service &reactor, const std::string &name,
+                                         const dynamic_t &args)
+: api::service_t(context, reactor, name, args)
+, dispatch<io::elliptics_tag>(name)
+, m_storage(api::storage(context, args.as_object().at("source", "core").as_string()))
+, m_elliptics(dynamic_cast<storage::elliptics_storage_t *>(m_storage.get())) {
 	debug() << m_elliptics << std::endl;
 
 	if (!m_elliptics) {
-		throw std::system_error(-1, std::generic_category(), "to be able to use elliptics service, storage must be also elliptics");
+		throw std::system_error(-1, std::generic_category(),
+		                        "to be able to use elliptics service, storage must be also elliptics");
 	}
 
 	on<io::storage::read  >(std::bind(&elliptics_service_t::read,   this, ph::_1, ph::_2));
@@ -54,8 +55,7 @@ elliptics_service_t::elliptics_service_t(context_t &context, asio::io_service &r
 	on<io::elliptics::read_latest>(std::bind(&elliptics_service_t::read_latest, this, ph::_1, ph::_2));
 }
 
-deferred<std::string>
-elliptics_service_t::read(const std::string &collection, const std::string &key) {
+deferred<std::string> elliptics_service_t::read(const std::string &collection, const std::string &key) {
 	debug() << "read, collection: " << collection << ", key: " << key << std::endl;
 	deferred<std::string> promise;
 
@@ -65,8 +65,7 @@ elliptics_service_t::read(const std::string &collection, const std::string &key)
 	return promise;
 }
 
-deferred<std::string>
-elliptics_service_t::read_latest(const std::string &collection, const std::string &key) {
+deferred<std::string> elliptics_service_t::read_latest(const std::string &collection, const std::string &key) {
 	debug() << "read_latest, collection: " << collection << ", key: " << key << std::endl;
 	deferred<std::string> promise;
 
@@ -76,8 +75,8 @@ elliptics_service_t::read_latest(const std::string &collection, const std::strin
 	return promise;
 }
 
-deferred<void>
-elliptics_service_t::write(const std::string &collection, const std::string &key, const std::string &blob, const std::vector<std::string> &tags) {
+deferred<void> elliptics_service_t::write(const std::string &collection, const std::string &key,
+                                          const std::string &blob, const std::vector<std::string> &tags) {
 	debug() << "write, collection: " << collection << ", key: " << key << std::endl;
 	deferred<void> promise;
 
@@ -87,8 +86,8 @@ elliptics_service_t::write(const std::string &collection, const std::string &key
 	return promise;
 }
 
-deferred<std::vector<std::string>>
-elliptics_service_t::find(const std::string &collection, const std::vector<std::string> &tags) {
+deferred<std::vector<std::string>> elliptics_service_t::find(const std::string &collection,
+                                                             const std::vector<std::string> &tags) {
 	debug() << "lits, collection: " << collection << std::endl;
 	deferred<std::vector<std::string> > promise;
 
@@ -98,8 +97,7 @@ elliptics_service_t::find(const std::string &collection, const std::vector<std::
 	return promise;
 }
 
-deferred<void>
-elliptics_service_t::remove(const std::string &collection, const std::string &key) {
+deferred<void> elliptics_service_t::remove(const std::string &collection, const std::string &key) {
 	debug() << "remove, collection: " << collection << ", key: " << key << std::endl;
 	deferred<void> promise;
 
@@ -109,8 +107,7 @@ elliptics_service_t::remove(const std::string &collection, const std::string &ke
 	return promise;
 }
 
-deferred<std::string>
-elliptics_service_t::cache_read(const std::string &collection, const std::string &key) {
+deferred<std::string> elliptics_service_t::cache_read(const std::string &collection, const std::string &key) {
 	deferred<std::string> promise;
 
 	m_elliptics->async_cache_read(collection, key).connect(std::bind(&on_read_completed,
@@ -119,9 +116,8 @@ elliptics_service_t::cache_read(const std::string &collection, const std::string
 	return promise;
 }
 
-deferred<void>
-elliptics_service_t::cache_write(const std::string &collection, const std::string &key, const std::string &blob, int timeout)
-{
+deferred<void> elliptics_service_t::cache_write(const std::string &collection, const std::string &key,
+                                                const std::string &blob, int timeout) {
 	deferred<void> promise;
 
 	m_elliptics->async_cache_write(collection, key, blob, timeout).connect(std::bind(&on_write_completed,
@@ -130,9 +126,8 @@ elliptics_service_t::cache_write(const std::string &collection, const std::strin
 	return promise;
 }
 
-deferred<std::map<std::string, std::string>>
-elliptics_service_t::bulk_read(const std::string &collection, const std::vector<std::string> &keys)
-{
+deferred<std::map<std::string, std::string>> elliptics_service_t::bulk_read(const std::string &collection,
+                                                                            const std::vector<std::string> &keys) {
 	deferred<std::map<std::string, std::string>> promise;
 
 	auto result = m_elliptics->async_bulk_read(collection, keys);
@@ -142,10 +137,9 @@ elliptics_service_t::bulk_read(const std::string &collection, const std::vector<
 	return promise;
 }
 
-deferred<std::map<std::string, int>>
-elliptics_service_t::bulk_write(const std::string &collection, const std::vector<std::string> &keys,
-	const std::vector<std::string> &blobs)
-{
+deferred<std::map<std::string, int>> elliptics_service_t::bulk_write(const std::string &collection,
+                                                                     const std::vector<std::string> &keys,
+                                                                     const std::vector<std::string> &blobs) {
 	(void) collection;
 	(void) keys;
 	(void) blobs;
@@ -157,11 +151,9 @@ elliptics_service_t::bulk_write(const std::string &collection, const std::vector
 	return promise;
 }
 
-void
-elliptics_service_t::on_read_completed(nice_deferred<std::string> promise,
-	const elliptics::sync_read_result &result,
-	const elliptics::error_info &error)
-{
+void elliptics_service_t::on_read_completed(nice_deferred<std::string> promise,
+                                            const elliptics::sync_read_result &result,
+                                            const elliptics::error_info &error) {
 	if (error) {
 		promise.abort(std::error_code(-error.code(), std::generic_category()), error.message());
 	} else {
@@ -169,11 +161,9 @@ elliptics_service_t::on_read_completed(nice_deferred<std::string> promise,
 	}
 }
 
-void
-elliptics_service_t::on_write_completed(nice_deferred<void> promise,
-	const elliptics::sync_write_result &/*result*/,
-	const elliptics::error_info &error)
-{
+void elliptics_service_t::on_write_completed(nice_deferred<void> promise,
+                                             const elliptics::sync_write_result & /*result*/,
+                                             const elliptics::error_info &error) {
 	if (error) {
 		promise.abort(std::error_code(-error.code(), std::generic_category()), error.message());
 	} else {
@@ -181,11 +171,9 @@ elliptics_service_t::on_write_completed(nice_deferred<void> promise,
 	}
 }
 
-void
-elliptics_service_t::on_find_completed(nice_deferred<std::vector<std::string> > promise,
-	const elliptics::sync_find_indexes_result &result,
-	const elliptics::error_info &error)
-{
+void elliptics_service_t::on_find_completed(nice_deferred<std::vector<std::string>> promise,
+                                            const elliptics::sync_find_indexes_result &result,
+                                            const elliptics::error_info &error) {
 	if (error) {
 		promise.abort(std::error_code(-error.code(), std::generic_category()), error.message());
 	} else {
@@ -193,11 +181,9 @@ elliptics_service_t::on_find_completed(nice_deferred<std::vector<std::string> > 
 	}
 }
 
-void
-elliptics_service_t::on_remove_completed(nice_deferred<void> promise,
-	const elliptics::sync_remove_result &/*result*/,
-	const elliptics::error_info &error)
-{
+void elliptics_service_t::on_remove_completed(nice_deferred<void> promise,
+                                              const elliptics::sync_remove_result & /*result*/,
+                                              const elliptics::error_info &error) {
 	if (error) {
 		promise.abort(std::error_code(-error.code(), std::generic_category()), error.message());
 	} else {
@@ -205,12 +191,9 @@ elliptics_service_t::on_remove_completed(nice_deferred<void> promise,
 	}
 }
 
-void
-elliptics_service_t::on_bulk_read_completed(nice_deferred<std::map<std::string, std::string>> promise,
-	const key_name_map &keys,
-	const elliptics::sync_read_result &result,
-	const elliptics::error_info &error)
-{
+void elliptics_service_t::on_bulk_read_completed(nice_deferred<std::map<std::string, std::string>> promise,
+                                                 const key_name_map &keys, const elliptics::sync_read_result &result,
+                                                 const elliptics::error_info &error) {
 	if (error) {
 		promise.abort(std::error_code(-error.code(), std::generic_category()), error.message());
 	} else {
@@ -233,12 +216,9 @@ elliptics_service_t::on_bulk_read_completed(nice_deferred<std::map<std::string, 
 	}
 }
 
-void
-elliptics_service_t::on_bulk_write_completed(nice_deferred<std::map<std::string, int>> promise,
-	const key_name_map &keys,
-	const elliptics::sync_write_result &result,
-	const elliptics::error_info &error)
-{
+void elliptics_service_t::on_bulk_write_completed(nice_deferred<std::map<std::string, int>> promise,
+                                                  const key_name_map &keys, const elliptics::sync_write_result &result,
+                                                  const elliptics::error_info &error) {
 	// Not implemented yet
 	(void) promise;
 	(void) keys;

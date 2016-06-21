@@ -95,7 +95,8 @@ static void test_cache_records_sizes(session &sess, const nodes_data *setup)
 
 	size_t records_number = cache_size / cache_pages_number / record_size - 5;
 	for (size_t id = 1; id < records_number; ++id) {
-		ELLIPTICS_REQUIRE(write_result, sess.write_cache(key(boost::lexical_cast<std::string>(id)), data, 3000));
+		ELLIPTICS_REQUIRE(write_result,
+		                  sess.write_cache(key(boost::lexical_cast<std::string>(id)), data, 3000));
 		auto stats = cache->get_total_cache_stats();
 
 		size_t total_pages_sizes = 0;
@@ -128,7 +129,8 @@ static void test_cache_overflow(session &sess, const nodes_data *setup)
 
 	size_t records_number = (cache_size / cache_pages_number / record_size) * 10;
 	for (size_t id = 1; id < records_number; ++id) {
-		ELLIPTICS_REQUIRE(write_result, sess.write_cache(key(boost::lexical_cast<std::string>(id)), data, 3000));
+		ELLIPTICS_REQUIRE(write_result,
+		                  sess.write_cache(key(boost::lexical_cast<std::string>(id)), data, 3000));
 		auto stats = cache->get_total_cache_stats();
 
 		size_t total_pages_sizes = 0;
@@ -143,7 +145,8 @@ static void test_cache_overflow(session &sess, const nodes_data *setup)
  * This test assures that cache uses lru eviction scheme.
  * It means that the last accessed element should be removed first on eviction.
  * For this test we define auxiliary class \a lru_list_emulator_t that emulates work of simple lru list.
- * Then we perform operations in parallel on real cache and lru_list_emulator and check that cache evict correct elements.
+ * Then we perform operations in parallel on real cache and lru_list_emulator and
+ * check that cache evict correct elements.
  * We cannot guarantee that cache will erase some element at some moment, because erases can be deferred.
  * That's why we check the fact that cache doesn't erase element that shouldn't be erased.
  *
@@ -193,8 +196,8 @@ private:
 	std::list<int> lru_list;
 };
 
-void cache_write_check_lru(session &sess, int id, const argument_data& data, long timeout,
-							   lru_list_emulator_t& lru_list_emulator, ioremap::cache::cache_manager *cache) {
+void cache_write_check_lru(session &sess, int id, const argument_data &data, long timeout,
+                           lru_list_emulator_t &lru_list_emulator, ioremap::cache::cache_manager *cache) {
 
 	key idKey = key(boost::lexical_cast<std::string>(id));
 
@@ -209,7 +212,8 @@ void cache_write_check_lru(session &sess, int id, const argument_data& data, lon
 	}
 }
 
-void cache_read_check_lru(session &sess, int id, lru_list_emulator_t& lru_list_emulator, ioremap::cache::cache_manager *cache) {
+void cache_read_check_lru(session &sess, int id, lru_list_emulator_t &lru_list_emulator,
+                          ioremap::cache::cache_manager *cache) {
 
 	key idKey = key(boost::lexical_cast<std::string>(id));
 	std::unique_ptr<async_read_result> read_result;
@@ -237,7 +241,8 @@ static void test_cache_lru_eviction(session &sess, const nodes_data *setup)
 	const size_t cache_size = cache->cache_size();
 	const size_t cache_pages_number = cache->cache_pages_number();
 
-	BOOST_REQUIRE_MESSAGE(cache_pages_number == 1, "Can't run cache_lru_eviction test with more then one cache page");
+	BOOST_REQUIRE_MESSAGE(cache_pages_number == 1,
+	                      "Can't run cache_lru_eviction test with more then one cache page");
 
 	lru_list_emulator_t lru_list_emulator;
 	argument_data data("0");
@@ -293,11 +298,14 @@ bool register_tests(const nodes_data *setup)
 {
 	auto n = setup->node->get_native();
 
-	ELLIPTICS_TEST_CASE(test_cache_timestamp, use_session(n, { 5 }, 0, DNET_IO_FLAGS_CACHE));
-	ELLIPTICS_TEST_CASE(test_cache_records_sizes, use_session(n, { 5 }, 0, DNET_IO_FLAGS_CACHE | DNET_IO_FLAGS_CACHE_ONLY), setup);
-	ELLIPTICS_TEST_CASE(test_cache_overflow, use_session(n, { 5 }, 0, DNET_IO_FLAGS_CACHE | DNET_IO_FLAGS_CACHE_ONLY), setup);
-	ELLIPTICS_TEST_CASE(test_cache_overflow, use_session(n, { 5 }, 0, DNET_IO_FLAGS_CACHE), setup);
-	ELLIPTICS_TEST_CASE(test_cache_lru_eviction, use_session(n, { 5 }, 0, DNET_IO_FLAGS_CACHE | DNET_IO_FLAGS_CACHE_ONLY), setup);
+	ELLIPTICS_TEST_CASE(test_cache_timestamp, use_session(n, {5}, 0, DNET_IO_FLAGS_CACHE));
+	ELLIPTICS_TEST_CASE(test_cache_records_sizes,
+	                    use_session(n, {5}, 0, DNET_IO_FLAGS_CACHE | DNET_IO_FLAGS_CACHE_ONLY), setup);
+	ELLIPTICS_TEST_CASE(test_cache_overflow, use_session(n, {5}, 0, DNET_IO_FLAGS_CACHE | DNET_IO_FLAGS_CACHE_ONLY),
+	                    setup);
+	ELLIPTICS_TEST_CASE(test_cache_overflow, use_session(n, {5}, 0, DNET_IO_FLAGS_CACHE), setup);
+	ELLIPTICS_TEST_CASE(test_cache_lru_eviction,
+	                    use_session(n, {5}, 0, DNET_IO_FLAGS_CACHE | DNET_IO_FLAGS_CACHE_ONLY), setup);
 
 	return true;
 }
@@ -329,16 +337,17 @@ nodes_data::ptr configure_test_setup_from_args(int argc, char *argv[])
 
 }
 
-//
-// Common test initialization routine.
-//
+/*
+ * Common test initialization routine.
+ */
 using namespace tests;
 using namespace boost::unit_test;
 
-//FIXME: forced to use global variable and plain function wrapper
-// because of the way how init_test_main works in boost.test,
-// introducing a global fixture would be a proper way to handle
-// global test setup
+/*FIXME: forced to use global variable and plain function wrapper
+ * because of the way how init_test_main works in boost.test,
+ * introducing a global fixture would be a proper way to handle
+ * global test setup
+ */
 namespace {
 
 std::shared_ptr<nodes_data> setup;
