@@ -936,8 +936,6 @@ err_out_exit:
 
 void dnet_session_destroy(struct dnet_session *s)
 {
-	dnet_log(s->node, DNET_LOG_DEBUG, "Destroying session.");
-
 	free(s->groups);
 	free(s->ns);
 	free(s);
