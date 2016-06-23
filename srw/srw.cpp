@@ -303,7 +303,7 @@ public:
 	}
 
 	virtual auto error(cocaine::hpack::header_storage_t, const std::error_code& code, const std::string& reason) -> void {
-		SRW_LOG(*logger_, DNET_LOG_ERROR, app_, "%s: stream: got error from app, %s: (%d) %s", signature_, reason, code.value(), code.message());
+		SRW_LOG(*logger_, DNET_LOG_ERROR, app_, "%s: stream: got error from app: %s: %s", signature_, code.message(), reason);
 		if (auto client = client_.lock()) {
 			//TODO: translate cocaine errors into elliptics error code space (errno),
 			// for some errors, e.g. for "unknown/unhandled event" error
@@ -386,7 +386,7 @@ public:
 	}
 
 	virtual auto error(cocaine::hpack::header_storage_t, const std::error_code& code, const std::string& reason) -> void {
-		SRW_LOG(*logger_, DNET_LOG_ERROR, app_, "%s: stream: got error from app in no-reply-expected mode, %s: (%d) %s", signature_, reason, code.value(), code.message());
+		SRW_LOG(*logger_, DNET_LOG_ERROR, app_, "%s: stream: got error from app in no-reply-expected mode: %s: %s", signature_, code.message(), reason);
 		if (client_) {
 			client_->finish(code.value());
 
