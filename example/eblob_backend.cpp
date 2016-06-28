@@ -19,6 +19,7 @@
 
 #define __STDC_FORMAT_MACROS
 #include <inttypes.h>
+#include <condition_variable>
 
 #include "example/eblob_backend.h"
 
@@ -747,14 +748,122 @@ struct iterated_key_info {
 };
 
 typedef std::function<int (const iterated_key_info &info)> iterator_callback;
+typedef std::function<int (std::shared_ptr<iterated_key_info> info)> iterator_server_send_callback;
 
-static iterator_callback make_iterator_server_send_callback(eblob_backend_config *c, dnet_net_state *st,
-                                                            dnet_cmd *cmd,
-                                                            ioremap::elliptics::dnet_server_send_request &request,
-                                                            uint64_t iterator_id,
-                                                            uint64_t &counter) {
+/*
+ * congestion_control_monitor is used for limiting amount of data being sent to a remote backend.
+ */
+class congestion_control_monitor
+{
+public:
+	/*!
+	 * Constructor: initializes internal state properly.
+	 \a start_batch_size - maximum amount of data being sent as a first batch
+	 \a batch_timeout_msec - batch timeout in milliseconds
+	 */
+	congestion_control_monitor(uint64_t start_batch_size, int batch_timeout_msec)
+	: m_start_batch_size(start_batch_size), m_batch_size(m_start_batch_size),
+	 m_bytes_pending(0), m_bytes_processed(0),
+	 m_batch_timeout_msec(batch_timeout_msec),
+	 m_need_start_time(true) {
+	}
+
+	/*!
+	 * Waits until batch had any space available, then increments
+	 * number of pending bytes in the batch.
+	 */
+	void add_bytes(uint64_t bytes) {
+		std::unique_lock<std::mutex> lock{m_mutex};
+
+		while (is_batch_full()) {
+			m_cond.wait(lock);
+		}
+		m_bytes_pending += bytes;
+
+		if (m_need_start_time) {
+			gettimeofday(&m_batch_start_time, nullptr);
+			m_need_start_time = false;
+		}
+	}
+
+	/*!
+	 * Decrements number of pending bytes in the batch and measures
+	 * elapsed time of processing of the batch for either increasing or decreasing size of
+	 * the batch.
+	 */
+	void remove_bytes(uint64_t bytes) {
+		std::unique_lock<std::mutex> lock{m_mutex};
+
+		m_bytes_processed += bytes;
+
+		if (m_bytes_processed >= m_batch_size) {
+			m_bytes_processed -= m_batch_size;
+
+			struct timeval tv;
+			gettimeofday(&tv, nullptr);
+			const int64_t elapsed = static_cast<int64_t>((tv.tv_sec - m_batch_start_time.tv_sec) * 1000 +
+								     (tv.tv_usec - m_batch_start_time.tv_usec ) / 1000);
+			if (elapsed < m_batch_timeout_msec) {
+				m_batch_size *= 2;
+			} else {
+				m_batch_size = std::min(m_batch_size / 2, m_start_batch_size);
+			}
+
+			m_need_start_time = true;
+		}
+
+		m_bytes_pending -= bytes;
+
+		if (!is_batch_full()) {
+			m_cond.notify_one();
+		}
+	}
+
+	/*!
+	 * Waits until all bytes are processed
+	 */
+	void wait_completion() {
+		std::unique_lock<std::mutex> lock{m_mutex};
+		while (m_bytes_pending > 0) {
+			m_cond.wait(lock);
+		}
+	}
+
+private:
+	bool is_batch_full() const {
+		return m_bytes_pending >= m_batch_size;
+	}
+
+public:
+	/*
+	 * This constants can be used in constructor of this class.
+	 */
+	static const uint64_t DEFAULT_START_BATCH_SIZE = 1024 * 1024;
+	static const int DEFAULT_BATCH_TIMEOUT = 2000;
+
+private:
+	const uint64_t m_start_batch_size;
+	uint64_t m_batch_size;
+
+	uint64_t m_bytes_pending;
+	uint64_t m_bytes_processed;
+
+	const int m_batch_timeout_msec;
+	struct timeval m_batch_start_time;
+	bool m_need_start_time;
+
+	std::mutex m_mutex;
+	std::condition_variable m_cond;
+};
+
+static iterator_server_send_callback make_iterator_server_send_callback(eblob_backend_config *c, dnet_net_state *st,
+                                                                        dnet_cmd *cmd,
+                                                                        ioremap::elliptics::dnet_server_send_request &request,
+                                                                        uint64_t iterator_id,
+                                                                        congestion_control_monitor &monitor,
+                                                                        std::shared_ptr<std::atomic<uint64_t>> counter) {
 	using namespace ioremap::elliptics;
-	return [=, &request] (const iterated_key_info &info) -> int {
+	return [=, &request, &monitor] (std::shared_ptr<iterated_key_info> info) -> int {
 		if (st->__need_exit) {
 			dnet_backend_log(c->blog, DNET_LOG_ERROR,
 			                 "EBLOB: Interrupting server_send: peer has been disconnected");
@@ -762,25 +871,25 @@ static iterator_callback make_iterator_server_send_callback(eblob_backend_config
 		}
 
 		data_pointer json;
-		if (info.jhdr.size) {
-			json = data_pointer::allocate(info.jhdr.size);
-			const int err = dnet_read_ll(info.fd, json.data<char>(), json.size(), info.json_offset);
+		if (info->jhdr.size) {
+			json = data_pointer::allocate(info->jhdr.size);
+			const int err = dnet_read_ll(info->fd, json.data<char>(), json.size(), info->json_offset);
 			if (err) {
 				dnet_backend_log(c->blog, DNET_LOG_ERROR,
 				                 "EBLOB: server_send: %s: failed to read json: %s",
-				                 dnet_dump_id_str(info.key.id), dnet_print_error(err));
+				                 dnet_dump_id_str(info->key.id), dnet_print_error(err));
 				return 0;
 			}
 		}
 
 		data_pointer data;
-		if (info.data_size) {
-			data = data_pointer::allocate(info.data_size);
-			const int err = dnet_read_ll(info.fd, data.data<char>(), data.size(), info.data_offset);
+		if (info->data_size) {
+			data = data_pointer::allocate(info->data_size);
+			const int err = dnet_read_ll(info->fd, data.data<char>(), data.size(), info->data_offset);
 			if (err) {
 				dnet_backend_log(c->blog, DNET_LOG_ERROR,
 				                 "EBLOB: server_send: %s: failed to read data: %s",
-				                 dnet_dump_id_str(info.key.id), dnet_print_error(err));
+				                 dnet_dump_id_str(info->key.id), dnet_print_error(err));
 				return 0;
 			}
 		}
@@ -788,54 +897,57 @@ static iterator_callback make_iterator_server_send_callback(eblob_backend_config
 		auto session = std::make_shared<newapi::session>(st->n);
 		session->set_exceptions_policy(session::no_exceptions);
 		session->set_trace_id(cmd->trace_id);
-		session->set_trace_id(!!(cmd->flags & DNET_FLAGS_TRACE_BIT));
+		session->set_trace_bit(!!(cmd->flags & DNET_FLAGS_TRACE_BIT));
 		session->set_groups(request.groups);
-		session->set_user_flags(info.ehdr.flags);
+		session->set_user_flags(info->ehdr.flags);
 		session->set_ioflags(DNET_IO_FLAGS_CAS_TIMESTAMP);
-		// if (dnet_time_cmp(&info.ehdr.timestamp, &info.jhdr.timestamp) < 0) {
-		// 	session->set_timestamp(info.jhdr.timestamp);
+		// if (dnet_time_cmp(&info->ehdr.timestamp, &info->jhdr.timestamp) < 0) {
+		// 	session->set_timestamp(info->jhdr.timestamp);
 		// } else {
-			session->set_timestamp(info.ehdr.timestamp);
+			session->set_timestamp(info->ehdr.timestamp);
 		// }
 		if (session->get_timeout() < 60) {
 			session->set_timeout(60);
 		}
 
-		auto async = session->write(info.key,
-		                            json, info.jhdr.capacity,
-		                            data, info.data_size);
+		monitor.add_bytes(info->jhdr.size + info->data_size);
 
-		async.connect([&] (const newapi::sync_write_result &/*results*/, const error_info &error) {
+		auto async = session->write(info->key,
+		                            json, info->jhdr.capacity,
+		                            data, info->data_size);
+
+		async.connect([=, &request, &monitor] (const newapi::sync_write_result &/*results*/, const error_info &error) {
 			if (st->__need_exit) {
 				dnet_backend_log(c->blog, DNET_LOG_ERROR,
 				                 "EBLOB: Interrupting server_send: peer has been disconnected");
 			}
 
+			monitor.remove_bytes(info->jhdr.size + info->data_size);
+
 			auto response = serialize(ioremap::elliptics::dnet_iterator_response{
 				iterator_id, // iterator_id
-				info.key, // key
+				info->key, // key
 				error.code(), // status
 
-				counter, // iterated_keys
+				++(*counter), // iterated_keys
 				request.keys.size(), // total_keys
 
-				info.record_flags, // record_flags
-				info.ehdr.flags, // user_flags
+				info->record_flags, // record_flags
+				info->ehdr.flags, // user_flags
 
-				info.jhdr.timestamp, // json_timestamp
-				info.jhdr.size, // json_size
-				info.jhdr.capacity, // json_capacity
+				info->jhdr.timestamp, // json_timestamp
+				info->jhdr.size, // json_size
+				info->jhdr.capacity, // json_capacity
 				0, // read_json_size
 
-				info.ehdr.timestamp, // data timestamp
-				info.data_size, // data_size
+				info->ehdr.timestamp, // data timestamp
+				info->data_size, // data_size
 				0, // read_data_size
 			});
 
 			dnet_send_reply(st, cmd, response.data(), response.size(), 1);
 		});
 
-		async.wait();
 		return 0;
 	};
 }
@@ -1152,7 +1264,7 @@ int blob_send_new(struct eblob_backend_config *c, void *state, struct dnet_cmd *
 
 	int err = 0;
 
-	size_t counter = 0;
+	auto counter = std::make_shared<std::atomic<uint64_t>>(0);
 	ioremap::elliptics::dnet_iterator_response response{
 		uint64_t(cmd->backend_id), // iterator_id
 		dnet_raw_id{{0}}, // key
@@ -1176,13 +1288,17 @@ int blob_send_new(struct eblob_backend_config *c, void *state, struct dnet_cmd *
 
 	auto send_fail_reply = [&] (int status) {
 		response.status = status;
+		response.iterated_keys = ++(*counter);
 
 		auto response_data = serialize(response);
 		return dnet_send_reply(state, cmd, response_data.data(), response_data.size(), 1);
 	};
 
+	congestion_control_monitor monitor{congestion_control_monitor::DEFAULT_START_BATCH_SIZE,
+	                                   congestion_control_monitor::DEFAULT_BATCH_TIMEOUT};
+
 	auto callback = make_iterator_server_send_callback(c, static_cast<dnet_net_state*>(state),
-	                                                   cmd, request, cmd->backend_id, counter);
+	                                                   cmd, request, cmd->backend_id, monitor, counter);
 
 	eblob_key ekey;
 	eblob_write_control wc;
@@ -1190,7 +1306,6 @@ int blob_send_new(struct eblob_backend_config *c, void *state, struct dnet_cmd *
 
 	for (const auto &key: request.keys) {
 		response.key = key;
-		response.iterated_keys = ++counter;
 
 		memcpy(ekey.id, key.id, EBLOB_ID_SIZE);
 
@@ -1209,13 +1324,13 @@ int blob_send_new(struct eblob_backend_config *c, void *state, struct dnet_cmd *
 			continue;
 		}
 
-		iterated_key_info info{key, wc.flags, wc.data_fd};
+	        auto info = std::make_shared<iterated_key_info>(key, wc.flags, wc.data_fd);
 
 		size = wc.total_data_size;
 		offset = wc.data_offset;
 
 		if (wc.flags & BLOB_DISK_CTL_EXTHDR) {
-			err = dnet_ext_hdr_read(&info.ehdr, info.fd, offset);
+			err = dnet_ext_hdr_read(&info->ehdr, info->fd, offset);
 			if (err) {
 				if ((err = send_fail_reply(err))) {
 					break;
@@ -1223,10 +1338,10 @@ int blob_send_new(struct eblob_backend_config *c, void *state, struct dnet_cmd *
 				continue;
 			}
 
-			offset += sizeof(info.ehdr);
+			offset += sizeof(info->ehdr);
 
-			if (size >= sizeof(info.ehdr)) {
-				size -= sizeof(info.ehdr);
+			if (size >= sizeof(info->ehdr)) {
+				size -= sizeof(info->ehdr);
 			} else if (size) {
 				if ((err = send_fail_reply(-EINVAL))) {
 					break;
@@ -1234,8 +1349,8 @@ int blob_send_new(struct eblob_backend_config *c, void *state, struct dnet_cmd *
 				continue;
 			}
 
-			if (info.ehdr.size) {
-				err = dnet_read_json_header(info.fd, offset, info.ehdr.size, &info.jhdr);
+			if (info->ehdr.size) {
+				err = dnet_read_json_header(info->fd, offset, info->ehdr.size, &info->jhdr);
 				if (err) {
 					if ((err = send_fail_reply(err))) {
 						break;
@@ -1244,10 +1359,10 @@ int blob_send_new(struct eblob_backend_config *c, void *state, struct dnet_cmd *
 				}
 			}
 
-			offset += info.ehdr.size;
+			offset += info->ehdr.size;
 
-			if (size >= info.ehdr.size) {
-				size -= info.ehdr.size;
+			if (size >= info->ehdr.size) {
+				size -= info->ehdr.size;
 			} else if (size) {
 				if ((err = send_fail_reply(-EINVAL))) {
 					break;
@@ -1256,8 +1371,8 @@ int blob_send_new(struct eblob_backend_config *c, void *state, struct dnet_cmd *
 			}
 		}
 
-		if (size >= info.jhdr.capacity) {
-			info.data_size = size - info.jhdr.capacity;
+		if (size >= info->jhdr.capacity) {
+			info->data_size = size - info->jhdr.capacity;
 		} else if (size) {
 			if ((err = send_fail_reply(-EINVAL))) {
 				break;
@@ -1265,11 +1380,11 @@ int blob_send_new(struct eblob_backend_config *c, void *state, struct dnet_cmd *
 			continue;
 		}
 
-		info.json_offset = offset;
-		info.data_offset = offset + info.jhdr.capacity;
+		info->json_offset = offset;
+		info->data_offset = offset + info->jhdr.capacity;
 
 		wc.offset = 0;
-		wc.size = sizeof(info.ehdr) + info.ehdr.size + info.jhdr.capacity + info.data_size;
+		wc.size = sizeof(info->ehdr) + info->ehdr.size + info->jhdr.capacity + info->data_size;
 		err = eblob_verify_checksum(c->eblob, &ekey, &wc);
 		if (err) {
 			if ((err = send_fail_reply(err))) {
@@ -1282,6 +1397,8 @@ int blob_send_new(struct eblob_backend_config *c, void *state, struct dnet_cmd *
 			break;
 		}
 	}
+
+	monitor.wait_completion();
 
 	dnet_backend_log(c->blog, err ? DNET_LOG_ERROR : DNET_LOG_INFO,
 	                 "EBLOB: %s finished: %s",
