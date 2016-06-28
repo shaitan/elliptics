@@ -271,13 +271,7 @@ endif()
 #
 list(APPEND TESTS_DEPS dnet_run_servers)
 
-#
-# Target `test` execute all available tests (both implemented in C++ and in python)
-#
-add_test_target(test ${TESTS_LIST} DEPENDS ${TESTS_DEPS} core_python)
-
-add_custom_command(TARGET test
-    POST_BUILD
+add_custom_target(test_python
     COMMAND mkdir -p ${CMAKE_CURRENT_BINARY_DIR}/pytests/elliptics
     COMMAND mkdir -p ${CMAKE_CURRENT_BINARY_DIR}/pytests/elliptics_recovery
     COMMAND cp ${CMAKE_CURRENT_BINARY_DIR}/../bindings/python/core.so* pytests/elliptics/
@@ -285,6 +279,7 @@ add_custom_command(TARGET test
     COMMAND cp ${CMAKE_CURRENT_BINARY_DIR}/../*/libelliptics*.so* pytests/
     COMMAND cp ${CMAKE_SOURCE_DIR}/bindings/python/src/* pytests/elliptics/
     COMMAND cp -r ${CMAKE_SOURCE_DIR}/recovery/elliptics_recovery/* pytests/elliptics_recovery/
+    DEPENDS ${TESTS_DEPS} core_python
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
 
@@ -293,7 +288,7 @@ if(NOT WITH_COCAINE)
     list(APPEND PYTESTS_FLAGS "--without-cocaine")
 endif()
 
-add_custom_command(TARGET test
+add_custom_command(TARGET test_python
     POST_BUILD
     COMMAND virtualenv -p "${PYTHON_EXECUTABLE}" . &&
         . bin/activate &&
@@ -305,6 +300,13 @@ add_custom_command(TARGET test
         env ${TEST_ENV} py.test ${PYTESTS_FLAGS} ${CMAKE_CURRENT_SOURCE_DIR}/pytests
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/pytests
 )
+
+list(APPEND TESTS_LIST test_python)
+
+#
+# Target `test` execute all available tests (both implemented in C++ and in python)
+#
+add_test_target(test ${TESTS_LIST} DEPENDS ${TESTS_DEPS} core_python)
 
 add_executable(dnet_run_servers run_servers.cpp)
 target_link_libraries(dnet_run_servers ${TEST_LIBRARIES} ${TEST_SRW_LIBRARIES})
