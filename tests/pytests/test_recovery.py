@@ -18,6 +18,7 @@
 import os
 import sys
 import errno
+import time
 sys.path.insert(0, "")  # for running from cmake
 import pytest
 from conftest import make_session
@@ -828,6 +829,25 @@ class TestMerge:
         assert id2int(first_range[1]) - id2int(first_range[0]) > len(self.scope.test_data)
         return first_range[0]
 
+    @staticmethod
+    def cleanup_backends(backends_to_enable):
+        """Cleanup backends.
+
+        * disable all enabled backends
+        * remove their blobs
+        * enable backends from @backends_to_enable.
+        """
+        disable_backends(scope.session, scope.session.routes.addresses_with_backends())
+        remove_all_blobs(scope.session)
+        enable_backends(scope.session, backends_to_enable)
+
+        # wait for route-list updates
+        counter = 0
+        while set(backends_to_enable) != set(scope.session.routes.addresses_with_backends()):
+            assert counter <= 5  # 5 seconds should be enough to receive and handle all route-list updates
+            time.sleep(0.5)
+            counter += 0.5
+
     def test_setup(self, server, simple_node):
         '''
         Initial test cases that prepare test cluster before running recovery. It includes:
@@ -856,11 +876,7 @@ class TestMerge:
             self.test_sessions.append(self.scope.session.clone())
             self.test_sessions[-1].set_direct_id(self.scope.address, backend)
 
-        disable_backends(self.scope.session, self.scope.session.routes.addresses_with_backends())
-        remove_all_blobs(self.scope.session)
-
-        enable_backends(self.scope.session, [(self.scope.address, b) for b in self.scope.backends])
-
+        self.cleanup_backends(tuple((self.scope.address, b) for b in self.scope.backends))
         self.prepare_test_data()
 
     def test_recovery(self, server, simple_node):
@@ -904,15 +920,7 @@ class TestMerge:
                 assert result.data == self.data
 
     def test_teardown(self, server, simple_node):
-        '''
-        Cleanup test that makes follow:
-        1. disables all backends
-        2. removes all blobs
-        3. enables all backends on all nodes
-        '''
-        disable_backends(scope.session, scope.session.routes.addresses_with_backends())
-        remove_all_blobs(scope.session)
-        enable_backends(scope.session, scope.routes.addresses_with_backends())
+        self.cleanup_backends(scope.routes.addresses_with_backends())
 
 
 @pytest.mark.incremental
@@ -976,6 +984,25 @@ class TestDC:
         tmp_session.timestamp = ts
         return (method(tmp_session, **args), ts, group)
 
+    @staticmethod
+    def cleanup_backends():
+        """Cleanup backends.
+
+        * disable all backends
+        * remove all blobs
+        * enable all backends on all nodes
+        """
+        disable_backends(scope.session, scope.session.routes.addresses_with_backends())
+        remove_all_blobs(scope.session)
+        enable_backends(scope.session, scope.routes.addresses_with_backends())
+
+        # wait for route-list updates
+        counter = 0
+        while scope.routes.addresses_with_backends() != scope.session.routes.addresses_with_backends():
+            assert counter <= 5  # 5 seconds should be enough to receive and handle all route-list updates
+            time.sleep(0.5)
+            counter += 0.5
+
     def prepare_test_data(self):
         '''
         Make prepared actions from test_data list and checks that all actions was succeeded.
@@ -1013,11 +1040,7 @@ class TestDC:
         self.scope.test_data = make_test_data(timestamps=[self.old_ts, self.cur_ts, self.new_ts],
                                               dest_count=len(self.scope.groups))
 
-        disable_backends(self.scope.session, self.scope.session.routes.addresses_with_backends())
-        remove_all_blobs(self.scope.session)
-
-        enable_backends(self.scope.session, self.scope.routes.addresses_with_backends())
-
+        self.cleanup_backends()
         self.prepare_test_data()
 
     def test_recovery(self, server, simple_node):
@@ -1073,15 +1096,7 @@ class TestDC:
                     assert result.data == self.data
 
     def test_teardown(self, server, simple_node):
-        '''
-        Cleanup test that makes follow:
-        1. disables all backends
-        2. removes all blobs
-        3. enables all backends on all nodes
-        '''
-        disable_backends(scope.session, scope.session.routes.addresses_with_backends())
-        remove_all_blobs(scope.session)
-        enable_backends(scope.session, scope.routes.addresses_with_backends())
+        self.cleanup_backends()
 
 
 @pytest.mark.incremental
@@ -1138,16 +1153,25 @@ class TestRecoveryUserFlags:
             write_data(scope, session, [self.test_key3], [self.test_data])
             check_data(scope, session, [self.test_key3], [self.test_data], timestamp)
 
-    def cleanup_backends(self):
-        '''
-        Cleanup test that makes follow:
-        1. disables all backends
-        2. removes all blobs
-        3. enables all backends on all nodes
-        '''
+    @staticmethod
+    def cleanup_backends():
+        """Cleanup backends.
+
+        * disable all backends
+        * remove all blobs
+        * enable all backends on all nodes
+        """
         disable_backends(scope.session, scope.session.routes.addresses_with_backends())
         remove_all_blobs(scope.session)
         enable_backends(scope.session, scope.routes.addresses_with_backends())
+
+        # wait for route-list updates
+        counter = 0
+        while scope.routes.addresses_with_backends() != scope.session.routes.addresses_with_backends():
+            assert counter <= 5  # 5 seconds should be enough to receive and handle all route-list updates
+            time.sleep(0.5)
+            counter += 0.5
+
 
     def test_setup(self, server, simple_node):
         '''
@@ -1171,8 +1195,8 @@ class TestRecoveryUserFlags:
         '''
         Runs recovery with filtration of keys by specifying user_flags_set and checks that:
         1. test_key shouldn't be recovered
-        2. test_key2 replicas shouldn't countain user_flags that are not in user_flags_set
-        3. test_key3 replicas shouldn't countain user_flags that are in user_flags_set
+        2. test_key2 replicas shouldn't contain user_flags that are not in user_flags_set
+        3. test_key3 replicas shouldn't contain user_flags that are in user_flags_set
         '''
         recovery(one_node=False,
                  remotes=scope.routes.addresses(),
