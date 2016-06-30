@@ -144,9 +144,6 @@ int slru_cache_t::write(const unsigned char *id, dnet_net_state *st, dnet_cmd *c
 
 			sync_after_append(guard, false, &*it);
 
-			local_session sess(m_backend, m_node);
-			sess.set_ioflags(DNET_IO_FLAGS_NOCACHE | DNET_IO_FLAGS_APPEND);
-
 			int err = m_backend->cb->command_handler(st, m_backend->cb->command_private, cmd, io);
 
 			it = populate_from_disk(guard, id, false, &err);
@@ -169,7 +166,7 @@ int slru_cache_t::write(const unsigned char *id, dnet_net_state *st, dnet_cmd *c
 				return err;
 		}
 
-		// Create empty data for code simplifyng
+		// Create empty data for code simplifying
 		if (!it) {
 			it = create_data(id, 0, 0, remove_from_disk);
 			new_page = true;
