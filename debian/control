@@ -76,6 +76,16 @@ Description: Distributed hash table storage (debug files)
 Package: elliptics-dev
 Architecture: any
 Depends: elliptics-client (= ${Source-Version})
+Suggests: eblob (>= 0.23.11),
+          libkora-util1 (= 1.1.0-rc1),
+          libcocaine-core3 (>= 0.12.8.11),
+          libcocaine-plugin-node3 (>= 0.12.8.21),
+          libcocaine-framework-native1 (>= 0.12.8-6),
 Description: Distributed hash table storage (includes)
  Elliptics network is a fault tolerant distributed hash table object storage.
-
+ .
+ This package also provides dnet_run_servers -- tool for running ensemble of
+ one or more server nodes configured as necessary.
+ Very useful for testing clients and apps.
+ .
+ Suggests field lists packages required to be able to run dnet_run_servers.
