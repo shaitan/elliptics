@@ -60,14 +60,16 @@ slru_cache_t::slru_cache_t(struct dnet_backend_io *backend, struct dnet_node *n,
 
 slru_cache_t::~slru_cache_t() {
 	TIMER_SCOPE("dtor");
-	dnet_log(m_node, DNET_LOG_NOTICE, "cache: disable: backend: %zu: destructing SLRU cache\n", m_backend->backend_id);
+	dnet_log(m_node, DNET_LOG_NOTICE, "cache: disable: backend: %zu: destructing SLRU cache\n",
+	         m_backend->backend_id);
 	m_lifecheck.join();
 	dnet_log(m_node, DNET_LOG_NOTICE, "cache: disable: backend: %zu: clearing\n", m_backend->backend_id);
 	clear();
 	dnet_log(m_node, DNET_LOG_NOTICE, "cache: disable: backend: %zu: destructed\n", m_backend->backend_id);
 }
 
-int slru_cache_t::write(const unsigned char *id, dnet_net_state *st, dnet_cmd *cmd, dnet_io_attr *io, const char *data) {
+int slru_cache_t::write(const unsigned char *id, dnet_net_state *st, dnet_cmd *cmd, dnet_io_attr *io, const char *data)
+{
 	TIMER_SCOPE("write");
 
 	const size_t lifetime = io->start;
@@ -185,7 +187,8 @@ int slru_cache_t::write(const unsigned char *id, dnet_net_state *st, dnet_cmd *c
 			dnet_transform_node(m_node, raw->data(), raw->size(), csum.id, sizeof(csum.id));
 
 			if (memcmp(csum.id, io->parent, DNET_ID_SIZE)) {
-				dnet_log(m_node, DNET_LOG_ERROR, "%s: cas: cache checksum mismatch", dnet_dump_id(&cmd->id));
+				dnet_log(m_node, DNET_LOG_ERROR, "%s: cas: cache checksum mismatch",
+				         dnet_dump_id(&cmd->id));
 				return -EBADFD;
 			}
 		}
@@ -201,11 +204,11 @@ int slru_cache_t::write(const unsigned char *id, dnet_net_state *st, dnet_cmd *c
 			// do not allow it
 			if (dnet_time_cmp(&cache_ts, &io->timestamp) > 0) {
 				dnet_log(m_node, DNET_LOG_ERROR, "%s: cas: cache timestamp is larger "
-						"than data to be written timestamp: "
-						"cache-ts: %lld.%lld, data-ts: %lld.%lld",
-						dnet_dump_id(&cmd->id),
-						(unsigned long long)cache_ts.tsec, (unsigned long long)cache_ts.tnsec,
-						(unsigned long long)io->timestamp.tsec, (unsigned long long)io->timestamp.tnsec);
+				                                 "than data to be written timestamp: "
+				                                 "cache-ts: %lld.%lld, data-ts: %lld.%lld",
+				         dnet_dump_id(&cmd->id), (unsigned long long)cache_ts.tsec,
+				         (unsigned long long)cache_ts.tnsec, (unsigned long long)io->timestamp.tsec,
+				         (unsigned long long)io->timestamp.tnsec);
 				return -EBADFD;
 			}
 		}
@@ -495,9 +498,11 @@ void slru_cache_t::insert_data_into_page(const unsigned char *id, size_t page_nu
 
 	// Recalc used space, free enough space for new data, move object to the end of the queue
 	if (m_cache_pages_sizes[page_number] + size > m_cache_pages_max_sizes[page_number]) {
-		dnet_log(m_node, DNET_LOG_DEBUG, "%s: CACHE: resize called: %lld ms", dnet_dump_id_str(id), timer.restart());
+		dnet_log(m_node, DNET_LOG_DEBUG, "%s: CACHE: resize called: %lld ms", dnet_dump_id_str(id),
+		         timer.restart());
 		resize_page(id, page_number, size);
-		dnet_log(m_node, DNET_LOG_DEBUG, "%s: CACHE: resize finished: %lld ms", dnet_dump_id_str(id), timer.restart());
+		dnet_log(m_node, DNET_LOG_DEBUG, "%s: CACHE: resize finished: %lld ms", dnet_dump_id_str(id),
+		         timer.restart());
 	}
 
 	data->set_cache_page_number(page_number);
@@ -514,7 +519,10 @@ void slru_cache_t::remove_data_from_page(const unsigned char *id, size_t page_nu
 	}
 }
 
-void slru_cache_t::move_data_between_pages(const unsigned char *id, size_t source_page_number, size_t destination_page_number, data_t *data) {
+void slru_cache_t::move_data_between_pages(const unsigned char *id,
+                                           size_t source_page_number,
+                                           size_t destination_page_number,
+                                           data_t *data) {
 	TIMER_SCOPE("move_record");
 
 	if (source_page_number != destination_page_number) {
@@ -538,7 +546,10 @@ data_t* slru_cache_t::create_data(const unsigned char *id, const char *data, siz
 	return raw;
 }
 
-data_t* slru_cache_t::populate_from_disk(elliptics_unique_lock<std::mutex> &guard, const unsigned char *id, bool remove_from_disk, int *err) {
+data_t *slru_cache_t::populate_from_disk(elliptics_unique_lock<std::mutex> &guard,
+                                         const unsigned char *id,
+                                         bool remove_from_disk,
+                                         int *err) {
 	TIMER_SCOPE("populate_from_disk");
 
 	if (guard.owns_lock()) {
@@ -653,7 +664,11 @@ void slru_cache_t::erase_element(data_t *obj) {
 	delete obj;
 }
 
-void slru_cache_t::sync_element(const dnet_id &raw, bool after_append, const std::string &data, uint64_t user_flags, const dnet_time &timestamp) {
+void slru_cache_t::sync_element(const dnet_id &raw,
+                                bool after_append,
+                                const std::string &data,
+                                uint64_t user_flags,
+                                const dnet_time &timestamp) {
 	HANDY_TIMER_SCOPE("slru_cache.sync_element");
 
 	local_session sess(m_backend, m_node);
@@ -661,9 +676,11 @@ void slru_cache_t::sync_element(const dnet_id &raw, bool after_append, const std
 
 	int err = sess.write(raw, data.data(), data.size(), user_flags, timestamp);
 	if (err) {
-		dnet_log(m_node, DNET_LOG_ERROR, "%s: CACHE: forced to sync to disk, err: %d", dnet_dump_id_str(raw.id), err);
+		dnet_log(m_node, DNET_LOG_ERROR, "%s: CACHE: forced to sync to disk, err: %d", dnet_dump_id_str(raw.id),
+		         err);
 	} else {
-		dnet_log(m_node, DNET_LOG_DEBUG, "%s: CACHE: forced to sync to disk, err: %d", dnet_dump_id_str(raw.id), err);
+		dnet_log(m_node, DNET_LOG_DEBUG, "%s: CACHE: forced to sync to disk, err: %d", dnet_dump_id_str(raw.id),
+		         err);
 	}
 }
 
@@ -767,7 +784,8 @@ void slru_cache_t::life_check(void) {
 
 			{
 				TIMER_SCOPE("life_check.sync_iterate");
-				HANDY_GAUGE_SET("slru_cache.life_check.sync_iterate.element_count", elements_for_sync.size());
+				HANDY_GAUGE_SET("slru_cache.life_check.sync_iterate.element_count",
+				                elements_for_sync.size());
 				for (auto it = elements_for_sync.begin(); it != elements_for_sync.end(); ++it) {
 					if (m_clear_occured)
 						break;
@@ -781,7 +799,8 @@ void slru_cache_t::life_check(void) {
 
 					// sync_element uses local_session which always uses DNET_FLAGS_NOLOCK
 					if (elem->is_syncing()) {
-						sync_element(id, elem->only_append(), elem->data()->data(), elem->user_flags(), elem->timestamp());
+						sync_element(id, elem->only_append(), elem->data()->data(),
+						             elem->user_flags(), elem->timestamp());
 						elem->set_sync_state(data_t::sync_state_t::ERASE_PHASE);
 					}
 
@@ -791,7 +810,8 @@ void slru_cache_t::life_check(void) {
 
 			{
 				TIMER_SCOPE("life_check.remove_local");
-				for (std::deque<struct dnet_id>::iterator it = remove.begin(); it != remove.end(); ++it) {
+				for (std::deque<struct dnet_id>::iterator it = remove.begin(); it != remove.end();
+				     ++it) {
 					dnet_remove_local(m_backend, m_node, &(*it));
 				}
 			}
@@ -803,7 +823,8 @@ void slru_cache_t::life_check(void) {
 
 				if (!m_clear_occured) {
 					TIMER_SCOPE("life_check.erase_iterate");
-					for (std::deque<data_t*>::iterator it = elements_for_sync.begin(); it != elements_for_sync.end(); ++it) {
+					for (std::deque<data_t *>::iterator it = elements_for_sync.begin();
+					     it != elements_for_sync.end(); ++it) {
 						data_t *elem = *it;
 						elem->set_sync_state(data_t::sync_state_t::NOT_SYNCING);
 						if (elem->synctime() <= last_time) {

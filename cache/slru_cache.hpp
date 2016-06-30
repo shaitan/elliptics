@@ -23,7 +23,10 @@ namespace ioremap { namespace cache {
 
 class slru_cache_t {
 public:
-	slru_cache_t(struct dnet_backend_io *backend, struct dnet_node *n, const std::vector<size_t> &cache_pages_max_sizes, unsigned sync_timeout);
+	slru_cache_t(struct dnet_backend_io *backend,
+	             struct dnet_node *n,
+	             const std::vector<size_t> &cache_pages_max_sizes,
+	             unsigned sync_timeout);
 
 	~slru_cache_t();
 
@@ -78,13 +81,16 @@ private:
 	void remove_data_from_page(const unsigned char *id, size_t page_number, data_t *data);
 
 	void move_data_between_pages(const unsigned char *id,
-								 size_t source_page_number,
-								 size_t destination_page_number,
-								 data_t *data);
+	                             size_t source_page_number,
+	                             size_t destination_page_number,
+	                             data_t *data);
 
 	data_t* create_data(const unsigned char *id, const char *data, size_t size, bool remove_from_disk);
 
-	data_t* populate_from_disk(elliptics_unique_lock<std::mutex> &guard, const unsigned char *id, bool remove_from_disk, int *err);
+	data_t *populate_from_disk(elliptics_unique_lock<std::mutex> &guard,
+	                           const unsigned char *id,
+	                           bool remove_from_disk,
+	                           int *err);
 
 	bool have_enough_space(const unsigned char *id, size_t page_number, size_t reserve);
 
@@ -92,7 +98,11 @@ private:
 
 	void erase_element(data_t *obj);
 
-	void sync_element(const dnet_id &raw, bool after_append, const std::string &data, uint64_t user_flags, const dnet_time &timestamp);
+	void sync_element(const dnet_id &raw,
+	                  bool after_append,
+	                  const std::string &data,
+	                  uint64_t user_flags,
+	                  const dnet_time &timestamp);
 
 	void sync_element(data_t *obj);
 
@@ -101,7 +111,7 @@ private:
 	void life_check(void);
 };
 
-}}
+}} /* namespace ioremap::cache */
 
 
 #endif // SLRU_CACHE_HPP

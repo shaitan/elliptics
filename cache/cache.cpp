@@ -45,7 +45,8 @@ std::unique_ptr<cache_config> cache_config::parse(const kora::config_t &cache)
 	config.size = size.to<size_t>();
 	config.count = cache.at<size_t>("shards", DNET_DEFAULT_CACHES_NUMBER);
 	config.sync_timeout = cache.at<unsigned>("sync_timeout", DNET_DEFAULT_CACHE_SYNC_TIMEOUT_SEC);
-	config.pages_proportions = cache.at("pages_proportions", std::vector<size_t>(DNET_DEFAULT_CACHE_PAGES_NUMBER, 1));
+	config.pages_proportions =
+	    cache.at("pages_proportions", std::vector<size_t>(DNET_DEFAULT_CACHE_PAGES_NUMBER, 1));
 	return blackhole::utils::make_unique<cache_config>(config);
 }
 
@@ -73,7 +74,11 @@ cache_manager::cache_manager(dnet_backend_io *backend, dnet_node *n, const cache
 cache_manager::~cache_manager() {
 }
 
-int cache_manager::write(const unsigned char *id, dnet_net_state *st, dnet_cmd *cmd, dnet_io_attr *io, const char *data) {
+int cache_manager::write(const unsigned char *id,
+                         dnet_net_state *st,
+                         dnet_cmd *cmd,
+                         dnet_io_attr *io,
+                         const char *data) {
 	return m_caches[idx(id)]->write(id, st, cmd, io, data);
 }
 
@@ -148,15 +153,18 @@ std::vector<cache_stats> cache_manager::get_caches_stats() const {
 	return caches_stats;
 }
 
-rapidjson::Value &cache_manager::get_total_caches_size_stats_json(rapidjson::Value &stat_value, rapidjson::Document::AllocatorType &allocator) const {
+rapidjson::Value &cache_manager::get_total_caches_size_stats_json(rapidjson::Value &stat_value,
+                                                                  rapidjson::Document::AllocatorType &allocator) const {
 	cache_stats stats = get_total_cache_stats();
 	return stats.to_json(stat_value, allocator);
 }
 
-rapidjson::Value &cache_manager::get_caches_size_stats_json(rapidjson::Value &stat_value, rapidjson::Document::AllocatorType &allocator) const {
+rapidjson::Value &cache_manager::get_caches_size_stats_json(rapidjson::Value &stat_value,
+                                                            rapidjson::Document::AllocatorType &allocator) const {
 	for (size_t i = 0; i < m_caches.size(); ++i) {
 		rapidjson::Value cache_time_stats(rapidjson::kObjectType);
-		stat_value.AddMember(std::to_string(static_cast<unsigned long long>(i)).c_str(), allocator, m_caches[i]->get_cache_stats().to_json(cache_time_stats, allocator), allocator);
+		stat_value.AddMember(std::to_string(static_cast<unsigned long long>(i)).c_str(), allocator,
+		                     m_caches[i]->get_cache_stats().to_json(cache_time_stats, allocator), allocator);
 	}
 	return stat_value;
 }
@@ -194,7 +202,11 @@ size_t cache_manager::idx(const unsigned char *id) {
 
 using namespace ioremap::cache;
 
-int dnet_cmd_cache_io(struct dnet_backend_io *backend, struct dnet_net_state *st, struct dnet_cmd *cmd, struct dnet_io_attr *io, char *data)
+int dnet_cmd_cache_io(struct dnet_backend_io *backend,
+                      struct dnet_net_state *st,
+                      struct dnet_cmd *cmd,
+                      struct dnet_io_attr *io,
+                      char *data)
 {
 	struct dnet_node *n = st->n;
 	int err = -ENOTSUP;
