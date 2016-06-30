@@ -219,6 +219,7 @@ class Monitor(object):
         if self.port:
             self.l_thread.join()
         self.u_thread.join()
+        self.manager.shutdown()
 
     def print_stat(self):
         '''
