@@ -42,25 +42,6 @@
 
 namespace ioremap { namespace cache {
 
-class raw_data_t {
-public:
-	raw_data_t(const char *data, size_t size) {
-		m_data.reserve(size);
-		m_data.insert(m_data.begin(), data, data + size);
-	}
-
-	std::vector<char> &data(void) {
-		return m_data;
-	}
-
-	size_t size(void) {
-		return m_data.size();
-	}
-
-private:
-	std::vector<char> m_data;
-};
-
 struct data_lru_tag_t;
 typedef boost::intrusive::list_base_hook<boost::intrusive::tag<data_lru_tag_t>,
 boost::intrusive::link_mode<boost::intrusive::safe_link>, boost::intrusive::optimize_size<true>
@@ -101,7 +82,7 @@ public:
 		if (lifetime)
 			m_lifetime = lifetime + time(NULL);
 
-		m_data.reset(new raw_data_t(data, size));
+		m_data = std::make_shared<std::string>(data, size);
 	}
 
 	data_t(const data_t &other) = delete;
@@ -117,7 +98,7 @@ public:
 		return m_id;
 	}
 
-	std::shared_ptr<raw_data_t> data(void) const {
+	std::shared_ptr<std::string> data(void) const {
 		return m_data;
 	}
 
@@ -239,7 +220,7 @@ public:
 	}
 
 	size_t capacity(void) const {
-		return m_data->data().capacity();
+		return m_data ? m_data->capacity() : 0;
 	}
 
 	friend bool operator< (const data_t &a, const data_t &b) {
@@ -294,7 +275,7 @@ private:
 	sync_state_t m_sync_state;
 	char m_cache_page_number;
 	struct dnet_raw_id m_id;
-	std::shared_ptr<raw_data_t> m_data;
+	std::shared_ptr<std::string> m_data;
 };
 
 struct record_info {
@@ -314,7 +295,7 @@ struct record_info {
 	bool is_synced;
 	bool only_append;
 	dnet_id id;
-	std::vector<char> data;
+	std::string data;
 	uint64_t user_flags;
 	dnet_time timestamp;
 };
@@ -380,7 +361,7 @@ class cache_manager {
 
 		int write(const unsigned char *id, dnet_net_state *st, dnet_cmd *cmd, dnet_io_attr *io, const char *data);
 
-		std::shared_ptr<raw_data_t> read(const unsigned char *id, dnet_cmd *cmd, dnet_io_attr *io);
+		std::shared_ptr<std::string> read(const unsigned char *id, dnet_cmd *cmd, dnet_io_attr *io);
 
 		int remove(const unsigned char *id, dnet_io_attr *io);
 

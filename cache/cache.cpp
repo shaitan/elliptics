@@ -77,7 +77,7 @@ int cache_manager::write(const unsigned char *id, dnet_net_state *st, dnet_cmd *
 	return m_caches[idx(id)]->write(id, st, cmd, io, data);
 }
 
-std::shared_ptr<raw_data_t> cache_manager::read(const unsigned char *id, dnet_cmd *cmd, dnet_io_attr *io) {
+std::shared_ptr<std::string> cache_manager::read(const unsigned char *id, dnet_cmd *cmd, dnet_io_attr *io) {
 	return m_caches[idx(id)]->read(id, cmd, io);
 }
 
@@ -207,7 +207,7 @@ int dnet_cmd_cache_io(struct dnet_backend_io *backend, struct dnet_net_state *st
 	}
 
 	cache_manager *cache = (cache_manager *)backend->cache;
-	std::shared_ptr<raw_data_t> d;
+	std::shared_ptr<std::string> d;
 
 	FORMATTED(HANDY_TIMER_SCOPE, ("cache.%s", dnet_cmd_string(cmd->cmd)));
 
@@ -257,7 +257,7 @@ int dnet_cmd_cache_io(struct dnet_backend_io *backend, struct dnet_net_state *st
 				io->total_size = d->size();
 
 				cmd->flags &= ~DNET_FLAGS_NEED_ACK;
-				err = dnet_send_read_data(st, cmd, io, (char *)d->data().data() + io->offset, -1, io->offset, 0);
+				err = dnet_send_read_data(st, cmd, io, &d->at(io->offset), -1, io->offset, 0);
 				break;
 			case DNET_CMD_DEL:
 				err = cache->remove(cmd->id.id, io);

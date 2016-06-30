@@ -29,7 +29,7 @@ public:
 
 	int write(const unsigned char *id, dnet_net_state *st, dnet_cmd *cmd, dnet_io_attr *io, const char *data);
 
-	std::shared_ptr<raw_data_t> read(const unsigned char *id, dnet_cmd *cmd, dnet_io_attr *io);
+	std::shared_ptr<std::string> read(const unsigned char *id, dnet_cmd *cmd, dnet_io_attr *io);
 
 	int remove(const unsigned char *id, dnet_io_attr *io);
 
@@ -92,7 +92,7 @@ private:
 
 	void erase_element(data_t *obj);
 
-	void sync_element(const dnet_id &raw, bool after_append, const std::vector<char> &data, uint64_t user_flags, const dnet_time &timestamp);
+	void sync_element(const dnet_id &raw, bool after_append, const std::string &data, uint64_t user_flags, const dnet_time &timestamp);
 
 	void sync_element(data_t *obj);
 

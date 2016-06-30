@@ -109,7 +109,7 @@ int slru_cache_t::write(const unsigned char *id, dnet_net_state *st, dnet_cmd *c
 				}
 			}
 
-			auto &raw = it->data()->data();
+			auto raw = it->data();
 			size_t page_number = it->cache_page_number();
 			size_t new_page_number = page_number;
 			size_t new_size = it->size() + io->size;
@@ -126,7 +126,7 @@ int slru_cache_t::write(const unsigned char *id, dnet_net_state *st, dnet_cmd *c
 				m_cache_stats.size_of_objects_marked_for_deletion -= it->size();
 			}
 			m_cache_stats.size_of_objects -= it->size();
-			raw.insert(raw.end(), data, data + io->size);
+			raw->append(data, io->size);
 			m_cache_stats.size_of_objects += it->size();
 			if (it->remove_from_cache()) {
 				m_cache_stats.size_of_objects_marked_for_deletion += it->size();
@@ -176,16 +176,16 @@ int slru_cache_t::write(const unsigned char *id, dnet_net_state *st, dnet_cmd *c
 		}
 	}
 
-	raw_data_t &raw = *it->data();
+	auto raw = it->data();
 
 	if (io->flags & DNET_IO_FLAGS_COMPARE_AND_SWAP) {
 		TIMER_SCOPE("write.cas");
 
 		// Data is already in memory, so it's free to use it
 		// raw.size() is zero only if there is no such file on the server
-		if (raw.size() != 0) {
+		if (raw->size() != 0) {
 			struct dnet_raw_id csum;
-			dnet_transform_node(m_node, raw.data().data(), raw.size(), csum.id, sizeof(csum.id));
+			dnet_transform_node(m_node, raw->data(), raw->size(), csum.id, sizeof(csum.id));
 
 			if (memcmp(csum.id, io->parent, DNET_ID_SIZE)) {
 				dnet_log(m_node, DNET_LOG_ERROR, "%s: cas: cache checksum mismatch", dnet_dump_id(&cmd->id));
@@ -197,7 +197,7 @@ int slru_cache_t::write(const unsigned char *id, dnet_net_state *st, dnet_cmd *c
 	if (io->flags & DNET_IO_FLAGS_CAS_TIMESTAMP) {
 		TIMER_SCOPE("write.cas_timestamp");
 
-		if (raw.size() != 0) {
+		if (raw->size() != 0) {
 			struct dnet_time cache_ts = it->timestamp();
 
 			// cache timestamp is greater than timestamp of the data to be written
@@ -219,7 +219,7 @@ int slru_cache_t::write(const unsigned char *id, dnet_net_state *st, dnet_cmd *c
 	size_t new_data_size = 0;
 
 	if (append) {
-		new_data_size = raw.size() + size;
+		new_data_size = raw->size() + size;
 	} else {
 		new_data_size = io->offset + io->size;
 	}
@@ -243,10 +243,10 @@ int slru_cache_t::write(const unsigned char *id, dnet_net_state *st, dnet_cmd *c
 
 	TIMER_START("write.modify");
 	if (append) {
-		raw.data().insert(raw.data().end(), data, data + size);
+		raw->append(data, data + size);
 	} else {
-		raw.data().resize(new_data_size);
-		memcpy(raw.data().data() + io->offset, data, size);
+		raw->resize(new_data_size);
+		raw->replace(io->offset, std::string::npos, data, size);
 	}
 	TIMER_STOP("write.modify");
 	m_cache_stats.size_of_objects += it->size();
@@ -275,10 +275,10 @@ int slru_cache_t::write(const unsigned char *id, dnet_net_state *st, dnet_cmd *c
 	it->set_user_flags(io->user_flags);
 
 	cmd->flags &= ~DNET_FLAGS_NEED_ACK;
-	return dnet_send_file_info_ts_without_fd(st, cmd, raw.data().data() + io->offset, io->size, &io->timestamp);
+	return dnet_send_file_info_ts_without_fd(st, cmd, &raw->at(io->offset), io->size, &io->timestamp);
 }
 
-std::shared_ptr<raw_data_t> slru_cache_t::read(const unsigned char *id, dnet_cmd *cmd, dnet_io_attr *io) {
+std::shared_ptr<std::string> slru_cache_t::read(const unsigned char *id, dnet_cmd *cmd, dnet_io_attr *io) {
 	TIMER_SCOPE("read");
 
 	const bool cache = (io->flags & DNET_IO_FLAGS_CACHE);
@@ -326,7 +326,7 @@ std::shared_ptr<raw_data_t> slru_cache_t::read(const unsigned char *id, dnet_cmd
 		return it->data();
 	}
 
-	return std::shared_ptr<raw_data_t>();
+	return std::shared_ptr<std::string>();
 }
 
 int slru_cache_t::remove(const unsigned char *id, dnet_io_attr *io) {
@@ -469,7 +469,7 @@ void slru_cache_t::sync_if_required(data_t* it, elliptics_unique_lock<std::mutex
 		memset(&id, 0, sizeof(id));
 		memcpy(id.id, it->id().id, DNET_ID_SIZE);
 
-		std::vector<char> data;
+		std::string data;
 		uint64_t user_flags;
 		dnet_time timestamp;
 
@@ -656,7 +656,7 @@ void slru_cache_t::erase_element(data_t *obj) {
 	delete obj;
 }
 
-void slru_cache_t::sync_element(const dnet_id &raw, bool after_append, const std::vector<char> &data, uint64_t user_flags, const dnet_time &timestamp) {
+void slru_cache_t::sync_element(const dnet_id &raw, bool after_append, const std::string &data, uint64_t user_flags, const dnet_time &timestamp) {
 	HANDY_TIMER_SCOPE("slru_cache.sync_element");
 
 	local_session sess(m_backend, m_node);
@@ -675,15 +675,13 @@ void slru_cache_t::sync_element(data_t *obj) {
 	memset(&raw, 0, sizeof(struct dnet_id));
 	memcpy(raw.id, obj->id().id, DNET_ID_SIZE);
 
-	auto &data = obj->data()->data();
-
-	sync_element(raw, obj->only_append(), data, obj->user_flags(), obj->timestamp());
+	sync_element(raw, obj->only_append(), *obj->data(), obj->user_flags(), obj->timestamp());
 }
 
 void slru_cache_t::sync_after_append(elliptics_unique_lock<std::mutex> &guard, bool lock_guard, data_t *obj) {
 	TIMER_SCOPE("sync_after_append");
 
-	std::shared_ptr<raw_data_t> raw_data = obj->data();
+	auto raw = obj->data();
 
 	obj->clear_synctime();
 
@@ -701,10 +699,8 @@ void slru_cache_t::sync_after_append(elliptics_unique_lock<std::mutex> &guard, b
 	local_session sess(m_backend, m_node);
 	sess.set_ioflags(DNET_IO_FLAGS_NOCACHE | DNET_IO_FLAGS_APPEND);
 
-	auto &raw = raw_data->data();
-
 	TIMER_START("sync_after_append.local_write");
-	int err = sess.write(id, raw.data(), raw.size(), user_flags, timestamp);
+	int err = sess.write(id, raw->data(), raw->size(), user_flags, timestamp);
 	TIMER_STOP("sync_after_append.local_write");
 
 	TIMER_START("sync_after_append.lock");
