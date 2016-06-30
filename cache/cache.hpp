@@ -64,20 +64,36 @@ public:
 		ERASE_PHASE,
 	};
 
-	data_t(const unsigned char *id) :
-		m_lifetime(0), m_synctime(0), m_user_flags(0),
-		m_remove_from_disk(false), m_remove_from_cache(false),
-		m_only_append(false), m_removed_from_page(true), m_sync_state(sync_state_t::NOT_SYNCING) {
+	data_t(const unsigned char *id)
+	: m_lifetime(0)
+	, m_synctime(0)
+	, m_user_flags(0)
+	, m_remove_from_disk(false)
+	, m_remove_from_cache(false)
+	, m_only_append(false)
+	, m_removed_from_page(true)
+	, m_sync_state(sync_state_t::NOT_SYNCING)
+	, m_json()
+	{
 		memcpy(m_id.id, id, DNET_ID_SIZE);
 		dnet_empty_time(&m_timestamp);
+		dnet_empty_time(&m_json_timestamp);
 	}
 
-	data_t(const unsigned char *id, size_t lifetime, const char *data, size_t size, bool remove_from_disk) :
-		m_lifetime(0), m_synctime(0), m_user_flags(0),
-		m_remove_from_disk(remove_from_disk), m_remove_from_cache(false),
-		m_only_append(false), m_removed_from_page(true), m_sync_state(sync_state_t::NOT_SYNCING) {
+	data_t(const unsigned char *id, size_t lifetime, const char *data, size_t size, bool remove_from_disk)
+	: m_lifetime(0)
+	, m_synctime(0)
+	, m_user_flags(0)
+	, m_remove_from_disk(remove_from_disk)
+	, m_remove_from_cache(false)
+	, m_only_append(false)
+	, m_removed_from_page(true)
+	, m_sync_state(sync_state_t::NOT_SYNCING)
+	, m_json()
+	{
 		memcpy(m_id.id, id, DNET_ID_SIZE);
 		dnet_empty_time(&m_timestamp);
+		dnet_empty_time(&m_json_timestamp);
 
 		if (lifetime)
 			m_lifetime = lifetime + time(NULL);
@@ -100,6 +116,10 @@ public:
 
 	std::shared_ptr<std::string> data(void) const {
 		return m_data;
+	}
+
+	std::shared_ptr<std::string> json() const {
+		return m_json;
 	}
 
 	size_t lifetime(void) const {
@@ -159,6 +179,14 @@ public:
 		m_timestamp = timestamp;
 	}
 
+	const dnet_time &json_timestamp() const {
+		return m_json_timestamp;
+	}
+
+	void set_json_timestamp(const dnet_time &timestamp) {
+		m_json_timestamp = timestamp;
+	}
+
 	uint64_t user_flags() const {
 		return m_user_flags;
 	}
@@ -216,11 +244,12 @@ public:
 	}
 
 	size_t overhead_size(void) const {
-		return sizeof(*this) + sizeof(*m_data);
+		return sizeof(*this) + sizeof(*m_data) + sizeof(*m_json);
 	}
 
 	size_t capacity(void) const {
-		return m_data ? m_data->capacity() : 0;
+		return (m_data ? m_data->capacity() : 0) +
+		       (m_json ? m_json->capacity() : 0);
 	}
 
 	friend bool operator< (const data_t &a, const data_t &b) {
@@ -267,6 +296,7 @@ private:
 	size_t m_lifetime;
 	size_t m_synctime;
 	dnet_time m_timestamp;
+	dnet_time m_json_timestamp;
 	uint64_t m_user_flags;
 	bool m_remove_from_disk;
 	bool m_remove_from_cache;
@@ -276,6 +306,7 @@ private:
 	char m_cache_page_number;
 	struct dnet_raw_id m_id;
 	std::shared_ptr<std::string> m_data;
+	std::shared_ptr<std::string> m_json;
 };
 
 struct record_info {
