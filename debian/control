@@ -22,11 +22,11 @@ Build-Depends: cdbs,
                eblob (>= 0.23.11),
                handystats (>= 1.11.0),
                libkora-util-dev (= 1.1.0-rc1),
-               blackhole-dev (>= 1.0.0-0alpha10),
-               blackhole-migration-dev (>= 1.0.0-0alpha10),
-               libcocaine-dev (>= 0.12.8.11),
-               libcocaine-plugin-node-dev (>= 0.12.8.21),
-               libcocaine-framework-native-dev (>= 0.12.8-6),
+               blackhole-dev (>= 1.0.0-0alpha10), blackhole-dev (<< 1.0.0rc1),
+               blackhole-migration-dev (>= 1.0.0-0alpha10), blackhole-migration-dev (<< 1.0.0rc1),
+               libcocaine-dev (>= 0.12.8.11), libcocaine-dev (<< 0.12.9),
+               libcocaine-plugin-node-dev (>= 0.12.8.21), libcocaine-plugin-node-dev (<< 0.12.9),
+               libcocaine-framework-native-dev (>= 0.12.8-6), libcocaine-framework-native-dev (<< 0.12.9),
 Standards-Version: 3.8.0
 Homepage: http://www.ioremap.net/projects/elliptics
 XS-Python-Version: >= 2.6
@@ -39,8 +39,8 @@ Depends: ${shlibs:Depends},
          elliptics-client (= ${Source-Version}),
          handystats (>= 1.11.0),
          libkora-util1 (= 1.1.0-rc1),
-         libcocaine-core3 (>= 0.12.8.11),
-         libcocaine-plugin-node3 (>= 0.12.8.21),
+         libcocaine-core3 (>= 0.12.8.11), libcocaine-core3 (<< 0.12.9),
+         libcocaine-plugin-node3 (>= 0.12.8.21), libcocaine-plugin-node3 (<< 0.12.9),
 Replaces: elliptics-2.10, srw
 Provides: elliptics-2.10
 Description: Distributed hash table storage
@@ -61,7 +61,7 @@ Description: Distributed hash table storage (cocaine plugin)
 
 Package: libcocaine-plugin-elliptics-dev
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, libcocaine-framework-native-dev (>= 0.12.8-6)
+Depends: ${shlibs:Depends}, ${misc:Depends}, libcocaine-framework-native-dev (>= 0.12.8-6), libcocaine-framework-native-dev (<< 0.12.9)
 Description: Distributed hash table storage (cocaine plugin includes)
  Elliptics network is a fault tolerant distributed hash table object storage.
 
@@ -78,9 +78,9 @@ Architecture: any
 Depends: elliptics-client (= ${Source-Version})
 Suggests: eblob (>= 0.23.11),
           libkora-util1 (= 1.1.0-rc1),
-          libcocaine-core3 (>= 0.12.8.11),
-          libcocaine-plugin-node3 (>= 0.12.8.21),
-          libcocaine-framework-native1 (>= 0.12.8-6),
+          libcocaine-core3 (>= 0.12.8.11), libcocaine-core3 (<< 0.12.9),
+          libcocaine-plugin-node3 (>= 0.12.8.21), libcocaine-plugin-node3 (<< 0.12.9),
+          libcocaine-framework-native1 (>= 0.12.8-6), libcocaine-framework-native1 (<< 0.12.9),
 Description: Distributed hash table storage (includes)
  Elliptics network is a fault tolerant distributed hash table object storage.
  .
