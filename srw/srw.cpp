@@ -129,7 +129,11 @@ class logger_adapter : public cocaine::logging::logger_t
 {
 public:
 	logger_adapter(dnet_node *n)
-	: elliptics_logger(dnet_node_get_logger(n)) {}
+	: elliptics_logger(dnet_node_get_logger(n))
+	{
+		using namespace blackhole::v1;
+		formatter = std::move(builder<formatter::string_t>("{message}, attrs: [{...}]")).build();
+	}
 
 	// logging::logger_t interface
 
@@ -149,8 +153,7 @@ public:
 		}
 		blackhole::v1::writer_t writer;
 		blackhole::v1::record_t record(severity, message, pack);
-		blackhole::v1::formatter::string_t formatter("{message}, attrs: [{...}]");
-		formatter.format(record, writer);
+		formatter->format(record, writer);
 		dnet_log_only_log(elliptics_logger, convert_severity(severity), "%s",
 		                  writer.result().to_string().c_str());
 	}
@@ -181,6 +184,7 @@ public:
 private:
 	dnet_logger *elliptics_logger;
 	thread_manager_t scope_manager;
+	std::unique_ptr<blackhole::formatter_t> formatter;
 };
 
 
@@ -539,7 +543,7 @@ struct srw {
 srw::srw(struct dnet_node *n, const std::string &config)
 	: m_node(n)
 	// NOTE: context_t ctor throws an exception on config parse error
-	, m_ctx(cocaine::get_context(cocaine::make_config(config), std::make_unique<logger_adapter>(m_node)))
+	, m_ctx(cocaine::make_context(cocaine::make_config(config), std::make_unique<logger_adapter>(m_node)))
 {
 	atomic_set(&m_job_id_counter, 0);
 
