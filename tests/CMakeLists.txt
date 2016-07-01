@@ -301,12 +301,12 @@ add_custom_command(TARGET test_python
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/pytests
 )
 
-list(APPEND TESTS_LIST test_python)
+list(APPEND TESTS_DEPS test_python)
 
 #
 # Target `test` execute all available tests (both implemented in C++ and in python)
 #
-add_test_target(test ${TESTS_LIST} DEPENDS ${TESTS_DEPS} core_python)
+add_test_target(test ${TESTS_LIST} DEPENDS ${TESTS_DEPS})
 
 add_executable(dnet_run_servers run_servers.cpp)
 target_link_libraries(dnet_run_servers ${TEST_LIBRARIES} ${TEST_SRW_LIBRARIES})
