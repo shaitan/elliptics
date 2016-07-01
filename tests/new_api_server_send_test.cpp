@@ -1,15 +1,19 @@
-#include "test_base.hpp"
+#include <boost/program_options.hpp>
 
 #define BOOST_TEST_NO_MAIN
+#define BOOST_TEST_ALTERNATIVE_INIT_API
 #include <boost/test/included/unit_test.hpp>
-#include <boost/program_options.hpp>
 
 #include "elliptics/newapi/session.hpp"
 
+#include "test_base.hpp"
+
 namespace {
+
 namespace bu = boost::unit_test;
 
 namespace constants {
+
 static const int src_group = 1;
 static const std::vector<int> dst_groups{2/*, 3*/};
 
@@ -18,11 +22,10 @@ static const uint64_t data_capacity = 300;
 
 static const char key_prefix[] = "new_api_server_send_test key prefix ";
 static const char data_prefix[] = "new_api_server_send_test data prefix ";
+
 }
 
-static std::shared_ptr<tests::nodes_data> servers;
-
-void configure_servers(const std::string &path) {
+tests::nodes_data::ptr configure_test_setup(const std::string &path) {
 	constexpr auto server_config = [] (const tests::config_data &c) {
 		return tests::server_config::default_value().apply_options(c);
 	};
@@ -39,7 +42,7 @@ void configure_servers(const std::string &path) {
 		path
 	};
 
-	servers = tests::start_nodes(config);
+	return tests::start_nodes(config);
 }
 
 // struct record_state {
@@ -327,19 +330,25 @@ void test_simple_server_send(const ioremap::elliptics::newapi::session &session/
 	}
 }
 
-void register_tests(bu::test_suite *suite) {
-	ioremap::elliptics::newapi::session session(*servers->node);
+using namespace tests;
+
+bool register_tests(const nodes_data *setup) {
+	auto n = setup->node->get_native();
+
 	// test_dataset testset{session, 2};
-	ELLIPTICS_TEST_CASE(test_simple_server_send, session/*, testset*/);
+	ELLIPTICS_TEST_CASE(test_simple_server_send, use_session(n)/*, testset*/);
+
+	return true;
 }
 
-bu::test_suite *setup_tests(int argc, char *argv[]) {
+tests::nodes_data::ptr configure_test_setup_from_args(int argc, char *argv[]) {
 	namespace bpo = boost::program_options;
 
 	bpo::variables_map vm;
 	bpo::options_description generic("Test options");
 
 	std::string path;
+
 	generic.add_options()
 		("help", "This help message")
 		("path", bpo::value(&path), "Path where to store everything")
@@ -353,19 +362,45 @@ bu::test_suite *setup_tests(int argc, char *argv[]) {
 		return nullptr;
 	}
 
-	auto suite = new bu::test_suite("Local Test Suite");
-
-	configure_servers(path);
-
-	register_tests(suite);
-
-	return suite;
+	return configure_test_setup(path);
 }
+
 } /* namespace */
 
-int main(int argc, char *argv[]) {
-	atexit([] { servers.reset(); });
 
+/*
+ * Common test initialization routine.
+ */
+using namespace tests;
+using namespace boost::unit_test;
+
+/*FIXME: forced to use global variable and plain function wrapper
+ * because of the way how init_test_main works in boost.test,
+ * introducing a global fixture would be a proper way to handle
+ * global test setup
+ */
+namespace {
+
+std::shared_ptr<nodes_data> setup;
+
+bool init_func()
+{
+	return register_tests(setup.get());
+}
+
+}
+
+int main(int argc, char *argv[])
+{
 	srand(time(nullptr));
-	return bu::unit_test_main(setup_tests, argc, argv);
+
+	// we own our test setup
+	setup = configure_test_setup_from_args(argc, argv);
+
+	int result = unit_test_main(init_func, argc, argv);
+
+	// disassemble setup explicitly, to be sure about where its lifetime ends
+	setup.reset();
+
+	return result;
 }

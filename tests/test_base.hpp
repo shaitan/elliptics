@@ -1,12 +1,13 @@
 #ifndef TEST_BASE_HPP
 #define TEST_BASE_HPP
 
-#include <elliptics/cppdef.h>
 #include <boost/variant.hpp>
 
 #ifndef TEST_DO_NOT_INCLUDE_PLACEHOLDERS
 # include <boost/bind/placeholders.hpp>
 #endif
+
+#include "elliptics/newapi/session.hpp"
 
 bool operator ==(const dnet_time &lhs, const dnet_time &rhs);
 std::ostream& operator<<(std::ostream &stream, const dnet_time & value);
@@ -17,6 +18,10 @@ std::ostream& operator<<(std::ostream &stream, const dnet_raw_id &value);
 namespace tests {
 
 using namespace ioremap::elliptics;
+
+/*
+ * Test asserts specific to elliptics
+ */
 
 #define ELLIPTICS_CHECK_IMPL(R, C, CMD) \
 	auto R = (C); \
@@ -55,100 +60,115 @@ using namespace ioremap::elliptics;
 #define ELLIPTICS_CHECK_ERROR(R, C, E) ELLIPTICS_CHECK_ERROR_IMPL(R, (C), (E), BOOST_CHECK_MESSAGE)
 #define ELLIPTICS_REQUIRE_ERROR(R, C, E) ELLIPTICS_CHECK_ERROR_IMPL(R, (C), (E), BOOST_REQUIRE_MESSAGE)
 
-struct test_wrapper
-{
-	std::shared_ptr<ioremap::elliptics::logger> logger;
-	std::string test_name;
-	std::function<void ()> test_body;
 
-	void operator() () const
-	{
-		BH_LOG(*logger, DNET_LOG_INFO, "Start test: %s", test_name);
-		test_body();
-		BH_LOG(*logger, DNET_LOG_INFO, "Finish test: %s", test_name);
-	}
+/*
+ * test_wrapper_with_session hold and report test names
+ * and also acts as kind of client session fixture.
+ *
+ * XXX: consider dropping all this and make a use of Boost.Test auto macros
+ * as well as a use of fixtures; or, even better, move to gtest,
+ * then all this stuff with test names construction will be unnecessary
+ */
+
+typedef std::tuple<dnet_node *, std::vector<int>, uint64_t, uint32_t> session_create_args;
+
+/* Special kind of wrapper for tests which require client session.
+ *
+ * NOTE: newapi::session is used for all tests: both requiring newapi session and oldapi session.
+ * It is perfectly safe to do so, because:
+ * * newapi::session is derived from session
+ * * and doesn't add any data members
+ * * and no non-special session methods are virtual
+ */
+struct test_wrapper_with_session
+{
+	std::string test_name;
+	session_create_args session_args;
+	std::function<void (newapi::session &)> test_body;
+
+	void operator() () const;
 };
 
-template <typename Method, typename... Args>
-std::function<void ()> make(const char *test_name, Method method, session sess, Args... args)
+// Predicate if template parameter list contains session object.
+template <typename...>
+struct has_session;
+
+template <typename T, typename... Args>
+struct has_session<T, Args...>
 {
-	uint64_t trace_id = 0;
-	auto buffer = reinterpret_cast<unsigned char *>(&trace_id);
-	for (size_t i = 0; i < sizeof(trace_id); ++i) {
-		buffer[i] = rand();
-	}
+	static const bool value = std::is_base_of<session, T>::value || has_session<Args...>::value;
+};
 
-	sess.set_trace_id(trace_id);
+template<>
+struct has_session<>
+{
+	static const bool value = false;
+};
 
-	test_wrapper wrapper = {
-		std::make_shared<ioremap::elliptics::logger>(sess.get_logger(), blackhole::log::attributes_t()),
+/* Special test maker for tests which require client session (both newapi and oldapi).
+ *
+ * Session object could not be used as immediate test parameter at test registration time
+ * (this is due to lifetime issues with boost.test, in-process server nodes, logger and
+ * session objects).
+ * Instead `session_create_args` tuple must be used and real session will be created later,
+ * at test execution time.
+ * `session_create_args` tuple must come second to method argument.
+ *
+ * (Constraint that session object can't be passed as parameter is enforced at compile time)
+ */
+template <typename Method, typename... Args>
+std::function<void ()> make(const char *test_name, Method method, session_create_args session_args, Args... args)
+{
+	static_assert(has_session<Args...>::value == false,
+	              "`session` object cannot be used in test parameter list, use `use_session` instead");
+
+	namespace ph = std::placeholders;
+
+	return test_wrapper_with_session{
 		test_name,
-		std::bind(method, sess, std::forward<Args>(args)...)
+		session_args,
+		std::bind(method, ph::_1, std::forward<Args>(args)...)
 	};
-
-	return wrapper;
 }
 
-template <typename Method, typename... Args>
-std::function<void ()> make(const char *test_name, Method method, newapi::session sess, Args... args)
-{
-	uint64_t trace_id = 0;
-	auto buffer = reinterpret_cast<unsigned char *>(&trace_id);
-	for (size_t i = 0; i < sizeof(trace_id); ++i) {
-		buffer[i] = rand();
-	}
-
-	sess.set_trace_id(trace_id);
-
-	test_wrapper wrapper = {
-		std::make_shared<ioremap::elliptics::logger>(sess.get_logger(), blackhole::log::attributes_t()),
-		test_name,
-		std::bind(method, sess, std::forward<Args>(args)...)
-	};
-
-	return wrapper;
-}
-
+/* General test maker for tests which do not use client session.
+ * (Constraint that session object can't be passed as parameter is enforced at compile time)
+ */
 template <typename Method, typename... Args>
 std::function<void ()> make(const char *, Method method, Args... args)
 {
+	static_assert(has_session<Args...>::value == false,
+	              "`session` object cannot be used in test parameter list, use `use_session` instead");
 	return std::bind(method, std::forward<Args>(args)...);
 }
 
-#define ELLIPTICS_MAKE_TEST(...) \
-	boost::unit_test::make_test_case(tests::make(BOOST_STRINGIZE((__VA_ARGS__)), __VA_ARGS__), BOOST_TEST_STRINGIZE((__VA_ARGS__)))
+// Simple session_create_args maker, very useful as an explicit marker
+static inline session_create_args use_session(dnet_node *n, std::initializer_list<int> groups = {}, uint64_t cflags = 0,
+                                              uint32_t ioflags = 0) {
+	return session_create_args{n, groups, cflags, ioflags};
+}
 
-#ifdef USE_MASTER_SUITE
-#  define ELLIPTICS_TEST_CASE(M, C...) do { framework::master_test_suite().add(ELLIPTICS_MAKE_TEST(M, ##C )); } while (false)
-#  define ELLIPTICS_TEST_CASE_NOARGS(M) do { framework::master_test_suite().add(ELLIPTICS_MAKE_TEST(M)); } while (false)
+/*
+ * Test registration macros.
+ */
+#define ELLIPTICS_MAKE_TEST(...)                                                                                       \
+	boost::unit_test::make_test_case(tests::make(BOOST_STRINGIZE((__VA_ARGS__)), __VA_ARGS__),                     \
+	                                 BOOST_TEST_STRINGIZE((__VA_ARGS__)))
+
+#ifndef USE_CUSTOM_SUITE
+#define ELLIPTICS_TEST_CASE(M, C...)                                                                                   \
+	do {                                                                                                           \
+		boost::unit_test::framework::master_test_suite().add(ELLIPTICS_MAKE_TEST(M, ##C));                     \
+	} while (false)
+#define ELLIPTICS_TEST_CASE_NOARGS(M)                                                                                  \
+	do {                                                                                                           \
+		boost::unit_test::framework::master_test_suite().add(ELLIPTICS_MAKE_TEST(M));                          \
+	} while (false)
 #else
 #  define ELLIPTICS_TEST_CASE(M, C...) do { suite->add(ELLIPTICS_MAKE_TEST(M, ##C )); } while (false)
 #  define ELLIPTICS_TEST_CASE_NOARGS(M) do { suite->add(ELLIPTICS_MAKE_TEST(M)); } while (false)
 #endif
 
-session create_session(node n, std::initializer_list<int> groups, uint64_t cflags, uint32_t ioflags);
-
-class directory_handler
-{
-public:
-	directory_handler();
-	directory_handler(const std::string &path, bool remove);
-	directory_handler(directory_handler &&other);
-	~directory_handler();
-
-	directory_handler &operator= (directory_handler &&other);
-
-	directory_handler(const directory_handler &) = delete;
-	directory_handler &operator =(const directory_handler &) = delete;
-
-	std::string path() const;
-
-private:
-	std::string m_path;
-	bool m_remove;
-};
-
-void create_directory(const std::string &path);
 
 #ifndef NO_SERVER
 
@@ -209,7 +229,8 @@ class server_node
 {
 public:
 	server_node();
-	server_node(const std::string &path, const server_config &config, const address &remote, int monitor_port, bool fork);
+	server_node(const std::string &path, const server_config &config, const address &remote, int monitor_port,
+	            int locator_port, bool fork);
 	server_node(server_node &&other);
 
 	server_node &operator =(server_node &&other);
@@ -227,11 +248,13 @@ public:
 
 	std::string config_path() const;
 	server_config &config();
+	const server_config &config() const;
 
 	address remote() const;
 	int monitor_port() const;
+	int locator_port() const;
 	pid_t pid() const;
-	dnet_node *get_native();
+	dnet_node *get_native() const;
 
 private:
 	dnet_node *m_node;
@@ -239,12 +262,33 @@ private:
 	server_config m_config;
 	address m_remote;
 	int m_monitor_port;
+	int m_locator_port;
 	bool m_fork;
 	bool m_kill_sent;
 	mutable pid_t m_pid;
 };
 
 #endif // NO_SERVER
+
+class directory_handler
+{
+public:
+	directory_handler();
+	directory_handler(const std::string &path, bool remove);
+	directory_handler(directory_handler &&other);
+	~directory_handler();
+
+	directory_handler &operator= (directory_handler &&other);
+
+	directory_handler(const directory_handler &) = delete;
+	directory_handler &operator =(const directory_handler &) = delete;
+
+	std::string path() const;
+
+private:
+	std::string m_path;
+	bool m_remove;
+};
 
 struct nodes_data
 {
@@ -256,7 +300,6 @@ struct nodes_data
 	directory_handler directory;
 #ifndef NO_SERVER
 	std::vector<server_node> nodes;
-	int locator_port;
 #endif // NO_SERVER
 
 	std::unique_ptr<logger_base> logger;
@@ -271,20 +314,23 @@ struct start_nodes_config {
 	std::string path;
 	bool fork;
 	bool monitor;
+	bool srw;
 	bool isolated;
 	int client_node_flags;
 	int client_wait_timeout;
 	int client_check_timeout;
 	int client_stall_count;
 
-	start_nodes_config(std::ostream &debug_stream, const std::vector<server_config> &&configs, const std::string &path);
+	start_nodes_config(std::ostream &debug_stream, const std::vector<server_config> &&configs,
+	                   const std::string &path);
 };
 
 nodes_data::ptr start_nodes(start_nodes_config &config);
 
 #endif // NO_SERVER
 
-nodes_data::ptr start_nodes(std::ostream &debug_stream, const std::vector<std::string> &remotes, const std::string &path);
+nodes_data::ptr start_nodes(std::ostream &debug_stream, const std::vector<std::string> &remotes,
+                            const std::string &path);
 
 std::string read_file(const char *file_path);
 

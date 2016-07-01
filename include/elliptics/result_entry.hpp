@@ -58,6 +58,10 @@ class exec_context
 		// event data
 		data_pointer data() const;
 
+		uint64_t flags() const;
+		//NOTE: dangerous, use with care
+		void set_flags(uint64_t flags) const;
+
 		// access to address of the machine emitted the reply
 		dnet_addr *address() const;
 
@@ -76,6 +80,7 @@ class exec_context
 		data_pointer native_data() const;
 
 		bool is_final() const;
+		bool is_reply() const;
 		bool is_null() const;
 
 	private:

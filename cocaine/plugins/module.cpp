@@ -22,15 +22,22 @@
 #include "storage.hpp"
 #include "service.hpp"
 
+#include <cocaine/repository.hpp>
+#include <cocaine/repository/service.hpp>
+#include <cocaine/repository/storage.hpp>
+
 using namespace cocaine;
 using namespace cocaine::storage;
 
 extern "C" {
 
-void initialize(api::repository_t& repository) {
+api::preconditions_t validation() {
+	return api::preconditions_t{COCAINE_MAKE_VERSION(0, 12, 0)};
+}
+
+void initialize(api::repository_t &repository) {
 	repository.insert<elliptics_storage_t>("elliptics");
 	repository.insert<elliptics_service_t>("elliptics");
 }
 
-}
-
+} /* extern "C" */

@@ -18,6 +18,7 @@
 #include <algorithm>
 
 #define BOOST_TEST_NO_MAIN
+#define BOOST_TEST_ALTERNATIVE_INIT_API
 #include <boost/test/included/unit_test.hpp>
 
 #include <boost/program_options.hpp>
@@ -26,8 +27,6 @@ using namespace ioremap::elliptics;
 using namespace boost::unit_test;
 
 namespace tests {
-
-static std::shared_ptr<nodes_data> global_data;
 
 static size_t groups_count = 1;
 static size_t nodes_count = 1;
@@ -54,7 +53,7 @@ static server_config default_value(int group)
 	return server;
 }
 
-static void configure_nodes(const std::string &path)
+static nodes_data::ptr configure_test_setup(const std::string &path)
 {
 	std::vector<server_config> servers;
 	for (size_t i = 0; i < groups_count; ++i) {
@@ -68,7 +67,7 @@ static void configure_nodes(const std::string &path)
 	start_nodes_config start_config(results_reporter::get_stream(), std::move(servers), path);
 	start_config.fork = true;
 
-	global_data = start_nodes(start_config);
+	return start_nodes(start_config);
 }
 
 /*
@@ -110,20 +109,25 @@ static void test_write_order_execution(session &sess)
 				const int prev_value = new_value - 1;
 				memset(&old_csum, 0, sizeof(old_csum));
 				sess.transform(std::to_string(static_cast<unsigned long long>(prev_value)), old_csum);
-				results[j] = std::move(sess.write_cas(keys[j].first, std::to_string(static_cast<unsigned long long>(new_value)), old_csum, 0));
+				results[j] = std::move(sess.write_cas(
+				    keys[j].first, std::to_string(static_cast<unsigned long long>(new_value)), old_csum,
+				    0));
 			} else {
 				// first write
-				results[j] = std::move(sess.write_data(keys[j].first, std::to_string(static_cast<unsigned long long>(new_value)), 0));
+				results[j] = std::move(sess.write_data(
+				    keys[j].first, std::to_string(static_cast<unsigned long long>(new_value)), 0));
 			}
 		}
 
 		for (size_t j = 0; j < keys.size(); ++j) {
 			results[j].wait();
 			const int err = results[j].error().code();
-			BOOST_REQUIRE_MESSAGE(err == 0,
-					      "write_cas() failed (err=" + std::to_string(static_cast<unsigned long long>(err)) + "): "
-					      "multiple consecutive writes are executed out-of-order "
-					      "or overlapped. Oplock mechanism of backend's request queue is broken.");
+			BOOST_REQUIRE_MESSAGE(
+			    err == 0, "write_cas() failed (err=" +
+			                  std::to_string(static_cast<unsigned long long>(err)) +
+			                  "): "
+			                  "multiple consecutive writes are executed out-of-order "
+			                  "or overlapped. Oplock mechanism of backend's request queue is broken.");
 		}
 	}
 }
@@ -135,7 +139,8 @@ static void test_write_order_execution(session &sess)
  * Following test checks this mechanics by calling write_data(key, data) multiple times with the same data,
  * then writing to cache by calling write_cache(key, cache_data) cache data, waiting cache_sync_timeout seconds
  * until cache is synced back to disk (backend), thereby taking oplock. Then called write_data(key, result_data).
- * If last write_data() operation timeouted, then dnet_opunlock() (after cache sync) is not properly realeased key's oplock.
+ * If last write_data() operation timeouted, then dnet_opunlock() (after cache sync) is not properly realeased key's
+ * oplock.
  */
 static void test_oplock(session &sess)
 {
@@ -163,20 +168,17 @@ static void test_oplock(session &sess)
 }
 
 
-bool register_tests(test_suite *suite, node n)
+bool register_tests(const nodes_data *setup)
 {
-	ELLIPTICS_TEST_CASE(test_write_order_execution, create_session(n, { 1 }, 0, 0));
-	ELLIPTICS_TEST_CASE(test_oplock, create_session(n, { 1 }, 0, 0));
+	auto n = setup->node->get_native();
+
+	ELLIPTICS_TEST_CASE(test_write_order_execution, use_session(n, { 1 }, 0, 0));
+	ELLIPTICS_TEST_CASE(test_oplock, use_session(n, { 1 }, 0, 0));
 
 	return true;
 }
 
-static void destroy_global_data()
-{
-	global_data.reset();
-}
-
-boost::unit_test::test_suite *register_tests(int argc, char *argv[])
+nodes_data::ptr configure_test_setup_from_args(int argc, char *argv[])
 {
 	namespace bpo = boost::program_options;
 
@@ -198,21 +200,45 @@ boost::unit_test::test_suite *register_tests(int argc, char *argv[])
 		return NULL;
 	}
 
-	test_suite *suite = new test_suite("Local Test Suite");
+	return configure_test_setup(path);
+}
 
-	configure_nodes(path);
+}
 
-	register_tests(suite, *global_data->node);
 
-	return suite;
+/*
+ * Common test initialization routine.
+ */
+using namespace tests;
+using namespace boost::unit_test;
+
+/*FIXME: forced to use global variable and plain function wrapper
+ * because of the way how init_test_main works in boost.test,
+ * introducing a global fixture would be a proper way to handle
+ * global test setup
+ */
+namespace {
+
+std::shared_ptr<nodes_data> setup;
+
+bool init_func()
+{
+	return register_tests(setup.get());
 }
 
 }
 
 int main(int argc, char *argv[])
 {
-	atexit(tests::destroy_global_data);
+	srand(time(nullptr));
 
-	srand(time(0));
-	return unit_test_main(tests::register_tests, argc, argv);
+	// we own our test setup
+	setup = configure_test_setup_from_args(argc, argv);
+
+	int result = unit_test_main(init_func, argc, argv);
+
+	// disassemble setup explicitly, to be sure about where its lifetime ends
+	setup.reset();
+
+	return result;
 }

@@ -18,6 +18,7 @@
 #include "../library/elliptics.h"
 
 #define BOOST_TEST_NO_MAIN
+#define BOOST_TEST_ALTERNATIVE_INIT_API
 #include <boost/test/included/unit_test.hpp>
 
 #include <boost/program_options.hpp>
@@ -27,18 +28,17 @@ using namespace boost::unit_test;
 
 namespace tests {
 
-static std::shared_ptr<nodes_data> global_data;
-
 static size_t backends_count = 1;
 static int stall_count = 2;
 static int wait_timeout = 1;
-// Check timeout must be at least wait_timeout * stall_count seconds to
-// guarantee that reconnection process will not affect test_failed_connection_restore().
-// Otherwise reconnection thread may send transactions when command sending is already
-// disabled, while test logic is not even started, so stall counter can reach its limit
-// and BACKEND_STATUS will be send. These circumstances lead to network state destruction,
-// thereby requests from test_failed_connection_restore() will return ENXIO error,
-// instead of expected ETIMEDOUT error.
+/* Check timeout must be at least wait_timeout * stall_count seconds to
+ * guarantee that reconnection process will not affect test_failed_connection_restore().
+ * Otherwise reconnection thread may send transactions when command sending is already
+ * disabled, while test logic is not even started, so stall counter can reach its limit
+ * and BACKEND_STATUS will be send. These circumstances lead to network state destruction,
+ * thereby requests from test_failed_connection_restore() will return ENXIO error,
+ * instead of expected ETIMEDOUT error.
+ */
 static int check_timeout = wait_timeout * stall_count;
 
 static server_config default_value()
@@ -59,7 +59,7 @@ static server_config default_value()
 	return server;
 }
 
-static void configure_nodes(const std::string &path)
+static nodes_data::ptr configure_test_setup(const std::string &path)
 {
 	std::vector<server_config> servers;
 	server_config server = default_value();
@@ -71,27 +71,28 @@ static void configure_nodes(const std::string &path)
 	start_config.client_check_timeout = check_timeout;
 	start_config.client_stall_count = stall_count;
 
-	global_data = start_nodes(start_config);
+	return start_nodes(start_config);
 }
 
-// After tcp connection failure between client node and server node, all sended requests
-// from client to server node increase client's stall_count counter after request
-// timeout. When stall_count reaches it's configurable limit, then client node sends
-// 'ping' non-blocking request to server, and after timeout client removes timeouted
-// network state, so server node becomes logically unavailable.
-// Client node checks failed network states every check_timeout seconds and tries to
-// restore failed tcp conenction. If tcp connection successfully restored, then network
-// state becomes available, thereby client can send requests to server nodes.
-//
-// Following test checks this mechanics by disabling physical requests sending to remote node and
-// subsequent sending requests multiple times to reach given stall_count limit. After that,
-// physical request send is enabled, sleep some time (check_timeout seconds) and check, if
-// connection was restored by sending request and checking its response.
-static void test_failed_connection_restore(session &sess)
+/* After tcp connection failure between client node and server node, all sended requests
+ * from client to server node increase client's stall_count counter after request
+ * timeout. When stall_count reaches it's configurable limit, then client node sends
+ * 'ping' non-blocking request to server, and after timeout client removes timeouted
+ * network state, so server node becomes logically unavailable.
+ * Client node checks failed network states every check_timeout seconds and tries to
+ * restore failed tcp conenction. If tcp connection successfully restored, then network
+ * state becomes available, thereby client can send requests to server nodes.
+ *
+ * Following test checks this mechanics by disabling physical requests sending to remote node and
+ * subsequent sending requests multiple times to reach given stall_count limit. After that,
+ * physical request send is enabled, sleep some time (check_timeout seconds) and check, if
+ * connection was restored by sending request and checking its response.
+ */
+static void test_failed_connection_restore(session &sess, const nodes_data *setup)
 {
 	test_session test_sess(sess);
 
-	const server_node &node = global_data->nodes[0];
+	const server_node &node = setup->nodes[0];
 	const key id = std::string("dont_care");
 
 	BOOST_REQUIRE_EQUAL(sess.state_num(), 1);
@@ -100,17 +101,29 @@ static void test_failed_connection_restore(session &sess)
 
 	test_sess.toggle_all_command_send(false);
 
-	for (int i = 0; i < stall_count; ++i)
+	/* using stall_count + 1 here to guarantee that state will actually
+	 * be reset before this loop ends
+	 */
+	for (int i = 0; i < stall_count + 1; ++i)
 	{
-		ELLIPTICS_REQUIRE_ERROR(async_lookup_result, sess.lookup(id), -ETIMEDOUT);
-	}
+		auto async = sess.lookup(id);
+		async.wait();
 
-	ELLIPTICS_REQUIRE_ERROR(async_status_result, sess.request_backends_status(node.remote()), -ETIMEDOUT);
+		/* state reset could happen a bit earlier (as a result of route list update processing in dnet_check)
+		 * if so we should just stop the loop
+		 */
+		if (async.error().code() == -ENXIO) {
+			break;
+		}
+
+		BOOST_REQUIRE(async.error().code() == -ETIMEDOUT);
+	}
 
 	BOOST_REQUIRE_EQUAL(sess.state_num(), 0);
 
 	test_sess.toggle_all_command_send(true);
 
+	// wait until background thread will restore connection with server node
 	::sleep(check_timeout + 1);
 
 	ELLIPTICS_REQUIRE_ERROR(async_lookup_result2, sess.lookup(id), -ENOENT);
@@ -118,19 +131,16 @@ static void test_failed_connection_restore(session &sess)
 }
 
 
-bool register_tests(test_suite *suite, node n)
+bool register_tests(const nodes_data *setup)
 {
-	ELLIPTICS_TEST_CASE(test_failed_connection_restore, create_session(n, { 1 }, 0, 0));
+	auto n = setup->node->get_native();
+
+	ELLIPTICS_TEST_CASE(test_failed_connection_restore, use_session(n, { 1 }, 0, 0), setup);
 
 	return true;
 }
 
-static void destroy_global_data()
-{
-	global_data.reset();
-}
-
-boost::unit_test::test_suite *register_tests(int argc, char *argv[])
+nodes_data::ptr configure_test_setup_from_args(int argc, char *argv[])
 {
 	namespace bpo = boost::program_options;
 
@@ -152,21 +162,45 @@ boost::unit_test::test_suite *register_tests(int argc, char *argv[])
 		return NULL;
 	}
 
-	test_suite *suite = new test_suite("Local Test Suite");
+	return configure_test_setup(path);
+}
 
-	configure_nodes(path);
+}
 
-	register_tests(suite, *global_data->node);
 
-	return suite;
+/*
+ * Common test initialization routine.
+ */
+using namespace tests;
+using namespace boost::unit_test;
+
+/*FIXME: forced to use global variable and plain function wrapper
+ * because of the way how init_test_main works in boost.test,
+ * introducing a global fixture would be a proper way to handle
+ * global test setup
+ */
+namespace {
+
+std::shared_ptr<nodes_data> setup;
+
+bool init_func()
+{
+	return register_tests(setup.get());
 }
 
 }
 
 int main(int argc, char *argv[])
 {
-	atexit(tests::destroy_global_data);
+	srand(time(nullptr));
 
-	srand(time(0));
-	return unit_test_main(tests::register_tests, argc, argv);
+	// we own our test setup
+	setup = configure_test_setup_from_args(argc, argv);
+
+	int result = unit_test_main(init_func, argc, argv);
+
+	// disassemble setup explicitly, to be sure about where its lifetime ends
+	setup.reset();
+
+	return result;
 }

@@ -14,7 +14,7 @@
  */
 
 #ifdef HAVE_COCAINE
-# include "srw_test.hpp"
+# include "srw_test_base.hpp"
 #endif
 #include "test_base.hpp"
 
@@ -44,8 +44,8 @@ using namespace ioremap::elliptics;
  * 3. Stop on SIGTERM/SIGINT
  */
 
-static std::shared_ptr<tests::nodes_data> global_data;
 static int result_status = 0;
+static bool running = true;
 static std::ofstream logs_out;
 
 struct special_log_struct_next
@@ -129,6 +129,7 @@ static void stop_servers(int sig, siginfo_t *info, void *)
 				break;
 		}
 		out << "\"" << test::endl;
+
 	} else {
 		test::log << "Caught signal: " << sig <<
 			", err: " << info->si_errno <<
@@ -137,11 +138,11 @@ static void stop_servers(int sig, siginfo_t *info, void *)
 			test::endl;
 	}
 
-	std::shared_ptr<tests::nodes_data> data;
-	std::swap(global_data, data);
-
-	if (data && sig == SIGCHLD)
+	if (running && sig == SIGCHLD) {
 		result_status = 1;
+	}
+
+	running = false;
 }
 
 static void setup_signals()
@@ -302,7 +303,8 @@ static int run_servers(const rapidjson::Value &doc)
 	}
 
 	std::vector<tests::server_config> configs;
-	configs.resize(servers.Size(), srw ? tests::server_config::default_srw_value() : tests::server_config::default_value());
+	configs.resize(servers.Size(),
+	               srw ? tests::server_config::default_srw_value() : tests::server_config::default_value());
 
 	std::set<int> unique_groups;
 
@@ -334,14 +336,18 @@ static int run_servers(const rapidjson::Value &doc)
 		}
 	}
 
+	std::shared_ptr<tests::nodes_data> setup;
+
 	try {
 		tests::start_nodes_config start_config(std::cerr, std::move(configs),
 				std::string(path.GetString(), path.GetStringLength()));
 		start_config.fork = fork;
 		start_config.monitor = monitor;
+		start_config.srw = srw;
 		start_config.isolated = isolated;
 
-		global_data = tests::start_nodes(start_config);
+		setup = tests::start_nodes(start_config);
+
 	} catch (std::exception &err) {
 		test::log << "Error during startup: " << err.what() << test::endl;
 		return 1;
@@ -353,37 +359,39 @@ static int run_servers(const rapidjson::Value &doc)
 		const std::vector<int> groups(unique_groups.begin(), unique_groups.end());
 
 		try {
-			tests::upload_application(global_data->locator_port, global_data->directory.path());
+			tests::upload_application(setup->nodes[0].locator_port(), tests::application_name(),
+			                          setup->directory.path());
 		} catch (std::exception &exc) {
 			test::log << "Can not upload application: " << exc.what() << test::endl;
-			global_data.reset();
 			return 1;
 		}
-		try {
-			session sess(*global_data->node);
-			sess.set_groups(groups);
-			tests::start_application(sess, tests::application_name());
-		} catch (std::exception &exc) {
-			test::log << "Can not start application: " << exc.what() << test::endl;
-			global_data.reset();
-			return 1;
+		for (size_t i = 0; i < setup->nodes.size(); ++i) {
+			try {
+				tests::start_application(setup->nodes[i].locator_port(), tests::application_name());
+
+			} catch (std::exception &exc) {
+				test::log << "Can not start application on node #" << i << ": " << exc.what()
+				          << test::endl;
+				return 1;
+			}
 		}
 		sleep(2);
 		try {
-			session sess(*global_data->node);
+			session sess(*setup->node);
 			sess.set_groups(groups);
-			tests::init_application_impl(sess, tests::application_name(), *global_data);
+			tests::init_application_impl(sess, tests::application_name(), setup.get());
+
 		} catch (std::exception &exc) {
 			test::log << "Can not init application: " << exc.what() << test::endl;
-			global_data.reset();
 			return 1;
 		}
 	}
-#endif
+#endif // HAVE_COCAINE
 
-	for (size_t i = 0; i < global_data->nodes.size(); ++i) {
-		tests::server_node &node = global_data->nodes.at(i);
-		test::log << "Started node #" << i << ", addr: " << node.remote().to_string() << ", pid: " << node.pid() << test::endl;
+	for (size_t i = 0; i < setup->nodes.size(); ++i) {
+		tests::server_node &node = setup->nodes.at(i);
+		test::log << "Started node #" << i << ", addr: " << node.remote().to_string() << ", pid: " << node.pid()
+		          << test::endl;
 	}
 
 	{
@@ -392,7 +400,7 @@ static int run_servers(const rapidjson::Value &doc)
 
 		rapidjson::Value servers;
 		servers.SetArray();
-		for (auto it = global_data->nodes.begin(); it != global_data->nodes.end(); ++it) {
+		for (auto it = setup->nodes.begin(); it != setup->nodes.end(); ++it) {
 			const tests::server_node &node = *it;
 
 			rapidjson::Value server;
@@ -405,6 +413,10 @@ static int run_servers(const rapidjson::Value &doc)
 			rapidjson::Value monitor_port;
 			monitor_port.SetInt(node.monitor_port());
 			server.AddMember("monitor", monitor_port, info.GetAllocator());
+
+			rapidjson::Value locator_port;
+			locator_port.SetInt(node.locator_port());
+			server.AddMember("locator_port", locator_port, info.GetAllocator());
 
 			servers.PushBack(server, info.GetAllocator());
 		}
@@ -420,10 +432,13 @@ static int run_servers(const rapidjson::Value &doc)
 
 	setup_signals();
 
-	test::log << "Succesffully started all servers" << test::endl;
+	test::log << "Successfully started all servers" << test::endl;
 
-	while (global_data)
+	while (running) {
 		sleep(1);
+	}
+
+	setup.reset();
 
 	return result_status;
 }
@@ -448,13 +463,10 @@ int main(int, char *[])
 
 	try {
 		return run_servers(doc);
+
 	} catch (std::exception &exc) {
 		test::log << "Failed to start servers: " << exc.what() << test::endl;
 		return 1;
 	}
-
-	test::log << "Exit with status: " << result_status << test::endl;
-
-	return result_status;
 }
 

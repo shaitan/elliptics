@@ -19,18 +19,13 @@
 
 #include <cocaine/rpc/protocol.hpp>
 #include <elliptics/packet.h>
+#include <elliptics/utils.hpp>
 
-namespace ioremap { namespace elliptics {
-
-struct dnet_async_service_result {
-	dnet_addr addr;
-	dnet_file_info file_info;
-	std::string file_path;
-};
+namespace ioremap { namespace elliptics { namespace io {
 
 struct localnode_tag;
 
-struct localnode_interface {
+struct localnode {
 
 	struct read {
 		typedef localnode_tag tag;
@@ -38,13 +33,22 @@ struct localnode_interface {
 		static const char* alias() { return "read"; }
 
 		typedef boost::mpl::list<
+			/* Elliptics id to read from */
 			dnet_raw_id,
+			/* Reading group list */
 			std::vector<int>,
+			/* Offset */
 			uint64_t,
+			/* Size */
 			uint64_t
-		> tuple_type;
+		> argument_type;
 
-		typedef std::string result_type;
+		typedef cocaine::io::option_of<
+			/* Info about stored key */
+			dnet_record_info,
+			/* Raw bytes of read result */
+			data_pointer
+		>::tag upstream_type;
 	};
 
 	struct write {
@@ -53,13 +57,20 @@ struct localnode_interface {
 		static const char* alias() { return "write"; }
 
 		typedef boost::mpl::list<
+			/* Elliptics id to write to */
 			dnet_raw_id,
+			/* Writing group list */
 			std::vector<int>,
-			std::string,
-			uint64_t
-		> tuple_type;
+			/* Raw bytes of the value */
+			std::string
+		> argument_type;
 
-		typedef dnet_async_service_result result_type;
+		typedef cocaine::io::option_of<
+			/* Info about stored key */
+			dnet_record_info,
+			/* Path to the blob file */
+			std::string
+		>::tag upstream_type;
 	};
 
 	struct lookup {
@@ -68,31 +79,39 @@ struct localnode_interface {
 		static const char* alias() { return "lookup"; }
 
 		typedef boost::mpl::list<
+			/* Elliptics id */
 			dnet_raw_id,
+			/* Reading group list */
 			std::vector<int>
-		> tuple_type;
+		> argument_type;
 
-		typedef dnet_async_service_result result_type;
+		typedef cocaine::io::option_of<
+			/* Info about stored key */
+			dnet_record_info,
+			/* Path to the blob file */
+			std::string
+		>::tag upstream_type;
 	};
 };
 
-}} // namespace ioremap::elliptics
+}}} // namespace ioremap::elliptics::io
 
 
 namespace cocaine { namespace io {
 
-using ioremap::elliptics::localnode_tag;
-using ioremap::elliptics::localnode_interface;
-
 template<>
-struct protocol<localnode_tag> {
-	typedef boost::mpl::int_<1>::type version;
+struct protocol<ioremap::elliptics::io::localnode_tag> {
+	typedef boost::mpl::int_<
+		1
+	>::type version;
 
-	typedef mpl::list<
-		localnode_interface::read,
-		localnode_interface::write,
-		localnode_interface::lookup
-	> type;
+	typedef boost::mpl::list<
+		ioremap::elliptics::io::localnode::read,
+		ioremap::elliptics::io::localnode::write,
+		ioremap::elliptics::io::localnode::lookup
+	> messages;
+
+	typedef ioremap::elliptics::io::localnode scope;
 };
 
 }} // namespace cocaine::io

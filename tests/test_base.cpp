@@ -19,7 +19,9 @@
 #include <sys/wait.h>
 
 #ifdef HAVE_COCAINE
-#  include <cocaine/framework/services/storage.hpp>
+#include <cocaine/framework/manager.hpp>
+#include <cocaine/framework/service.hpp>
+#include <cocaine/idl/storage.hpp>
 #endif
 
 bool operator ==(const dnet_time &lhs, const dnet_time &rhs) {
@@ -67,19 +69,41 @@ static const char *ioserv_path()
 	return result;
 }
 
-ioremap::elliptics::session create_session(ioremap::elliptics::node n, std::initializer_list<int> groups, uint64_t cflags, uint32_t ioflags)
+void test_wrapper_with_session::operator() () const
 {
-	session sess(n);
+	dnet_node *n;
+	std::vector<int> groups;
+	uint64_t cflags;
+	uint64_t ioflags;
+	std::tie(n, groups, cflags, ioflags) = session_args;
 
-	sess.set_groups(std::vector<int>(groups));
-	sess.set_cflags(cflags);
-	sess.set_ioflags(ioflags);
+	newapi::session client(n);
 
-	sess.set_exceptions_policy(session::no_exceptions);
+	uint64_t trace_id = 0;
+	auto buffer = reinterpret_cast<unsigned char *>(&trace_id);
+	for (size_t i = 0; i < sizeof(trace_id); ++i) {
+		buffer[i] = rand();
+	}
+	client.set_trace_id(trace_id);
 
-	return sess;
+	/* differentiate in the log clients used to do test actions
+	 * from other kinds of elliptics clients
+	 */
+	client.get_logger().log().add_attribute({"source", {"in-test-client"}});
+
+	BH_LOG(client.get_logger(), DNET_LOG_INFO, "Start test: %s", test_name);
+
+	client.set_groups(groups);
+	client.set_cflags(cflags);
+	client.set_ioflags(ioflags);
+
+	client.set_exceptions_policy(session::no_exceptions);
+
+	// It is safe to pass newapi::session to tests which want to operate on old session.
+	test_body(client);
+
+	BH_LOG(client.get_logger(), DNET_LOG_INFO, "Finish test: %s", test_name);
 }
-
 
 directory_handler::directory_handler() : m_remove(false)
 {
@@ -274,10 +298,10 @@ server_config server_config::default_srw_value()
 
 struct json_value_visitor : public boost::static_visitor<>
 {
-	json_value_visitor(const char *name, rapidjson::Value *object, rapidjson::MemoryPoolAllocator<> *allocator) :
-		name(name), object(object), allocator(allocator)
-	{
-	}
+	json_value_visitor(const char *name, rapidjson::Value *object, rapidjson::MemoryPoolAllocator<> *allocator)
+	: name(name)
+	, object(object)
+	, allocator(allocator) {}
 
 	const char *name;
 	rapidjson::Value *object;
@@ -455,19 +479,36 @@ server_config &server_config::apply_options(const config_data &data)
 	return *this;
 }
 
-server_node::server_node() : m_node(NULL), m_monitor_port(0), m_fork(false), m_kill_sent(false), m_pid(0)
-{
-}
+server_node::server_node()
+: m_node(NULL)
+, m_monitor_port(0)
+, m_locator_port(0)
+, m_fork(false)
+, m_kill_sent(false)
+, m_pid(0) {}
 
-server_node::server_node(const std::string &path, const server_config &config, const address &remote, int monitor_port, bool fork)
-	: m_node(NULL), m_path(path), m_config(config), m_remote(remote), m_monitor_port(monitor_port), m_fork(fork), m_kill_sent(false), m_pid(0)
-{
-}
+server_node::server_node(const std::string &path, const server_config &config, const address &remote, int monitor_port,
+                         int locator_port, bool fork)
+: m_node(NULL)
+, m_path(path)
+, m_config(config)
+, m_remote(remote)
+, m_monitor_port(monitor_port)
+, m_locator_port(locator_port)
+, m_fork(fork)
+, m_kill_sent(false)
+, m_pid(0) {}
 
-server_node::server_node(server_node &&other) :
-	m_node(other.m_node), m_path(std::move(other.m_path)), m_config(std::move(other.m_config)), m_remote(std::move(other.m_remote)),
-	m_monitor_port(other.monitor_port()), m_fork(other.m_fork), m_kill_sent(other.m_kill_sent), m_pid(other.m_pid)
-{
+server_node::server_node(server_node &&other)
+: m_node(other.m_node)
+, m_path(std::move(other.m_path))
+, m_config(std::move(other.m_config))
+, m_remote(std::move(other.m_remote))
+, m_monitor_port(other.monitor_port())
+, m_locator_port(other.locator_port())
+, m_fork(other.m_fork)
+, m_kill_sent(other.m_kill_sent)
+, m_pid(other.m_pid) {
 	other.m_node = NULL;
 	other.m_fork = false;
 	other.m_kill_sent = false;
@@ -526,7 +567,9 @@ void server_node::start()
 			};
 			if (execve(ios_path.data(), args, env) == -1) {
 				int err = -errno;
-				std::cerr << create_error(err, "Failed to start process \"%s\"", ios_path.c_str()).message() << std::endl;
+				std::cerr
+				    << create_error(err, "Failed to start process \"%s\"", ios_path.c_str()).message()
+				    << std::endl;
 				quick_exit(1);
 			}
 		}
@@ -541,7 +584,7 @@ void server_node::start()
 void server_node::stop()
 {
 	if (!is_started())
-		throw std::runtime_error("Server node \"" + m_path + "\" is already stoped");
+		throw std::runtime_error("Server node \"" + m_path + "\" is already stopped");
 
 	if (m_fork) {
 		if (!m_kill_sent) {
@@ -601,6 +644,11 @@ server_config &server_node::config()
 	return m_config;
 }
 
+const server_config &server_node::config() const
+{
+	return m_config;
+}
+
 address server_node::remote() const
 {
 	return m_remote;
@@ -611,12 +659,17 @@ int server_node::monitor_port() const
 	return m_monitor_port;
 }
 
+int server_node::locator_port() const
+{
+	return m_locator_port;
+}
+
 pid_t server_node::pid() const
 {
 	return m_pid;
 }
 
-dnet_node *server_node::get_native()
+dnet_node *server_node::get_native() const
 {
 	return m_node;
 }
@@ -712,7 +765,8 @@ static std::vector<std::string> generate_ports(size_t count, std::set<std::strin
 
 		if (!is_bindable(port)) {
 			if (++bind_errors_count >= 10) {
-				throw std::runtime_error("Failed to find enough count of bindable ports for elliptics servers");
+				throw std::runtime_error(
+				    "Failed to find enough count of bindable ports for elliptics servers");
 			}
 			continue;
 		}
@@ -731,8 +785,8 @@ static std::string create_remote(const std::string &port)
 }
 
 typedef std::map<std::string, std::string> substitute_context;
-static void create_cocaine_config(const std::string &config_path, const std::string& template_text, const substitute_context& vars)
-{
+static void create_cocaine_config(const std::string &config_path, const std::string &template_text,
+                                  const substitute_context &vars) {
 	std::string config_text = template_text;
 
 	for (auto it = vars.begin(); it != vars.end(); ++it) {
@@ -751,19 +805,21 @@ static void create_cocaine_config(const std::string &config_path, const std::str
 	out.write(config_text.c_str(), config_text.size());
 }
 
-static void start_client_nodes(const start_nodes_config &start_config, const nodes_data::ptr &data, const std::vector<std::string> &remotes);
+static void start_client_node(const nodes_data::ptr &data, const std::vector<std::string> &remotes,
+                              const start_nodes_config &start_config);
 
-start_nodes_config::start_nodes_config(std::ostream &debug_stream, const std::vector<server_config> &&configs, const std::string &path)
+start_nodes_config::start_nodes_config(std::ostream &debug_stream, const std::vector<server_config> &&configs,
+                                       const std::string &path)
 : debug_stream(debug_stream)
 , configs(std::move(configs))
 , path(path)
 , fork(false)
 , monitor(true)
+, srw(true)
 , isolated(false)
 , client_node_flags(0)
 , client_wait_timeout(0)
-, client_stall_count(0)
-{}
+, client_stall_count(0) {}
 
 nodes_data::ptr start_nodes(start_nodes_config &start_config) {
 	nodes_data::ptr data = std::make_shared<nodes_data>();
@@ -787,9 +843,14 @@ nodes_data::ptr start_nodes(start_nodes_config &start_config) {
 
 	std::set<std::string> all_ports;
 	const auto ports = generate_ports(start_config.configs.size(), all_ports);
-	const auto monitor_ports = start_config.monitor
+	const auto monitor_ports = (start_config.monitor
 		? generate_ports(start_config.configs.size(), all_ports)
-		: std::vector<std::string>(start_config.configs.size(), "0");
+		: std::vector<std::string>(start_config.configs.size(), "0")
+	);
+	const auto locator_ports = (start_config.srw
+		? generate_ports(start_config.configs.size(), all_ports)
+		: std::vector<std::string>(start_config.configs.size(), "0")
+	);
 
 	if (start_config.path.empty()) {
 		char buffer[1024];
@@ -804,7 +865,8 @@ nodes_data::ptr start_nodes(start_nodes_config &start_config) {
 #if BOOST_VERSION >= 104600
 		boost::filesystem::path boost_path = boost::filesystem::absolute(start_config.path);
 #else
-		boost::filesystem::path boost_path = boost::filesystem::complete(start_config.path, boost::filesystem::current_path());
+		boost::filesystem::path boost_path =
+		    boost::filesystem::complete(start_config.path, boost::filesystem::current_path());
 #endif
 		base_path = boost_path.string();
 
@@ -812,32 +874,15 @@ nodes_data::ptr start_nodes(start_nodes_config &start_config) {
 		data->directory = directory_handler(base_path, false);
 	}
 
-	start_config.debug_stream << "Set base directory: \"" << base_path << "\"" << std::endl;
+	start_config.debug_stream << "-- Set base directory: \"" << base_path << "\"" << std::endl;
 
-	create_directory(run_path);
-	data->run_directory = directory_handler(run_path, true);
-	start_config.debug_stream << "Set cocaine run directory: \"" << run_path << "\"" << std::endl;
-
-	std::set<std::string> cocaine_unique_groups;
-	std::string cocaine_remotes;
-	std::string cocaine_groups;
-	for (size_t j = 0; j < start_config.configs.size(); ++j) {
-		if (j > 0)
-			cocaine_remotes += ", ";
-		cocaine_remotes += "\"127.0.0.1:" + ports[j] + ":2\"";
-		for (auto it = start_config.configs[j].backends.begin(); it != start_config.configs[j].backends.end(); ++it) {
-			const std::string group = it->string_value("group");
-			if (cocaine_unique_groups.insert(group).second) {
-				if (!cocaine_groups.empty())
-					cocaine_groups += ", ";
-				cocaine_groups += group;
-			}
-		}
+#ifdef HAVE_COCAINE
+	if (start_config.srw) {
+		create_directory(run_path);
+		data->run_directory = directory_handler(run_path, true);
+		start_config.debug_stream << "-- Set cocaine run directory: \"" << run_path << "\"" << std::endl;
 	}
-
-	const auto cocaine_locator_ports = generate_ports(start_config.configs.size(), all_ports);
-
-	std::vector<int> locator_ports;
+#endif // HAVE_COCAINE
 
 	start_config.debug_stream << "Starting " << start_config.configs.size() << " servers" << std::endl;
 
@@ -861,32 +906,47 @@ nodes_data::ptr start_nodes(start_nodes_config &start_config) {
 		if (!remotes.empty() && !start_config.isolated)
 			config.options("remote", remotes);
 
-		if (config.options.has_value("srw_config")) {
+#ifdef HAVE_COCAINE
+		if (start_config.srw) {
 			const std::string server_run_path = run_path + server_suffix;
-
-			if (cocaine_config_template.empty())
-				cocaine_config_template = read_file(cocaine_config_path().c_str());
-
 			create_directory(server_run_path);
 
-			// client only needs connection to one (any) locator service
-			if (!data->locator_port)
-				data->locator_port = boost::lexical_cast<int>(cocaine_locator_ports[i]);
+			std::set<std::string> cocaine_unique_groups;
+			std::string cocaine_remotes;
+			std::string cocaine_groups;
+			for (size_t j = 0; j < start_config.configs.size(); ++j) {
+				if (j > 0)
+					cocaine_remotes += ", ";
+				cocaine_remotes += "\"127.0.0.1:" + ports[j] + ":2\"";
+				for (auto it = start_config.configs[j].backends.begin();
+				     it != start_config.configs[j].backends.end(); ++it) {
+					const std::string group = it->string_value("group");
+					if (cocaine_unique_groups.insert(group).second) {
+						if (!cocaine_groups.empty())
+							cocaine_groups += ", ";
+						cocaine_groups += group;
+					}
+				}
+			}
 
-			locator_ports.push_back(boost::lexical_cast<int>(cocaine_locator_ports[i]));
+			if (cocaine_config_template.empty()) {
+				cocaine_config_template = read_file(cocaine_config_path().c_str());
+			}
 
 			const substitute_context cocaine_variables = {
-				{ "COCAINE_LOCATOR_PORT", cocaine_locator_ports[i] },
+				{ "COCAINE_LOCATOR_PORT", locator_ports[i] },
 				{ "COCAINE_PLUGINS_PATH", cocaine_config_plugins() },
 				{ "ELLIPTICS_REMOTES", cocaine_remotes },
 				{ "ELLIPTICS_GROUPS", cocaine_groups },
 				{ "COCAINE_LOG_PATH", server_path + "/cocaine.log" },
 				{ "COCAINE_RUN_PATH", server_run_path }
 			};
-			create_cocaine_config(server_path + "/cocaine.conf", cocaine_config_template, cocaine_variables);
+			create_cocaine_config(server_path + "/cocaine.conf", cocaine_config_template,
+			                      cocaine_variables);
 
 			config.options("srw_config", server_path + "/cocaine.conf");
 		}
+#endif // HAVE_COCAINE
 
 		if (config.log_path.empty())
 			config.log_path = server_path + "/log.log";
@@ -918,10 +978,13 @@ nodes_data::ptr start_nodes(start_nodes_config &start_config) {
 			config,
 			create_remote(ports[i]),
 			boost::lexical_cast<int>(monitor_ports[i]),
-			start_config.fork);
+			boost::lexical_cast<int>(locator_ports[i]),
+			start_config.fork
+		);
 
 		try {
 			server.start();
+
 		} catch (...) {
 			std::ifstream in;
 			in.open(config.log_path.c_str());
@@ -940,32 +1003,33 @@ nodes_data::ptr start_nodes(start_nodes_config &start_config) {
 
 		start_config.debug_stream << "Started server #" << (i + 1) << std::endl;
 
-		// this is needed to prevent simultanously started servers with exactly the same config
-		// they will connect to each other and simultaneously sent JOIN request,
-		// which all will fail. Eventually they will reconnect, but some tests may already fail
-		// to that time.
-		//
-		// Path to fail simultaneous connections:
-		// 1. dnet_add_state()
-		// 2. dnet_socket_connect()
-		// 3. dnet_process_socket()
-		// 4. dnet_state_create()
-		// At this point every node has connected to any other node and moved
-		// that connection into own DHT. Now every node sends JOIN request
-		// to remote nodes. Here is the stack for node, which has received JOIN request:
-		// 1. dnet_process_cmd_raw()
-		// 2. dnet_process_cmd_without_backend_raw()
-		// 3. dnet_route_list_join()
-		// 4. dnet_cmd_join_client()
-		// 5. dnet_state_move_to_dht() - this will fail, since there is already network
-		// state described above which lives in DHT with the same address as just has been received.
-		// Reset this connection. This connection is the one which has sent JOIN request above.
-		// Every connection has been reset now, every node starts reconnection.
-		// Boom!
-		//
-		// This small delay will allow 'earlier' server to fail to connect,
-		// and 'later' servers to be sole JOINing nodes,
-		// above scenario will likely not happen.
+		/* this is needed to prevent simultaneously started servers with exactly the same config
+		 * they will connect to each other and simultaneously sent JOIN request,
+		 * which all will fail. Eventually they will reconnect, but some tests may already fail
+		 * to that time.
+		 *
+		 * Path to fail simultaneous connections:
+		 * 1. dnet_add_state()
+		 * 2. dnet_socket_connect()
+		 * 3. dnet_process_socket()
+		 * 4. dnet_state_create()
+		 * At this point every node has connected to any other node and moved
+		 * that connection into own DHT. Now every node sends JOIN request
+		 * to remote nodes. Here is the stack for node, which has received JOIN request:
+		 * 1. dnet_process_cmd_raw()
+		 * 2. dnet_process_cmd_without_backend_raw()
+		 * 3. dnet_route_list_join()
+		 * 4. dnet_cmd_join_client()
+		 * 5. dnet_state_move_to_dht() - this will fail, since there is already network
+		 * state described above which lives in DHT with the same address as just has been received.
+		 * Reset this connection. This connection is the one which has sent JOIN request above.
+		 * Every connection has been reset now, every node starts reconnection.
+		 * Boom!
+		 *
+		 * This small delay will allow 'earlier' server to fail to connect,
+		 * and 'later' servers to be sole JOINing nodes,
+		 * above scenario will likely not happen.
+		 */
 
 		std::this_thread::sleep_for(std::chrono::milliseconds(300));
 
@@ -983,29 +1047,39 @@ nodes_data::ptr start_nodes(start_nodes_config &start_config) {
 		}
 
 #ifdef HAVE_COCAINE
-		bool any_failed = false;
+		/* XXX: may be there should be another way to check if srw is up
+		 * and running and ready to accept applications -- other than
+		 * checking on the existence of 'storage' plugin
+		 */
+		if (start_config.srw) {
+			bool any_failed = false;
 
-		for (size_t i = 0; i < locator_ports.size(); ++i) {
-			try {
-				using namespace cocaine::framework;
+			for (size_t i = 0; i < data->nodes.size(); ++i) {
+				try {
+					using namespace cocaine::framework;
 
-				service_manager_t::endpoint_t endpoint("127.0.0.1", locator_ports[i]);
-				auto manager = service_manager_t::create(endpoint);
-				auto storage = manager->get_service<storage_service_t>("storage");
-				(void) storage;
+					service_manager_t::endpoint_type endpoint(
+					    boost::asio::ip::address_v4::loopback(), data->nodes[i].locator_port());
+					service_manager_t manager({endpoint}, 1);
+					auto storage = manager.create<cocaine::io::storage_tag>("storage");
+					(void) storage;
 
-				start_config.debug_stream << "Succesfully connected to Cocaine #" << (i + 1) << std::endl;
-			} catch (std::exception &) {
-				any_failed = true;
-				break;
+					start_config.debug_stream << "Successfully connected to Cocaine #" << (i + 1)
+					                          << std::endl;
+				} catch (std::exception &) {
+					any_failed = true;
+					break;
+				}
+			}
+
+			if (any_failed) {
+				start_config.debug_stream << "Cocaine has not been started yet, try again in 1 second"
+				                          << std::endl;
+				continue;
 			}
 		}
+#endif // HAVE_COCAINE
 
-		if (any_failed) {
-			start_config.debug_stream << "Cocaine has not been started yet, try again in 1 second" << std::endl;
-			continue;
-		}
-#endif
 		break;
 	}
 
@@ -1015,7 +1089,8 @@ nodes_data::ptr start_nodes(start_nodes_config &start_config) {
 			remotes.push_back(data->nodes[i].remote().to_string_with_family());
 		}
 
-		start_client_nodes(start_config, data, remotes);
+		start_client_node(data, remotes, start_config);
+
 	} catch (std::exception &e) {
 		start_config.debug_stream << "Failed to connect to servers: " << e.what() << std::endl;
 		throw;
@@ -1028,12 +1103,14 @@ nodes_data::ptr start_nodes(start_nodes_config &start_config) {
 
 #endif // NO_SERVER
 
-static void start_client_nodes(const start_nodes_config &start_config, const nodes_data::ptr &data, const std::vector<std::string> &remotes)
-{
-	data->logger.reset(new logger_base);
+static void start_client_node(const nodes_data::ptr &data, const std::vector<std::string> &remotes,
+                              const start_nodes_config &start_config) {
 	if (!data->directory.path().empty()) {
-		const std::string path = data->directory.path() + "/client.log";
+		const std::string path = data->directory.path() + "/testsuite-client.log";
 		data->logger.reset(new file_logger(path.c_str(), DNET_LOG_DEBUG));
+
+	} else {
+		data->logger.reset(new logger_base);
 	}
 
 	dnet_config config;
@@ -1049,8 +1126,8 @@ static void start_client_nodes(const start_nodes_config &start_config, const nod
 	}
 }
 
-nodes_data::ptr start_nodes(std::ostream &debug_stream, const std::vector<std::string> &remotes, const std::string &path)
-{
+nodes_data::ptr start_nodes(std::ostream &debug_stream, const std::vector<std::string> &remotes,
+                            const std::string &path) {
 	if (remotes.empty()) {
 		throw std::runtime_error("Remotes list is empty");
 	}
@@ -1060,7 +1137,8 @@ nodes_data::ptr start_nodes(std::ostream &debug_stream, const std::vector<std::s
 	nodes_data::ptr data = std::make_shared<nodes_data>();
 	data->directory = directory_handler(path, false);
 
-	start_client_nodes(start_config, data, remotes);
+	start_client_node(data, remotes, start_config);
+
 	return data;
 }
 

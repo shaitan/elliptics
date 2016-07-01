@@ -113,6 +113,8 @@ class callback_result_data
 
 		data_pointer data;
 		error_info error;
+
+		//TODO: exec_context belong to exec_result_entry
 		exec_context context;
 };
 

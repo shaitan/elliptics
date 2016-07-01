@@ -13,19 +13,6 @@
  * GNU Lesser General Public License for more details.
  */
 
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/socket.h>
-#include <sys/mman.h>
-#include <sys/wait.h>
-
-#include <ctype.h>
-#include <fcntl.h>
-#include <limits.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-
 #ifdef HAVE_COCAINE_SUPPORT
 
 #include <map>
@@ -34,270 +21,54 @@
 #include <functional>
 #include <msgpack.hpp>
 
-#include <cocaine/context.hpp>
-#include <cocaine/logging.hpp>
-#include <cocaine/app.hpp>
-#include <cocaine/exceptions.hpp>
-#include <cocaine/api/event.hpp>
-#include <cocaine/api/stream.hpp>
-#include <cocaine/api/service.hpp>
-#include <cocaine/api/storage.hpp>
+#include <boost/thread/tss.hpp>
 
 #include <elliptics/interface.h>
-#include <elliptics/srw.h>
 #include <elliptics/utils.hpp>
 
 #include "elliptics.h"
 
-#include "cocaine-json-trait.hpp"
+#include <cocaine/context.hpp>
+#include <cocaine/hpack/header.hpp>
+#include <cocaine/api/stream.hpp>
+#include <cocaine/rpc/actor.hpp>
+#include <cocaine/service/node.hpp>
+#include <cocaine/service/node/overseer.hpp>
 
-#include "cocaine/actor.hpp"
+#include <blackhole/v1/attribute.hpp>
+#include <blackhole/v1/logger.hpp>
+#include <blackhole/v1/record.hpp>
+#include <blackhole/v1/formatter.hpp>
+#include <blackhole/v1/formatter/string.hpp>
+#include <blackhole/scope/watcher.hpp>
+#include <blackhole/scope/manager.hpp>
+#include <blackhole/extensions/writer.hpp>
+
 #include "localnode.hpp"
+#include "cocaine/traits/localnode.hpp"
+
+#include "../bindings/cpp/exec_context_data_p.hpp"
+#include "elliptics/srw.h"
 
 #define SRW_LOG(__log__, __level__, __app__, ...) \
 	BH_LOG((__log__), (__level__), __VA_ARGS__) \
 		("app", (__app__)) \
 		("source", "srw")
 
-struct sph_wrapper
-{
-	struct sph sph;
-	std::string event;
 
-	sph_wrapper(struct sph *p_sph)
-	{
-		char *data = (char *)(p_sph + 1);
-		event = std::string(data, p_sph->event_size);
-		sph = *p_sph;
-	}
-};
+namespace ioremap { namespace elliptics {
 
-/**
- * This class handles reply stream from worker.
- * Function write() accepts string from worker and sends it to the client
- * started EXEC transaction if DNET_SPH_FLAGS_SRC_BLOCK was set.
- * It allows to write interactive worker application in a straightforward way:
- *  - read SPH + data from request stream
- *  - do some useful job
- *  - send reply via response stream
- * Chunked replies are allowed by protocol.
+
+/*
+ * Elliptics to cocaine logger adapter.
+ *
+ * Current elliptics logger is actually a wrapper over on blackhole v0.2 logger,
+ * Current cocaine logger is generalized logger interface from blackhole v1.0 (which was rewritten from scratch).
+ *
+ * This logger_adapter wraps v0.2 logger into v1.0 logger interface.
  */
-class dnet_upstream_t: public cocaine::api::stream_t
-{
-	public:
-		dnet_upstream_t(struct dnet_node *node, struct dnet_net_state *state, struct dnet_cmd *cmd,
-				const sph_wrapper &sph, std::function<void()> deleter):
-		m_completed(false),
-		m_node(node),
-		m_state(dnet_state_get(state)),
-		m_cmd(*cmd),
-		m_sph(sph),
-		m_deleter(deleter),
-		m_error(0) {
-		}
 
-		~dnet_upstream_t() {
-			reply(true, NULL, 0);
-
-			dnet_state_put(m_state);
-		}
-
-		/*
-		 * This function is called when worker sends chunk to reply stream.
-		 * We need to decode reply, check if it is a string (since we don't want to serialize
-		 * objects here), prepend with SPH header for the client and send elliptics reply.
-		 */
-		virtual void write(const char *chunk, size_t size) {
-			int err = 0;
-			/* Chunk should be decoded */
-			msgpack::object obj;
-			size_t offset = 0;
-
-			msgpack::unpack_return rv = msgpack::unpack(chunk, size, &offset, &m_zone, &obj);
-			if (rv != msgpack::UNPACK_SUCCESS && rv != msgpack::UNPACK_EXTRA_BYTES) {
-				err = EINVAL;
-				SRW_LOG(*m_node->log, DNET_LOG_ERROR, "app/" + m_sph.event, "unable to unpack response");
-			} else if (obj.type != msgpack::type::RAW) {
-				err = EINVAL;
-				SRW_LOG(*m_node->log, DNET_LOG_ERROR, "app/" + m_sph.event, "insorrect response type, should be string, got: %d", obj.type);
-			}
-
-			if (err) {
-				reply(true, NULL, 0);
-				return;
-			}
-
-			/* Make SPH reply for client */
-			size_t data_size = sizeof(sph) +  m_sph.event.size() + obj.via.raw.size;
-			ioremap::elliptics::data_buffer data(data_size);
-
-			data.write(&m_sph.sph, sizeof(sph));
-			data.write(m_sph.event.data(), m_sph.event.size());
-			data.write(obj.via.raw.ptr, obj.via.raw.size);
-
-			/* Fix SPH sizes */
-			ioremap::elliptics::data_pointer data_ptr(std::move(data));
-
-			sph * sph_p = (sph*)(data_ptr.data());
-			sph_p->event_size = m_sph.event.size();
-			sph_p->data_size = obj.via.raw.size;
-
-			reply(false, data_ptr.data<const char>(), data_ptr.size());
-		}
-
-		virtual void close(void) {
-			SRW_LOG(*m_node->log, DNET_LOG_NOTICE, "app/" + m_sph.event, "%s", "job completed");
-			reply(true, NULL, 0);
-			m_deleter();
-		}
-
-		virtual void error(int code, const std::string &message) {
-			m_error = -code;
-			SRW_LOG(*m_node->log, DNET_LOG_ERROR, "app/" + m_sph.event, "%s: %d", message, code);
-		}
-
-		void reply(bool completed, const char *reply, size_t size) {
-			std::unique_lock<std::mutex> guard(m_lock);
-			if (m_completed)
-				return;
-
-			m_completed = completed;
-
-			if ((m_sph.sph.flags & DNET_SPH_FLAGS_SRC_BLOCK) || (reply && size)) {
-				if (reply && size) {
-					if (completed)
-						m_cmd.flags &= ~DNET_FLAGS_NEED_ACK;
-					dnet_send_reply(m_state, &m_cmd, (void *)reply, size, !completed);
-				} else if (completed) {
-					m_cmd.flags |= DNET_FLAGS_NEED_ACK;
-					dnet_send_ack(m_state, &m_cmd, m_error, 0);
-				}
-			}
-		}
-
-	private:
-		bool m_completed;
-		struct dnet_node *m_node;
-		std::mutex m_lock;
-		struct dnet_net_state *m_state;
-		struct dnet_cmd m_cmd;
-		sph_wrapper m_sph;
-		std::function<void()> m_deleter;
-		int m_error;
-		msgpack::zone m_zone;
-};
-
-typedef std::shared_ptr<dnet_upstream_t> dnet_shared_upstream_t;
-typedef std::map<int, dnet_shared_upstream_t> jobs_map_t;
-
-struct srw_counters {
-	long			blocked;
-	long			nonblocked;
-	long			reply;
-
-	srw_counters():
-	blocked(0),
-	nonblocked(0),
-	reply(0)
-	{
-	}
-};
-
-typedef std::map<std::string, srw_counters> cmap_t;
-
-class dnet_app_t : public cocaine::app_t {
-	public:
-		dnet_app_t(cocaine::context_t& context, const std::string& name, const std::string& profile) :
-		cocaine::app_t(context, name, profile),
-		m_pool_size(-1),
-		m_id("default"),
-		m_started(false) {
-			atomic_set(&m_sph_index, 1);
-		}
-
-		~dnet_app_t() {
-			stop();
-		}
-
-		void start() {
-			if (!m_started) {
-				cocaine::app_t::start();
-				m_started = true;
-			}
-		}
-
-		void stop() {
-			if (m_started) {
-				m_started = false;
-				cocaine::app_t::stop();
-			}
-		}
-
-		Json::Value counters(void) {
-			Json::Value info(Json::objectValue);
-
-			for (auto it = m_counters.begin(); it != m_counters.end(); ++it) {
-				Json::Value obj(Json::objectValue);
-
-				obj["blocked"] = static_cast<Json::Value::Int64>(it->second.blocked);
-				obj["nonblocked"] = static_cast<Json::Value::Int64>(it->second.nonblocked);
-				obj["reply"] = static_cast<Json::Value::Int64>(it->second.reply);
-
-				info[it->first] = obj;
-			}
-
-			return info;
-		}
-
-		void update(const std::string &event, struct sph *sph) {
-			std::unique_lock<std::mutex> guard(m_lock);
-
-			if (sph->flags & (DNET_SPH_FLAGS_REPLY | DNET_SPH_FLAGS_FINISH)) {
-				m_counters[event].reply += 1;
-			} else if (sph->flags & DNET_SPH_FLAGS_SRC_BLOCK) {
-				m_counters[event].blocked += 1;
-			} else {
-				m_counters[event].nonblocked += 1;
-			}
-		}
-
-		void set_pool_size(int pool_size) {
-			m_pool_size = pool_size;
-		}
-
-		void set_task_id(const std::string &id) {
-			m_id = id;
-		}
-
-		const std::string &get_task_id(void) const {
-			return m_id;
-		}
-
-		int get_index(int sph_index) {
-			if (m_pool_size == -1)
-				return -1;
-
-			if (sph_index == -1)
-				return atomic_inc(&m_sph_index) % m_pool_size;
-
-			return sph_index % m_pool_size;
-		}
-
-	private:
-		std::mutex	m_lock;
-		cmap_t		m_counters;
-		int		m_pool_size;
-		atomic_t	m_sph_index;
-		std::string	m_id;
-		bool		m_started;
-};
-
-typedef std::map<std::string, std::shared_ptr<dnet_app_t> > eng_map_t;
-
-namespace {
-
-static cocaine::logging::priorities convert_verbosity(ioremap::elliptics::log_level level)
-{
+inline blackhole::v1::severity_t convert_severity(dnet_log_level level) {
 	switch (level) {
 	case DNET_LOG_DEBUG:
 		return cocaine::logging::debug;
@@ -307,14 +78,13 @@ static cocaine::logging::priorities convert_verbosity(ioremap::elliptics::log_le
 	case DNET_LOG_WARNING:
 		return cocaine::logging::warning;
 	case DNET_LOG_ERROR:
-		return cocaine::logging::error;
 	default:
-		return cocaine::logging::ignore;
+		return cocaine::logging::error;
 	};
 }
 
-static dnet_log_level convert_verbosity(cocaine::logging::priorities prio) {
-	switch (prio) {
+inline dnet_log_level convert_severity(blackhole::v1::severity_t severity) {
+	switch (severity) {
 	case cocaine::logging::debug:
 		return DNET_LOG_DEBUG;
 	case cocaine::logging::info:
@@ -327,358 +97,977 @@ static dnet_log_level convert_verbosity(cocaine::logging::priorities prio) {
 	}
 }
 
-}
 
-class dnet_sink_t: public cocaine::logging::logger_concept_t {
-	public:
-		dnet_sink_t(struct dnet_node *n) : m_node(n) {
-		}
+/*
+ * Scope manager.
+ *
+ * XXX: pristine copy from blackhole/root.cpp,
+ * We're forced to use it because blackhole requires manager_t to remember
+ * sequence of watcher_t object, dummy implementation without memory
+ * will break assertion in ~watcher_t()
+ */
+class thread_manager_t : public blackhole::v1::scope::manager_t {
+public:
+	thread_manager_t() : inner([](blackhole::v1::scope::watcher_t*) {}) {}
 
-		virtual cocaine::logging::priorities verbosity() const {
-			return convert_verbosity(m_node->log->log().verbosity());
-		}
+	blackhole::v1::scope::watcher_t *get() const {
+		return inner.get();
+	}
 
-		virtual void emit(cocaine::logging::priorities prio, const std::string &app, const std::string& message) {
-			dnet_log_level level = convert_verbosity(prio);
-			SRW_LOG(*m_node->log, level, app, "%s", message);
-		}
+	void reset(blackhole::v1::scope::watcher_t* value) {
+		inner.reset(value);
+	}
 
-	private:
-		struct dnet_node *m_node;
+private:
+	boost::thread_specific_ptr<blackhole::v1::scope::watcher_t> inner;
 };
 
-class srw {
-	public:
-		srw(struct dnet_node *n, const std::string &config)
-			: m_node(n)
-			, m_ctx(config, blackhole::utils::make_unique<dnet_sink_t>(m_node))
-		{
-			atomic_set(&m_src_key, 1);
+/*
+ * Logger interface implementation.
+ */
+class logger_adapter : public cocaine::logging::logger_t
+{
+public:
+	logger_adapter(dnet_node *n)
+	: elliptics_logger(dnet_node_get_logger(n)) {}
 
-			auto reactor = std::make_shared<cocaine::io::reactor_t>();
-			Json::Value arg;
+	// logging::logger_t interface
 
-			auto service = blackhole::utils::make_unique<ioremap::elliptics::localnode>(
-				m_ctx, *reactor, "localnode", arg, m_node
-			);
-			auto service_actor = blackhole::utils::make_unique<cocaine::actor_t>(
-				m_ctx, reactor, std::move(service)
-			);
-			m_ctx.attach("localnode", std::move(service_actor));
+	virtual ~logger_adapter() = default;
+
+	// Logs the given message with the specified severity level.
+	virtual void log(blackhole::v1::severity_t severity, const blackhole::v1::message_t &message) {
+		blackhole::v1::attribute_pack pack;
+		log(severity, message, pack);
+	}
+
+	// Logs the given message with the specified severity level and attributes pack attached.
+	virtual void log(blackhole::v1::severity_t severity, const blackhole::v1::message_t &message,
+	                 blackhole::v1::attribute_pack &pack) {
+		if (scope_manager.get()) {
+			scope_manager.get()->collect(pack);
+		}
+		blackhole::v1::writer_t writer;
+		blackhole::v1::record_t record(severity, message, pack);
+		blackhole::v1::formatter::string_t formatter("{message}, attrs: [{...}]");
+		formatter.format(record, writer);
+		dnet_log_only_log(elliptics_logger, convert_severity(severity), "%s",
+		                  writer.result().to_string().c_str());
+	}
+
+	/*
+	 * Logs a message which is only to be constructed if the result record passes filtering with
+	 * the specified severity and including the attributes pack provided.
+	 */
+	virtual void log(blackhole::v1::severity_t severity, const blackhole::v1::lazy_message_t &message,
+	                 blackhole::v1::attribute_pack &pack) {
+		//TODO: properly support message laziness
+		log(severity, message.supplier(), pack);
+	}
+
+	/*
+	 * Returns a scoped attributes manager reference.
+	 *
+	 * Returned manager allows the external tools to attach scoped attributes to the current logger
+	 * instance, making every further log event to contain them until the registered scoped guard
+	 * is alive.
+	 *
+	 * \returns a scoped attributes manager.
+	 */
+	virtual blackhole::v1::scope::manager_t &manager() {
+		return scope_manager;
+	}
+
+private:
+	dnet_logger *elliptics_logger;
+	thread_manager_t scope_manager;
+};
+
+
+/*
+ * `client_session` represents open communication with the srw's client
+ *  over elliptics channel.
+ */
+struct client_session
+{
+	client_session(dnet_net_state *state, dnet_cmd *cmd, const std::string &app, const std::string &signature,
+	               const exec_context &exec_copy)
+	: m_state(state)
+	, m_cmd_copy(*cmd)
+	, m_exec_copy(exec_copy)
+	, m_app(app)
+	, m_signature(signature) {
+		dnet_state_get(m_state);
+		SRW_LOG(*dnet_node_get_logger(m_state->n), DNET_LOG_DEBUG, m_app, "%s: client session open", m_signature);
+
+		// set DNET_SPH_FLAGS_REPLY flag, drop all others
+		m_exec_copy.set_flags(DNET_SPH_FLAGS_REPLY);
+	}
+
+	~client_session() {
+		SRW_LOG(*dnet_node_get_logger(m_state->n), DNET_LOG_DEBUG, m_app, "%s: client session close", m_signature);
+		dnet_state_put(m_state);
+	}
+
+	void send_chunk(const argument_data &data) {
+		/*
+		 * chunks of size 0 are just redundant, its safe to ignore them;
+		 * also as ack is a reply with zero payload too, its better not
+		 * to create a mess
+		 */
+		if (data.size() == 0) {
+			return;
 		}
 
-		~srw() {
-		}
+		SRW_LOG(*dnet_node_get_logger(m_state->n), DNET_LOG_DEBUG, m_app, "%s: client session sends data",
+		        m_signature);
 
-		int process(struct dnet_net_state *st, struct dnet_cmd *cmd, struct sph *sph) {
-			int err = 0;
-			char *data = (char *)(sph + 1);
-			std::string event = dnet_get_event(sph, data);
+		/*
+		 * FIXME: `data` payload gets copied here 2 times more than necessary:
+		 *  1. in exec_context_data::copy, to prefix it with sph
+		 *  2. in dnet_send, to prefix [sph,data] with dnet_cmd
+		 * Those could be eliminated, for this case specifically.
+		 * (Third copy of entire [cmd,sph,data] is performed in dnet_io_req_queue,
+		 * and thats too deep, -- fixing that would mean changing a lot of elliptics
+		 * entrails.)
+		 */
+		auto reply = exec_context_data::copy(m_exec_copy, m_exec_copy.event(), data);
+		auto srw_packet = reply.native_data();
+		dnet_send_reply(m_state, const_cast<dnet_cmd*>(&m_cmd_copy), srw_packet.data(), srw_packet.size(), 1);
+	}
 
-			char id_str[DNET_DUMP_NUM * 2 + 1];
-			char sph_str[DNET_DUMP_NUM * 2 + 1];
+	void finish(int error_code = 0) {
+		/*
+		 * exec commands have NEED_ACK flag set unconditionally
+		 * (same as all other nonsystem commands).
+		 * If m_cmd_copy will have it unset then it will mean that client logic
+		 * was changed incompatibly with server logic.
+		 */
 
-			dnet_dump_id_len_raw(cmd->id.id, DNET_DUMP_NUM, id_str);
-			dnet_dump_id_len_raw(sph->src.id, DNET_DUMP_NUM, sph_str);
+		SRW_LOG(*dnet_node_get_logger(m_state->n), DNET_LOG_DEBUG, m_app, "%s: client session sends ack",
+		        m_signature);
+		dnet_send_ack(m_state, const_cast<dnet_cmd*>(&m_cmd_copy), error_code, 0);
+	}
 
-			id_str[2 * DNET_DUMP_NUM] = '\0';
-			sph_str[2 * DNET_DUMP_NUM] = '\0';
+	dnet_net_state *m_state;
+	const dnet_cmd m_cmd_copy;
+	exec_context m_exec_copy;
+	const std::string m_app;
+	const std::string m_signature;
+};
 
-			/*!
-			 * Elliptics' event always looks like "application@method", where application
-			 * is a name of \a application which \a method we should call.
-			 *
-			 * Afterwards we are able to find this application in our local dictionary
-			 * and call it's method with data extracted from \a sph structure.
+
+/*
+ * `exec_back_stream` is a stream receiving responses from an app
+ * (in cocaine terms response stream called upstream).
+ *
+ * It transfers replies back to the original elliptics client which
+ * started EXEC transaction, it keeps client session used for that transfer
+ * and it notifies srw when stream job is done.
+ *
+ * Method write() accepts strings chunks from worker.
+ * It allows to write interactive worker application in a straightforward way:
+ *  - read SPH + data from request stream
+ *  - do some useful job
+ *  - send reply via response stream
+ * Chunked replies are allowed by elliptics protocol.
+ */
+class exec_back_stream : public cocaine::api::stream_t {
+public:
+	exec_back_stream(dnet_logger *logger, const std::shared_ptr<client_session> &client,
+	                 std::function<void()> notify_completion)
+	: m_logger(logger)
+	, m_client(client)
+	, m_app(client->m_app)
+	, m_signature(client->m_signature)
+	, m_notify_completion(notify_completion) {}
+
+	// stream_t interface
+
+	virtual ~exec_back_stream() = default;
+
+	/*
+	 * write() is called when worker sends chunk to the response stream.
+	 * write() performs transfer of data back to elliptics client.
+	 */
+	virtual stream_t &write(cocaine::hpack::header_storage_t, const std::string &chunk) {
+		if (chunk.empty()) {
+			SRW_LOG(*m_logger, DNET_LOG_DEBUG, m_app,
+			        "%s: stream: got chunk from app, size 0 -- 'drop me' signal", m_signature);
+			/*
+			 * empty chunk is a signal of chaining: the worker will not provide
+			 * the final result of event processing immediately but will instead
+			 * pass processing further down the chain -- result will be provided
+			 * eventually by a different channel and not through this stream
 			 */
-			char *ptr = strchr((char *)event.c_str(), '@');
-			if (!ptr) {
-				dnet_log(m_node, DNET_LOG_ERROR, "%s: sph: %s: %s: invalid event name: "
-						"must be application@event or application@start-task",
-						id_str, sph_str, event.c_str());
-				return -EINVAL;
-			}
+			m_client.reset();
 
-			std::string app(event.c_str(), ptr - event.c_str());
-			std::string ev(ptr+1);
-
-			if ((ev == "start-task") || (ev == "start-multiple-task")) {
-				std::unique_lock<std::mutex> guard(m_lock);
-				eng_map_t::iterator it = m_map.find(app);
-				if (it == m_map.end()) {
-					std::shared_ptr<dnet_app_t> eng(new dnet_app_t(m_ctx, app, app));
-					eng->start();
-
-					if (ev == "start-multiple-task") {
-						auto storage = cocaine::api::storage(m_ctx, "core");
-						Json::Value profile = storage->get<Json::Value>("profiles", app);
-
-						int idle = profile["idle-timeout"].asInt();
-						int pool_limit = profile["pool-limit"].asInt();
-						const int idle_min = 60 * 60 * 24 * 30;
-
-						dnet_log(m_node, DNET_LOG_INFO, "%s: sph: %s: %s: multiple start: "
-								"idle: %d/%d, workers: %d",
-								id_str, sph_str, event.c_str(), idle, idle_min, pool_limit);
-
-						if (idle && idle < idle_min) {
-							dnet_log(m_node, DNET_LOG_ERROR, "%s: sph: %s: %s: multiple start: "
-								"idle must be big enough, we check it to be larger than 30 days (%d seconds), "
-								"current profile value is %d",
-								id_str, sph_str, event.c_str(), idle_min, idle);
-							return -EINVAL;
-						}
-
-						eng->set_pool_size(pool_limit);
-
-						if (sph->data_size) {
-							std::string task_id(data + sph->event_size, sph->data_size);
-
-							eng->set_task_id(task_id);
-						}
-					}
-
-					m_map.insert(std::make_pair(app, eng));
-					dnet_log(m_node, DNET_LOG_INFO, "%s: sph: %s: %s: started", id_str, sph_str, event.c_str());
-				} else {
-					dnet_log(m_node, DNET_LOG_INFO, "%s: sph: %s: %s: was already started",
-							id_str, sph_str, event.c_str());
-				}
-
-			} else if (ev == "stop-task") {
-				std::unique_lock<std::mutex> guard(m_lock);
-				eng_map_t::iterator it = m_map.find(app);
-				/* destructor stops engine */
-				if (it != m_map.end())
-					m_map.erase(it);
-				guard.unlock();
-
-				dnet_log(m_node, DNET_LOG_INFO, "%s: sph: %s: %s: stopped", id_str, sph_str, event.c_str());
-
-			} else if (ev == "info") {
-				std::unique_lock<std::mutex> guard(m_lock);
-				eng_map_t::iterator it = m_map.find(app);
-				if (it == m_map.end()) {
-					dnet_log(m_node, DNET_LOG_ERROR, "%s: sph: %s: %s: no task", id_str, sph_str, event.c_str());
-					return -ENOENT;
-				}
-
-				Json::Value info = it->second->info();
-				info["counters"] = it->second->counters();
-
-				guard.unlock();
-
-				std::string s = Json::StyledWriter().write(info);
-
-				struct sph *reply;
-				std::string tmp;
-
-				tmp.resize(sizeof(struct sph));
-				reply = (struct sph *)tmp.data();
-
-				reply->event_size = event.size();
-				reply->data_size = s.size();
-				memcpy(&reply->addr, &st->n->addrs[0], sizeof(struct dnet_addr));
-
-				tmp += event;
-				tmp += s;
-
-				err = dnet_send_reply(st, cmd, (void *)tmp.data(), tmp.size(), 0);
-				dnet_log(m_node, DNET_LOG_INFO, "%s: sph: %s: %s: info request complete", id_str, sph_str, event.c_str());
-
-			} else if (sph->flags & (DNET_SPH_FLAGS_REPLY | DNET_SPH_FLAGS_FINISH)) {
-				bool final = !!(sph->flags & DNET_SPH_FLAGS_FINISH);
-
-				std::unique_lock<std::mutex> guard(m_lock);
-
-				jobs_map_t::iterator it = m_jobs.find(sph->src_key);
-				if (it == m_jobs.end()) {
-					dnet_log(m_node, DNET_LOG_ERROR, "%s: sph: %s: %s: no job: %d to complete",
-						id_str, sph_str, event.c_str(), sph->src_key);
-					return -ENOENT;
-				}
-
-				dnet_shared_upstream_t upstream = it->second;
-				if (final)
-					m_jobs.erase(it);
-
-				eng_map_t::iterator appit = m_map.find(app);
-				if (appit != m_map.end())
-					appit->second->update(event, sph);
-
-				guard.unlock();
-
-				upstream->reply(final, (char *)sph, sizeof(struct sph) + sph->event_size + sph->data_size);
-
-				memcpy(&sph->addr, &st->n->addrs[0], sizeof(struct dnet_addr));
-				dnet_log(m_node, DNET_LOG_INFO, "%s: sph: %s: %s: completed: job: %d, total-size: %zd, finish: %d",
-						id_str, sph_str, event.c_str(), sph->src_key, total_size(sph), final);
+		} else {
+			SRW_LOG(*m_logger, DNET_LOG_DEBUG, m_app, "%s: stream: got chunk from app, size %ld", m_signature,
+			        chunk.size());
+			if (auto client = m_client.lock()) {
+				client->send_chunk(chunk);
 
 			} else {
-				/*
-				 * src_key can be used as index within named workers,
-				 * but src_key is also an index in jobs map, save it here
-				 * and use to find worker name later
-				 */
-				int src_key = sph->src_key;
+				SRW_LOG(*m_logger, DNET_LOG_ERROR, m_app, "%s: stream: client session already closed",
+				        m_signature);
+			}
+		}
+		return *this;
+	}
 
-				if (sph->flags & DNET_SPH_FLAGS_SRC_BLOCK) {
-					sph->src_key = atomic_inc(&m_src_key);
-					memcpy(sph->src.id, cmd->id.id, sizeof(sph->src.id));
+	virtual void error(cocaine::hpack::header_storage_t, const std::error_code &code, const std::string &reason) {
+		SRW_LOG(*m_logger, DNET_LOG_ERROR, m_app, "%s: stream: got error from app: %s: %s", m_signature,
+		        code.message(), reason);
+		if (auto client = m_client.lock()) {
+			//TODO: translate cocaine errors into elliptics error code space (errno),
+			// for some errors, e.g. for "unknown/unhandled event" error
+			client->finish(code.value());
+
+			/* notify that we are done and this cocaine session closed
+			 * TODO: move to client_session
+			 */
+			m_notify_completion();
+
+			/* stream object could be held live long after its close() or error() was called,
+			 * so explicitly dropping hold on client session helps
+			 */
+			m_client.reset();
+
+		} else {
+			SRW_LOG(*m_logger, DNET_LOG_DEBUG, m_app, "%s: stream: client session already closed",
+			        m_signature);
+		}
+	}
+
+	virtual void close(cocaine::hpack::header_storage_t) {
+		SRW_LOG(*m_logger, DNET_LOG_DEBUG, m_app, "%s: stream: got close", m_signature);
+		if (auto client = m_client.lock()) {
+			client->finish();
+
+			/* notify that we are done and this cocaine session closed
+			 *TODO: move to client_session?
+			 */
+			m_notify_completion();
+
+			/* stream object could be held live long after its close() or error() was called,
+			 * so explicitly dropping hold on client session helps
+			 */
+			m_client.reset();
+
+		} else {
+			SRW_LOG(*m_logger, DNET_LOG_DEBUG, m_app, "%s: stream: client session already closed",
+			        m_signature);
+		}
+	}
+
+private:
+	dnet_logger *m_logger;
+	std::weak_ptr<client_session> m_client;
+	const std::string m_app;
+	const std::string m_signature;
+	std::function<void()> m_notify_completion;
+};
+
+
+/*
+ * `push_back_stream` is a stub for the reply stream (upstream in cocaine terms).
+ *
+ * In some cases srw expects the other end (the app) to send no reply,
+ * so getting anything back indicate error in app behaviour.
+ */
+class push_back_stream : public cocaine::api::stream_t {
+public:
+	push_back_stream(dnet_logger *logger, const std::shared_ptr<client_session> &client)
+	: m_logger(logger)
+	, m_client(client)
+	, m_app(client->m_app)
+	, m_signature(client->m_signature) {}
+
+	// stream_t interface
+
+	virtual ~push_back_stream() {
+		SRW_LOG(*m_logger, DNET_LOG_DEBUG, m_app, "%s: stream: close", m_signature);
+	}
+
+	virtual stream_t& write(cocaine::hpack::header_storage_t, const std::string& chunk) {
+		if (chunk.empty()) {
+			SRW_LOG(*m_logger, DNET_LOG_DEBUG, m_app,
+			        "%s: stream: got chunk from app, size 0 -- 'drop me' signal", m_signature);
+			m_client->finish();
+
+			/* stream object could be held live long after its close() or error() was called,
+			 * so explicitly dropping hold on client session helps
+			 */
+			m_client.reset();
+
+		} else {
+			SRW_LOG(*m_logger, DNET_LOG_ERROR, m_app,
+			        "%s: stream: got chunk from app in no-reply-expected mode", m_signature);
+		}
+		return *this;
+	}
+
+	virtual void error(cocaine::hpack::header_storage_t, const std::error_code& code, const std::string& reason) {
+		SRW_LOG(*m_logger, DNET_LOG_ERROR, m_app,
+		        "%s: stream: got error from app in no-reply-expected mode: %s: %s", m_signature, code.message(),
+		        reason);
+		if (m_client) {
+			m_client->finish(code.value());
+
+			// stream object could be held live long after its close() or error() was called,
+			// so explicitly dropping hold on client session helps
+			m_client.reset();
+		}
+	}
+
+	virtual void close(cocaine::hpack::header_storage_t) {
+		SRW_LOG(*m_logger, DNET_LOG_DEBUG, m_app, "%s: stream: got close", m_signature);
+		if (m_client) {
+			m_client->finish();
+
+			/* stream object could be held live long after its close() or error() was called,
+			 * so explicitly dropping hold on client session helps
+			 */
+			m_client.reset();
+		}
+	}
+
+private:
+	dnet_logger *m_logger;
+	std::shared_ptr<client_session> m_client;
+	const std::string m_app;
+	const std::string m_signature;
+};
+
+
+/*
+ * Utility methods for use by srw class.
+ */
+boost::optional<const cocaine::service::node_t &> lookup_node_service(const cocaine::context_t &ctx) {
+	//XXX: can we detect node service name automatically?
+	if (const auto actor = ctx.locate("node")) {
+		const auto &prototype = actor.get().prototype();
+		const auto &object = dynamic_cast<const cocaine::service::node_t&>(prototype);
+		return boost::optional<const cocaine::service::node_t&>(object);
+	}
+
+	return boost::none;
+}
+
+std::string make_log_signature(struct dnet_net_state *st, struct dnet_cmd *cmd, const exec_context &exec) {
+	//XXX: use more vivid formatting (cppformat?)
+	std::ostringstream buf;
+
+	buf << dnet_state_dump_addr(st) << ": trans: " << cmd->trans << ": " << dnet_dump_id(&cmd->id) << ", ";
+
+	/* In `exec` commands src_id (or origin id) is equal to dnet_cmd::id.
+	 * Same for simple cases of `reply` commands.
+	 * Origin id could differ from dnet_cmd::id in `push` commands and in those
+	 * `reply` commands that come from the end of `exec`/`push` chains.
+	 *
+	 * add origin id to signature only if it differs -- no need to clutter the log
+	 */
+	if (dnet_id_cmp_str(cmd->id.id, exec.src_id()->id) != 0) {
+		// here and manually -- because family of dnet_id formatting functions
+		// lack a variant that can accept dnet_raw_id (instead of dnet_id)
+		char origin_id_str[DNET_DUMP_NUM * 2 + 1];
+		dnet_dump_id_len_raw(exec.src_id()->id, DNET_DUMP_NUM, origin_id_str);
+		buf << "(for origin id " << origin_id_str << "), ";
+	}
+
+	// exec_context's event have format {app}@{event}
+	buf << exec.event();
+
+	return buf.str();
+}
+
+std::tuple<std::string, std::string> parse_srw_event(const std::string &s) {
+	auto found = s.find("@");
+	if (found != std::string::npos) {
+		return std::make_tuple(s.substr(0, found), s.substr(found + 1));
+	}
+	return std::make_tuple(s, std::string());
+};
+
+
+/*
+ * Main class which implements `exec` command processing and glues elliptics with cocaine.
+ */
+struct srw {
+	struct exec_session
+	{
+		std::shared_ptr<client_session> m_client_session;
+		std::shared_ptr<cocaine::api::stream_t> m_back_stream;
+	};
+
+	struct headers
+	{
+		struct sph
+		{
+			static constexpr cocaine::hpack::header::data_t name() {
+				return cocaine::hpack::header::create_data("sph");
+			}
+		};
+	};
+
+	srw(struct dnet_node *n, const std::string &config);
+	~srw();
+
+	void register_job(int job_id, const std::shared_ptr<exec_session> &exec_session);
+	bool unregister_job(const std::string &signature, int job_id);
+	bool unregister_job_nolock(const std::string &signature, int job_id);
+	// std::shared_ptr<exec_session> pop_job(const std::string &signature, int job_id);
+
+	int process(struct dnet_net_state *st, struct dnet_cmd *cmd, const void *data);
+
+	// used only as a source of the logger
+	struct dnet_node *m_node;
+
+	// main cocaine core object -- context
+	std::unique_ptr<cocaine::context_t> m_ctx;
+
+	// exec session map
+	typedef std::map<uint64_t, std::shared_ptr<exec_session>> jobs_map_t;
+	jobs_map_t m_jobs;
+	atomic_t m_job_id_counter;
+
+	// lock to serialize access to exec session map
+	std::mutex m_lock;
+};
+
+srw::srw(struct dnet_node *n, const std::string &config)
+	: m_node(n)
+	// NOTE: context_t ctor throws an exception on config parse error
+	, m_ctx(cocaine::get_context(cocaine::make_config(config), std::make_unique<logger_adapter>(m_node)))
+{
+	atomic_set(&m_job_id_counter, 0);
+
+	/* register `localnode` service
+	 *
+	 * the hard way, with asio::io_service exposed and other internal details visible
+	 * also note explicit upcast from localnode to service_t base
+	 * also note that there are two use sites for asio::io_service, and while its
+	 * customary to use the same object at both sites, but that's not strictly required
+	 *
+	 * this is the only possible way now
+	 */
+	{
+		auto reactor = std::make_shared<asio::io_service>();
+		std::unique_ptr<cocaine::api::service_t> service(
+			new ioremap::elliptics::localnode(
+				*m_ctx, *reactor, "localnode", cocaine::dynamic_t(), m_node
+			)
+		);
+		m_ctx->insert("localnode", std::make_unique<cocaine::actor_t>(
+			*m_ctx,
+			reactor,
+			std::move(service)
+		));
+	}
+
+	// simpler way, for the time when cocaine core will develop proper api
+	//
+	// std::unique_ptr<cocaine::api::service_t> service(
+	// 	   new ioremap::elliptics::localnode(
+	// 	       m_ctx, "localnode", cocaine::dynamic_t(), m_node
+	//     )
+	// );
+	// m_ctx.insert_service("localnode", std::move(service));
+}
+
+srw::~srw()
+{
+	// manually inserted services require manual removal
+	m_ctx->remove("localnode");
+}
+
+void srw::register_job(int job_id, const std::shared_ptr<exec_session> &exec_session)
+{
+	std::lock_guard<std::mutex> guard(m_lock);
+	m_jobs.insert(std::make_pair(job_id, exec_session));
+}
+
+bool srw::unregister_job(const std::string &signature, int job_id)
+{
+	std::lock_guard<std::mutex> guard(m_lock);
+	return unregister_job_nolock(signature, job_id);
+}
+
+bool srw::unregister_job_nolock(const std::string &signature, int job_id)
+{
+	dnet_log(m_node, DNET_LOG_DEBUG, "%s: srw: request to remove job %d", signature.c_str(), job_id);
+	jobs_map_t::iterator found = m_jobs.find(job_id);
+	if (found != m_jobs.end()) {
+		m_jobs.erase(found);
+		dnet_log(m_node, DNET_LOG_DEBUG, "%s: srw: job %d found and removed", signature.c_str(),
+		         job_id);
+		return true;
+	} else {
+		//FIXME: fix log message text
+		dnet_log(m_node, DNET_LOG_ERROR, "%s: srw: B, no job %d to complete", signature.c_str(),
+		         job_id);
+		return false;
+	}
+}
+
+// std::shared_ptr<exec_session> srw::pop_job(const std::string &signature, int job_id)
+// {
+// 	{
+// 		std::lock_guard<std::mutex> guard(m_lock);
+// 		jobs_map_t::iterator found = m_jobs.find(job_id);
+// 		if (found != m_jobs.end()) {
+// 			std::shared_ptr<exec_stream> value = found->second;
+// 			m_jobs.erase(found);
+// 			return value;
+// 		}
+// 	}
+// 	//FIXME: fix log message text
+// 	dnet_log(m_node, DNET_LOG_ERROR, "%s: no job: %d to complete", signature.c_str(), job_id);
+// 	return std::shared_ptr<exec_session>();
+// }
+
+int srw::process(struct dnet_net_state *st, struct dnet_cmd *cmd, const void *data)
+{
+	exec_context exec;
+	try {
+		exec = exec_context::from_raw(data, cmd->size);
+
+	} catch(const error &e) {
+		//TODO: add logging attribute 'source: srw'
+		dnet_log(m_node, DNET_LOG_ERROR, "%s: srw: invalid exec_context: %s", dnet_dump_id(&cmd->id),
+		         e.what());
+		return e.error_code();
+	}
+
+	// srw event should look like "application@method"
+	const std::string srw_event = exec.event();
+	std::string app;
+	std::string event;
+	{
+		std::tie(app, event) = parse_srw_event(srw_event);
+		if (app.empty() || event.empty()) {
+			//TODO: add logging attribute 'source: srw'
+			dnet_log(m_node, DNET_LOG_ERROR, "%s: srw: invalid event (should be {app}@{event}): %s",
+			         dnet_dump_id(&cmd->id), srw_event.c_str());
+			return -EINVAL;
+		}
+	}
+
+	const std::string signature = make_log_signature(st, cmd, exec);
+
+	dnet_log(m_node, DNET_LOG_DEBUG, "%s: srw: start processing, payload size: %ld", signature.c_str(),
+	         exec.data().size());
+
+	/**if ((event == "start-task") || (event == "start-multiple-task")) {
+		std::unique_lock<std::mutex> guard(m_lock);
+		eng_map_t::iterator it = m_map.find(app);
+		if (it == m_map.end()) {
+			auto eng = std::make_shared<dnet_app_t>(m_ctx, app, app);
+			eng->start();
+
+			if (event == "start-multiple-task") {
+				auto storage = cocaine::api::storage(m_ctx, "core");
+				Json::Value profile = storage->get<Json::Value>("profiles", app);
+
+				int idle = profile["idle-timeout"].asInt();
+				int pool_limit = profile["pool-limit"].asInt();
+				const int idle_min = 60 * 60 * 24 * 30;
+
+				dnet_log(m_node, DNET_LOG_INFO, "%s: multiple start: idle: %d/%d, workers: %d", signature.c_str(), idle, idle_min, pool_limit);
+
+				if (idle && idle < idle_min) {
+					dnet_log(m_node, DNET_LOG_ERROR, "%s: multiple start: "
+						"idle must be big enough, we check it to be larger than 30 days (%d seconds), "
+						"current profile value is %d",
+						signature.c_str(), idle_min, idle);
+					return -EINVAL;
 				}
 
-				cocaine::api::event_t cevent(ev);
+				eng->set_pool_size(pool_limit);
 
-				std::unique_lock<std::mutex> guard(m_lock);
-				eng_map_t::iterator it = m_map.find(app);
-				if (it == m_map.end()) {
-					dnet_log(m_node, DNET_LOG_ERROR, "%s: sph: %s: %s: no task", id_str, sph_str, event.c_str());
-					return -ENOENT;
-				}
+				if (sph->data_size) {
+					std::string task_id(data + sph->event_size, sph->data_size);
 
-				it->second->update(event, sph);
-
-				dnet_shared_upstream_t upstream(std::make_shared<dnet_upstream_t>(m_node, st, cmd, sph,
-												std::bind(&srw::complete_job, this, id_str, sph_wrapper(sph))));
-
-				if (sph->flags & DNET_SPH_FLAGS_SRC_BLOCK) {
-					m_jobs.insert(std::make_pair((int)sph->src_key, upstream));
-				}
-
-				std::shared_ptr<dnet_app_t> eng = it->second;
-				guard.unlock();
-
-				int index = eng->get_index(src_key);
-				std::shared_ptr<cocaine::api::stream_t> stream;
-
-				try {
-					if (index == -1) {
-						stream = eng->enqueue(cevent, upstream);
-					} else {
-						app = eng->get_task_id() + "-" + app + "-" + ioremap::elliptics::lexical_cast(index);
-						stream = eng->enqueue(cevent, upstream, app);
-					}
-
-					stream->write((const char *)sph, total_size(sph) + sizeof(struct sph));
-					/*
-					 * Request stream should be closed after all data was sent to prevent resource leackage.
-					 */
-					stream->close();
-
-				} catch (const std::exception &e) {
-					dnet_log(m_node, DNET_LOG_ERROR, "%s: sph: %s: %s: enqueue/write-exception: queue: %s, src-key-orig: %d, "
-							"job: %d, total-size: %zd, block: %d: %s",
-							id_str, sph_str, event.c_str(),
-							app.c_str(),
-							src_key, sph->src_key, total_size(sph),
-							!!(sph->flags & DNET_SPH_FLAGS_SRC_BLOCK),
-							e.what());
-					return -EXFULL;
-				}
-
-				dnet_log(m_node, DNET_LOG_INFO, "%s: sph: %s: %s: started: queue: %s, src-key-orig: %d, "
-						"job: %d, total-size: %zd, block: %d",
-						id_str, sph_str, event.c_str(),
-						app.c_str(),
-						src_key, sph->src_key, total_size(sph),
-						!!(sph->flags & DNET_SPH_FLAGS_SRC_BLOCK));
-
-				if (sph->flags & DNET_SPH_FLAGS_SRC_BLOCK) {
-					cmd->flags &= ~DNET_FLAGS_NEED_ACK;
+					eng->set_task_id(task_id);
 				}
 			}
 
-			return err;
+			m_map.insert(std::make_pair(app, eng));
+
+			dnet_log(m_node, DNET_LOG_INFO, "%s: started", signature.c_str());
+
+		} else {
+			dnet_log(m_node, DNET_LOG_INFO, "%s: was already started", signature.c_str());
 		}
 
-		void complete_job(std::string id, sph_wrapper sph)
-		{
+	} else if (event == "stop-task") {
+		std::unique_lock<std::mutex> guard(m_lock);
+		eng_map_t::iterator it = m_map.find(app);
+		// destructor stops engine
+		if (it != m_map.end())
+			m_map.erase(it);
+		guard.unlock();
+
+		dnet_log(m_node, DNET_LOG_INFO, "%s: stopped", signature.c_str());
+
+	}
+	*/
+
+	// Handle control-over-elliptics-channel commands.
+
+	if (event == "start-task"
+			|| event == "start-multiple-task"
+			|| event == "stop-task"
+			|| event == "info") {
+
+		dnet_log(m_node, DNET_LOG_INFO, "%s: srw: app control", signature.c_str());
+
+		//XXX: how we can differentiate services from apps?
+
+		//XXX: can we detect node service name automatically?
+		if (auto node = lookup_node_service(*m_ctx)) {
+			try {
+				if (event == "info") {
+					auto doc = node.get().info(app,
+						cocaine::io::node::info::flags_t(
+							cocaine::io::node::info::overseer_report
+							| cocaine::io::node::info::expand_manifest
+							| cocaine::io::node::info::expand_profile
+						)
+					);
+					auto text = boost::lexical_cast<std::string>(doc);
+
+					client_session client(st, cmd, app, signature, exec);
+					client.send_chunk(text);
+					client.finish();
+
+					/* we've just sent ack with client.finish(),
+					 * clearing NEED_ACK flag will turn off ack sending
+					 * done in dnet_process_cmd_raw
+					 */
+					cmd->flags &= ~DNET_FLAGS_NEED_ACK;
+
+				} else {
+					/* TODO: reimplement support for other commands:
+					 * their working over elliptics channel is not required right now,
+					 * but still convenient and has value
+					 */
+					return -ENOTSUP;
+				}
+
+			} catch (const std::exception &e) {
+				// exception text must be "app '{name}' is not running"
+				dnet_log(m_node, DNET_LOG_ERROR, "%s: srw: %s", signature.c_str(), e.what());
+				return -ENOENT;
+			}
+
+		} else {
+			dnet_log(m_node, DNET_LOG_ERROR, "%s: 'node' ('node::v2') service not found, but its "
+			                                 "required to be able to run user apps; check cocaine "
+			                                 "config",
+			         signature.c_str());
+			return -ENOENT;
+		}
+
+		return 0;
+	}
+
+	// So, here some non-control EXEC command came to us via elliptics channel.
+
+	try {
+
+		if (exec.is_reply()) {
+			// This is a reply in a sequence of replies to some previous exec.
+
+			dnet_log(m_node, DNET_LOG_INFO, "%s: srw: reply pass", signature.c_str());
+
+			/* This segment could be marked as the final segment in a sequence,
+			 * which means exec session should be finalized and closed.
+			 */
+			const int job_id = exec.src_key();
+
 			std::unique_lock<std::mutex> guard(m_lock);
 
-			jobs_map_t::iterator it = m_jobs.find(sph.sph.src_key);
-			if (it == m_jobs.end()) {
-				dnet_log(m_node, DNET_LOG_ERROR, "%s: sph: %s: %s: no job: %d to complete",
-					id.c_str(), dnet_dump_id_str(sph.sph.src.id), sph.event.c_str(), sph.sph.src_key);
-				return;
+			jobs_map_t::iterator found = m_jobs.find(job_id);
+			if (found == m_jobs.end()) {
+				//FIXME: fix log message text
+				dnet_log(m_node, DNET_LOG_ERROR, "%s: srw: A, no job %d to complete",
+				         signature.c_str(), job_id);
+				return -ENOENT;
 			}
 
-			m_jobs.erase(it);
+			// take our chance to release job map as soon as possible
+			std::shared_ptr<exec_session> exec_session = found->second;
+			if (exec.is_final()) {
+				m_jobs.erase(found);
+				// exec_session object should be released and actually destroyed
+				// as soon as `exec_session` ptr goes out of scope
+			}
+			guard.unlock();
+
+			//XXX: move addr fixup here?
+
+			// and only then do the real work with reply
+			exec_session->m_client_session->send_chunk(exec.data());
+			if (exec.is_final()) {
+				exec_session->m_client_session->finish();
+			}
+
+			// XXX: why that addr fixup? why it made after reply?
+			// memcpy(&sph->addr, &st->n->addrs[0], sizeof(struct dnet_addr));
+
+			/* NOTE: transient client that sent this `reply` is not the same
+			 * as the original client that had sent original `exec` --
+			 * -- original client was just answered through client_session
+			 *
+			 * Ack to the transient client will be sent by dnet_process_cmd_raw(),
+			 * it does ack auto sending for all io commands --
+			 * -- only if NEED_ACK flag is not specifically cleared,
+			 * and we are not clearing NEED_ACK flag.
+			 */
+		} else {
+			/* This is an original exec.
+			 */
+			dnet_log(m_node, DNET_LOG_INFO, "%s: srw: forward pass", signature.c_str());
+
+			auto node = lookup_node_service(*m_ctx);
+			if (!node) {
+				dnet_log(m_node, DNET_LOG_ERROR, "%s: 'node' ('node::v2') service not found, "
+				                                 "but its required to be able to run user "
+				                                 "apps; check cocaine config",
+				         signature.c_str());
+				return -ENOENT;
+			}
+
+			std::shared_ptr<cocaine::service::node::overseer_t> app_overseer;
+			try {
+				app_overseer = node.get().overseer(app);
+
+			} catch (const cocaine::error_t &e) {
+				// exception text must be "app '{name}' is not running"
+				dnet_log(m_node, DNET_LOG_ERROR, "%s: srw: %s", signature.c_str(), e.what());
+				return -ENOENT;
+			}
+
+			/* src_key in exec can be used to map processing to a specific worker,
+			 * src_key in reply will be used as job_id to find job in job map.
+			 * Original src_key gets saved into exec_session and substituted by the job_id
+			 * generated by the srw.
+			 */
+			const int src_key = exec.src_key();
+			const bool reply_expected = !!(exec.flags() & DNET_SPH_FLAGS_SRC_BLOCK);
+			int job_id = 0;
+
+			if (reply_expected) {
+				job_id = atomic_inc(&m_job_id_counter);
+				exec.set_src_key(job_id);
+				memcpy(exec.src_id(), cmd->id.id, sizeof(exec.src_id()->id));
+			}
+
+			auto clean_copy = [] (const exec_context &other) -> exec_context {
+				return exec_context_data::copy(other, other.event(), data_pointer());
+			};
+
+			// clean copy drops payload
+			auto exec_clean_copy = clean_copy(exec);
+
+			auto session = std::make_shared<client_session>(
+				st, cmd, app, signature, exec_clean_copy
+			);
+			dnet_log(m_node, DNET_LOG_DEBUG,
+			         "%s: srw: exec_context original, size: total %ld, event %ld(%d), payload %ld",
+			         signature.c_str(), exec.native_data().size(), exec.event().size(),
+			         exec.native_data().data<sph>()->event_size, exec.data().size());
+			dnet_log(m_node, DNET_LOG_DEBUG,
+			    "%s: srw: exec_context session copy, size: total %ld, event %ld(%d), payload %ld",
+			    signature.c_str(), exec_clean_copy.native_data().size(),
+			    exec_clean_copy.event().size(),
+			    exec_clean_copy.native_data().data<sph>()->event_size,
+			    exec_clean_copy.data().size());
+
+			/* optional tag to stick processing to a certain worker
+			 * FIXME: what about tagging of `push` requests?
+			 */
+			std::string tag;
+
+			std::shared_ptr<cocaine::api::stream_t> back_stream;
+			if (reply_expected) {
+				// for `exec`
+				dnet_log(m_node, DNET_LOG_INFO,
+				         "%s: srw: mode exec (src_key %d replaced with job %d)",
+				         signature.c_str(), src_key, job_id);
+
+				back_stream = std::make_shared<exec_back_stream>(m_node->log, session,
+					std::bind(&srw::unregister_job, this, signature, job_id)
+				);
+
+				if (src_key >= 0) {
+					const int index = (src_key % app_overseer->profile().pool_limit);
+					//TODO: think out tag format
+					tag = /* {unique app instance id} + */ app + ".worker-" +
+					      std::to_string(index);
+				}
+
+			} else {
+				// for `push`
+				dnet_log(m_node, DNET_LOG_INFO, "%s: srw: mode push", signature.c_str());
+
+				back_stream = std::make_shared<push_back_stream>(m_node->log, session);
+			}
+
+			try {
+				namespace h = cocaine::hpack;
+
+				const auto headers = h::header_storage_t({
+					h::header_t::create<headers::sph>(h::header::create_data(
+						exec_clean_copy.native_data().data<char>(),
+						exec_clean_copy.native_data().size()
+					))
+				});
+
+				{
+					dnet_log(m_node, DNET_LOG_DEBUG, "%s: header count %lu", __func__,
+					         headers.get_headers().size());
+					for (const auto &i : headers.get_headers()) {
+						const std::string name(i.get_name().blob, i.get_name().size);
+						const std::string value(i.get_value().blob, i.get_value().size);
+						dnet_log(m_node, DNET_LOG_DEBUG, "%s:   name: %s, value: %x",
+						         __func__, name.c_str(), *(int *)value.data());
+					}
+				}
+
+				//FIXME: get rid of this copy from data_pointer to a std::string
+				const std::string chunk = exec.data().to_string();
+
+				dnet_log(m_node, DNET_LOG_DEBUG,
+				         "%s: srw: enqueueing, tag '%s', event '%s', chunk size %lu",
+				         signature.c_str(), tag.c_str(), event.c_str(), chunk.size());
+
+				auto send_stream = app_overseer->enqueue(
+					back_stream,
+					cocaine::service::node::app::event_t(event, std::move(headers)),
+					// TODO: there is some problem with tags in cocaine 12.7,
+					// disable them for now
+					// cocaine::service::node::slave::id_t(tag)
+					boost::none
+				);
+
+				send_stream->write(h::header_storage_t(), chunk);
+
+				// Request stream should be closed after all data was sent to prevent resource
+				// leakage.
+				send_stream->close(h::header_storage_t());
+
+				dnet_log(m_node, DNET_LOG_INFO,
+				         "%s: srw: enqueued, src_key %d, job %d, payload size %zd, block %d",
+				         signature.c_str(), src_key, job_id, exec.data().size(),
+				         reply_expected);
+
+			} catch (const std::exception &e) {
+				dnet_log(m_node, DNET_LOG_ERROR, "%s: srw: enqueue error, src_key %d, job %d, "
+				                                 "payload size %zd, block %d: %s",
+				         signature.c_str(), src_key, job_id, exec.data().size(), reply_expected,
+				         e.what());
+				return -EXFULL;
+			}
+
+			if (reply_expected) {
+				// register exec session in job map
+				register_job(job_id, std::make_shared<exec_session>(exec_session{session, back_stream}));
+			}
+
+			/* clearing NEED_ACK flag turns off ack auto sending
+			 * (dnet_process_cmd_raw() does that) -- client should receive ack
+			 * only after it'll get result of exec processing
+			 */
+			cmd->flags &= ~DNET_FLAGS_NEED_ACK;
 		}
 
-	private:
-		struct dnet_node    *m_node;
-		cocaine::context_t  m_ctx;
-		std::mutex          m_lock;
-		eng_map_t           m_map;
-		jobs_map_t          m_jobs;
-		atomic_t            m_src_key;
+		return 0;
 
-		std::string dnet_get_event(const struct sph *sph, const char *data) {
-			return std::string(data, sph->event_size);
-		}
+	} catch(const std::exception &e) {
+		dnet_log(m_node, DNET_LOG_ERROR, "%s: processing failed: %s", signature.c_str(), e.what());
+	}
 
-		size_t total_size(const struct sph *sph) {
-			return sph->event_size + sph->data_size;
-		}
-};
+	return -EINVAL;
+}
+
+}} // namespace ioremap::elliptics
+
 
 int dnet_srw_init(struct dnet_node *n, struct dnet_config *cfg)
 {
-	int err = 0;
-
 	try {
-		n->srw = (void *)new srw(n, cfg->srw.config);
-		dnet_log(n, DNET_LOG_INFO, "srw: initialized: config: %s", cfg->srw.config);
+		dnet_log(n, DNET_LOG_INFO, "srw: init, config: %s", cfg->srw.config);
+		n->srw = new ioremap::elliptics::srw(n, cfg->srw.config);
+		dnet_log(n, DNET_LOG_INFO, "srw: init done, config: %s", cfg->srw.config);
 		return 0;
-	} catch (const std::exception &e) {
-		dnet_log(n, DNET_LOG_ERROR, "srw: init failed: config: %s, exception: %s", cfg->srw.config, e.what());
-		err = -ENOMEM;
-	}
 
-	return err;
+	} catch (const cocaine::error_t &e) {
+		dnet_log(n, DNET_LOG_ERROR, "srw: init failed, config: %s, config error: %s", cfg->srw.config,
+		         e.what());
+		return -EINVAL;
+
+	} catch (const std::system_error &e) {
+		dnet_log(n, DNET_LOG_ERROR, "srw: init failed, config: %s, exception: %s", cfg->srw.config, e.what());
+		return -ENOMEM;
+	}
 }
 
 void dnet_srw_cleanup(struct dnet_node *n)
 {
 	if (n->srw) {
 		try {
-			srw *sr = (srw *)n->srw;
-			delete sr;
+			dnet_log(n, DNET_LOG_INFO, "srw: fini");
+			auto *srw = static_cast<ioremap::elliptics::srw*>(n->srw);
+			delete srw;
+			dnet_log(n, DNET_LOG_INFO, "srw: fini done");
+
+		} catch(const std::exception &e) {
+			dnet_log(n, DNET_LOG_ERROR, "srw: fini failed: %s", e.what());
+
 		} catch (...) {
+			dnet_log(n, DNET_LOG_ERROR, "srw: fini failed by unknown reason");
 		}
 
 		n->srw = NULL;
 	}
 }
 
-int dnet_cmd_exec_raw(struct dnet_net_state *st, struct dnet_cmd *cmd, struct sph *header, const void *data)
+int dnet_cmd_exec(struct dnet_net_state *st, struct dnet_cmd *cmd, const void *payload)
 {
 	struct dnet_node *n = st->n;
-	srw *s = (srw *)n->srw;
+	auto *srw = static_cast<ioremap::elliptics::srw*>(n->srw);
 
-	if (!s)
+	if (!srw)
 		return -ENOTSUP;
 
 	try {
-		return s->process(st, cmd, header);
-	} catch (const std::exception &e) {
-		dnet_log(n, DNET_LOG_ERROR, "%s: srw-processing: event: %.*s, data-size: %lld, exception: %s",
-				dnet_dump_id(&cmd->id), header->event_size, (const char *)data,
-				(unsigned long long)header->data_size,
-				e.what());
-	}
+		return srw->process(st, cmd, payload);
 
-	return -EINVAL;
+	} catch(const std::exception &e) {
+		dnet_log(n, DNET_LOG_ERROR, "srw: processing failed: %s", e.what());
+		return -EINVAL;
+
+	} catch (...) {
+		dnet_log(n, DNET_LOG_ERROR, "srw: processing failed by unknown reason");
+		return -EINVAL;
+	}
 }
 
-int dnet_srw_update(struct dnet_node *, int )
+int dnet_srw_update(struct dnet_node *, int)
 {
 	return 0;
 }
-#else
+
+#else // HAVE_COCAINE_SUPPORT = 0
+
+// cocaine support disabled
+
 #include <errno.h>
 
-#include "elliptics.h"
+#include "elliptics/srw.h"
 
 int dnet_srw_init(struct dnet_node *, struct dnet_config *)
 {
@@ -689,7 +1078,7 @@ void dnet_srw_cleanup(struct dnet_node *)
 {
 }
 
-int dnet_cmd_exec_raw(struct dnet_net_state *, struct dnet_cmd *, struct sph *, const void *)
+int dnet_cmd_exec(struct dnet_net_state *, struct dnet_cmd *, const void *)
 {
 	return -ENOTSUP;
 }
@@ -698,4 +1087,5 @@ int dnet_srw_update(struct dnet_node *, int)
 {
 	return 0;
 }
-#endif
+
+#endif // HAVE_COCAINE_SUPPORT

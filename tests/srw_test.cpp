@@ -17,19 +17,20 @@
 
 #include <boost/program_options.hpp>
 #define BOOST_TEST_NO_MAIN
+#define BOOST_TEST_ALTERNATIVE_INIT_API
 #include <boost/test/included/unit_test.hpp>
 
 #include "elliptics/interface.h"
+#include "exec_context_data_p.hpp"
 
-// force cocaine templates to choose std's placeholders over boost's
-namespace cocaine { namespace io {
-	using std::placeholders::_1;
-	using std::placeholders::_2;
-}}
-#include "cocaine/framework/services/localnode.hpp"
+#include <cocaine/framework/manager.hpp>
+#include <cocaine/framework/service.hpp>
 
-#include "test_base.hpp"
-#include "srw_test.hpp"
+#include <cocaine/traits/tuple.hpp>
+#include "cocaine/idl/localnode.hpp"
+#include "cocaine/traits/localnode.hpp"
+
+#include "srw_test_base.hpp"
 
 namespace {
 
@@ -60,94 +61,262 @@ std::string gen_random(const int len) {
 	return result;
 }
 
+} // anonymous namespace
+
+/* required for localnode_test
+ */
+
+inline bool operator==(const dnet_record_info &a, const dnet_record_info &b)
+{
+	return (0 == memcmp(&a, &b, sizeof(a)));
 }
 
-// required for localnode_test
-//
-namespace ioremap { namespace elliptics {
-
-inline bool operator==(const dnet_async_service_result &a, const dnet_async_service_result &b)
+inline std::ostream& operator<<(std::ostream& ostr, const dnet_record_info &v)
 {
-	return ((0 == dnet_addr_cmp(&a.addr, &b.addr))
-		&& (0 == memcmp(&a.file_info, &b.file_info, sizeof(a.file_info)))
-		&& a.file_path == b.file_path
-	);
-}
-
-inline std::ostream& operator<<(std::ostream& ostr, const dnet_async_service_result &v)
-{
-	ostr << "{\n addr=" << dnet_addr_string(&v.addr)
-		<< ",\n " << "record_flags=" << v.file_info.record_flags
-		<< ",\n " << "size=" << v.file_info.size
-		<< ",\n " << "time=" << dnet_print_time(&v.file_info.mtime)
-		<< ",\n " << "file=" << v.file_path
-		<< ",\n " << "checksum=" << to_hex_string(v.file_info.checksum, sizeof(v.file_info.checksum))
+	ostr << "{\n record_flags=" << v.record_flags
+		<< ",\n " << "user_flags=" << v.user_flags
+		<< ",\n " << "json_timestamp=" << std::string(dnet_print_time(&v.json_timestamp))
+		<< ",\n " << "json_offset=" << v.json_offset
+		<< ",\n " << "json_size=" << v.json_size
+		<< ",\n " << "json_capacity=" << v.json_capacity
+		<< ",\n " << "data_timestamp=" << std::string(dnet_print_time(&v.data_timestamp))
+		<< ",\n " << "data_offset=" << v.data_offset
+		<< ",\n " << "data_size=" << v.data_size
 		<< "\n}"
 		;
 	return ostr;
 }
 
-}}
+inline bool operator==(const dnet_io_info &a, const dnet_io_info &b)
+{
+	return (0 == memcmp(&a, &b, sizeof(a)));
+}
+
+inline std::ostream& operator<<(std::ostream& ostr, const dnet_io_info &v)
+{
+	ostr << "{\n json_size=" << v.json_size
+		<< ",\n " << "data_offset=" << v.data_offset
+		<< ",\n " << "data_size=" << v.data_size
+		<< "\n}"
+		;
+	return ostr;
+}
+
+inline std::ostream& operator<<(std::ostream& ostr, const std::tuple<dnet_record_info, std::string> &v)
+{
+	ostr << "{\n record_info=" << std::get<0>(v)
+		<< ",\n " << "value=" << std::get<1>(v)
+		<< "\n}"
+		;
+	return ostr;
+}
+inline std::ostream &operator<<(std::ostream &ostr,
+                                const std::tuple<dnet_record_info, ioremap::elliptics::data_pointer> &v) {
+	ostr << "{\n record_info=" << std::get<0>(v)
+		<< ",\n " << "value=" << std::get<1>(v).to_string()
+		<< "\n}"
+		;
+	return ostr;
+}
+
 
 namespace tests {
 
 using namespace ioremap::elliptics;
 using namespace boost::unit_test;
 
-static std::shared_ptr<nodes_data> global_data;
-
-static void configure_nodes(const std::vector<std::string> &remotes, const std::string &path)
+static nodes_data::ptr configure_test_setup(const std::vector<std::string> &remotes, const std::string &path)
 {
 	if (remotes.empty()) {
-		start_nodes_config start_config(results_reporter::get_stream(), std::vector<server_config>({
-			server_config::default_srw_value().apply_options(config_data()
-				("group", 1)
-			)
-		}), path);
+		start_nodes_config start_config(results_reporter::get_stream(),
+			std::vector<server_config>({
+				server_config::default_srw_value().apply_options(config_data()
+					("group", 1)
+				),
+				// server_config::default_srw_value().apply_options(config_data()
+				// 	("group", 1)
+				// ),
+			}),
+			path
+		);
 
-		global_data = start_nodes(start_config);
+		return start_nodes(start_config);
+
 	} else {
-		global_data = start_nodes(results_reporter::get_stream(), remotes, path);
+		return start_nodes(results_reporter::get_stream(), remotes, path);
 	}
 }
 
-static void init_application(session &sess, const std::string &app_name)
+static nodes_data::ptr configure_test_setup_from_args(int argc, char *argv[])
 {
-	init_application_impl(sess, app_name, *global_data);
+	namespace bpo = boost::program_options;
+
+	bpo::variables_map vm;
+	bpo::options_description generic("Test options");
+
+	std::vector<std::string> remotes;
+	std::string path;
+
+	generic.add_options()
+			("help", "This help message")
+			("remote", bpo::value(&remotes), "Remote elliptics server address")
+			("path", bpo::value(&path), "Path where to store everything")
+			;
+
+	bpo::store(bpo::parse_command_line(argc, argv, generic), vm);
+	bpo::notify(vm);
+
+	if (vm.count("help")) {
+		std::cerr << generic;
+		return NULL;
+	}
+
+	return configure_test_setup(remotes, path);
 }
 
-/**
- * This test checks response path via elliptics client created inside worker.
- * It was the only working way to response.
+/*
+ * Checks retrieving info about application (via elliptics channel).
  */
-static void send_echo(session &sess, const std::string &app_name, const std::string &data)
+static void test_info(session &client, const std::string &app_name)
 {
-	key key_id = app_name;
-	key_id.transform(sess);
+	key key(std::string(__func__) + "info");
+	key.transform(client);
+	dnet_id id = key.id();
+
+	ELLIPTICS_REQUIRE(async, client.exec(&id, app_name + "@info", ""));
+
+	BOOST_REQUIRE_EQUAL(async.get().size(), 1);
+	auto result = async.get()[0].context().data().to_string();
+	BOOST_REQUIRE_GT(result.size(), 0);
+	BOOST_REQUIRE_EQUAL(result[0], '{');
+	BOOST_REQUIRE_EQUAL(result[result.size() - 1], '}');
+}
+
+/*
+ * Checks response on event dispatching errors.
+ */
+static void test_dispatch_errors(session &client, const std::string &app_name)
+{
+	// -2 on system `info` event to unknown app
+	{
+		key key(std::string(__func__) + "info");
+		key.transform(client);
+		dnet_id id = key.id();
+
+		auto async = client.exec(&id, "unknown-app@info", "");
+		async.wait();
+		BOOST_REQUIRE_EQUAL(async.error().code(), -2);
+	}
+
+	// -2 on any event to unknown app
+	{
+		key key(std::string(__func__) + "any-event");
+		key.transform(client);
+		dnet_id id = key.id();
+
+		auto async = client.exec(&id, "unknown-app@any-event", "");
+		async.wait();
+		BOOST_REQUIRE_EQUAL(async.error().code(), -2);
+	}
+
+	/* -2 on unknown event to known app
+	 *FIXME: right now error code is 1 because srw passes code received from the worker
+	 * and this code is too uncertain now (also across different frameworks) to rely on it
+	 * and to make a permanent translation into -2.
+	 * Fix when cocaine will stabilize it.
+	 */
+	{
+		key key(std::string(__func__) + "unknown-event");
+		key.transform(client);
+		dnet_id id = key.id();
+
+		auto async = client.exec(&id, app_name + "@unknown-event", "");
+		async.wait();
+		BOOST_REQUIRE_EQUAL(async.error().code(), 1);
+	}
+}
+
+/*
+ * Checks worker response via worker's own elliptics client.
+ * (For some time it was the only working way to respond.)
+ * Original client is able to receive reply.
+ */
+static void test_echo_via_elliptics(session &client, const std::string &app_name, const std::string &data)
+{
+	key key_id(gen_random(8));
+	key_id.transform(client);
 	dnet_id id = key_id.id();
 
-	ELLIPTICS_REQUIRE(exec_result, sess.exec(&id, app_name + "@echo", data));
+	ELLIPTICS_REQUIRE(exec_result, client.exec(&id, app_name + "@echo-via-elliptics", data));
 
 	sync_exec_result result = exec_result;
 	BOOST_REQUIRE_EQUAL(result.size(), 1);
 	BOOST_REQUIRE_EQUAL(result[0].context().data().to_string(), data);
 }
 
-/**
- * This test checks response path via cocaine response stream.
- * From client's point of view there should be no difference.
+/*
+ * Checks worker response via cocaine response stream.
+ * From original client's point of view there should be no difference.
+ * Original client is able to receive reply.
  */
-static void send_response(session &sess, const std::string &app_name, const std::string &data)
+static void test_echo_via_cocaine(session &client, const std::string &app_name, const std::string &data)
 {
-	key key_id = app_name;
-	key_id.transform(sess);
+	key key_id(gen_random(8));
+	key_id.transform(client);
 	dnet_id id = key_id.id();
 
-	ELLIPTICS_REQUIRE(exec_result, sess.exec(&id, app_name + "@response", data));
+	ELLIPTICS_REQUIRE(exec_result, client.exec(&id, app_name + "@echo-via-cocaine", data));
 
 	sync_exec_result result = exec_result;
 	BOOST_REQUIRE_EQUAL(result.size(), 1);
 	BOOST_REQUIRE_EQUAL(result[0].context().data().to_string(), data);
+}
+
+/*
+ * Checks `push` processing expectations.
+ * Original client receives nothing even from handlers that send replies.
+ */
+static void test_push(session &client, const std::string &app_name, const std::string &data)
+{
+	auto origin = exec_context_data::create("dummy-event", "dummy-data");
+
+	{
+		key key(std::string(__func__) + "noreply");
+		key.transform(client);
+		dnet_id id = key.id();
+		ELLIPTICS_REQUIRE(async, client.push(&id, origin, app_name + "@noreply", data));
+		BOOST_REQUIRE_EQUAL(async.get().size(), 0);
+	}
+	{
+		key key(std::string(__func__) + "echo-via-elliptics");
+		key.transform(client);
+		dnet_id id = key.id();
+		ELLIPTICS_REQUIRE(async, client.push(&id, origin, app_name + "@echo-via-elliptics", data));
+		BOOST_REQUIRE_EQUAL(async.get().size(), 0);
+	}
+	{
+		key key(std::string(__func__) + "echo-via-cocaine");
+		key.transform(client);
+		dnet_id id = key.id();
+		ELLIPTICS_REQUIRE(async, client.push(&id, origin, app_name + "@echo-via-cocaine", data));
+		BOOST_REQUIRE_EQUAL(async.get().size(), 0);
+	}
+}
+
+/*
+ * Checks `exec`->`push`(->`push`...) chaining.
+ * Original client is able to receive reply from the end of the chain
+ * (from it's point of view there should be no difference with test_echo_*).
+ */
+static void test_chain_via_elliptics(session &client, const std::string &app_name, const std::string &start_event,
+                                     const std::string &data) {
+	key key_id(__func__ + start_event);
+	key_id.transform(client);
+	dnet_id id = key_id.id();
+
+	ELLIPTICS_REQUIRE(async, client.exec(&id, app_name + "@" + start_event, data));
+	BOOST_REQUIRE_EQUAL(async.get().size(), 1);
+	BOOST_REQUIRE_EQUAL(async.get()[0].context().data().to_string(), data);
 }
 
 /*
@@ -161,9 +330,9 @@ static void send_response(session &sess, const std::string &app_name, const std:
  */
 class thread_watchdog {
 	public:
-		session sess;
+		session client;
 
-		thread_watchdog(const session &sess) : sess(sess), need_exit(false) {
+		thread_watchdog(const session &client) : client(client), need_exit(false) {
 			tid = std::thread(std::bind(&thread_watchdog::ping, this));
 		}
 
@@ -178,14 +347,17 @@ class thread_watchdog {
 
 		void ping() {
 			while (!need_exit) {
-				sess.read_data(std::string("test-key"), 0, 0).wait();
+				client.read_data(std::string("test-key"), 0, 0).wait();
 				sleep(1);
 			}
 		}
 };
 
-/**
- * timeout test runs @num exec transactions with random timeouts.
+/*
+ * Checks timeout mechanics on `exec` commands.
+ *
+ * Runs @num exec transactions with random timeouts.
+ *
  * Timeouts must be set to less than 30 seconds, since 30 seconds is a magic number:
  * first, because that's the number of seconds cocaine application sleeps in 'noreply' event,
  * second, because cocaine sends heartbeats every 30 seconds (or at least complains that it didn't
@@ -194,18 +366,19 @@ class thread_watchdog {
  * Trying to set 'heartbeat-timeout' in profile to 60 seconds didn't help.
  * See tests/srw_test.hpp file where we actually set 3 different timeouts to 60 seconds,
  * but yet application is killed in 30 seconds.
+ *TODO: check if this is still true after moving to cocaine v12.
  *
  * Basic idea behind this test is following: we run multiple exec transactions with random timeouts,
  * and all transactions must be timed out at most in 2 seconds after timeout expired. These 2 seconds
  * happen because of checker thread which checks timer tree every second and check time (in seconds)
  * must be greater than so called 'death' time.
  *
- * For more details see dnet_trans_iterate_move_transaction() function
+ * For more details see dnet_trans_iterate_move_transaction() function.
  */
-static void timeout_test(session &sess, const std::string &app_name)
+static void test_timeout(session &client, const std::string &app_name)
 {
 	key key_id = app_name;
-	key_id.transform(sess);
+	key_id.transform(client);
 	dnet_id id = key_id.id();
 
 	// just a number of test transactions
@@ -214,15 +387,16 @@ static void timeout_test(session &sess, const std::string &app_name)
 	std::vector<std::pair<int, async_exec_result>> results;
 	results.reserve(num);
 
-	sess.set_exceptions_policy(session::no_exceptions);
+	client.set_exceptions_policy(session::no_exceptions);
 
-	thread_watchdog ping(sess);
+	thread_watchdog ping(client);
 
 	for (int i = 0; i < num; ++i) {
 		int timeout = rand() % 20 + 1;
-		sess.set_timeout(timeout);
+		client.set_timeout(timeout);
 
-		results.emplace_back(std::make_pair(timeout, sess.exec(&id, app_name + "@noreply", "some data")));
+		results.emplace_back(
+		    std::make_pair(timeout, client.exec(&id, app_name + "@noreply-30seconds-wait", "some data")));
 	}
 
 
@@ -248,6 +422,9 @@ static void timeout_test(session &sess, const std::string &app_name)
 	}
 }
 
+/*
+ * Checks serializability of data structures used in `localnode` service interface.
+ */
 template<class T>
 T pack_unpack(const T &v)
 {
@@ -260,19 +437,12 @@ T pack_unpack(const T &v)
 	return msg.get().as<T>();
 }
 
-static void localnode_data_serialization_test()
+static void test_localnode_data_serialization()
 {
 	{
 		dnet_raw_id a = { "0123455678" };
 		dnet_raw_id b = pack_unpack(a);
 		BOOST_REQUIRE_EQUAL(std::string((const char *)a.id), std::string((const char *)b.id));
-	}
-	{
-		dnet_addr a = { "abc", 5, 8 };
-		dnet_addr b = pack_unpack(a);
-		BOOST_REQUIRE_EQUAL(a.addr_len, b.addr_len);
-		BOOST_REQUIRE_EQUAL(std::string((const char *)a.addr, a.addr_len), std::string((const char *)b.addr, b.addr_len));
-		BOOST_REQUIRE_EQUAL(a.family, b.family);
 	}
 	{
 		dnet_time a = { 5, 8 };
@@ -281,157 +451,198 @@ static void localnode_data_serialization_test()
 		BOOST_REQUIRE_EQUAL(a.tnsec, b.tnsec);
 	}
 	{
-		dnet_file_info a = { 3, "abc", 5, 8, 10, { 2, 3} };
-		dnet_file_info b = pack_unpack(a);
-#define CMP(x) BOOST_REQUIRE_EQUAL(a.x, b.x)
-		CMP(flen);
-		CMP(record_flags);
-		CMP(size);
-		CMP(offset);
-		CMP(mtime.tsec);
-		CMP(mtime.tnsec);
-#undef CMP
-		BOOST_REQUIRE_EQUAL(
-			std::string((const char *)a.checksum, sizeof(a.checksum)),
-			std::string((const char *)b.checksum, sizeof(b.checksum))
-		);
+		dnet_record_info a = { 1, 2, { 3, 4 }, 5, 6, 7, { 8, 9 }, 10, 11 };
+		dnet_record_info b = pack_unpack(a);
+		BOOST_REQUIRE_EQUAL(a, b);
 	}
 	{
-		dnet_async_service_result a = {
-			{ "abc", 5, 8 },
-			{ 3, "abc", 5, 8, 10, { 2, 3} },
-			"file path"
-		};
-		dnet_async_service_result b = pack_unpack(a);
+		dnet_io_info a = { 1, 2, 3 };
+		dnet_io_info b = pack_unpack(a);
 		BOOST_REQUIRE_EQUAL(a, b);
 	}
 }
 
-static void localnode_test(session &sess, const std::vector<int> &groups)
+/*
+ * Checks if `localnode` service methods are really working.
+ */
+static void test_localnode(session &client, const std::vector<int> &groups, int locator_port)
 {
 	using cocaine::framework::service_manager_t;
 
-	service_manager_t::endpoint_t endpoint("127.0.0.1", global_data->locator_port);
-	auto manager = service_manager_t::create(endpoint);
+	service_manager_t::endpoint_type endpoint(boost::asio::ip::address_v4::loopback(), locator_port);
+	service_manager_t manager({endpoint}, 1);
 
-	auto localnode = manager->get_service<localnode_proxy>("localnode");
+	auto localnode = manager.create<io::localnode_tag>("localnode");
 
 	key key(gen_random(8));
-	key.transform(sess);
+	key.transform(client);
 
 	auto value = gen_random(15);
 
-	dnet_async_service_result write_result;
-	dnet_async_service_result lookup_result;
+	std::tuple<dnet_record_info, std::string> write_result;
+	std::tuple<dnet_record_info, std::string> lookup_result;
 	{
 		auto &result = write_result;
-		auto deferred = localnode->write(key.raw_id(), groups, value, 0);
-		BOOST_REQUIRE_NO_THROW(result = deferred.next());
-		BOOST_REQUIRE_EQUAL(deferred.valid(), true);
-		BOOST_CHECK_GT(result.file_info.size, 0);
-		BOOST_CHECK_GT(result.file_path.size(), 0);
+		auto future = localnode.invoke<io::localnode::write>(key.raw_id(), groups, value);
+		BOOST_REQUIRE_EQUAL(future.valid(), true);
+		BOOST_REQUIRE_NO_THROW(result = std::move(future.get()));
+		dnet_record_info record_info;
+		std::string path;
+		std::tie(record_info, path) = result;
+		BOOST_CHECK_GT(record_info.data_size, 0);
+		BOOST_CHECK_GT(path.size(), 0);
 	}
 	{
 		auto &result = lookup_result;
-		auto deferred = localnode->lookup(key.raw_id(), groups);
-		BOOST_REQUIRE_NO_THROW(result = deferred.next());
-		BOOST_REQUIRE_EQUAL(deferred.valid(), true);
-		BOOST_CHECK_GT(result.file_info.size, 0);
-		BOOST_CHECK_GT(result.file_path.size(), 0);
+		auto future = localnode.invoke<io::localnode::lookup>(key.raw_id(), groups);
+		BOOST_REQUIRE_EQUAL(future.valid(), true);
+		BOOST_REQUIRE_NO_THROW(result = std::move(future.get()));
+		dnet_record_info record_info;
+		std::string path;
+		std::tie(record_info, path) = result;
+		BOOST_CHECK_GT(record_info.data_size, 0);
+		BOOST_CHECK_GT(path.size(), 0);
 	}
 
-	//XXX: can't compare write_result and lookup_result directly because
-	// file_info.size meaning and value differs for write and lookup operations
-	//BOOST_CHECK_EQUAL(write_result, lookup_result);
-	{
-		BOOST_CHECK_EQUAL(std::string((const char *)&write_result.addr, sizeof(dnet_addr)), std::string((const char *)&lookup_result.addr, sizeof(dnet_addr)));
-		BOOST_CHECK_EQUAL(write_result.file_path, lookup_result.file_path);
-#define CMP(x) BOOST_CHECK_EQUAL(write_result.file_info.x, lookup_result.file_info.x)
-		CMP(flen);
-		CMP(record_flags);
-		//CMP(size);
-		CMP(offset);
-		CMP(mtime.tsec);
-		CMP(mtime.tnsec);
-#undef CMP
-	}
+	BOOST_CHECK_EQUAL(write_result, lookup_result);
 
-	std::string read_result;
+	std::tuple<dnet_record_info, ioremap::elliptics::data_pointer> read_result;
 	{
 		auto &result = read_result;
-		auto deferred = localnode->read(key.raw_id(), groups, 0, 0);
-		BOOST_REQUIRE_NO_THROW(result = deferred.next());
-		BOOST_CHECK_GT(result.size(), 0);
+		auto future = localnode.invoke<io::localnode::read>(key.raw_id(), groups, 0, 0);
+		BOOST_REQUIRE_EQUAL(future.valid(), true);
+		BOOST_REQUIRE_NO_THROW(result = std::move(future.get()));
 	}
 
-	BOOST_CHECK_EQUAL(read_result, value);
+	/* read_result and write_result can't be compared byte-to-byte because
+	 * read_result.data_offset is always 0 while write_result.data_offset
+	 * carries proper data offset in a blob.
+	 */
+#define CMP(x) BOOST_REQUIRE_EQUAL(std::get<0>(write_result).x, std::get<0>(lookup_result).x)
+	CMP(record_flags);
+	CMP(user_flags);
+	CMP(json_timestamp);
+	CMP(json_offset);
+	CMP(json_size);
+	CMP(json_capacity);
+	CMP(data_timestamp);
+	// CMP(data_offset);
+	CMP(data_size);
+#undef CMP
+
+	BOOST_CHECK_EQUAL(std::get<1>(read_result).to_string(), value);
 }
 
-bool register_tests(test_suite *suite, node n)
+
+/*
+ * Place to list available tests.
+ */
+bool register_tests(const nodes_data *setup)
 {
-	ELLIPTICS_TEST_CASE(upload_application, global_data->locator_port, global_data->directory.path());
-	ELLIPTICS_TEST_CASE(start_application, create_session(n, { 1 }, 0, 0), application_name());
-	ELLIPTICS_TEST_CASE(init_application, create_session(n, { 1 }, 0, 0), application_name());
-	ELLIPTICS_TEST_CASE(send_echo, create_session(n, { 1 }, 0, 0), application_name(), "some-data");
-	ELLIPTICS_TEST_CASE(send_echo, create_session(n, { 1 }, 0, 0), application_name(), "some-data and long-data.. like this");
-	ELLIPTICS_TEST_CASE(send_response, create_session(n, { 1 }, 0, 0), application_name(), "some-data");
-	ELLIPTICS_TEST_CASE(send_response, create_session(n, { 1 }, 0, 0), application_name(), "some-data and long-data.. like this");
-	ELLIPTICS_TEST_CASE(timeout_test, create_session(n, { 1 }, 0, 0), application_name());
+	/* IMPORTANT: Any testcase that uses session object should be registered
+	 * with ELLIPTICS_TEST_CASE macro using session object exactly as a second argument --
+	 * -- there is special variant of tests::make() in test_object.hpp,
+	 * which is specifically tailored for test cases with session.
+	 */
 
-	ELLIPTICS_TEST_CASE(localnode_data_serialization_test);
+	const std::string app = application_name();
+	auto n = setup->node->get_native();
 
-	// localnode methods test,
-	// first using matching group_id, then empty group list
-	ELLIPTICS_TEST_CASE(localnode_test, create_session(n, {1}, 0, 0), std::vector<int>{1});
-	ELLIPTICS_TEST_CASE(localnode_test, create_session(n, {1}, 0, 0), std::vector<int>{});
+	/* prerequisite: launch and init test application
+	 *TODO: turn them collectively to fixture
+	 */
+	ELLIPTICS_TEST_CASE(upload_application, setup->nodes[0].locator_port(), app, setup->directory.path());
+	for (const auto &i : setup->nodes) {
+		ELLIPTICS_TEST_CASE(start_application, i.locator_port(), app);
+	}
+
+	ELLIPTICS_TEST_CASE(init_application_impl, use_session(n, { 1 }), app, setup);
+
+	ELLIPTICS_TEST_CASE(test_info, use_session(n, { 1 }), app);
+
+	ELLIPTICS_TEST_CASE(test_dispatch_errors, use_session(n, { 1 }), app);
+
+	// various ways to send a reply to an `exec` command
+	ELLIPTICS_TEST_CASE(test_echo_via_elliptics, use_session(n, { 1 }), app, "some-data");
+	ELLIPTICS_TEST_CASE(test_echo_via_elliptics, use_session(n, { 1 }), app, "some-data and long-data.. like this");
+	ELLIPTICS_TEST_CASE(test_echo_via_cocaine, use_session(n, { 1 }), app, "some-data");
+	ELLIPTICS_TEST_CASE(test_echo_via_cocaine, use_session(n, { 1 }), app, "some-data and long-data.. like this");
+
+	// single `push` command does not expect reply at all
+	ELLIPTICS_TEST_CASE(test_push, use_session(n, { 1 }), app, "some-data");
+
+	/*FIXME: change tests accordingly: empty reply is a special case now
+	 * (apps can't return empty data and get away with it)
+	 * ELLIPTICS_TEST_CASE(test_echo_via_elliptics, use_session(n, { 1 }), app, "");
+	 * ELLIPTICS_TEST_CASE(test_echo_via_cocaine, use_session(n, { 1 }), app, "");
+	 * ELLIPTICS_TEST_CASE(test_push, use_session(n, { 1 }), app, "");
+	 */
+
+	// `exec`/`push` chains
+	ELLIPTICS_TEST_CASE(test_chain_via_elliptics, use_session(n, {1}), app, "2-step-chain-via-elliptics",
+	                    "some-data");
+	ELLIPTICS_TEST_CASE(test_chain_via_elliptics, use_session(n, {1}), app, "3-step-chain-via-elliptics",
+	                    "some-data");
+	ELLIPTICS_TEST_CASE(test_chain_via_elliptics, use_session(n, {1}), app, "4-step-chain-via-elliptics",
+	                    "some-data");
+
+	// timeout mechanics on `exec` commands (long test -- at least 30 seconds long)
+	ELLIPTICS_TEST_CASE(test_timeout, use_session(n, { 1 }), app);
+
+	/* continuous load handles properly
+	 *TODO: micro stress test similar to timeout test:
+	 * - send vast stream of commands, big enough to affect concurrency rate
+	 *   and number of spawned workers;
+	 * - wait for completion;
+	 * - check app info if load stat returned to zero
+	 */
+
+	// localnode service
+	// * data structures
+	ELLIPTICS_TEST_CASE_NOARGS(test_localnode_data_serialization);
+	// * methods (first using matching group_id, then empty group list)
+	ELLIPTICS_TEST_CASE(test_localnode, use_session(n, { 1 }), std::vector<int>{1}, setup->nodes[0].locator_port());
+	ELLIPTICS_TEST_CASE(test_localnode, use_session(n, { 1 }), std::vector<int>{}, setup->nodes[0].locator_port());
 
 	return true;
 }
 
-static void destroy_global_data()
+} // namespace tests
+
+
+/*
+ * Common test initialization routine.
+ */
+using namespace tests;
+using namespace boost::unit_test;
+
+/*FIXME: forced to use global variable and plain function wrapper
+ * because of the way how init_test_main works in boost.test,
+ * introducing a global fixture would be a proper way to handle
+ * global test setup
+ */
+namespace {
+
+std::shared_ptr<nodes_data> setup;
+
+bool init_func()
 {
-	global_data.reset();
-}
-
-boost::unit_test::test_suite *register_tests(int argc, char *argv[])
-{
-	namespace bpo = boost::program_options;
-
-	bpo::variables_map vm;
-	bpo::options_description generic("Test options");
-
-	std::vector<std::string> remotes;
-	std::string path;
-
-	generic.add_options()
-			("help", "This help message")
-			("remote", bpo::value(&remotes), "Remote elliptics server address")
-			("path", bpo::value(&path), "Path where to store everything")
-			;
-
-	bpo::store(bpo::parse_command_line(argc, argv, generic), vm);
-	bpo::notify(vm);
-
-	if (vm.count("help")) {
-		std::cerr << generic;
-		return NULL;
-	}
-
-	test_suite *suite = new test_suite("Local Test Suite");
-
-	configure_nodes(remotes, path);
-
-	register_tests(suite, *global_data->node);
-
-	return suite;
+	return register_tests(setup.get());
 }
 
 }
 
 int main(int argc, char *argv[])
 {
-	atexit(tests::destroy_global_data);
+	srand(time(nullptr));
 
-	srand(time(0));
-	return unit_test_main(tests::register_tests, argc, argv);
+	// we own our test setup
+	setup = configure_test_setup_from_args(argc, argv);
+
+	int result = unit_test_main(init_func, argc, argv);
+
+	// disassemble setup explicitly, to be sure about where its lifetime ends
+	setup.reset();
+
+	return result;
 }

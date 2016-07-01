@@ -64,8 +64,8 @@ struct index_comparator
 		return operator() (a.id, b.id);
 	}
 
-	inline bool operator() (const std::pair<dnet_raw_id, data_pointer> &a, const std::pair<dnet_raw_id, data_pointer> &b) const
-	{
+	inline bool operator()(const std::pair<dnet_raw_id, data_pointer> &a,
+	                       const std::pair<dnet_raw_id, data_pointer> &b) const {
 		return operator() (a.first, b.first);
 	}
 
@@ -334,8 +334,8 @@ void test_1_find_all(session &sess, int iteration, const data_cache &cache)
 	assert(valid_results_str == results_str);
 }
 
-void test_1_find_any(session &sess, int iteration, const data_cache &cache, const std::vector<std::string> &object_tags)
-{
+void test_1_find_any(session &sess, int iteration, const data_cache &cache,
+                     const std::vector<std::string> &object_tags) {
 
 	std::cerr << iteration << " find any: " << sorted(object_tags) << std::endl;
 

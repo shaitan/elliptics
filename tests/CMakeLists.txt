@@ -8,36 +8,34 @@ set(TEST_IOSERV_PATH "${CMAKE_CURRENT_BINARY_DIR}/../example/dnet_ioserv")
 set(TEST_ENV
     TEST_COCAINE_CONFIG="${CMAKE_CURRENT_SOURCE_DIR}/cocaine.conf"
     TEST_COCAINE_PLUGINS="${CMAKE_CURRENT_BINARY_DIR}/../cocaine/plugins"
-    TEST_COCAINE_APP="${CMAKE_CURRENT_BINARY_DIR}/dnet_cpp_srw_test_app.tar"
+    TEST_COCAINE_APP="${CMAKE_CURRENT_BINARY_DIR}/dnet_cpp_srw_test_app.tar.gz"
     TEST_IOSERV_PATH="${TEST_IOSERV_PATH}"
     LD_LIBRARY_PATH="${TEST_LIBRARY_PATH}:$ENV{LD_LIBRARY_PATH}"
 )
 
-if(WITH_COCAINE)
+if (WITH_COCAINE)
     add_definitions("-DHAVE_COCAINE")
-
-    include(../cmake/Modules/locate_library.cmake)
-    LOCATE_LIBRARY(LIBEV "ev++.h" "ev" "libev")
 
     find_package(CocaineNative REQUIRED)
     include_directories(${CocaineNative_INCLUDE_DIRS} ${LIBEV_INCLUDE_DIRS})
 endif()
 
 add_library(test_common STATIC
-    ../example/common.c
-    ../example/config.cpp
-    ../example/config_impl.cpp
-    ../example/backends.c
-    ../example/eblob_backend.cpp
-    ../example/eblob_backend.c
+    ${CMAKE_SOURCE_DIR}/example/common.c
+    ${CMAKE_SOURCE_DIR}/example/config.cpp
+    ${CMAKE_SOURCE_DIR}/example/config_impl.cpp
+    ${CMAKE_SOURCE_DIR}/example/backends.c
+    ${CMAKE_SOURCE_DIR}/example/eblob_backend.cpp
+    ${CMAKE_SOURCE_DIR}/example/eblob_backend.c
     test_base.hpp
     test_base.cpp
     test_session.hpp
-    test_session.cpp)
+    test_session.cpp
+)
 set_target_properties(test_common ${TEST_PROPERTIES})
 set(TEST_COMMON_LIBRARIES elliptics elliptics_client elliptics_cpp ${Boost_LIBRARIES})
 if(WITH_COCAINE)
-    list(APPEND TEST_COMMON_LIBRARIES elliptics_cocaine ${CocaineNative_LIBRARIES} ${LIBEV_LIBRARIES})
+    list(APPEND TEST_COMMON_LIBRARIES elliptics_srw ${CocaineNative_LIBRARIES} ${LIBEV_LIBRARIES})
     list(APPEND TEST_LIBRARIES ${CocaineNative_LIBRARIES} ${LIBEV_LIBRARIES})
 endif()
 target_link_libraries(test_common ${TEST_COMMON_LIBRARIES})
@@ -123,6 +121,7 @@ set(TESTS_DEPS dnet_ioserv)
 #
 #TODO: may be its worth making utility function for test definition block
 #
+#TODO: rename test.cpp to misc_test.cpp
 add_executable(dnet_cpp_misc_test test.cpp)
 set_target_properties(dnet_cpp_misc_test ${TEST_PROPERTIES})
 target_link_libraries(dnet_cpp_misc_test ${TEST_LIBRARIES})
@@ -185,10 +184,10 @@ target_link_libraries(dnet_cpp_indexes_test elliptics_cpp)
 #FIXME: is this also a test? Then uncomment the next line and add it to the TESTS_LIST below.
 # add_test_target(test_indexes dnet_cpp_indexes_test)
 
-add_executable(dnet_queue_timeoue_test queue_timeout.cpp)
-set_target_properties(dnet_queue_timeoue_test ${TEST_PROPERTIES})
-target_link_libraries(dnet_queue_timeoue_test ${TEST_LIBRARIES})
-add_test_target(test_queue_timeout dnet_queue_timeoue_test DEPENDS ${TESTS_DEPS})
+add_executable(dnet_queue_timeout_test queue_timeout.cpp)
+set_target_properties(dnet_queue_timeout_test ${TEST_PROPERTIES})
+target_link_libraries(dnet_queue_timeout_test ${TEST_LIBRARIES})
+add_test_target(test_queue_timeout dnet_queue_timeout_test DEPENDS ${TESTS_DEPS})
 
 add_executable(dnet_new_api_test new_api_test.cpp)
 set_target_properties(dnet_new_api_test ${TEST_PROPERTIES})
@@ -220,28 +219,43 @@ set(TESTS_LIST
     dnet_locks_test
     dnet_crypto_test
     dnet_server_send_test
-    dnet_queue_timeoue_test
+    dnet_queue_timeout_test
     dnet_new_api_test
 )
 
 if(WITH_COCAINE)
-    include_directories(../cocaine/include)
+    include_directories(${CMAKE_SOURCE_DIR}/cocaine/include)
+    include_directories(${CMAKE_SOURCE_DIR}/bindings/cpp)
+
+    add_library(test_srw_app_control STATIC
+        srw_test_base.cpp
+    )
+    set_target_properties(test_srw_app_control ${TEST_PROPERTIES})
+    target_link_libraries(test_srw_app_control ${CocaineNative_LIBRARIES})
+    set(TEST_SRW_LIBRARIES test_srw_app_control)
 
     #
     # Define target `test_srw`
     #
-    add_executable(dnet_cpp_srw_test srw_test.cpp srw_test.hpp)
+    add_executable(dnet_cpp_srw_test srw_test.cpp)
     set_target_properties(dnet_cpp_srw_test ${TEST_PROPERTIES})
-    target_link_libraries(dnet_cpp_srw_test ${TEST_LIBRARIES} ${CocaineNative_LIBRARIES} ${LIBEV_LIBRARIES})
+    target_link_libraries(dnet_cpp_srw_test ${TEST_LIBRARIES} ${TEST_SRW_LIBRARIES})
     add_test_target(test_srw dnet_cpp_srw_test DEPENDS dnet_cpp_srw_test_app elliptics-extensions)
 
     add_executable(dnet_cpp_srw_test_app srw_test_app.cpp)
     set_target_properties(dnet_cpp_srw_test_app ${TEST_PROPERTIES})
-    target_link_libraries(dnet_cpp_srw_test_app elliptics_cpp ${CocaineNative_LIBRARIES} ${Boost_LIBRARIES} ${LIBEV_LIBRARIES})
+    target_link_libraries(dnet_cpp_srw_test_app
+        elliptics_cpp
+        ${Boost_LIBRARIES}
+        ${CocaineNative_LIBRARIES}
+        #FIXME: should add it properly
+        cocaine-io-util
+        blackhole
+    )
 
     add_custom_command(TARGET dnet_cpp_srw_test_app
         POST_BUILD
-        COMMAND tar -cf dnet_cpp_srw_test_app.tar dnet_cpp_srw_test_app
+        COMMAND tar -czf dnet_cpp_srw_test_app.tar.gz dnet_cpp_srw_test_app
         WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     )
 
@@ -257,13 +271,7 @@ endif()
 #
 list(APPEND TESTS_DEPS dnet_run_servers)
 
-#
-# Target `test` execute all available tests (both implemented in C++ and in python)
-#
-add_test_target(test ${TESTS_LIST} DEPENDS ${TESTS_DEPS})
-
-add_custom_command(TARGET test
-    POST_BUILD
+add_custom_target(test_python
     COMMAND mkdir -p ${CMAKE_CURRENT_BINARY_DIR}/pytests/elliptics
     COMMAND mkdir -p ${CMAKE_CURRENT_BINARY_DIR}/pytests/elliptics_recovery
     COMMAND cp ${CMAKE_CURRENT_BINARY_DIR}/../bindings/python/core.so* pytests/elliptics/
@@ -271,6 +279,7 @@ add_custom_command(TARGET test
     COMMAND cp ${CMAKE_CURRENT_BINARY_DIR}/../*/libelliptics*.so* pytests/
     COMMAND cp ${CMAKE_SOURCE_DIR}/bindings/python/src/* pytests/elliptics/
     COMMAND cp -r ${CMAKE_SOURCE_DIR}/recovery/elliptics_recovery/* pytests/elliptics_recovery/
+    DEPENDS ${TESTS_DEPS} core_python
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
 
@@ -279,7 +288,7 @@ if(NOT WITH_COCAINE)
     list(APPEND PYTESTS_FLAGS "--without-cocaine")
 endif()
 
-add_custom_command(TARGET test
+add_custom_command(TARGET test_python
     POST_BUILD
     COMMAND virtualenv -p "${PYTHON_EXECUTABLE}" . &&
         . bin/activate &&
@@ -288,11 +297,19 @@ add_custom_command(TARGET test
         pip install pytest-timeout &&
         pip install msgpack-python &&
         export LD_LIBRARY_PATH=.:.. &&
-        ${TEST_ENV} py.test ${PYTESTS_FLAGS} ${CMAKE_CURRENT_SOURCE_DIR}/pytests
-    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/pytests)
+        env ${TEST_ENV} py.test ${PYTESTS_FLAGS} ${CMAKE_CURRENT_SOURCE_DIR}/pytests
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/pytests
+)
+
+list(APPEND TESTS_LIST test_python)
+
+#
+# Target `test` execute all available tests (both implemented in C++ and in python)
+#
+add_test_target(test ${TESTS_LIST} DEPENDS ${TESTS_DEPS} core_python)
 
 add_executable(dnet_run_servers run_servers.cpp)
-target_link_libraries(dnet_run_servers ${TEST_LIBRARIES})
+target_link_libraries(dnet_run_servers ${TEST_LIBRARIES} ${TEST_SRW_LIBRARIES})
 
 install(TARGETS dnet_run_servers
     RUNTIME DESTINATION bin COMPONENT runtime)
