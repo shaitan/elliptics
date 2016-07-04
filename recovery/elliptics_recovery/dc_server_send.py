@@ -186,7 +186,7 @@ class ServerSendRecovery(object):
                         self.ctx.stats.counter('retry_recover_keys', len(timeouted_keys))
                     log.info("Server-send: group_id: {0}, remote_groups: {1}, num_keys: {2}".format(group_id, remote_groups, len(newest_keys)))
                     try:
-                        iterator = self.session.server_send(newest_keys, 0, group_id, remote_groups)
+                        iterator = self.session.server_send(newest_keys, 0, self.ctx.chunk_size, group_id, remote_groups)
                     except Exception as e:
                         log.error("Failed to server_send traceback: %s", traceback.format_exc())
                     timeouted_keys, corrupted_keys = self._check_server_send_results(iterator, key_infos_map, group_id)

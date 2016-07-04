@@ -331,16 +331,23 @@ inline ioremap::elliptics::dnet_server_send_request &operator >>(msgpack::object
 	p[1].convert(&v.groups);
 	p[2].convert(&v.flags);
 
+	if (o.via.array.size > 3) {
+		p[3].convert(&v.chunk_size);
+	} else {
+		v.chunk_size = DNET_DEFAULT_SERVER_SEND_CHUNK_SIZE;
+	}
+
 	return v;
 }
 
 template <typename Stream>
 inline msgpack::packer<Stream> &operator <<(msgpack::packer<Stream> &o,
                                             const ioremap::elliptics::dnet_server_send_request &v) {
-	o.pack_array(3);
+	o.pack_array(4);
 	o.pack(v.keys);
 	o.pack(v.groups);
 	o.pack(v.flags);
+	o.pack(v.chunk_size);
 
 	return o;
 }

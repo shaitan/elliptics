@@ -114,6 +114,7 @@ struct dnet_server_send_request {
 	std::vector<dnet_raw_id> keys;
 	std::vector<int> groups;
 	uint64_t flags;
+	uint64_t chunk_size;
 };
 
 template<typename T>

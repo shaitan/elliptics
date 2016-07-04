@@ -290,6 +290,7 @@ void test_simple_server_send(const ioremap::elliptics::newapi::session &session/
 	// send the key via server_send from src_group to dst_groups
 	{
 		auto async = s.server_send(std::vector<std::string>{key}, 0 /*flags*/,
+					   DNET_DEFAULT_SERVER_SEND_CHUNK_SIZE,
 		                           constants::src_group, constants::dst_groups);
 
 		dnet_raw_id raw_key;
