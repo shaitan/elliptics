@@ -38,6 +38,9 @@ def add_node_options(parser):
                      help='Force to use IPv4 address for connecting to local elliptics node')
     group.add_option('-6', action='store_true', dest='ipv6', default=False,
                      help='Force to use IPv6 address for connecting to local elliptics node')
+    group.add_option('-T', '--trace-id', dest='trace_id', default='0',
+                     help='Mark all commands by trace_id at both local and server logs. '
+                          'This option accepts hex strings. [default: %default]')
 
     parser.add_option_group(group)
 
@@ -92,6 +95,8 @@ def create_session(parser, options, single_remote=False, new_session=False):
         groups = session.routes.groups()
 
     session.groups = groups
+
+    session.trace_id = int(options.trace_id, 16)
 
     return session
 
