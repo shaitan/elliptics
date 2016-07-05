@@ -907,6 +907,14 @@ public:
 		);
 	}
 
+	python_write_result update_json(const bp::api::object &id,
+	                                const std::string &json) {
+		return create_result(
+			newapi::session{*this}.update_json(transform(id).id(),
+			                                   json)
+		);
+	}
+
 	python_iterator_result start_iterator(const std::string &host, int port, int family, uint32_t backend_id,
 	                                      uint64_t flags,
 	                                      const bp::api::object &key_ranges,
@@ -2156,6 +2164,15 @@ void init_elliptics_session() {
 		     (bp::arg("key"),
 		      bp::arg("json"),
 		      bp::arg("data"), bp::arg("data_offset"), bp::arg("data_commit_size")))
+
+		.def("update_json", &newapi::elliptics_session::update_json,
+		     bp::args("key", "json"),
+		     "update_json(key, json)\n"
+		     "    Update @key's json by @json.\n"
+		     "    Return elliptics.AsyncResult.\n\n"
+		     "    async = session.update_json('key', '{\"new\": \"json\"}')\n"
+		     "    async.wait()\n"
+		     "    assert async.successful()\n")
 
 		.def("start_iterator", &newapi::elliptics_session::start_iterator,
 		     bp::args("host", "port", "family", "backend_id",
