@@ -246,7 +246,8 @@ class TestRecovery:
     # timestamp of corrupted_key from second group which should be recovered to first and third group
     corrupted_timestamp2 = elliptics.Time(corrupted_timestamp.tsec + 3600, corrupted_timestamp.tnsec)
 
-    def test_disable_backends(self, server, simple_node):
+    @pytest.mark.usefixtures("servers")
+    def test_disable_backends(self, simple_node):
         '''
         Turns off all backends from all node except one.
         '''
@@ -289,7 +290,8 @@ class TestRecovery:
         # checks that routes contains only chosen backend group
         assert session.routes.groups() == (scope.test_group, )
 
-    def test_prepare_data(self, server, simple_node):
+    @pytest.mark.usefixtures("servers")
+    def test_prepare_data(self, simple_node):
         '''
         Writes self.keys to chosen group and checks their availability.
         '''
@@ -302,7 +304,8 @@ class TestRecovery:
         write_data(scope, session, self.keys, self.datas)
         check_data(scope, session, self.keys, self.datas, self.timestamp)
 
-    def test_enable_group_one_backend(self, server, simple_node):
+    @pytest.mark.usefixtures("servers")
+    def test_enable_group_one_backend(self, simple_node):
         '''
         Turns on one backend from the same group.
         '''
@@ -315,7 +318,7 @@ class TestRecovery:
         check_backend_status(r.get(), backend, state=1)
         wait_backends_in_route(session, ((address, backend),))
 
-    def test_merge_two_backends(self, server, simple_node):
+    def test_merge_two_backends(self, servers, simple_node):
         '''
         Runs dnet_recovery merge with --one-node=scope.test_address and --backend-id==scope.test_backend.
         Checks self.keys availability after recovering.
@@ -325,7 +328,7 @@ class TestRecovery:
                                test_namespace=self.namespace)
 
         recovery(one_node=True,
-                 remotes=map(elliptics.Address.from_host_port_family, server.remotes),
+                 remotes=map(elliptics.Address.from_host_port_family, servers.remotes),
                  backend_id=scope.test_backend,
                  address=scope.test_address,
                  groups=(scope.test_group,),
@@ -338,7 +341,8 @@ class TestRecovery:
         check_data(scope, session, self.keys, self.datas, self.timestamp)
         check_keys_absence(scope, session, self.keys)
 
-    def test_enable_another_one_backend(self, server, simple_node):
+    @pytest.mark.usefixtures("servers")
+    def test_enable_another_one_backend(self, simple_node):
         '''
         Enables another one backend from the same group.
         '''
@@ -351,7 +355,8 @@ class TestRecovery:
         check_backend_status(r.get(), backend, state=1)
         wait_backends_in_route(session, ((address, backend),))
 
-    def test_merge_from_dump_3_backends(self, server, simple_node):
+    @pytest.mark.usefixtures("servers")
+    def test_merge_from_dump_3_backends(self, servers, simple_node):
         '''
         Writes all keys to dump file: 'merge.dump.file'.
         Runs dnet_recovery merge without --one-node and without --backend-id and with -f merge.dump.file.
@@ -367,7 +372,7 @@ class TestRecovery:
                 dump_file.write('{0}\n'.format(str(session.transform(key))))
 
         recovery(one_node=False,
-                 remotes=map(elliptics.Address.from_host_port_family, server.remotes),
+                 remotes=map(elliptics.Address.from_host_port_family, servers.remotes),
                  backend_id=None,
                  address=scope.test_address,
                  groups=(scope.test_group,),
@@ -380,7 +385,8 @@ class TestRecovery:
         check_data(scope, session, self.keys, self.datas, self.timestamp)
         check_keys_absence(scope, session, self.keys)
 
-    def test_enable_all_group_backends(self, server, simple_node):
+    @pytest.mark.usefixtures("servers")
+    def test_enable_all_group_backends(self, simple_node):
         '''
         Enables all backends from all nodes from first group
         '''
@@ -389,7 +395,7 @@ class TestRecovery:
                                test_namespace=self.namespace)
         enable_group(scope, session, scope.test_group)
 
-    def test_merge_one_group(self, server, simple_node):
+    def test_merge_one_group(self, servers, simple_node):
         '''
         Runs dnet_recovery merge without --one-node and without --backend-id.
         Checks self.keys availability after recovering.
@@ -399,7 +405,7 @@ class TestRecovery:
                                test_namespace=self.namespace)
 
         recovery(one_node=False,
-                 remotes=map(elliptics.Address.from_host_port_family, server.remotes),
+                 remotes=map(elliptics.Address.from_host_port_family, servers.remotes),
                  backend_id=None,
                  address=scope.test_address,
                  groups=(scope.test_group,),
@@ -411,7 +417,8 @@ class TestRecovery:
         check_data(scope, session, self.keys, self.datas, self.timestamp)
         check_keys_absence(scope, session, self.keys)
 
-    def test_enable_second_group_one_backend(self, server, simple_node):
+    @pytest.mark.usefixtures("servers")
+    def test_enable_second_group_one_backend(self, simple_node):
         '''
         Enables one backend from one node from second group.
         '''
@@ -426,7 +433,7 @@ class TestRecovery:
         check_backend_status(r.get(), backend, state=1)
         wait_backends_in_route(session, ((address, backend), ))
 
-    def test_dc_one_backend_and_one_group(self, server, simple_node):
+    def test_dc_one_backend_and_one_group(self, servers, simple_node):
         '''
         Runs dnet_recovery dc with --one-node=scope.test_address2,
         --backend-id=scope.test_backend2 and against both groups.
@@ -437,7 +444,7 @@ class TestRecovery:
                                test_namespace=self.namespace)
 
         recovery(one_node=True,
-                 remotes=map(elliptics.Address.from_host_port_family, server.remotes),
+                 remotes=map(elliptics.Address.from_host_port_family, servers.remotes),
                  backend_id=scope.test_backend2,
                  address=scope.test_address2,
                  groups=(scope.test_group, scope.test_group2,),
@@ -449,7 +456,8 @@ class TestRecovery:
         session.groups = (scope.test_group2,)
         check_data(scope, session, self.keys, self.datas, self.timestamp)
 
-    def test_enable_all_second_group_backends(self, server, simple_node):
+    @pytest.mark.usefixtures("servers")
+    def test_enable_all_second_group_backends(self, simple_node):
         '''
         Enables all backends from all node in second group.
         '''
@@ -458,7 +466,7 @@ class TestRecovery:
                                test_namespace=self.namespace)
         enable_group(scope, session, scope.test_group2)
 
-    def test_dc_from_dump_two_groups(self, server, simple_node):
+    def test_dc_from_dump_two_groups(self, servers, simple_node):
         '''
         Runs dnet_recovery dc without --one-node and
         without --backend-id against both groups and with -f merge.dump.file.
@@ -474,7 +482,7 @@ class TestRecovery:
                 dump_file.write('{0}\n'.format(str(session.transform(key))))
 
         recovery(one_node=False,
-                 remotes=map(elliptics.Address.from_host_port_family, server.remotes),
+                 remotes=map(elliptics.Address.from_host_port_family, servers.remotes),
                  backend_id=None,
                  address=scope.test_address2,
                  groups=(scope.test_group, scope.test_group2,),
@@ -489,7 +497,8 @@ class TestRecovery:
         session.groups = (scope.test_group2,)
         check_data(scope, session, self.keys, self.datas, self.timestamp)
 
-    def test_enable_all_third_group_backends(self, server, simple_node):
+    @pytest.mark.usefixtures("servers")
+    def test_enable_all_third_group_backends(self, simple_node):
         '''
         Enables all backends from all node from third group.
         '''
@@ -498,7 +507,8 @@ class TestRecovery:
                                test_namespace=self.namespace)
         enable_group(scope, session, scope.test_group3)
 
-    def test_write_data_to_third_group(self, server, simple_node):
+    @pytest.mark.usefixtures("servers")
+    def test_write_data_to_third_group(self, simple_node):
         '''
         Writes different data by self.key in third group
         '''
@@ -511,7 +521,7 @@ class TestRecovery:
         write_data(scope, session, self.keys, self.datas2)
         check_data(scope, session, self.keys, self.datas2, self.timestamp2)
 
-    def test_dc_three_groups(self, server, simple_node):
+    def test_dc_three_groups(self, servers, simple_node):
         '''
         Run dc recovery without --one-node and without --backend-id against all three groups.
         Checks that all three groups contain data from third group.
@@ -521,7 +531,7 @@ class TestRecovery:
                                test_namespace=self.namespace)
 
         recovery(one_node=False,
-                 remotes=map(elliptics.Address.from_host_port_family, server.remotes),
+                 remotes=map(elliptics.Address.from_host_port_family, servers.remotes),
                  backend_id=None,
                  address=scope.test_address2,
                  groups=(scope.test_group, scope.test_group2, scope.test_group3),
@@ -533,7 +543,8 @@ class TestRecovery:
             session.groups = [group]
             check_data(scope, session, self.keys, self.datas2, self.timestamp2)
 
-    def test_write_and_corrupt_data(self, server, simple_node):
+    @pytest.mark.usefixtures("servers")
+    def test_write_and_corrupt_data(self, simple_node):
         '''
         Writes one by one the key with different data and
         incremental timestamp to groups 1, 2, 3 and corrupts data in the group #3.
@@ -568,7 +579,7 @@ class TestRecovery:
             f.write(tmp)
             f.flush()
 
-    def test_dc_corrupted_data(self, server, simple_node):
+    def test_dc_corrupted_data(self, servers, simple_node):
         '''
         Runs dc recovery and checks that second version of data is recovered to all groups.
         This test checks that dc recovery correctly handles corrupted key on his way:
@@ -580,7 +591,7 @@ class TestRecovery:
                                test_namespace=self.namespace)
 
         recovery(one_node=False,
-                 remotes=map(elliptics.Address.from_host_port_family, server.remotes),
+                 remotes=map(elliptics.Address.from_host_port_family, servers.remotes),
                  backend_id=None,
                  address=scope.test_address2,
                  groups=(scope.test_group, scope.test_group2, scope.test_group3),
@@ -592,7 +603,8 @@ class TestRecovery:
             session.groups = [group]
             check_data(scope, session, [self.corrupted_key], [self.corrupted_data + '.2'], self.corrupted_timestamp2)
 
-    def test_defragmentation(self, server, simple_node):
+    @pytest.mark.usefixtures("servers")
+    def test_defragmentation(self, simple_node):
         '''
         Runs defragmentation on all backends from all nodes and groups.
         Waiting defragmentation stops and checks results.
@@ -631,7 +643,8 @@ class TestRecovery:
             session.groups = [group]
             check_data(scope, session, self.keys, self.datas2, self.timestamp2)
 
-    def test_enable_rest_backends(self, server, simple_node):
+    @pytest.mark.usefixtures("servers")
+    def test_enable_rest_backends(self, simple_node):
         '''
         Restore all groups with all nodes and all backends.
         '''
@@ -641,7 +654,8 @@ class TestRecovery:
         for g in scope.test_other_groups:
             enable_group(scope, session, g)
 
-    def test_checks_all_enabled(self, server, simple_node):
+    @pytest.mark.usefixtures("servers")
+    def test_checks_all_enabled(self, simple_node):
         '''
         Checks statuses of all backends from all nodes and groups
         '''
@@ -848,7 +862,8 @@ class TestMerge:
             time.sleep(0.5)
             counter += 0.5
 
-    def test_setup(self, server, simple_node):
+    @pytest.mark.usefixtures("servers")
+    def test_setup(self, simple_node):
         '''
         Initial test cases that prepare test cluster before running recovery. It includes:
         1. preparing whole test class scope - making session, choosing node and backends etc.
@@ -879,12 +894,12 @@ class TestMerge:
         self.cleanup_backends(tuple((self.scope.address, b) for b in self.scope.backends))
         self.prepare_test_data()
 
-    def test_recovery(self, server, simple_node):
+    def test_recovery(self, servers, simple_node):
         '''
         Runs recovery and checks recovery result
         '''
         recovery(one_node=False,
-                 remotes=map(elliptics.Address.from_host_port_family, server.remotes),
+                 remotes=map(elliptics.Address.from_host_port_family, servers.remotes),
                  backend_id=None,
                  address=scope.address,
                  groups=(scope.group,),
@@ -893,7 +908,8 @@ class TestMerge:
                  log_file='merge_with_uncommitted_keys.log',
                  tmp_dir='merge_with_uncommitted_keys')
 
-    def test_check(self, server, simple_node):
+    @pytest.mark.usefixtures("servers")
+    def test_check(self, simple_node):
         '''
         Checks that all keys from test_data are in correct state - have correct timestamp and availability.
         '''
@@ -919,7 +935,8 @@ class TestMerge:
                 assert result.timestamp == check_ts
                 assert result.data == self.data
 
-    def test_teardown(self, server, simple_node):
+    @pytest.mark.usefixtures("servers")
+    def test_teardown(self, simple_node):
         self.cleanup_backends(scope.routes.addresses_with_backends())
 
 
@@ -1023,7 +1040,8 @@ class TestDC:
             assert result[0].timestamp == ts
             assert result[0].group_id == group
 
-    def test_setup(self, server, simple_node):
+    @pytest.mark.usefixtures("servers")
+    def test_setup(self, simple_node):
         '''
         Initial test cases that prepare test cluster before running recovery. It includes:
         1. preparing whole test class scope - making session, choosing node and backends etc.
@@ -1043,7 +1061,8 @@ class TestDC:
         self.cleanup_backends()
         self.prepare_test_data()
 
-    def test_recovery(self, server, simple_node):
+    @pytest.mark.usefixtures("servers")
+    def test_recovery(self, simple_node):
         '''
         Runs recovery and checks recovery result
         '''
@@ -1056,7 +1075,8 @@ class TestDC:
                  log_file='dc_with_uncommitted_keys.log',
                  tmp_dir='dc_with_uncommitted_keys')
 
-    def test_check(self, server, simple_node):
+    @pytest.mark.usefixtures("servers")
+    def test_check(self, simple_node):
         '''
         Checks that all keys from test_data are in correct state - have correct timestamp and availability.
         '''
@@ -1095,7 +1115,8 @@ class TestDC:
                     assert result.timestamp == check_ts[i]
                     assert result.data == self.data
 
-    def test_teardown(self, server, simple_node):
+    @pytest.mark.usefixtures("servers")
+    def test_teardown(self, simple_node):
         self.cleanup_backends()
 
 
@@ -1173,7 +1194,8 @@ class TestRecoveryUserFlags:
             counter += 0.5
 
 
-    def test_setup(self, server, simple_node):
+    @pytest.mark.usefixtures("servers")
+    def test_setup(self, simple_node):
         '''
         Initial test cases that prepare test cluster before running recovery. It includes:
         1. preparing whole test class scope - making session, choosing node and backends etc.
@@ -1191,7 +1213,8 @@ class TestRecoveryUserFlags:
         self.cleanup_backends()
         self.prepare_test_data()
 
-    def test_recovery(self, server, simple_node):
+    @pytest.mark.usefixtures("servers")
+    def test_recovery(self, simple_node):
         '''
         Runs recovery with filtration of keys by specifying user_flags_set and checks that:
         1. test_key shouldn't be recovered
@@ -1227,5 +1250,6 @@ class TestRecoveryUserFlags:
             results = session.read_data(self.test_key3).get()
             assert all(r.user_flags not in self.user_flags_set for r in results)
 
-    def test_teardown(self, server, simple_node):
+    @pytest.mark.usefixtures("servers")
+    def test_teardown(self, simple_node):
         self.cleanup_backends()

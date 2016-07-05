@@ -82,7 +82,8 @@ class TestSession:
         ('timestamp', elliptics.Time(2 ** 64 - 1, 2 ** 64 - 1)),
         ('trace_id', 0),
         ('user_flags', 0)])
-    def test_properties_default(self, server, simple_node, prop, value):
+    @pytest.mark.usefixtures("servers")
+    def test_properties_default(self, simple_node, prop, value):
         session = elliptics.Session(node=simple_node)
         assert getattr(session, prop) == value
 
@@ -118,7 +119,8 @@ class TestSession:
          0,
          438975345,
          2 ** 64 - 1))])
-    def test_properties(self, server, simple_node,
+    @pytest.mark.usefixtures("servers")
+    def test_properties(self, simple_node,
                         prop, setter, getter, values):
         session = elliptics.Session(node=simple_node)
         assert type(session) == elliptics.Session
@@ -127,7 +129,8 @@ class TestSession:
                          setter=setter,
                          getter=getter)
 
-    def test_resetting_timeout(self, server, simple_node):
+    @pytest.mark.usefixtures("servers")
+    def test_resetting_timeout(self, simple_node):
         session = make_session(node=simple_node,
                                test_name='TestSession.test_resetting_timeout')
         assert session.timeout == 5  # check default timeout value
@@ -143,13 +146,15 @@ class TestSession:
                              ('timeout', 2 ** 63),
                              ('trace_id', 2 ** 64),
                              ('user_flags', 2 ** 64)])
-    def test_properties_out_of_limits(self, server, simple_node, prop, value):
+    @pytest.mark.usefixtures("servers")
+    def test_properties_out_of_limits(self, simple_node, prop, value):
         session = elliptics.Session(simple_node)
         pytest.raises(OverflowError,
                       "set_property(session, '{0}', {1})"
                       .format(prop, value))
 
-    def test_clone(self, server, simple_node):
+    @pytest.mark.usefixtures("servers")
+    def test_clone(self, simple_node):
         orig_s = make_session(node=simple_node,
                               test_name='TestSession.test_clone')
 

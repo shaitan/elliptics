@@ -113,7 +113,8 @@ class TestSession:
     It sanity checks all available interface and doesn't check correctness of data and metadata,
     because these tests doesn't know anything about these keys.
     '''
-    def test_iterate_default(self, server, simple_node):
+    @pytest.mark.usefixtures("servers")
+    def test_iterate_default(self, simple_node):
         '''
         Runs iterator on first node/backend from route-list without specified ranges and special flags
         Checks iterated keys by check_iterator_results.
@@ -136,7 +137,8 @@ class TestSession:
 
         check_iterator_results(first_node, first_backend, iterator, session, node_id)
 
-    def test_iterate_one_range(self, server, simple_node):
+    @pytest.mark.usefixtures("servers")
+    def test_iterate_one_range(self, simple_node):
         '''
         Runs iterator on first node/backend from route-list with using only first range of it.
         Checks iterated keys by check_iterator_results.
@@ -161,7 +163,8 @@ class TestSession:
 
         check_iterator_results(node, backend, iterator, session, node_id)
 
-    def test_iterate_all_node_ranges(self, server, simple_node):
+    @pytest.mark.usefixtures("servers")
+    def test_iterate_all_node_ranges(self, simple_node):
         '''
         Runs iterator on first node/backend from route-list with using all ranges covered by it.
         Checks iterated keys by check_iterator_results.
@@ -182,7 +185,8 @@ class TestSession:
 
         check_iterator_results(node, backend, iterator, session, node_id)
 
-    def test_iterate_all_node_ranges_with_timestamp(self, server, simple_node):
+    @pytest.mark.usefixtures("servers")
+    def test_iterate_all_node_ranges_with_timestamp(self, simple_node):
         '''
         Runs iterator on first node/backend from route-list with using all ranges covered by it
         and timetamps that specifies period from 30 second before now to now.
@@ -208,7 +212,8 @@ class TestSession:
 
         check_iterator_results(node, backend, iterator, session, node_id)
 
-    def test_iterate_inverted_node_ranges_with_data(self, server, simple_node):
+    @pytest.mark.usefixtures("servers")
+    def test_iterate_inverted_node_ranges_with_data(self, simple_node):
         '''
         Runs iterator on first node/backend from route-list with using inverted ranges
         that aren't covered by this node/backend.
@@ -230,7 +235,8 @@ class TestSession:
 
         check_iterator_results(node, backend, iterator, session, node_id)
 
-    def test_iterate_all_node_ranges_no_meta(self, server, simple_node):
+    @pytest.mark.usefixtures("servers")
+    def test_iterate_all_node_ranges_no_meta(self, simple_node):
         '''
         Runs iterator with no_meta on first node/backend from route-list with using all ranges covered by it.
         Checks iterated keys by check_iterator_results.

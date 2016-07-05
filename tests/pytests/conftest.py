@@ -117,30 +117,24 @@ def make_session(node, test_name, test_namespace=None):
 #
 
 @pytest.yield_fixture(scope="session")
-def server(request):
+def servers(request):
     '''
     Creates elliptics server nodes to work against.
     Returns node ensemble configuration.
     '''
     groups = [int(g) for g in request.config.option.groups.split(',')]
 
-    servers = Servers(groups=groups,
-                      without_cocaine=request.config.option.without_cocaine,
-                      nodes_count=int(request.config.option.nodes_count),
-                      backends_count=int(request.config.option.backends_count))
+    _servers = Servers(groups=groups,
+                       without_cocaine=request.config.option.without_cocaine,
+                       nodes_count=int(request.config.option.nodes_count),
+                       backends_count=int(request.config.option.backends_count))
 
-    request.config.option.remotes = servers.remotes
-    request.config.option.monitors = servers.monitors
+    request.config.option.remotes = _servers.remotes
+    request.config.option.monitors = _servers.monitors
 
-    yield servers
+    yield _servers
 
-    servers.stop()
-
-
-# Fixture `server` named a bit off because it actually creates
-# an ensemble of server nodes.
-# Plural is more proper.
-servers = server
+    _servers.stop()
 
 
 @pytest.fixture(scope='session')

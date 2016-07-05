@@ -15,6 +15,7 @@
 
 import sys
 sys.path.insert(0, "")  # for running from cmake
+import pytest
 from conftest import make_session
 import elliptics
 
@@ -61,7 +62,8 @@ class TestSession:
                                 indexes,
                                 datas)
 
-    def test_indexes_simple(self, server, simple_node):
+    @pytest.mark.usefixtures("servers")
+    def test_indexes_simple(self, simple_node):
         session = make_session(node=simple_node,
                                test_name='TestSession.test_indexes_simple')
         session.groups = session.routes.groups()
@@ -92,7 +94,8 @@ class TestSession:
             del check_dict[idx]
         self.check_indexes(session, key, check_dict.keys(), check_dict.values())
 
-    def test_indexes_dict(self, server, simple_node):
+    @pytest.mark.usefixtures("servers")
+    def test_indexes_dict(self, simple_node):
         session = make_session(node=simple_node,
                                test_name='TestSession.test_indexes_dict')
         session.groups = session.routes.groups()

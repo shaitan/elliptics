@@ -78,7 +78,8 @@ class TestSession:
                              ('without_group_key_1', ''),
                              ('without_group_key_2', 'data'),
                              ("without_group_key_3", '309u8ryeygwvfgadd0u9g8y0ahbg8')])
-    def test_write_without_groups(self, server, simple_node, key, data):
+    @pytest.mark.usefixtures("servers")
+    def test_write_without_groups(self, simple_node, key, data):
         session = make_session(node=simple_node,
                                test_name='TestSession.test_write_without_groups')
         result = session.write_data(key, data)
@@ -97,7 +98,8 @@ class TestSession:
                              ('all_group_key_2', 'data', None),
                              ("all_group_key_3", '309u8ryeygwvfgadd0u9g8y0ahbg8',
                               None)])
-    def test_write_to_all_groups(self, server, simple_node,
+    @pytest.mark.usefixtures("servers")
+    def test_write_to_all_groups(self, simple_node,
                                  key, data, exception):
         session = make_session(node=simple_node,
                                test_name='TestSession.test_write_to_all_groups')
@@ -110,7 +112,8 @@ class TestSession:
         else:
             checked_write(session, key, data)
 
-    def test_write_to_one_group(self, server, simple_node):
+    @pytest.mark.usefixtures("servers")
+    def test_write_to_one_group(self, simple_node):
         data = 'some data'
         session = make_session(node=simple_node,
                                test_name='TestSession.test_write_to_one_group')
@@ -126,7 +129,8 @@ class TestSession:
                 results = session.read_data(tmp_key).get()
                 assert results == []
 
-    def test_write_namespace(self, server, simple_node):
+    @pytest.mark.usefixtures("servers")
+    def test_write_namespace(self, simple_node):
         key = 'namespaced_key'
         ns1 = 'namesapce 1'
         ns2 = 'namespace 2'
@@ -154,11 +158,13 @@ class TestSession:
                              ('diff key 1', 'init data', 0, 4),
                              ('diff key 1', 'rewrite data', 2, 0)
                              ])
-    def test_different_writes(self, server, simple_node,
+    @pytest.mark.usefixtures("servers")
+    def test_different_writes(self, simple_node,
                               key, data, offset, size):
         pass
 
-    def test_write_append(self, server, simple_node):
+    @pytest.mark.usefixtures("servers")
+    def test_write_append(self, simple_node):
         key1 = 'append_key_1'
         key2 = 'append_key_2'
         data1 = 'some data 1'
@@ -182,7 +188,8 @@ class TestSession:
         checked_write(session, key2, data2)
         checked_read(session, key2, data1 + data2)
 
-    def test_bulk_write_read(self, server, simple_node):
+    @pytest.mark.usefixtures("servers")
+    def test_bulk_write_read(self, simple_node):
         session = make_session(node=simple_node,
                                test_name='TestSession.test_bulk_write_read')
         groups = session.routes.groups()
@@ -199,7 +206,8 @@ class TestSession:
         checked_bulk_write(session, dict.fromkeys(keys, 'data'), data)
         checked_bulk_read(session, keys, data)
 
-    def test_write_cas(self, server, simple_node):
+    @pytest.mark.usefixtures("servers")
+    def test_write_cas(self, simple_node):
         session = make_session(node=simple_node,
                                test_name='TestSession.test_write_cas')
         groups = session.routes.groups()
@@ -221,7 +229,8 @@ class TestSession:
         check_write_results(results, len(session.groups), ndata, session)
         checked_read(session, key, ndata)
 
-    def test_prepare_write_commit(self, server, simple_node):
+    @pytest.mark.usefixtures("servers")
+    def test_prepare_write_commit(self, simple_node):
         session = make_session(node=simple_node,
                                test_name='TestSession.test_prepare_write_commit')
         session.groups = [session.routes.groups()[0]]
@@ -259,7 +268,8 @@ class TestSession:
 
         assert session.read_data(pos_id).get()[0].data == data
 
-    def test_prepare_plain_commit_simple(self, server, simple_node):
+    @pytest.mark.usefixtures("servers")
+    def test_prepare_plain_commit_simple(self, simple_node):
         '''
         Description:
             simple write_prepare/write_plain/write_commit with checking data correctness and accessibility
@@ -302,7 +312,8 @@ class TestSession:
 
         checked_read(session, test_key, test_data)
 
-    def test_prepare_plain_commit_with_restarting_backend(self, server, simple_node):
+    @pytest.mark.usefixtures("servers")
+    def test_prepare_plain_commit_with_restarting_backend(self, simple_node):
         '''
         Description:
             write_plain/write_commit can be made if corresponding backend was restarted after write_prepare.
