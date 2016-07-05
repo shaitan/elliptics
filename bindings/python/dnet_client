@@ -306,11 +306,351 @@ def process_iterator():
         )))
 
 
+def process_lookup():
+    """Process dnet_client lookup."""
+    parser = OptionParser()
+    parser.usage = '%prog write [options]'
+
+    parser.add_option('--key', dest='key', type='str',
+                      help='Key by which write should be executed')
+    parser.add_option('--hex', action='store_true', dest='hex', default=False,
+                      help='Specifies that the key used with --key is hex string')
+
+    add_node_options(parser)
+
+    options, _ = parser.parse_args()
+
+    key = elliptics.Id.from_hex(options.key) if options.hex else options.key
+
+    session = create_session(parser, options, new_session=True, single_remote=False)
+
+    session.exceptions_policy = elliptics.exceptions_policy.no_exceptions
+    session.set_filter(elliptics.filters.all_final)
+
+    results = []
+    groups = session.groups
+    for group in groups:
+        session.groups = [int(group)]
+        results.append(session.lookup(key))
+
+    result = OrderedDict()
+    for r in results:
+        r = r.get()[0]
+        group_result = OrderedDict(status=r.status)
+
+        if r.path is not None:
+            group_result['path'] = r.path
+
+        if r.record_info is not None:
+            group_result['record_info'] = OrderedDict((
+                ('record_flags', elliptics.dump_record_flags(r.record_info.record_flags)),
+                ('user_flags', r.record_info.user_flags),
+                ('json_timestamp', str(r.record_info.json_timestamp)),
+                ('json_offset', r.record_info.json_offset),
+                ('json_size', r.record_info.json_size),
+                ('json_capacity', r.record_info.json_capacity),
+                ('data_timestamp', str(r.record_info.data_timestamp)),
+                ('data_offset', r.record_info.data_offset),
+                ('data_size', r.record_info.data_size),
+            ))
+
+        result[r.group_id] = group_result
+
+    print_result(result)
+
+
+def process_read():
+    """Process dnet_client read."""
+    parser = OptionParser()
+    parser.usage = '%prog write [options]'
+    parser.add_option('--key', dest='key', type='str',
+                      help='Key by which write should be executed')
+    parser.add_option('--hex', action='store_true', dest='hex', default=False,
+                      help='Specifies that the key used with --key is hex string')
+    parser.add_option('--data', action='store_true', dest='data', default=False,
+                      help='Force dnet_client to read data')
+    parser.add_option('--data-file', dest='data_file', metavar="FILE",
+                      help='Force dnet_client to read data and write it to @FILE')
+    parser.add_option('--data-offset', dest='data_offset', default=0, type='int',
+                      help='Offset with which data should be read [default: %default]')
+    parser.add_option('--data-size', dest='data_size', default=0, type='int',
+                      help='Size of data part which should be read [default: %default]')
+    parser.add_option('--json', action='store_true', dest='json', default=False,
+                      help='Force dnet_client to read json')
+    parser.add_option('--json-file', dest='json_file', metavar='FILE',
+                      help='Force dnet_client to read json and write it to @FILE')
+
+    add_node_options(parser)
+
+    options, _ = parser.parse_args()
+
+    if not options.key:
+        parser.error('--key is not specified')
+
+    if not options.data and not options.data_file:
+        parser.error('--data or --data-file is not specified')
+    elif options.data and options.data_file:
+        parser.error('options --data and --data-file are mutually exclusive')
+
+    if not options.json and not options.json_file:
+        parser.error('--json or --json-file is not specified')
+    elif options.json and options.json_file:
+        parser.error('options --json and --json-file are mutually exclusive')
+
+    key = elliptics.Id.from_hex(options.key) if options.hex else options.key
+
+    session = create_session(parser, options, new_session=True, single_remote=False)
+
+    read_data = options.data or options.data_file
+    read_json = options.json or options.json_file
+
+    # read both json and data if neither json or data is requested
+    if not read_data and not read_json:
+        read_data = read_json = True
+
+    if read_json and read_data:
+        async = session.read(key, options.data_offset, options.data_size)
+    elif read_json:
+        async = session.read_json(key)
+    elif read_data:
+        async = session.read_data(key, options.data_offset, options.data_size)
+    else:
+        parser.error('Unexpected combination of options')
+
+    json_file = None
+    if options.json_file:
+        json_file = open(options.json_file, 'wb')
+
+    data_file = None
+    if options.data_file == options.json_file:
+        data_file = json_file
+    elif options.data_file:
+        data_file = open(options.data_file, 'wb')
+
+    r = async.get()[0]
+
+    result = OrderedDict(group=r.group_id)
+
+    if r.json:
+        result['json_timestamp'] = str(r.record_info.json_timestamp)
+        if json_file is not None:
+            json_file.write(r.json)
+            result['json'] = os.path.abspath(json_file.name)
+            result['json_size'] = r.io_info.json_size
+        else:
+            result['json'] = json.loads(r.json)
+
+    if r.data:
+        result['data_timestamp'] = str(r.record_info.data_timestamp)
+        if data_file is not None:
+            data_file.write(r.data)
+            result['data'] = os.path.abspath(data_file.name)
+            result['data_size'] = r.io_info.data_size
+        else:
+            result['data'] = r.data
+
+    if json_file:
+        json_file.flush()
+        json_file.close()
+
+    if data_file and data_file != json_file:
+        data_file.flush()
+        data_file.close()
+
+    print_result(result)
+
+
+def process_write():
+    """Process dnet_client write."""
+    parser = OptionParser()
+    parser.usage = '%prog write [options]'
+
+    parser.add_option('--key', dest='key', type='str',
+                      help='Key by which write should be executed')
+    parser.add_option('--hex', action='store_true', dest='hex', default=False,
+                      help='Specifies that the key used with --key is hex string')
+    parser.add_option('--data', dest='data', type='str', default='',
+                      help='Data which should be written into key (--key)')
+    parser.add_option('--data-file', dest='data_file', metavar="FILE",
+                      help='Get data from @FILE')
+    parser.add_option('--data-capacity', dest='data_capacity', type='int', default=0,
+                      help='Reserve @--data-capacity bytes for future data updates')
+    parser.add_option('--json', dest='json', type='str', default='',
+                      help='Json string which should be written into key (--key)')
+    parser.add_option('--json-file', dest='json_file', metavar='FILE',
+                      help='Get json from @FILE')
+    parser.add_option('--json-capacity', dest='json_capacity', type='int', default=0,
+                      help='Reserve @--json-capacity bytes for future json updates')
+
+    add_node_options(parser)
+
+    options, _ = parser.parse_args()
+
+    if not options.key:
+        parser.error('--key is not specified')
+
+    if not options.data and not options.data_file:
+        parser.error('--data or --data-file is not specified')
+    elif options.data and options.data_file:
+        parser.error('options --data and --data-file are mutually exclusive')
+
+    if not options.json and not options.json_file:
+        parser.error('--json or --json-file is not specified')
+    elif options.json and options.json_file:
+        parser.error('options --json and --json-file are mutually exclusive')
+
+    key = elliptics.Id.from_hex(options.key) if options.hex else options.key
+
+    session = create_session(parser, options, new_session=True, single_remote=False)
+
+    session.set_checker(elliptics.checkers.no_check)
+    session.set_filter(elliptics.filters.all_with_ack)
+
+    json_string = options.json
+    if options.json_file:
+        with open(options.json_file, 'rb') as json_file:
+            json_string = json_file.read()
+
+    data = options.data
+    if options.data_file:
+        with open(options.data_file, 'rb') as data_file:
+            data = data_file.read()
+
+    async = session.write(key, json_string, options.json_capacity, data, options.data_capacity)
+
+    result = OrderedDict()
+    for r in async:
+        group_result = OrderedDict(status=r.status)
+
+        if r.path is not None:
+            group_result['path'] = r.path
+
+        if r.record_info is not None:
+            group_result['record_info'] = OrderedDict((
+                ('record_flags', elliptics.dump_record_flags(r.record_info.record_flags)),
+                ('user_flags', r.record_info.user_flags),
+                ('json_timestamp', str(r.record_info.json_timestamp)),
+                ('json_offset', r.record_info.json_offset),
+                ('json_size', r.record_info.json_size),
+                ('json_capacity', r.record_info.json_capacity),
+                ('data_timestamp', str(r.record_info.data_timestamp)),
+                ('data_offset', r.record_info.data_offset),
+                ('data_size', r.record_info.data_size),
+            ))
+
+        result[r.group_id] = group_result
+
+    print_result(result)
+
+
+def process_remove():
+    """Process dnet_client remove."""
+    parser = OptionParser()
+    parser.usage = '%prog write [options]'
+
+    parser.add_option('--key', dest='key', type='str',
+                      help='Key by which write should be executed')
+    parser.add_option('--hex', action='store_true', dest='hex', default=False,
+                      help='Specifies that the key used with --key is hex string')
+
+    add_node_options(parser)
+
+    options, _ = parser.parse_args()
+
+    if not options.key:
+        parser.error('--key is not specified')
+
+    key = elliptics.Id.from_hex(options.key) if options.hex else options.key
+
+    session = create_session(parser, options, new_session=True, single_remote=False)
+
+    session.set_checker(elliptics.checkers.no_check)
+    session.set_filter(elliptics.filters.all_with_ack)
+
+    async = session.remove(key)
+
+    result = OrderedDict()
+    for r in async:
+        result[r.group_id] = OrderedDict(status=r.status)
+
+    print_result(result)
+
+
+def process_update_json():
+    """Process dnet_client update_json."""
+    parser = OptionParser()
+    parser.usage = '%prog write [options]'
+
+    parser.add_option('--key', dest='key', type='str',
+                      help='Key by which write should be executed')
+    parser.add_option('--hex', action='store_true', dest='hex', default=False,
+                      help='Specifies that the key used with --key is hex string')
+    parser.add_option('--json', dest='json', type='str',
+                      help='Json string which should be written into key (--key)')
+    parser.add_option('--json-file', dest='json_file', metavar='FILE',
+                      help='Get json from @FILE')
+
+    add_node_options(parser)
+
+    options, _ = parser.parse_args()
+
+    if not options.key:
+        parser.error('--key is not specified')
+
+    if not options.json and not options.json_file:
+        parser.error('--json or --json-file is not specified')
+    elif options.json and options.json_file:
+        parser.error('options --json and --json-file are mutually exclusive')
+
+    key = elliptics.Id.from_hex(options.key) if options.hex else options.key
+
+    session = create_session(parser, options, new_session=True, single_remote=False)
+
+    session.set_checker(elliptics.checkers.no_check)
+    session.set_filter(elliptics.filters.all_with_ack)
+
+    json_string = options.json
+    if options.json_file:
+        with open(options.json_file, 'rb') as json_file:
+            json_string = json_file.read()
+
+    async = session.update_json(key, json_string)
+
+    result = OrderedDict()
+    for r in async:
+        group_result = OrderedDict(status=r.status)
+
+        if r.path is not None:
+            group_result['path'] = r.path
+
+        if r.record_info is not None:
+            group_result['record_info'] = OrderedDict((
+                ('record_flags', elliptics.dump_record_flags(r.record_info.record_flags)),
+                ('user_flags', r.record_info.user_flags),
+                ('json_timestamp', str(r.record_info.json_timestamp)),
+                ('json_offset', r.record_info.json_offset),
+                ('json_size', r.record_info.json_size),
+                ('json_capacity', r.record_info.json_capacity),
+                ('data_timestamp', str(r.record_info.data_timestamp)),
+                ('data_offset', r.record_info.data_offset),
+                ('data_size', r.record_info.data_size),
+            ))
+
+        result[r.group_id] = group_result
+
+    print_result(result)
+
+
 def main():
     commands = {
         'backend': process_backend,
         'monitor': process_monitor,
         'iterate': process_iterator,
+        'lookup': process_lookup,
+        'read': process_read,
+        'write': process_write,
+        'remove': process_remove,
+        'update_json': process_update_json,
     }
 
     parser = OptionParser()
