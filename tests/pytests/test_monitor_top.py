@@ -61,7 +61,7 @@ class TestMonitorTop:
     It checks that top keys service exists and items of top keys list contains all required fields.
     '''
 
-    def test_single_write(self, server, simple_node):
+    def test_single_write(self, servers, simple_node):
         '''
         check that single access to some key appears among top keys using http interface of monitoring service
         '''
@@ -76,11 +76,11 @@ class TestMonitorTop:
 
         test_key = hashlib.sha512(test_key).hexdigest()
         top_keys = []
-        for remote, port in zip(server.remotes, server.monitors):
+        for remote, port in zip(servers.remotes, servers.monitors):
             remote = remote.split(':')[0]
             response = get_top_by_http(remote, port)
             # check that response contains required fields
-            check_response_fields(response, server.config_params)
+            check_response_fields(response, servers.config_params)
             top_keys = response['top']['top_by_size']
             if has_key(test_key, top_keys):
                 break
@@ -89,7 +89,7 @@ class TestMonitorTop:
         # check that all top keys items contains all required fields
         check_key_fields(top_keys)
 
-        self.__check_key_existance_using_session_monitor(session, server.config_params, test_key)
+        self.__check_key_existance_using_session_monitor(session, servers.config_params, test_key)
 
     def __check_key_existance_using_session_monitor(self, session, config_params, test_key):
         '''

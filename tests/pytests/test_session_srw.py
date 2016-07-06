@@ -29,14 +29,16 @@ class TestSession:
     #
     @pytest.mark.skipif(pytest.config.option.without_cocaine,
                         reason="COCAINE wasn't specified")
-    def test_exec_arg_event_cant_be_none(self, server, elliptics_client):
+    @pytest.mark.usefixtures("servers")
+    def test_exec_arg_event_cant_be_none(self, elliptics_client):
         elliptics_client.trace_id = make_trace_id('TestSession.test_exec_arg_event_cant_be_none')
         with pytest.raises(TypeError):
             elliptics_client.exec_('some-id', data='')
 
     @pytest.mark.skipif(pytest.config.option.without_cocaine,
                         reason="COCAINE wasn't specified")
-    def test_exec_arg_event_cant_be_missed(self, server, elliptics_client):
+    @pytest.mark.usefixtures("servers")
+    def test_exec_arg_event_cant_be_missed(self, elliptics_client):
         elliptics_client.trace_id = make_trace_id('TestSession.test_exec_arg_event_cant_be_missed')
         with pytest.raises(TypeError):
             elliptics_client.exec_('some-id', event=None, data='')
@@ -57,7 +59,8 @@ class TestSession:
 
     @pytest.mark.skipif(pytest.config.option.without_cocaine,
                         reason="COCAINE wasn't specified")
-    def test_exec_arg_id_could_be_none(self, servers, elliptics_client):
+    @pytest.mark.usefixtures("servers")
+    def test_exec_arg_id_could_be_none(self, elliptics_client):
         elliptics_client.trace_id = make_trace_id('TestSession.test_exec_arg_id_could_be_none')
         nodes = elliptics_client.routes.addresses()
         r = elliptics_client.exec_(None, event=EVENT, data='').get()
@@ -90,7 +93,7 @@ class TestSession:
             lambda x: error.append(x)
         )
         async.wait()
-        #print '%r, %r' % (results, error)
+        # print '%r, %r' % (results, error)
         assert len(error) > 0
         return results, error[0]
 
@@ -124,7 +127,8 @@ class TestSession:
     #
     @pytest.mark.skipif(pytest.config.option.without_cocaine,
                         reason="COCAINE wasn't specified")
-    def test_exec_fanout_auto(self, servers, elliptics_client, exec_func):
+    @pytest.mark.usefixtures("servers")
+    def test_exec_fanout_auto(self, elliptics_client, exec_func):
         ''' Fan out using None as id '''
         elliptics_client.trace_id = make_trace_id('TestSession.test_exec_fanout_auto')
         nodes = elliptics_client.routes.addresses()
@@ -141,12 +145,13 @@ class TestSession:
             assert r.context.address
             assert r.address == r.context.address
 
-            #TODO: check if src_id isn't empty
-            #assert r.context.src_id.id != [0] * 64
+            # TODO: check if src_id isn't empty
+            # assert r.context.src_id.id != [0] * 64
 
     @pytest.mark.skipif(pytest.config.option.without_cocaine,
                         reason="COCAINE wasn't specified")
-    def test_exec_fanout_manual(self, servers, elliptics_client, exec_func):
+    @pytest.mark.usefixtures("servers")
+    def test_exec_fanout_manual(self, elliptics_client, exec_func):
         ''' Fan out using manual lookup into routing table '''
         elliptics_client.trace_id = make_trace_id('TestSession.test_exec_fanout_manual')
         nodes = elliptics_client.routes.get_unique_routes()
@@ -164,12 +169,12 @@ class TestSession:
 
             collected.append((route.address, route.id, results[0]))
 
-        for route.address, route.id, r in collected:
+        for _, _, r in collected:
             assert r.context.address
             assert r.address == r.context.address
 
-            #TODO: check if src_id isn't empty
-            #assert r.context.src_id == id
+            # TODO: check if src_id isn't empty
+            # assert r.context.src_id == id
 
     @pytest.mark.skipif(pytest.config.option.without_cocaine,
                         reason="COCAINE wasn't specified")
