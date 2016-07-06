@@ -183,7 +183,7 @@ dnet_io_req *dnet_request_queue::take_request(dnet_work_io *wio, const char *thr
 			locked_keys_t::iterator it_lock;
 			bool inserted;
 			std::tie(it_lock, inserted) =
-				m_locked_keys.insert({cmd->id, reinterpret_cast<dnet_locks_entry *>(nullptr)});
+				m_locked_keys.emplace(cmd->id, reinterpret_cast<dnet_locks_entry *>(nullptr));
 			if (inserted) {
 				auto lock_entry = take_lock_entry(wio);
 				it_lock->second = lock_entry;
@@ -240,7 +240,7 @@ void dnet_request_queue::lock_key(const dnet_id *id)
 		lock_entry->unlock_event.wait_for(lock, std::chrono::seconds(1));
 	}
 	auto lock_entry = take_lock_entry(nullptr);
-	m_locked_keys.insert(std::make_pair(*id, lock_entry));
+	m_locked_keys.emplace(*id, lock_entry);
 }
 
 void dnet_request_queue::unlock_key(const dnet_id *id)
@@ -289,6 +289,36 @@ void dnet_request_queue::put_lock_entry(dnet_locks_entry *entry)
 
 size_t dnet_request_queue::size() const {
 	return m_queue_size;
+}
+
+
+dnet_oplock_guard::dnet_oplock_guard(struct dnet_backend_io *backend_io, const struct dnet_id *id)
+: m_backend_io{backend_io}
+, m_id{id}
+, m_locked{false}
+{
+	lock();
+}
+
+dnet_oplock_guard::~dnet_oplock_guard()
+{
+	unlock();
+}
+
+void dnet_oplock_guard::lock()
+{
+	if (!m_locked) {
+		dnet_oplock(m_backend_io, m_id);
+		m_locked = true;
+	}
+}
+
+void dnet_oplock_guard::unlock()
+{
+	if (m_locked) {
+		dnet_opunlock(m_backend_io, m_id);
+		m_locked = false;
+	}
 }
 
 

@@ -29,6 +29,8 @@
 
 #include "library/protocol.hpp"
 #include "library/elliptics.h"
+#include "library/backend.h"
+#include "library/request_queue.h"
 
 #include "rapidjson/document.h"
 #include "rapidjson/writer.h"
@@ -759,11 +761,9 @@ public:
 	 * Constructor: initializes internal state.
 	 */
 	congestion_control_monitor()
-	: m_minimal_batch_size{DEFAULT_MINIMAL_BATCH_SIZE}
-	, m_batch_size{m_minimal_batch_size}
+	: m_batch_size{MINIMAL_BATCH_SIZE}
 	, m_bytes_pending{0}
 	, m_bytes_processed{0}
-	, m_batch_timeout_msec{DEFAULT_BATCH_TIMEOUT}
 	, m_need_start_time{true} {
 	}
 
@@ -802,10 +802,10 @@ public:
 			gettimeofday(&tv, nullptr);
 			timersub(&tv, &m_batch_start_time, &tv_elapsed);
 			const int elapsed = static_cast<int>(tv_elapsed.tv_sec * 1000 + tv_elapsed.tv_usec / 1000);
-			if (elapsed < m_batch_timeout_msec) {
+			if (elapsed < BATCH_TIMEOUT_MSEC) {
 				m_batch_size *= 2;
 			} else {
-				m_batch_size = std::max(m_batch_size / 2, m_minimal_batch_size);
+				m_batch_size = std::max(m_batch_size / 2, MINIMAL_BATCH_SIZE);
 			}
 
 			m_need_start_time = true;
@@ -837,20 +837,17 @@ private:
 	/*
 	 * Minimal amount of data being sent to a remote backends simultaneously
 	 */
-	static const uint64_t DEFAULT_MINIMAL_BATCH_SIZE = 1024 * 1024;
-	/*
-	 * batch size is either increased or decreased depending on
-	 * whether it was processed within this timeout or not
-	 */
-	static const int DEFAULT_BATCH_TIMEOUT = 1000;
-
-	const uint64_t m_minimal_batch_size;
+	const uint64_t MINIMAL_BATCH_SIZE = 1024 * 1024;
 	uint64_t m_batch_size;
 
 	uint64_t m_bytes_pending;
 	uint64_t m_bytes_processed;
 
-	const int m_batch_timeout_msec;
+	/*
+	 * batch size is either increased or decreased depending on
+	 * whether it was processed within this timeout or not
+	 */
+	const int BATCH_TIMEOUT_MSEC = 1000;
 	struct timeval m_batch_start_time;
 	bool m_need_start_time;
 
@@ -875,6 +872,29 @@ static iterator_callback make_iterator_server_send_callback(eblob_backend_config
 			return -EINTR;
 		}
 
+		auto serialize_response = [=, &request, &counter] (int status) {
+			return serialize(ioremap::elliptics::dnet_iterator_response{
+				iterator_id, // iterator_id
+				info->key, // key
+				status, // status
+
+				++counter, // iterated_keys
+				request.keys.size(), // total_keys
+
+				info->record_flags, // record_flags
+				info->ehdr.flags, // user_flags
+
+				info->jhdr.timestamp, // json_timestamp
+				info->jhdr.size, // json_size
+				info->jhdr.capacity, // json_capacity
+				0, // read_json_size
+
+				info->ehdr.timestamp, // data timestamp
+				info->data_size, // data_size
+				0, // read_data_size
+			});
+		};
+
 		auto session = std::make_shared<newapi::session>(st->n);
 		session->set_exceptions_policy(session::no_exceptions);
 		session->set_trace_id(cmd->trace_id);
@@ -888,7 +908,15 @@ static iterator_callback make_iterator_server_send_callback(eblob_backend_config
 			session->set_timeout(60);
 		}
 
-		data_pointer json;
+		data_pointer json, data;
+
+		const int backend_id = c->data.stat_id;
+		auto backend_io = dnet_get_backend_io(st->n->io, backend_id);
+
+		dnet_id id;
+		dnet_setup_id(&id, cmd->id.group_id, info->key.id);
+		dnet_oplock_guard oplock_guard{backend_io, &id};
+
 		if (info->jhdr.size) {
 			json = data_pointer::allocate(info->jhdr.size);
 			const int err = dnet_read_ll(info->fd, json.data<char>(), json.size(), info->json_offset);
@@ -900,31 +928,7 @@ static iterator_callback make_iterator_server_send_callback(eblob_backend_config
 			}
 		}
 
-		auto serialize_response = [=, &request, &counter] (int status) {
-			return serialize(ioremap::elliptics::dnet_iterator_response{
-					iterator_id, // iterator_id
-						info->key, // key
-						status, // status
-
-						++counter, // iterated_keys
-						request.keys.size(), // total_keys
-
-						info->record_flags, // record_flags
-						info->ehdr.flags, // user_flags
-
-						info->jhdr.timestamp, // json_timestamp
-						info->jhdr.size, // json_size
-						info->jhdr.capacity, // json_capacity
-						0, // read_json_size
-
-						info->ehdr.timestamp, // data timestamp
-						info->data_size, // data_size
-						0, // read_data_size
-						});
-		};
-
 		if (info->data_size <= request.chunk_size) {
-			data_pointer data;
 			if (info->data_size) {
 				data = data_pointer::allocate(info->data_size);
 				const int err = dnet_read_ll(info->fd, data.data<char>(), data.size(), info->data_offset);
@@ -935,6 +939,8 @@ static iterator_callback make_iterator_server_send_callback(eblob_backend_config
 					return send_fail_reply(err);
 				}
 			}
+
+			oplock_guard.unlock();
 
 			monitor.add_bytes(info->jhdr.size + info->data_size);
 
@@ -955,7 +961,6 @@ static iterator_callback make_iterator_server_send_callback(eblob_backend_config
 				});
 		} else {
 			uint64_t data_offset = 0;
-			data_pointer data;
 			data = data_pointer::allocate(request.chunk_size);
 
 			auto get_write_result = [&](newapi::async_lookup_result &async) -> int {
@@ -991,6 +996,8 @@ static iterator_callback make_iterator_server_send_callback(eblob_backend_config
 						return send_fail_reply(err);
 					}
 				} else {
+					oplock_guard.unlock();
+
 					data_pointer data_slice{data.slice(0, data_size)};
 					auto async = session->write_commit(info->key, "", data_slice, data_offset,
 									   info->data_size);
