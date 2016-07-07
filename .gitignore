@@ -65,6 +65,8 @@ debian/libcocaine-plugin-elliptics-dev
 debian/libcocaine-plugin-elliptics-dev.debhelper.log
 debian/libcocaine-plugin-elliptics-dev.substvars
 debian/libcocaine-plugin-elliptics.substvars
+debian/libcocaine-plugin-elliptics.postinst.debhelper
+debian/libcocaine-plugin-elliptics.postrm.debhelper
 debian/python-module-stampdir
 debian/stamp-makefile-build
 debian/stamp-makefile-check
