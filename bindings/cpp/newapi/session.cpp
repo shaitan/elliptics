@@ -702,7 +702,7 @@ async_iterator_result session::start_iterator(const address &addr, uint32_t back
 	return async_result_cast<iterator_result_entry>(*this, send_to_single_state(session, control));
 }
 
-async_iterator_result session::server_send(const std::vector<dnet_raw_id> &keys, uint64_t flags,
+async_iterator_result session::server_send(const std::vector<dnet_raw_id> &keys, uint64_t flags, uint64_t chunk_size,
                                            const int src_group, const std::vector<int> &dst_groups) {
 	std::vector<key> converted_keys;
 	converted_keys.reserve(keys.size());
@@ -711,10 +711,10 @@ async_iterator_result session::server_send(const std::vector<dnet_raw_id> &keys,
 		converted_keys.emplace_back(key);
 	}
 
-	return server_send(converted_keys, flags, src_group, dst_groups);
+	return server_send(converted_keys, flags, chunk_size, src_group, dst_groups);
 }
 
-async_iterator_result session::server_send(const std::vector<std::string> &keys, uint64_t flags,
+async_iterator_result session::server_send(const std::vector<std::string> &keys, uint64_t flags, uint64_t chunk_size,
                                            const int src_group, const std::vector<int> &dst_groups) {
 	std::vector<key> converted_keys;
 	converted_keys.reserve(keys.size());
@@ -723,10 +723,10 @@ async_iterator_result session::server_send(const std::vector<std::string> &keys,
 		converted_keys.emplace_back(key);
 	}
 
-	return server_send(converted_keys, flags, src_group, dst_groups);
+	return server_send(converted_keys, flags, chunk_size, src_group, dst_groups);
 }
 
-async_iterator_result session::server_send(const std::vector<key> &keys, uint64_t flags,
+async_iterator_result session::server_send(const std::vector<key> &keys, uint64_t flags, uint64_t chunk_size,
                                            const int src_group, const std::vector<int> &dst_groups) {
 	if (dst_groups.empty()) {
 		async_iterator_result result{*this};
@@ -784,6 +784,7 @@ async_iterator_result session::server_send(const std::vector<key> &keys, uint64_
 				ids,
 				dst_groups,
 				flags,
+				chunk_size
 			});
 
 			transport_control control;

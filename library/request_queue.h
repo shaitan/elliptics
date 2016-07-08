@@ -97,6 +97,21 @@ private:
 	std::mutex m_locks_mutex;
 };
 
+class dnet_oplock_guard
+{
+public:
+	dnet_oplock_guard(struct dnet_backend_io *backend_io, const struct dnet_id *id);
+	~dnet_oplock_guard();
+
+	void lock();
+	void unlock();
+
+private:
+	struct dnet_backend_io *m_backend_io;
+	const struct dnet_id *m_id;
+	bool m_locked;
+};
+
 extern "C" {
 #endif // __cplusplus
 

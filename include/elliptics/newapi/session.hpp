@@ -103,13 +103,13 @@ public:
 	                                     const std::vector<dnet_iterator_range> &key_ranges,
 	                                     const std::tuple<dnet_time, dnet_time> &time_range);
 
-	async_iterator_result server_send(const std::vector<dnet_raw_id> &keys, uint64_t flags,
+	async_iterator_result server_send(const std::vector<dnet_raw_id> &keys, uint64_t flags, uint64_t chunk_size,
 	                                  const int src_group, const std::vector<int> &dst_groups);
 
-	async_iterator_result server_send(const std::vector<std::string> &keys, uint64_t flags,
+	async_iterator_result server_send(const std::vector<std::string> &keys, uint64_t flags, uint64_t chunk_size,
 	                                  const int src_group, const std::vector<int> &dst_groups);
 
-	async_iterator_result server_send(const std::vector<key> &keys, uint64_t flags,
+	async_iterator_result server_send(const std::vector<key> &keys, uint64_t flags, uint64_t chunk_size,
 	                                  const int src_group, const std::vector<int> &dst_groups);
 };
 

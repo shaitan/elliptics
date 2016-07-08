@@ -85,6 +85,9 @@
 
 #define DNET_DEFAULT_CACHE_PAGES_NUMBER 1
 
+/* Default size of a chunk in server_send */
+#define DNET_DEFAULT_SERVER_SEND_CHUNK_SIZE	(10 * 1024 * 1024)
+
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
 
 #ifndef dnet_offsetof

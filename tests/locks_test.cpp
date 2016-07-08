@@ -123,9 +123,7 @@ static void test_write_order_execution(session &sess)
 			results[j].wait();
 			const int err = results[j].error().code();
 			BOOST_REQUIRE_MESSAGE(
-			    err == 0, "write_cas() failed (err=" +
-			                  std::to_string(static_cast<unsigned long long>(err)) +
-			                  "): "
+			    err == 0, "write_cas() failed (err=" + std::to_string(err) + "): "
 			                  "multiple consecutive writes are executed out-of-order "
 			                  "or overlapped. Oplock mechanism of backend's request queue is broken.");
 		}

@@ -937,7 +937,7 @@ public:
 		);
 	}
 
-	python_iterator_result server_send(const bp::api::object &keys, uint64_t flags,
+	python_iterator_result server_send(const bp::api::object &keys, uint64_t flags, uint64_t chunk_size,
 	                                   int src_group, const bp::api::object &dst_groups) {
 		auto std_dst_groups = convert_to_vector<int>(dst_groups);
 		std::vector<dnet_raw_id> std_keys;
@@ -948,7 +948,7 @@ public:
 		}
 
 		return create_result(
-			newapi::session{*this}.server_send(std_keys, flags, src_group, std_dst_groups)
+			newapi::session{*this}.server_send(std_keys, flags, chunk_size, src_group, std_dst_groups)
 		);
 	}
 };
@@ -2279,7 +2279,7 @@ void init_elliptics_session() {
 		     "                       result.json))\n")
 
 		.def("server_send", &newapi::elliptics_session::server_send,
-		     bp::args("keys", "flags", "src_group", "dst_groups"))
+		     bp::args("keys", "flags", "chunk_size", "src_group", "dst_groups"))
 
 	;
 }
