@@ -574,7 +574,7 @@ bool register_tests(const nodes_data *setup)
 	auto n = setup->node->get_native();
 
 	/* prerequisite: launch and init test application
-	 *TODO: turn them collectively to fixture
+	 * TODO: turn them collectively into some fixture
 	 */
 	ELLIPTICS_TEST_CASE(upload_application, setup->nodes[0].locator_port(), app, setup->directory.path());
 	for (const auto &i : setup->nodes) {

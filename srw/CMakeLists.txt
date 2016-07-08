@@ -26,7 +26,7 @@ target_link_libraries(elliptics_srw
     ${MSGPACK_LIBRARIES}
     ${COCAINE_NODE_SERVICE_LIBRARIES}
 
-    #FIXME: should add it properly
+    #FIXME: should add them properly
     cocaine-io-util
     blackhole
 )

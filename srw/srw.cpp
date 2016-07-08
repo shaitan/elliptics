@@ -58,6 +58,37 @@
 		("app", (__app__)) \
 		("source", "srw")
 
+/*
+ * Cocaine tracing initiated with elliptics trace_id.
+ */
+namespace {
+
+const std::string srw_tracing_name("srw");
+
+void start_or_continue_trace(uint64_t trace_id)
+{
+	if (trace_id != cocaine::trace_t::zero_value) {
+		cocaine::trace_t::current() = cocaine::trace_t(
+			// trace
+			trace_id, trace_id, cocaine::trace_t::zero_value,
+			// rpc_name
+			srw_tracing_name
+		);
+	} else {
+		cocaine::trace_t::current() = cocaine::trace_t::generate(srw_tracing_name);
+	}
+}
+
+struct tracing_context {
+	tracing_context(dnet_logger *logger, uint64_t trace_id, int tracebit) {
+		dnet_node_set_trace_id(logger, trace_id, tracebit, -1);
+	}
+	~tracing_context() {
+		dnet_node_unset_trace_id();
+	}
+};
+
+}
 
 namespace ioremap { namespace elliptics {
 
@@ -154,11 +185,39 @@ public:
 		if (scope_manager.get()) {
 			scope_manager.get()->collect(pack);
 		}
+
+		uint64_t trace_id = 0LL;
+		for (auto attrs : pack) {
+			for (auto attr : attrs.get()) {
+				if (attr.first == "trace_id") {
+					auto trace_id_str = blackhole::v1::attribute::get<
+					                        blackhole::v1::attribute::view_t::string_type
+					                    >(attr.second).to_string();
+					try {
+						trace_id = std::stoul(trace_id_str, 0, 16);
+					}
+					catch (const std::bad_cast &e) {
+						dnet_log_only_log(elliptics_logger, DNET_LOG_ERROR,
+						                  "failed to parse uint64_t trace_id from hex string: '%s'",
+						                  trace_id_str.c_str());
+					}
+				}
+			}
+		}
+
 		blackhole::v1::writer_t writer;
 		blackhole::v1::record_t record(severity, message, pack);
 		formatter->format(record, writer);
-		dnet_log_only_log(elliptics_logger, convert_severity(severity), "%s",
-		                  writer.result().to_string().c_str());
+
+		const std::string formatted(writer.result().to_string());
+		//FIXME: is it possible to detect if trace_id is already set?
+		//XXX: what about tracebit? where to get it?
+		if (trace_id) {
+			tracing_context scope(elliptics_logger, trace_id, 0);
+			dnet_log_only_log(elliptics_logger, convert_severity(severity), "%s", formatted.c_str());
+		} else {
+			dnet_log_only_log(elliptics_logger, convert_severity(severity), "%s", formatted.c_str());
+		}
 	}
 
 	/*
@@ -285,9 +344,11 @@ public:
 	                 std::function<void()> notify_completion)
 	: m_logger(logger)
 	, m_client(client)
+	, m_tracebit(client->m_cmd_copy.flags & DNET_FLAGS_TRACE_BIT)
 	, m_app(client->m_app)
 	, m_signature(client->m_signature)
-	, m_notify_completion(notify_completion) {}
+	, m_notify_completion(notify_completion)
+	{}
 
 	// stream_t interface
 
@@ -298,6 +359,9 @@ public:
 	 * write() performs transfer of data back to elliptics client.
 	 */
 	virtual stream_t &write(cocaine::hpack::header_storage_t, const std::string &chunk) {
+		// elliptics trace id is shown in logs, setting it from cocaine trace_id
+		tracing_context scope(m_logger, cocaine::trace_t::current().get_trace_id(), m_tracebit);
+
 		if (chunk.empty()) {
 			SRW_LOG(*m_logger, DNET_LOG_DEBUG, m_app,
 			        "%s: stream: got chunk from app, size 0 -- 'drop me' signal", m_signature);
@@ -320,10 +384,14 @@ public:
 				        m_signature);
 			}
 		}
+
 		return *this;
 	}
 
 	virtual void error(cocaine::hpack::header_storage_t, const std::error_code &code, const std::string &reason) {
+		// elliptics trace id is shown in logs, setting it from cocaine trace_id
+		tracing_context scope(m_logger, cocaine::trace_t::current().get_trace_id(), m_tracebit);
+
 		SRW_LOG(*m_logger, DNET_LOG_ERROR, m_app, "%s: stream: got error from app: %s: %s", m_signature,
 		        code.message(), reason);
 		if (auto client = m_client.lock()) {
@@ -348,6 +416,9 @@ public:
 	}
 
 	virtual void close(cocaine::hpack::header_storage_t) {
+		// elliptics trace id is shown in logs, setting it from cocaine trace_id
+		tracing_context scope(m_logger, cocaine::trace_t::current().get_trace_id(), m_tracebit);
+
 		SRW_LOG(*m_logger, DNET_LOG_DEBUG, m_app, "%s: stream: got close", m_signature);
 		if (auto client = m_client.lock()) {
 			client->finish();
@@ -371,6 +442,7 @@ public:
 private:
 	dnet_logger *m_logger;
 	std::weak_ptr<client_session> m_client;
+	int m_tracebit;
 	const std::string m_app;
 	const std::string m_signature;
 	std::function<void()> m_notify_completion;
@@ -388,16 +460,24 @@ public:
 	push_back_stream(dnet_logger *logger, const std::shared_ptr<client_session> &client)
 	: m_logger(logger)
 	, m_client(client)
+	, m_tracebit(client->m_cmd_copy.flags & DNET_FLAGS_TRACE_BIT)
 	, m_app(client->m_app)
-	, m_signature(client->m_signature) {}
+	, m_signature(client->m_signature)
+	{}
 
 	// stream_t interface
 
 	virtual ~push_back_stream() {
+		// elliptics trace id is shown in logs, setting it from cocaine trace_id
+		tracing_context scope(m_logger, cocaine::trace_t::current().get_trace_id(), m_tracebit);
+
 		SRW_LOG(*m_logger, DNET_LOG_DEBUG, m_app, "%s: stream: close", m_signature);
 	}
 
 	virtual stream_t& write(cocaine::hpack::header_storage_t, const std::string& chunk) {
+		// elliptics trace id is shown in logs, setting it from cocaine trace_id
+		tracing_context scope(m_logger, cocaine::trace_t::current().get_trace_id(), m_tracebit);
+
 		if (chunk.empty()) {
 			SRW_LOG(*m_logger, DNET_LOG_DEBUG, m_app,
 			        "%s: stream: got chunk from app, size 0 -- 'drop me' signal", m_signature);
@@ -412,10 +492,14 @@ public:
 			SRW_LOG(*m_logger, DNET_LOG_ERROR, m_app,
 			        "%s: stream: got chunk from app in no-reply-expected mode", m_signature);
 		}
+
 		return *this;
 	}
 
 	virtual void error(cocaine::hpack::header_storage_t, const std::error_code& code, const std::string& reason) {
+		// elliptics trace id is shown in logs, setting it from cocaine trace_id
+		tracing_context scope(m_logger, cocaine::trace_t::current().get_trace_id(), m_tracebit);
+
 		SRW_LOG(*m_logger, DNET_LOG_ERROR, m_app,
 		        "%s: stream: got error from app in no-reply-expected mode: %s: %s", m_signature, code.message(),
 		        reason);
@@ -429,6 +513,9 @@ public:
 	}
 
 	virtual void close(cocaine::hpack::header_storage_t) {
+		// elliptics trace id is shown in logs, setting it from cocaine trace_id
+		tracing_context scope(m_logger, cocaine::trace_t::current().get_trace_id(), m_tracebit);
+
 		SRW_LOG(*m_logger, DNET_LOG_DEBUG, m_app, "%s: stream: got close", m_signature);
 		if (m_client) {
 			m_client->finish();
@@ -443,6 +530,7 @@ public:
 private:
 	dnet_logger *m_logger;
 	std::shared_ptr<client_session> m_client;
+	int m_tracebit;
 	const std::string m_app;
 	const std::string m_signature;
 };
@@ -864,11 +952,11 @@ int srw::process(struct dnet_net_state *st, struct dnet_cmd *cmd, const void *da
 			         signature.c_str(), exec.native_data().size(), exec.event().size(),
 			         exec.native_data().data<sph>()->event_size, exec.data().size());
 			dnet_log(m_node, DNET_LOG_DEBUG,
-			    "%s: srw: exec_context session copy, size: total %ld, event %ld(%d), payload %ld",
-			    signature.c_str(), exec_clean_copy.native_data().size(),
-			    exec_clean_copy.event().size(),
-			    exec_clean_copy.native_data().data<sph>()->event_size,
-			    exec_clean_copy.data().size());
+			         "%s: srw: exec_context session copy, size: total %ld, event %ld(%d), payload %ld",
+			         signature.c_str(), exec_clean_copy.native_data().size(),
+			         exec_clean_copy.event().size(),
+			         exec_clean_copy.native_data().data<sph>()->event_size,
+			         exec_clean_copy.data().size());
 
 			/* optional tag to stick processing to a certain worker
 			 * FIXME: what about tagging of `push` requests?
@@ -889,8 +977,7 @@ int srw::process(struct dnet_net_state *st, struct dnet_cmd *cmd, const void *da
 				if (src_key >= 0) {
 					const int index = (src_key % app_overseer->profile().pool_limit);
 					//TODO: think out tag format
-					tag = /* {unique app instance id} + */ app + ".worker-" +
-					      std::to_string(index);
+					tag = /* {unique app instance id} + */ app + ".worker-" + std::to_string(index);
 				}
 
 			} else {
@@ -910,16 +997,14 @@ int srw::process(struct dnet_net_state *st, struct dnet_cmd *cmd, const void *da
 					))
 				});
 
-				{
-					dnet_log(m_node, DNET_LOG_DEBUG, "%s: header count %lu", __func__,
-					         headers.get_headers().size());
-					for (const auto &i : headers.get_headers()) {
-						const std::string name(i.get_name().blob, i.get_name().size);
-						const std::string value(i.get_value().blob, i.get_value().size);
-						dnet_log(m_node, DNET_LOG_DEBUG, "%s:   name: %s, value: %x",
-						         __func__, name.c_str(), *(int *)value.data());
-					}
-				}
+				// {
+				// 	dnet_log(m_node, DNET_LOG_DEBUG, "%s: header count %lu", signature.c_str(), headers.get_headers().size());
+				// 	for (const auto &i : headers.get_headers()) {
+				// 		const std::string name(i.get_name().blob, i.get_name().size);
+				// 		const std::string value(i.get_value().blob, i.get_value().size);
+				// 		dnet_log(m_node, DNET_LOG_DEBUG, "%s:   name: %s, value: %x", signature.c_str(), name.c_str(), *(int *)value.data());
+				// 	}
+				// }
 
 				//FIXME: get rid of this copy from data_pointer to a std::string
 				const std::string chunk = exec.data().to_string();
@@ -1026,6 +1111,12 @@ int dnet_cmd_exec(struct dnet_net_state *st, struct dnet_cmd *cmd, const void *p
 
 	if (!srw)
 		return -ENOTSUP;
+
+	// setup cocaine trace with elliptics trace_id
+	// (cocaine trace_id will be randomly generated if elliptics trace_id is zero)
+	start_or_continue_trace(cmd->trace_id);
+
+	tracing_context scope(n->log, cocaine::trace_t::current().get_trace_id(), cmd->flags & DNET_FLAGS_TRACE_BIT);
 
 	try {
 		return srw->process(st, cmd, payload);

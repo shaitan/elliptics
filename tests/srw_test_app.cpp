@@ -54,7 +54,8 @@ struct app_context {
 
 	app_context(const std::shared_ptr<logging_service_type> &log, const options_t &options)
 	: id_(options.name)
-	, log_(log) {}
+	, log_(log)
+	{}
 
 	void log(int severity, const blackhole::v1::lazy_message_t &message, blackhole::v1::attribute_pack& pack);
 
@@ -107,18 +108,45 @@ elliptics::exec_context get_exec_context(const std::vector<cocaine::hpack::heade
 	return elliptics::exec_context::from_raw(h.get_value().blob, h.get_value().size);
 }
 
+uint64_t get_trace_id(const std::vector<cocaine::hpack::header_t> &headers)
+{
+	const auto &h = find_header(headers, "trace_id");
+	assert(h.get_value().size == sizeof(uint64_t));
+	return *reinterpret_cast<const uint64_t*>(h.get_value().blob);
+}
+
+struct debug_log_scope
+{
+	app_context &logger;
+	const char *name;
+
+	debug_log_scope(app_context &logger, const char *name) : logger(logger) , name(name)
+	{
+		LOG_DEBUG(logger, "{}: ENTER", name);
+	}
+	~debug_log_scope() {
+		LOG_DEBUG(logger, "{}: EXIT", name);
+	}
+};
+
+void list_headers(app_context &logger, const char *func_name, const std::vector<cocaine::hpack::header_t> &headers)
+{
+	std::string v;
+	for (const auto &i : headers) {
+		const std::string name(i.get_name().blob, i.get_name().size);
+		v += " " + name;
+	}
+	LOG_DEBUG(logger, "{}: headers ({}): {}", func_name, headers.size(), v);
+}
+
 void app_context::init_elliptics_client(worker::sender tx, worker::receiver rx)
 {
-	LOG_DEBUG(*this, "{}: ENTER", __func__);
+	debug_log_scope scope(*this, __func__);
 
-	{
-		auto headers = rx.invocation_headers().get_headers();
-		LOG_DEBUG(*this, "{}: header count {}", __func__, headers.size());
-		for (const auto &i : headers) {
-			const std::string name(i.get_name().blob, i.get_name().size);
-			LOG_DEBUG(*this, "{}:   name: {}", __func__, name);
-		}
-	}
+	const uint64_t trace_id = get_trace_id(rx.invocation_headers().get_headers());
+	LOG_DEBUG(*this, "{}: TRACE {:#x}", __func__, trace_id);
+
+	list_headers(*this, __func__, rx.invocation_headers().get_headers());
 
 	elliptics::exec_context context;
 	try {
@@ -151,21 +179,26 @@ void app_context::init_elliptics_client(worker::sender tx, worker::receiver rx)
 	reply_client.reset(new elliptics::session(*node));
 	reply_client->set_groups(info.groups);
 
-	auto async = reply_client->reply(context, std::string("inited"), elliptics::exec_context::final);
-	keep_tx_live_till_done(async, tx);
+	{
+		auto client = reply_client->clone();
+		client.set_trace_id(trace_id);
 
-	LOG_DEBUG(*this, "{}: EXIT", __func__);
+		auto async = client.reply(context, std::string("inited"), elliptics::exec_context::final);
+		keep_tx_live_till_done(async, tx);
+	}
 }
 
 // Echo input data via elliptics channel
 void app_context::echo_via_elliptics(worker::sender tx, worker::receiver rx)
 {
-	LOG_DEBUG(*this, "{}: ENTER", __func__);
+	debug_log_scope scope(*this, __func__);
 
 	if (!reply_client) {
 		tx.error(-EINVAL, "not initialized yet").get();
 		return;
 	}
+
+	const uint64_t trace_id = get_trace_id(rx.invocation_headers().get_headers());
 
 	elliptics::exec_context context;
 	try {
@@ -180,38 +213,40 @@ void app_context::echo_via_elliptics(worker::sender tx, worker::receiver rx)
 
 	LOG_INFO(*this, "{}: data '{}', size {}", __func__, input, input.size());
 
-	auto async = reply_client->reply(context, input, elliptics::exec_context::final);
-	keep_tx_live_till_done(async, tx);
+	{
+		auto client = reply_client->clone();
+		client.set_trace_id(trace_id);
 
-	LOG_DEBUG(*this, "{}: EXIT", __func__);
+		auto async = client.reply(context, input, elliptics::exec_context::final);
+		keep_tx_live_till_done(async, tx);
+	}
 }
 
 // Echo input data via cocaine response stream
 void app_context::echo_via_cocaine(worker::sender tx, worker::receiver rx)
 {
-	LOG_DEBUG(*this, "{}: ENTER", __func__);
+	debug_log_scope scope(*this, __func__);
+
+	const uint64_t trace_id = get_trace_id(rx.invocation_headers().get_headers());
+	LOG_DEBUG(*this, "{}: TRACE {:x}", __func__, trace_id);
 
 	const std::string input(std::move(rx.recv().get().get()));
 
 	LOG_INFO(*this, "{}: data '{}', size {}", __func__, input, input.size());
 
 	tx.write(input).get().close().get();
-
-	LOG_DEBUG(*this, "{}: EXIT", __func__);
 }
 
 // Make no reply at all
 void app_context::noreply(worker::sender tx, worker::receiver rx)
 {
-	LOG_DEBUG(*this, "{}: ENTER", __func__);
+	debug_log_scope scope(*this, __func__);
 
 	(void)tx;
 
 	const std::string input(std::move(rx.recv().get().get()));
 
 	LOG_INFO(*this, "{}: data '{}', size {}", __func__, input, input.size());
-
-	LOG_DEBUG(*this, "{}: EXIT", __func__);
 }
 
 /* Used for timeout test.
@@ -228,7 +263,7 @@ void app_context::noreply(worker::sender tx, worker::receiver rx)
  */
 void app_context::noreply_30seconds_wait(worker::sender tx, worker::receiver rx)
 {
-	LOG_DEBUG(*this, "{}: ENTER", __func__);
+	debug_log_scope scope(*this, __func__);
 
 	(void)tx;
 
@@ -237,28 +272,22 @@ void app_context::noreply_30seconds_wait(worker::sender tx, worker::receiver rx)
 	LOG_INFO(*this, "{}: data '{}', size {}", __func__, input, input.size());
 
 	sleep(30);
-
-	LOG_DEBUG(*this, "{}: EXIT", __func__);
 }
 
 // Pass input message to the next step in chain with `push` command
 void app_context::chain_via_elliptics(worker::sender tx, worker::receiver rx, const int step,
                                       const std::string next_event) {
-	LOG_DEBUG(*this, "{}: ENTER ({})", __func__, step);
+	debug_log_scope scope(*this, __func__);
 
 	if (!reply_client) {
 		tx.error(-EINVAL, "not initialized yet").get();
 		return;
 	}
 
-	{
-		auto headers = rx.invocation_headers().get_headers();
-		LOG_DEBUG(*this, "{}: header count {}", __func__, headers.size());
-		for (const auto &i : headers) {
-			const std::string name(i.get_name().blob, i.get_name().size);
-			LOG_DEBUG(*this, "{}:   name: {}", __func__, name);
-		}
-	}
+	const uint64_t trace_id = get_trace_id(rx.invocation_headers().get_headers());
+	LOG_DEBUG(*this, "{}: TRACE {:x}", __func__, trace_id);
+
+	list_headers(*this, __func__, rx.invocation_headers().get_headers());
 
 	elliptics::exec_context context;
 	try {
@@ -273,17 +302,17 @@ void app_context::chain_via_elliptics(worker::sender tx, worker::receiver rx, co
 
 	LOG_INFO(*this, "{}: data '{}', size {}", __func__, input, input.size());
 
-	auto client = reply_client->clone();
-	client.set_trace_id(step);
+	{
+		auto client = reply_client->clone();
+		client.set_trace_id((trace_id && ~0xffff) | step);
 
-	dnet_id next_id = {{0}, 0, 0};
-	client.transform(next_event, next_id);
-	auto async = client.push(&next_id, context, next_event, input);
+		dnet_id next_id = {{0}, 0, 0};
+		client.transform(next_event, next_id);
+		auto async = client.push(&next_id, context, next_event, input);
 
-	tx.write("").get();
-	keep_tx_live_till_done(async, tx); // invalidates `tx`
-
-	LOG_DEBUG(*this, "{}: EXIT ({})", __func__, step);
+		tx.write("").get();
+		keep_tx_live_till_done(async, tx); // invalidates `tx`
+	}
 }
 
 int main(int argc, char **argv)

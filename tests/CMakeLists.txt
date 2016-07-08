@@ -255,7 +255,7 @@ if(WITH_COCAINE)
         elliptics_cpp
         ${Boost_LIBRARIES}
         ${CocaineNative_LIBRARIES}
-        #FIXME: should add it properly
+        #FIXME: should add them properly
         cocaine-io-util
         blackhole
     )
