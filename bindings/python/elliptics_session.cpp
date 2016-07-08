@@ -907,6 +907,14 @@ public:
 		);
 	}
 
+	python_write_result update_json(const bp::api::object &id,
+	                                const std::string &json) {
+		return create_result(
+			newapi::session{*this}.update_json(transform(id).id(),
+			                                   json)
+		);
+	}
+
 	python_iterator_result start_iterator(const std::string &host, int port, int family, uint32_t backend_id,
 	                                      uint64_t flags,
 	                                      const bp::api::object &key_ranges,
@@ -1100,7 +1108,7 @@ void init_elliptics_session() {
 
 		.def("get_direct_id", &elliptics_session::get_direct_id,
 		    "get_direct_id()\n"
-		    "    Rerurns elliptics.Id of current direct node\n\n"
+		    "    Returns elliptics.Id of current direct node\n\n"
 		    "    id = session.get_direct_id()")
 
 		.add_property("exceptions_policy",
@@ -1137,7 +1145,7 @@ void init_elliptics_session() {
 		.add_property("timeout",
 		              &elliptics_session::get_timeout,
 		              &elliptics_session::set_timeout,
-		    "Timeout in secods for operations which will be executed by the session\n"
+		    "Timeout in seconds for operations which will be executed by the session\n"
 		    "Overwrites values of node.wait_timeout for the session\n\n"
 		    "session.timeout = 10")
 		.def("set_timeout", &elliptics_session::set_timeout)
@@ -1199,17 +1207,17 @@ void init_elliptics_session() {
 		    "    -- key - string or elliptics.Id, or elliptics.IoAttr\n"
 		    "    -- filename - file path where read object will be written\n"
 		    "    -- offset - offset from which object data should be read\n"
-		    "    -- size - number of bytes to be read. If size equal ot 0 then the full object will be read\n\n"
+		    "    -- size - number of bytes to be read. If size equal to 0 then the full object will be read\n\n"
 		    "    session.read_file('key', '/path/to/file', 0, 0)\n"
 		    "    session.read_file('key1', '/path/to/file1', 10, 100)\n")
 
 		.def("read_data", &elliptics_session::read_data,
 		     (bp::arg("key"), bp::arg("offset") = 0, bp::arg("size") = 0),
-		    "read_data(keym offset=0, size=0)\n"
+		    "read_data(key, offset=0, size=0)\n"
 		    "    Reads data by the key. Returns elliptics.AsyncResult.\n"
 		    "    -- key - string or elliptics.Id, or elliptics.IoAttr\n"
 		    "    -- offset - offset from which object data should be read\n"
-		    "    -- size - number of bytes to be read. If size equal ot 0 then the full object will be read\n\n"
+		    "    -- size - number of bytes to be read. If size equal to 0 then the full object will be read\n\n"
 		    "    read_result = None\n"
 		    "    try:\n"
 		    "        result = session.read_data('key', 0, 0)\n"
@@ -1233,7 +1241,7 @@ void init_elliptics_session() {
 		    "    -- key - string or elliptics.Id, or elliptics.IoAttr\n"
 		    "    -- groups - iterable object which specifies group ids from which data should be read\n"
 		    "    -- offset - offset from which object data should be read\n"
-		    "    -- size - number of bytes to be read. If size equal ot 0 then the full object will be read\n\n"
+		    "    -- size - number of bytes to be read. If size equal to 0 then the full object will be read\n\n"
 		    "    read_result = None\n"
 		    "    try:\n"
 		    "        result = session.read_data_from_groups('key', [1,2,3], 0, 0)\n"
@@ -1255,7 +1263,7 @@ void init_elliptics_session() {
 		    "    Looks up to each group for the key and reads one which is newer then other. Returns elliptics.AsyncResult\n"
 		    "    -- key - string or elliptics.Id, or elliptics.IoAttr\n"
 		    "    -- offset - offset from which object data should be read\n"
-		    "    -- size - number of bytes to be read. If size equal ot 0 then the full object will be read\n\n"
+		    "    -- size - number of bytes to be read. If size equal to 0 then the full object will be read\n\n"
 		    "    read_result = None\n"
 		    "    try:\n"
 		    "        result = session.read_latest('key', 0, 0)\n"
@@ -1346,7 +1354,7 @@ void init_elliptics_session() {
 		    "        print 'checksum:', write_result.checksum\n"
 		    "        print 'offset:', write_result.offset\n"
 		    "        print 'size:', write_result.size\n"
-		    "        print 'timestamp:', write_result.tiemstamp\n"
+		    "        print 'timestamp:', write_result.timestamp\n"
 		    "        print 'filepath:', write_result.filepath\n")
 
 		.def("write_data", &elliptics_session::write_data_by_chunks,
@@ -1370,7 +1378,7 @@ void init_elliptics_session() {
 		    "        print 'checksum:', write_result.checksum\n"
 		    "        print 'offset:', write_result.offset\n"
 		    "        print 'size:', write_result.size\n"
-		    "        print 'timestamp:', write_result.tiemstamp\n"
+		    "        print 'timestamp:', write_result.timestamp\n"
 		    "        print 'filepath:', write_result.filepath\n")
 
 		.def("write_cas", &elliptics_session::write_cas,
@@ -1378,7 +1386,7 @@ void init_elliptics_session() {
 		      bp::arg("old_csum"), bp::arg("remote_offset") = 0),
 		    "write_cas(key, data, old_csum, remote_offset=0)\n"
 		    "    Writes @data to @key with @remote_offset only if\n"
-		    "    csum of current object by @key is eqaul to old_csum. Returns elliptics.AsyncResult\n"
+		    "    csum of current object by @key is equal to old_csum. Returns elliptics.AsyncResult\n"
 		    "    -- key - string or elliptics.Id, or elliptics.IoAttr\n"
 		    "    -- data - string data\n"
 		    "    -- old_csum - hash sum as the elliptics.Id\n"
@@ -1396,7 +1404,7 @@ void init_elliptics_session() {
 		    "        print 'checksum:', write_result.checksum\n"
 		    "        print 'offset:', write_result.offset\n"
 		    "        print 'size:', write_result.size\n"
-		    "        print 'timestamp:', write_result.tiemstamp\n"
+		    "        print 'timestamp:', write_result.timestamp\n"
 		    "        print 'filepath:', write_result.filepath\n")
 
 		.def("write_cas", &elliptics_session::write_cas_callback,
@@ -1422,7 +1430,7 @@ void init_elliptics_session() {
 		    "        print 'checksum:', write_result.checksum\n"
 		    "        print 'offset:', write_result.offset\n"
 		    "        print 'size:', write_result.size\n"
-		    "        print 'timestamp:', write_result.tiemstamp\n"
+		    "        print 'timestamp:', write_result.timestamp\n"
 		    "        print 'filepath:', write_result.filepath\n")
 
 		.def("write_prepare", &elliptics_session::write_prepare,
@@ -1448,7 +1456,7 @@ void init_elliptics_session() {
 		    "        print 'checksum:', write_result.checksum\n"
 		    "        print 'offset:', write_result.offset\n"
 		    "        print 'size:', write_result.size\n"
-		    "        print 'timestamp:', write_result.tiemstamp\n"
+		    "        print 'timestamp:', write_result.timestamp\n"
 		    "        print 'filepath:', write_result.filepath\n")
 
 		.def("write_plain", &elliptics_session::write_plain,
@@ -1478,7 +1486,7 @@ void init_elliptics_session() {
 		    "        print 'checksum:', write_result.checksum\n"
 		    "        print 'offset:', write_result.offset\n"
 		    "        print 'size:', write_result.size\n"
-		    "        print 'timestamp:', write_result.tiemstamp\n"
+		    "        print 'timestamp:', write_result.timestamp\n"
 		    "        print 'filepath:', write_result.filepath\n")
 
 		.def("write_commit", &elliptics_session::write_commit,
@@ -1506,7 +1514,7 @@ void init_elliptics_session() {
 		    "        print 'checksum:', write_result.checksum\n"
 		    "        print 'offset:', write_result.offset\n"
 		    "        print 'size:', write_result.size\n"
-		    "        print 'timestamp:', write_result.tiemstamp\n"
+		    "        print 'timestamp:', write_result.timestamp\n"
 		    "        print 'filepath:', write_result.filepath\n")
 
 		.def("write_cache", &elliptics_session::write_cache,
@@ -1529,7 +1537,7 @@ void init_elliptics_session() {
 		    "        print 'checksum:', write_result.checksum\n"
 		    "        print 'offset:', write_result.offset\n"
 		    "        print 'size:', write_result.size\n"
-		    "        print 'timestamp:', write_result.tiemstamp\n"
+		    "        print 'timestamp:', write_result.timestamp\n"
 		    "        print 'filepath:', write_result.filepath\n")
 
 		.def("bulk_write", &elliptics_session::bulk_write,
@@ -1558,7 +1566,7 @@ void init_elliptics_session() {
 		    "        print 'checksum:', write_result.checksum\n"
 		    "        print 'offset:', write_result.offset\n"
 		    "        print 'size:', write_result.size\n"
-		    "        print 'timestamp:', write_result.tiemstamp\n"
+		    "        print 'timestamp:', write_result.timestamp\n"
 		    "        print 'filepath:', write_result.filepath\n")
 
 		.def("update_status", &elliptics_session::update_status,
@@ -1854,7 +1862,7 @@ void init_elliptics_session() {
 		.def("update_indexes", &elliptics_session::update_indexes,
 		     (bp::arg("id"), bp::arg("indexes"), bp::arg("datas")),
 		    "update_indexes(id, indexes, datas)\n"
-		    "    Adds id to additional indees and or updates data for the id in specified indexes.\n"
+		    "    Adds id to additional indexes and or updates data for the id in specified indexes.\n"
 		    "    Also it updates list of indexes where id is.\n"
 		    "    Return elliptics.AsyncResult.\n"
 		    "    -- id - string or elliptics.Id\n"
@@ -1870,7 +1878,7 @@ void init_elliptics_session() {
 		.def("update_indexes_raw", &elliptics_session::update_indexes_raw,
 		     (bp::arg("id"), bp::arg("indexes")),
 		    "update_indexes_raw(id, indexes)\n"
-		    "    Adds id to additional indees and or updates data for the id in specified indexes.\n"
+		    "    Adds id to additional indexes and or updates data for the id in specified indexes.\n"
 		    "    Also it updates list of indexes where id is.\n"
 		    "    Return elliptics.AsyncResult.\n"
 		    "    -- id - string or elliptics.Id\n"
@@ -1892,7 +1900,7 @@ void init_elliptics_session() {
 		.def("update_indexes_internal", &elliptics_session::update_indexes_internal,
 		     (bp::arg("id"), bp::arg("indexes"), bp::arg("datas")),
 		    "update_indexes_internal(id, indexes, datas)\n"
-		    "    Adds id to additional indees and or updates data for the id in specified indexes.\n"
+		    "    Adds id to additional indexes and or updates data for the id in specified indexes.\n"
 		    "    It doesn't update list of indexes where id is.\n"
 		    "    Return elliptics.AsyncResult.\n"
 		    "    -- id - string or elliptics.Id\n"
@@ -1972,7 +1980,7 @@ void init_elliptics_session() {
 		.def("find_any_indexes", &elliptics_session::find_any_indexes,
 		     (bp::arg("indexes")),
 		    "find_any_indexes(indexes)\n"
-		    "    Finds keys unioun from indexes. Returns elliptics.AsyncResult.\n"
+		    "    Finds keys union from indexes. Returns elliptics.AsyncResult.\n"
 		    "    -- indexes - iterable object which provides string indexes which ids should be united\n\n"
 		    "    try:\n"
 		    "        result = session.find_any_indexes(['index1', 'index2'])\n"
@@ -1988,7 +1996,7 @@ void init_elliptics_session() {
 		.def("find_any_indexes_raw", &elliptics_session::find_any_indexes_raw,
 		     (bp::arg("indexes")),
 		    "find_any_indexes_raw(indexes)\n"
-		    "    Finds keys uninoun from indexes. Returns elliptics.AsyncResult.\n"
+		    "    Finds keys union from indexes. Returns elliptics.AsyncResult.\n"
 		    "    -- indexes - iterable object which provides indexes as elliptics.Id which ids should be united\n\n"
 		    "    try:\n"
 		    "        result = session.find_any_indexes_raw([elliptics.Id('index1'), elliptics.Id('index2')])\n"
@@ -2012,7 +2020,7 @@ void init_elliptics_session() {
 		     "        for index in indexes:\n"
 		     "            print 'Index:', index.index\n"
 		     "            print 'Data:', index.data\n"
-		     "    excep Exception as e:\n"
+		     "    except Exception as e:\n"
 		     "        print 'List indexes failed:', e\n")
 
 		.def("merge_indexes", &elliptics_session::merge_indexes,
@@ -2126,36 +2134,114 @@ void init_elliptics_session() {
 		     "    cloned_session = session.clone()\n")
 
 		.def("lookup", &newapi::elliptics_session::lookup,
-		     bp::args("key"))
+		     bp::args("key"),
+		     "lookup(key)\n"
+		     "    Lookup @key.\n"
+		     "    Return elliptics.AsyncResult.\n\n"
+		     "    async = session.lookup('key')\n"
+		     "    for result in async:\n"
+		     "        print 'key has js_ts: {}, data_ts: {}, path: {}, data_offset: {}'.format(\n"
+		     "            result.key,\n"
+		     "            result.record_info.json_timestamp,\n"
+		     "            result.record_info.data_timestamp,\n"
+		     "            result.path,\n"
+		     "            result.record_info.data_offset,\n\n")
 
 		.def("read_json", &newapi::elliptics_session::read_json,
-		     bp::args("key"))
+		     bp::args("key"),
+		     "read_json(key)\n"
+		     "    Read @key's json.\n"
+		     "    Return elliptics.AsyncResult.\n\n"
+		     "    async = session.read_json('key')\n"
+		     "    assert len(async.get()) == 1\n",
+		     "    result = async.get()[0]\n"
+		     "    print 'key has json: {}'.format(result.json)\n\n")
 
 		.def("read_data", &newapi::elliptics_session::read_data,
-		     (bp::arg("key"), bp::arg("offset") = 0, bp::arg("size") = 0))
+		     (bp::arg("key"), bp::arg("offset") = 0, bp::arg("size") = 0),
+		     "read_data(key, offset=0, size=0)\n"
+		     "    Read @key's data.\n"
+		     "    Return elliptics.AsyncResult.\n\n"
+		     "    async = session.read_data('key')\n"
+		     "    assert len(async.get()) == 1\n",
+		     "    result = async.get()[0]\n"
+		     "    print 'key has data: {}'.format(result.data)\n\n")
 
 		.def("read", &newapi::elliptics_session::read,
-		     (bp::arg("key"), bp::arg("offset") = 0, bp::arg("size") = 0))
+		     (bp::arg("key"), bp::arg("offset") = 0, bp::arg("size") = 0),
+		     "read(key, offset=0, size=0)\n"
+		     "    Read both @key's json and data.\n"
+		     "    Return elliptics.AsyncResult.\n\n"
+		     "    async = session.read('key')\n"
+		     "    assert len(async.get()) == 1\n",
+		     "    result = async.get()[0]\n"
+		     "    print 'key has json: {}, data: {}'.format(result.json, result.data)\n\n")
 
 		.def("write", &newapi::elliptics_session::write,
-		     (bp::arg("key"),
-		      bp::arg("json"), bp::arg("json_capacity"),
-		      bp::arg("data"), bp::arg("data_capacity")))
+		     bp::args("key", "json", "json_capacity", "data", "data_capacity"),
+		     "write(key, json, json_capacity, data, data_capacity)\n"
+		     "    Write @json and @data to @key.\n"
+		     "    -- json_capacity - size of reserved space for future updates of json\n"
+		     "       if json_capacity is 0, it will be set to size of @json\n"
+		     "    -- data_capacity - size of reserved space for future updates of data\n"
+		     "       if data_capacity is 0, it will be set to size of @data\n"
+		     "    Returns elliptics.AsyncResult.\n\n"
+		     "    async = session.write('key', '{\"some\":\"json\"}', 0, 'some data', 0)\n"
+		     "    for result in async:\n"
+		     "        print 'group: {}, status: {}, path: {}'.format(result.group_id,\n"
+		     "                                                       result.status, \n"
+		     "                                                       result.path")
 
 		.def("write_prepare", &newapi::elliptics_session::write_prepare,
-		     (bp::arg("key"),
-		      bp::arg("json"), bp::arg("json_capacity"),
-		      bp::arg("data"), bp::arg("data_offset"), bp::arg("data_capacity")))
+		     bp::args("key", "json", "json_capacity", "data", "data_offset", "data_capacity"),
+		     "write_prepare(key, json, json_capacity, data, data_offset, data_capacity)\n"
+		     "    Prepare space for @key and write json and/or first chunk of data.\n"
+		     "    -- json_capacity - size of preallocated space for json\n"
+		     "       if json_capacity is 0, it will be set to size of @json\n"
+		     "    -- data_offset - offset with which @data should be written\n"
+		     "    -- data_capacity - size of preallocated space for data\n"
+		     "       if data_capacity is 0, it will be set to size of @data + @data_offset\n"
+		     "    Return elliptics.AsyncResult.\n"
+		     "    async = session.write_prepare('key', '{\"some\":\"json\"}', 0, 'some data', 0, 3072)\n"
+		     "    for result in async:\n"
+		     "        print 'group: {}, status: {}, path: {}'.format(result.group_id,\n"
+		     "                                                       result.status, \n"
+		     "                                                       result.path")
 
 		.def("write_plain", &newapi::elliptics_session::write_plain,
-		     (bp::arg("key"),
-		      bp::arg("json"),
-		      bp::arg("data"), bp::arg("data_offset")))
+		     bp::args("key", "json", "data", "data_offset"),
+		     "write_plain(key, json, data, data_offset)\n"
+		     "    Write @json and @data into @key without committing it.\n"
+		     "    -- data_offset - offset with which @data should be written\n"
+		     "    Return elliptics.AsyncResult.\n"
+		     "    async = session.write_plain('key', '', 'extra data', 1024)\n"
+		     "    for result in async:\n"
+		     "        print 'group: {}, status: {}, path: {}'.format(result.group_id,\n"
+		     "                                                       result.status, \n"
+		     "                                                       result.path")
 
 		.def("write_commit", &newapi::elliptics_session::write_commit,
-		     (bp::arg("key"),
-		      bp::arg("json"),
-		      bp::arg("data"), bp::arg("data_offset"), bp::arg("data_commit_size")))
+		      bp::args("key", "json", "data", "data_offset", "data_commit_size"),
+		      "write_commit(key, json, data, data_offset, data_commit_size)\n"
+		      "    Write @json and @data to @key and make it committed,\n"
+		      "    so it becomes available for lookup/read.\n"
+		      "    -- data_offset - offset with which @data should be written\n"
+		      "    -- data_commit_size - size of data that will be set for @key\n"
+		      "    Return elliptics.AsyncResult.\n\n"
+		     "    async = session.write_commit('key', '{\"final\":\"json\"', 'final chunk', 2048, 3072)\n"
+		     "    for result in async:\n"
+		     "        print 'group: {}, status: {}, path: {}'.format(result.group_id,\n"
+		     "                                                       result.status, \n"
+		     "                                                       result.path")
+
+		.def("update_json", &newapi::elliptics_session::update_json,
+		     bp::args("key", "json"),
+		     "update_json(key, json)\n"
+		     "    Update @key's json by @json.\n"
+		     "    Return elliptics.AsyncResult.\n\n"
+		     "    async = session.update_json('key', '{\"new\": \"json\"}')\n"
+		     "    async.wait()\n"
+		     "    assert async.successful()\n")
 
 		.def("start_iterator", &newapi::elliptics_session::start_iterator,
 		     bp::args("host", "port", "family", "backend_id",

@@ -549,45 +549,87 @@ void init_result_entry() {
 		.add_property("raw_data", newapi::callback_result_get_raw_data)
 	;
 
-	bp::class_<dnet_record_info>("RecordInfo")
-		.add_property("record_flags", &dnet_record_info::record_flags)
-		.add_property("user_flags", &dnet_record_info::user_flags)
-		.add_property("json_timestamp", newapi::dnet_record_info_get_json_timestamp)
-		.add_property("json_offset", &dnet_record_info::json_offset)
-		.add_property("json_size", &dnet_record_info::json_size)
-		.add_property("json_capacity", &dnet_record_info::json_capacity)
-		.add_property("data_timestamp", newapi::dnet_record_info_get_data_timestamp)
-		.add_property("data_offset", &dnet_record_info::data_offset)
-		.add_property("data_size", &dnet_record_info::data_size)
+	bp::class_<dnet_record_info>("RecordInfo",
+		"Information about the record",
+		bp::no_init)
+		.add_property("record_flags", &dnet_record_info::record_flags,
+		              "Flags from eblob headers of the record.")
+		.add_property("user_flags", &dnet_record_info::user_flags,
+		              "Custom user-flags stored in the record headers.")
+		.add_property("json_timestamp", newapi::dnet_record_info_get_json_timestamp,
+		              "Timestamp of json last modification.")
+		.add_property("json_offset", &dnet_record_info::json_offset,
+		              "Offset where json starts in file where the record is stored. "
+		              "In read result it is unfilled and is set to 0.")
+		.add_property("json_size", &dnet_record_info::json_size,
+		              "Whole size of the record's json.")
+		.add_property("json_capacity", &dnet_record_info::json_capacity,
+		              "Size of reserved place for json in the record.")
+		.add_property("data_timestamp", newapi::dnet_record_info_get_data_timestamp,
+		              "Timestamp of data last modification.")
+		.add_property("data_offset", &dnet_record_info::data_offset,
+		              "Offset where data starts in file where the record is stored. "
+		              "In read result it is unfilled and is set to 0.")
+		.add_property("data_size", &dnet_record_info::data_size,
+		              "Whole size of the record's data.")
 	;
 
-	bp::class_<dnet_io_info>("IOInfo")
-		.add_property("json_size", &dnet_io_info::json_size)
-		.add_property("data_offset", &dnet_io_info::data_offset)
-		.add_property("data_size", &dnet_io_info::data_size)
+	bp::class_<dnet_io_info>("IOInfo",
+		"Information about read operation.",
+		bp::no_init)
+		.add_property("json_size", &dnet_io_info::json_size,
+		              "Size of read json.")
+		.add_property("data_offset", &dnet_io_info::data_offset,
+		              "Offset in original data with which data part was read.")
+		.add_property("data_size", &dnet_io_info::data_size,
+		              "Size of data part which was read.")
 	;
 
-	bp::class_<newapi::lookup_result_entry, bp::bases<newapi::callback_result_entry>>("LookupResultEntry")
-		.add_property("path", newapi::lookup_result_get_path)
-		.add_property("record_info", newapi::lookup_result_get_record_info)
+	bp::class_<newapi::lookup_result_entry, bp::bases<newapi::callback_result_entry>>("LookupResultEntry",
+		"Result of lookup which contains information about the key",
+		bp::no_init)
+		.add_property("path", newapi::lookup_result_get_path,
+		              "Absolute path to the file where the key is stored on server-side.")
+		.add_property("record_info", newapi::lookup_result_get_record_info,
+		              "Information about the key.")
 	;
 
-	bp::class_<newapi::read_result_entry, bp::bases<newapi::callback_result_entry>>("ReadResultEntry")
-		.add_property("record_info", newapi::read_result_get_record_info)
-		.add_property("io_info", newapi::read_result_get_io_info)
-		.add_property("json", newapi::read_result_get_json)
-		.add_property("data", newapi::read_result_get_data)
+	bp::class_<newapi::read_result_entry, bp::bases<newapi::callback_result_entry>>("ReadResultEntry",
+		"Result of read which contains information of read key and read json and/or data.",
+		bp::no_init)
+		.add_property("record_info", newapi::read_result_get_record_info,
+		              "Information of read key.")
+		.add_property("io_info", newapi::read_result_get_io_info,
+		              "Information of read operation")
+		.add_property("json", newapi::read_result_get_json,
+		              "Read json if it was requested otherwise it is empty string.")
+		.add_property("data", newapi::read_result_get_data,
+		              "Read data if it was requested otherwise it is empty string.")
 	;
 
-	bp::class_<newapi::iterator_result_entry, bp::bases<newapi::callback_result_entry>>("IteratorResultEntry")
-		.add_property("iterator_id", newapi::iterator_result_get_iterator_id)
-		.add_property("status", newapi::iterator_result_get_status)
-		.add_property("iterated_keys", newapi::iterator_result_get_iterated_keys)
-		.add_property("total_keys", newapi::iterator_result_get_total_keys)
-		.add_property("key", newapi::iterator_result_get_key)
-		.add_property("record_info", newapi::iterator_result_get_record_info)
-		.add_property("json", newapi::iterator_result_get_json)
-		.add_property("data", newapi::iterator_result_get_data)
+	bp::class_<newapi::iterator_result_entry, bp::bases<newapi::callback_result_entry>>("IteratorResultEntry",
+		"Result of iteration which contains information about one iterated key.",
+		bp::no_init)
+		.add_property("iterator_id", newapi::iterator_result_get_iterator_id,
+		              "Id of iterator which can be used for pausing, continuing and canceling of iteration.")
+		.add_property("status", newapi::iterator_result_get_status,
+		              "Status of key iteration. In most cases it is 0. Negative value "
+		              "contains error code of failure which happened with this key iteration. "
+		              "Positive value signify that it is system result without "
+		              "any important information for users and it should be ignored.")
+		.add_property("iterated_keys", newapi::iterator_result_get_iterated_keys,
+		              "Number of iterated keys at the moment of this key iteration.")
+		.add_property("total_keys", newapi::iterator_result_get_total_keys,
+		              "Total number of keys which expected to be iterated. "
+		              "It isn't true when some filtering is on, for example, filtering by key-range.")
+		.add_property("key", newapi::iterator_result_get_key,
+		              "elliptics.Id of iterated key.")
+		.add_property("record_info", newapi::iterator_result_get_record_info,
+		              "Information about iterated key.")
+		.add_property("json", newapi::iterator_result_get_json,
+		              "Json of iterated key if appropriate flag was set otherwise it is empty string.")
+		.add_property("data", newapi::iterator_result_get_data,
+		              "Data of iterated key if appropriate flag was set otherwise it is empty string.")
 	;
 
 }
