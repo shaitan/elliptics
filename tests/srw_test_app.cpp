@@ -134,7 +134,7 @@ void list_headers(app_context &logger, const char *func_name, const std::vector<
 	std::string v;
 	for (const auto &i : headers) {
 		const std::string name(i.get_name().blob, i.get_name().size);
-		v += " " + name;
+		v += " " + name + "(" + std::to_string(i.get_value().size) + ")";
 	}
 	LOG_DEBUG(logger, "{}: headers ({}): {}", func_name, headers.size(), v);
 }
@@ -199,6 +199,9 @@ void app_context::echo_via_elliptics(worker::sender tx, worker::receiver rx)
 	}
 
 	const uint64_t trace_id = get_trace_id(rx.invocation_headers().get_headers());
+	LOG_DEBUG(*this, "{}: TRACE {:x}", __func__, trace_id);
+
+	list_headers(*this, __func__, rx.invocation_headers().get_headers());
 
 	elliptics::exec_context context;
 	try {
@@ -229,6 +232,8 @@ void app_context::echo_via_cocaine(worker::sender tx, worker::receiver rx)
 
 	const uint64_t trace_id = get_trace_id(rx.invocation_headers().get_headers());
 	LOG_DEBUG(*this, "{}: TRACE {:x}", __func__, trace_id);
+
+	list_headers(*this, __func__, rx.invocation_headers().get_headers());
 
 	const std::string input(std::move(rx.recv().get().get()));
 
@@ -277,7 +282,8 @@ void app_context::noreply_30seconds_wait(worker::sender tx, worker::receiver rx)
 // Pass input message to the next step in chain with `push` command
 void app_context::chain_via_elliptics(worker::sender tx, worker::receiver rx, const int step,
                                       const std::string next_event) {
-	debug_log_scope scope(*this, __func__);
+	const std::string __func = std::string(__func__) + std::to_string(step - 1);
+	debug_log_scope scope(*this, __func.c_str());
 
 	if (!reply_client) {
 		tx.error(-EINVAL, "not initialized yet").get();
@@ -285,9 +291,9 @@ void app_context::chain_via_elliptics(worker::sender tx, worker::receiver rx, co
 	}
 
 	const uint64_t trace_id = get_trace_id(rx.invocation_headers().get_headers());
-	LOG_DEBUG(*this, "{}: TRACE {:x}", __func__, trace_id);
+	LOG_DEBUG(*this, "{}: TRACE {:x}", __func, trace_id);
 
-	list_headers(*this, __func__, rx.invocation_headers().get_headers());
+	list_headers(*this, __func.c_str(), rx.invocation_headers().get_headers());
 
 	elliptics::exec_context context;
 	try {
@@ -300,7 +306,7 @@ void app_context::chain_via_elliptics(worker::sender tx, worker::receiver rx, co
 
 	const std::string input(std::move(rx.recv().get().get()));
 
-	LOG_INFO(*this, "{}: data '{}', size {}", __func__, input, input.size());
+	LOG_INFO(*this, "{}: data '{}', size {}", __func, input, input.size());
 
 	{
 		auto client = reply_client->clone();
