@@ -1098,7 +1098,8 @@ static int blob_iterate_callback_common(const eblob_backend_config *c,
 
 	auto info = std::make_shared<iterated_key_info>(dc, fd);
 
-	uint64_t size = dc->data_size;
+	// dc->data_size for uncommitted records contains garbage and shouldn't be used
+	uint64_t size = (dc->flags & BLOB_DISK_CTL_UNCOMMITTED) ? 0 : dc->data_size;
 
 	int err = 0;
 	if (dc->flags & BLOB_DISK_CTL_EXTHDR) {
