@@ -1,3 +1,20 @@
+elliptics (2.26.11.0-4) unstable; urgency=medium
+
+  * tests: fixed bad cast of err in locks test
+  * oplock: lock keys during server-send
+  * server-send: write data by chunks
+  * server-send: use congestion_control_monitor for async writes with dynamic batch size
+  * dnet_client: add '-T/--trace-id' option to all commands
+  * dnet_client: add new subcommands
+  * dnet_client: refactor the code
+  * python: add docstrings to elliptics.newapi.Session methods
+  * git: add cocaine-plugin-elliptics temporary build files to .gitignore
+  * python: add update_json to elliptics.newapi.Session
+  * depends: update depends on libcocaine-dev and libcocaine-core3 to '>= 0.12.8.15'
+  * pytests: fix srw tests which occasionally fails
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Mon, 11 Jul 2016 12:41:12 +0300
+
 elliptics (2.26.11.0-3) unstable; urgency=medium
 
   * tests: fix running pytests
