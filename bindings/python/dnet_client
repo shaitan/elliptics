@@ -392,14 +392,10 @@ def process_read():
     if not options.key:
         parser.error('--key is not specified')
 
-    if not options.data and not options.data_file:
-        parser.error('--data or --data-file is not specified')
-    elif options.data and options.data_file:
+    if options.data and options.data_file:
         parser.error('options --data and --data-file are mutually exclusive')
 
-    if not options.json and not options.json_file:
-        parser.error('--json or --json-file is not specified')
-    elif options.json and options.json_file:
+    if options.json and options.json_file:
         parser.error('options --json and --json-file are mutually exclusive')
 
     key = elliptics.Id.from_hex(options.key) if options.hex else options.key
