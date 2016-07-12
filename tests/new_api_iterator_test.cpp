@@ -255,7 +255,14 @@ void test_write_keys(const ioremap::elliptics::newapi::session &session) {
 			                               record.data(), record.data_capacity())
 			                 );
 		} else {
-			ELLIPTICS_REQUIRE(res,
+			/* TODO(shaitan): remove this write and leave only write_prepare when it will be fixed in eblob:
+			 * In eblob write_prepare for existent record leaves previous (garbage) value
+			 * in eblob_disk_control::data_size. We should check that this garbage value
+			 * doesn't break iteration.
+			 */
+			ELLIPTICS_REQUIRE(res1, s.write(record.key(), record.json(), record.json_capacity(),
+			                                record.data(), record.data_capacity()));
+			ELLIPTICS_REQUIRE(res2,
 			                  s.write_prepare(record.key(), record.json(), record.json_capacity(),
 			                                  record.data(), 0 /* data_offset*/, record.data_capacity()));
 		}
