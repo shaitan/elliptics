@@ -74,6 +74,8 @@ private:
 		return page_number + 1;
 	}
 
+	int check_cas(const data_t* it, const dnet_cmd *cmd, const dnet_io_attr *io) const;
+
 	void sync_if_required(data_t* it, elliptics_unique_lock<std::mutex> &guard);
 
 	void insert_data_into_page(const unsigned char *id, size_t page_number, data_t *data);

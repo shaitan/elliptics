@@ -20,7 +20,6 @@
 
 #include "slru_cache.hpp"
 #include "library/request_queue.h"
-#include <cassert>
 
 #include "monitor/measure_points.h"
 
@@ -93,66 +92,17 @@ int slru_cache_t::write(const unsigned char *id, dnet_net_state *st, dnet_cmd *c
 	}
 
 	// Optimization for append-only commands
-	if (!cache_only) {
-		if (append && (!it || it->only_append())) {
-			TIMER_SCOPE("write.append_only");
+	if (!cache_only && !append && it && it->only_append()) {
+		TIMER_SCOPE("write.after_append_only");
 
-			bool new_page = false;
-			if (!it) {
-				it = create_data(id, 0, 0, false);
-				new_page = true;
-				it->set_only_append(true);
-				size_t previous_eventtime = it->eventtime();
-				it->set_synctime(time(NULL) + m_sync_timeout);
+		sync_after_append(guard, false, &*it);
 
-				if (previous_eventtime != it->eventtime()) {
-					TIMER_SCOPE("write.decrease_key");
-					m_treap.decrease_key(it);
-				}
-			}
+		int err = m_backend->cb->command_handler(st, m_backend->cb->command_private, cmd, io);
 
-			auto raw = it->data();
-			size_t page_number = it->cache_page_number();
-			size_t new_page_number = page_number;
-			size_t new_size = it->size() + io->size;
+		it = populate_from_disk(guard, id, false, &err);
 
-			// Moving item to hotter page
-			if (!new_page) {
-				new_page_number = get_next_page_number(page_number);
-			}
-
-			remove_data_from_page(id, page_number, &*it);
-			resize_page(id, new_page_number, 2 * new_size);
-
-			if (it->remove_from_cache()) {
-				m_cache_stats.size_of_objects_marked_for_deletion -= it->size();
-			}
-			m_cache_stats.size_of_objects -= it->size();
-			raw->append(data, io->size);
-			m_cache_stats.size_of_objects += it->size();
-			if (it->remove_from_cache()) {
-				m_cache_stats.size_of_objects_marked_for_deletion += it->size();
-			}
-
-			insert_data_into_page(id, new_page_number, &*it);
-
-			it->set_timestamp(io->timestamp);
-			it->set_user_flags(io->user_flags);
-
-			cmd->flags &= ~DNET_FLAGS_NEED_ACK;
-			return dnet_send_file_info_ts_without_fd(st, cmd, data, io->size, &io->timestamp);
-		} else if (it && it->only_append()) {
-			TIMER_SCOPE("write.after_append_only");
-
-			sync_after_append(guard, false, &*it);
-
-			int err = m_backend->cb->command_handler(st, m_backend->cb->command_private, cmd, io);
-
-			it = populate_from_disk(guard, id, false, &err);
-
-			cmd->flags &= ~DNET_FLAGS_NEED_ACK;
-			return err;
-		}
+		cmd->flags &= ~DNET_FLAGS_NEED_ACK;
+		return err;
 	}
 
 	bool new_page = false;
@@ -170,48 +120,19 @@ int slru_cache_t::write(const unsigned char *id, dnet_net_state *st, dnet_cmd *c
 
 		// Create empty data for code simplifying
 		if (!it) {
-			it = create_data(id, 0, 0, remove_from_disk);
+			it = create_data(id, 0, 0, remove_from_disk && !append);
 			new_page = true;
+			if (append) {
+				it->set_only_append(true);
+			}
 		}
 	}
 
 	auto raw = it->data();
 
-	if (io->flags & DNET_IO_FLAGS_COMPARE_AND_SWAP) {
-		TIMER_SCOPE("write.cas");
-
-		// Data is already in memory, so it's free to use it
-		// raw.size() is zero only if there is no such file on the server
-		if (raw->size() != 0) {
-			struct dnet_raw_id csum;
-			dnet_transform_node(m_node, raw->data(), raw->size(), csum.id, sizeof(csum.id));
-
-			if (memcmp(csum.id, io->parent, DNET_ID_SIZE)) {
-				dnet_log(m_node, DNET_LOG_ERROR, "%s: cas: cache checksum mismatch",
-				         dnet_dump_id(&cmd->id));
-				return -EBADFD;
-			}
-		}
-	}
-
-	if (io->flags & DNET_IO_FLAGS_CAS_TIMESTAMP) {
-		TIMER_SCOPE("write.cas_timestamp");
-
-		if (raw->size() != 0) {
-			struct dnet_time cache_ts = it->timestamp();
-
-			// cache timestamp is greater than timestamp of the data to be written
-			// do not allow it
-			if (dnet_time_cmp(&cache_ts, &io->timestamp) > 0) {
-				dnet_log(m_node, DNET_LOG_ERROR, "%s: cas: cache timestamp is larger "
-				                                 "than data to be written timestamp: "
-				                                 "cache-ts: %lld.%lld, data-ts: %lld.%lld",
-				         dnet_dump_id(&cmd->id), (unsigned long long)cache_ts.tsec,
-				         (unsigned long long)cache_ts.tnsec, (unsigned long long)io->timestamp.tsec,
-				         (unsigned long long)io->timestamp.tnsec);
-				return -EBADFD;
-			}
-		}
+	int err = check_cas(it, cmd, io);
+	if (err) {
+		return err;
 	}
 
 	dnet_log(m_node, DNET_LOG_DEBUG, "%s: CACHE: CAS checked", dnet_dump_id_str(id));
@@ -243,7 +164,7 @@ int slru_cache_t::write(const unsigned char *id, dnet_net_state *st, dnet_cmd *c
 
 	TIMER_START("write.modify");
 	if (append) {
-		raw->append(data, data + size);
+		raw->append(data, size);
 	} else {
 		raw->resize(new_data_size);
 		raw->replace(io->offset, std::string::npos, data, size);
@@ -256,14 +177,15 @@ int slru_cache_t::write(const unsigned char *id, dnet_net_state *st, dnet_cmd *c
 
 	// Mark data as dirty one, so it will be synced to the disk
 
-	size_t previous_eventtime = it->eventtime();
+	const size_t previous_eventtime = it->eventtime();
+	const size_t current_time = time(nullptr);
 
-	if (!it->synctime() && !(io->flags & DNET_IO_FLAGS_CACHE_ONLY)) {
-		it->set_synctime(time(NULL) + m_sync_timeout);
+	if (!it->synctime() && !cache_only) {
+		it->set_synctime(current_time + m_sync_timeout);
 	}
 
 	if (lifetime) {
-		it->set_lifetime(lifetime + time(NULL));
+		it->set_lifetime(current_time + lifetime);
 	}
 
 	if (previous_eventtime != it->eventtime()) {
@@ -461,6 +383,49 @@ cache_stats slru_cache_t::get_cache_stats() const {
 // private:
 
 
+int slru_cache_t::check_cas(const data_t* it, const dnet_cmd *cmd, const dnet_io_attr *io) const {
+	auto raw = it->data();
+
+	if (io->flags & DNET_IO_FLAGS_COMPARE_AND_SWAP) {
+		TIMER_SCOPE("write.cas");
+
+		// Data is already in memory, so it's free to use it
+		// raw.size() is zero only if there is no such file on the server
+		if (raw->size() != 0) {
+			struct dnet_raw_id csum;
+			dnet_transform_node(m_node, raw->data(), raw->size(), csum.id, sizeof(csum.id));
+
+			if (memcmp(csum.id, io->parent, DNET_ID_SIZE)) {
+				dnet_log(m_node, DNET_LOG_ERROR, "%s: cas: cache checksum mismatch",
+				         dnet_dump_id(&cmd->id));
+				return -EBADFD;
+			}
+		}
+	}
+
+	if (io->flags & DNET_IO_FLAGS_CAS_TIMESTAMP) {
+		TIMER_SCOPE("write.cas_timestamp");
+
+		if (raw->size() != 0) {
+			struct dnet_time cache_ts = it->timestamp();
+
+			// cache timestamp is greater than timestamp of the data to be written
+			// do not allow it
+			if (dnet_time_cmp(&cache_ts, &io->timestamp) > 0) {
+				dnet_log(m_node, DNET_LOG_ERROR, "%s: cas: cache timestamp is larger "
+				                                 "than data to be written timestamp: "
+				                                 "cache-ts: %lld.%lld, data-ts: %lld.%lld",
+				         dnet_dump_id(&cmd->id), (unsigned long long)cache_ts.tsec,
+				         (unsigned long long)cache_ts.tnsec, (unsigned long long)io->timestamp.tsec,
+				         (unsigned long long)io->timestamp.tnsec);
+				return -EBADFD;
+			}
+		}
+	}
+
+	return 0;
+}
+
 void slru_cache_t::sync_if_required(data_t* it, elliptics_unique_lock<std::mutex> &guard) {
 	TIMER_SCOPE("sync_if_required");
 
@@ -616,7 +581,7 @@ void slru_cache_t::resize_page(const unsigned char *id, size_t page_number, size
 					m_cache_stats.size_of_objects_marked_for_deletion += raw->size();
 					raw->set_remove_from_cache(true);
 
-					size_t previous_eventtime = raw->eventtime();
+					const size_t previous_eventtime = raw->eventtime();
 					raw->set_synctime(1);
 					if (previous_eventtime != raw->eventtime()) {
 						TIMER_SCOPE("resize_page.decrease_key");
@@ -746,11 +711,8 @@ void slru_cache_t::life_check(void) {
 
 				TIMER_SCOPE("life_check.prepare_sync");
 				while (!need_exit() && !m_treap.empty()) {
-					size_t time = ::time(NULL);
+					size_t time = ::time(nullptr);
 					last_time = time;
-
-					if (m_treap.empty())
-						break;
 
 					data_t* it = m_treap.top();
 					if (it->eventtime() > time)
@@ -770,11 +732,10 @@ void slru_cache_t::life_check(void) {
 					{
 						elements_for_sync.push_back(it);
 
-						size_t previous_eventtime = it->eventtime();
 						it->clear_synctime();
 						it->set_sync_state(data_t::sync_state_t::SYNC_PHASE);
 
-						if (previous_eventtime != it->eventtime()) {
+					        {
 							TIMER_SCOPE("life_check.decrease_key");
 							m_treap.decrease_key(it);
 						}
@@ -786,11 +747,10 @@ void slru_cache_t::life_check(void) {
 				TIMER_SCOPE("life_check.sync_iterate");
 				HANDY_GAUGE_SET("slru_cache.life_check.sync_iterate.element_count",
 				                elements_for_sync.size());
-				for (auto it = elements_for_sync.begin(); it != elements_for_sync.end(); ++it) {
+				for (data_t *elem : elements_for_sync) {
 					if (m_clear_occured)
 						break;
 
-					data_t *elem = *it;
 					memcpy(id.id, elem->id().id, DNET_ID_SIZE);
 
 					TIMER_START("life_check.sync_iterate.dnet_oplock");
@@ -810,10 +770,9 @@ void slru_cache_t::life_check(void) {
 
 			{
 				TIMER_SCOPE("life_check.remove_local");
-				for (std::deque<struct dnet_id>::iterator it = remove.begin(); it != remove.end();
-				     ++it) {
-					dnet_remove_local(m_backend, m_node, &(*it));
-				}
+				std::for_each(remove.begin(), remove.end(), [this](struct dnet_id &id) {
+				        dnet_remove_local(m_backend, m_node, &id);
+				});
 			}
 
 			{
@@ -823,9 +782,7 @@ void slru_cache_t::life_check(void) {
 
 				if (!m_clear_occured) {
 					TIMER_SCOPE("life_check.erase_iterate");
-					for (std::deque<data_t *>::iterator it = elements_for_sync.begin();
-					     it != elements_for_sync.end(); ++it) {
-						data_t *elem = *it;
+					for (data_t *elem : elements_for_sync) {
 						elem->set_sync_state(data_t::sync_state_t::NOT_SYNCING);
 						if (elem->synctime() <= last_time) {
 							if (elem->only_append() || elem->remove_from_cache()) {

@@ -22,7 +22,6 @@
 #include <mutex>
 #include <thread>
 #include <cstdio>
-#include <unordered_map>
 #include <limits>
 #include <atomic>
 
@@ -139,17 +138,8 @@ public:
 	}
 
 	size_t eventtime() const {
-		size_t time = 0;
-		if (!time || (lifetime() && time > lifetime())) {
-			time = lifetime();
-		}
-		if (!time || (synctime() && time > synctime())) {
-			time = synctime();
-		}
-		if (!time) {
-			time = std::numeric_limits<size_t>::max();
-		}
-		return time;
+		return std::min(lifetime() ? lifetime() : std::numeric_limits<size_t>::max(),
+				synctime() ? synctime() : std::numeric_limits<size_t>::max());
 	}
 
 	size_t cache_page_number() const {
@@ -306,42 +296,7 @@ private:
 	std::shared_ptr<std::string> m_json;
 };
 
-struct record_info {
-	record_info(data_t* obj) {
-		only_append = obj->only_append();
-		memcpy(id.id, obj->id().id, DNET_ID_SIZE);
-		data = obj->data()->data();
-		user_flags = obj->user_flags();
-		timestamp = obj->timestamp();
-		is_synced = false;
-	}
-
-	bool operator< (const record_info& other) const {
-		return dnet_id_cmp_str(id.id, other.id.id) < 0;
-	}
-
-	bool is_synced;
-	bool only_append;
-	dnet_id id;
-	std::string data;
-	uint64_t user_flags;
-	dnet_time timestamp;
-};
-
-struct record_id_less {
-	bool operator() (const record_info& lhs, const unsigned char* id) const {
-		return dnet_id_cmp_str(lhs.id.id, id);
-	}
-};
-
 typedef boost::intrusive::list<data_t, boost::intrusive::base_hook<lru_list_base_hook_t> > lru_list_t;
-
-struct eventtime_less {
-	bool operator() (const data_t &x, const data_t &y) const {
-		return x.eventtime() < y.eventtime()
-				|| (x.eventtime() == y.eventtime() && ((&x) < (&y)));
-	}
-};
 
 typedef treap<data_t> treap_t;
 

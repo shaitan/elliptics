@@ -20,8 +20,6 @@
 
 #include <fstream>
 
-#include "boost/lexical_cast.hpp"
-
 #include "monitor/monitor.h"
 #include "monitor/monitor.hpp"
 #include "monitor/statistics.hpp"
