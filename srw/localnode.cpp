@@ -72,14 +72,29 @@ std::vector<int> find_local_groups(dnet_node *node)
 	return result;
 }
 
+struct debug_log_scope
+{
+	cocaine::logging::logger_t &logger;
+	const char *name;
+
+	debug_log_scope(cocaine::logging::logger_t &logger, const char *name) : logger(logger) , name(name)
+	{
+		COCAINE_LOG_DEBUG(logger, "{}: ENTER", name);
+	}
+	~debug_log_scope() {
+		COCAINE_LOG_DEBUG(logger, "{}: EXIT", name);
+	}
+};
+
 localnode::localnode(cocaine::context_t &context, asio::io_service &reactor, const std::string &name,
                      const cocaine::dynamic_t &args)
 : cocaine::api::service_t(context, reactor, name, args)
 , cocaine::dispatch<io::localnode_tag>(name)
 , m_node(context.repository().get<cocaine::api::elliptics_node_t>("elliptics_node"))
 , m_session_proto(m_node)
-, m_log(context.log(name)) {
-	COCAINE_LOG_DEBUG(m_log, "{}: ENTER", __func__);
+, m_log(context.log(name))
+{
+	debug_log_scope scope(*m_log, __func__);
 
 	on<io::localnode::read>(std::bind(&localnode::read, this, ph::_1, ph::_2, ph::_3, ph::_4, ph::_5, ph::_6));
 	on<io::localnode::write>(std::bind(&localnode::write, this, ph::_1, ph::_2, ph::_3, ph::_4, ph::_5));
@@ -99,8 +114,6 @@ localnode::localnode(cocaine::context_t &context, asio::io_service &reactor, con
 	}
 
 	COCAINE_LOG_INFO(m_log, "{}: service initialized", __func__);
-
-	COCAINE_LOG_DEBUG(m_log, "{}: EXIT", __func__);
 }
 
 inline void override_groups(session &s, const std::vector<int> &groups)
@@ -115,9 +128,12 @@ inline void override_groups(session &s, const std::vector<int> &groups)
 
 deferred<localnode::read_result> localnode::read(const dnet_raw_id &key, const std::vector<int> &groups, uint64_t offset, uint64_t size, uint64_t cflags, uint32_t ioflags)
 {
-	COCAINE_LOG_DEBUG(m_log, "{}: ENTER", __func__);
+	debug_log_scope scope(*m_log, __func__);
+
+	uint64_t trace_id = cocaine::trace_t::current().get_trace_id();
 
 	auto s = m_session_proto.clone();
+	s.set_trace_id(trace_id);
 	s.set_exceptions_policy(session::no_exceptions);
 	override_groups(s, groups);
 
@@ -127,19 +143,20 @@ deferred<localnode::read_result> localnode::read(const dnet_raw_id &key, const s
 	deferred<read_result> promise;
 
 	s.read_data(elliptics::key(key), offset, size).connect(
-		std::bind(&localnode::on_read_completed, this, promise, ph::_1, ph::_2)
+		cocaine::trace_t::bind(&localnode::on_read_completed, this, promise, ph::_1, ph::_2)
 	);
-
-	COCAINE_LOG_DEBUG(m_log, "{}: EXIT", __func__);
 
 	return promise;
 }
 
 deferred<localnode::write_result> localnode::write(const dnet_raw_id &key, const std::vector<int> &groups, const std::string &bytes, uint64_t cflags, uint32_t ioflags)
 {
-	COCAINE_LOG_DEBUG(m_log, "{}: ENTER", __func__);
+	debug_log_scope scope(*m_log, __func__);
+
+	uint64_t trace_id = cocaine::trace_t::current().get_trace_id();
 
 	auto s = m_session_proto.clone();
+	s.set_trace_id(trace_id);
 	s.set_exceptions_policy(session::no_exceptions);
 	override_groups(s, groups);
 
@@ -150,17 +167,20 @@ deferred<localnode::write_result> localnode::write(const dnet_raw_id &key, const
 
 	//FIXME: add support for json, json_capacity and data_capacity?
 	s.write(elliptics::key(key), "", 0, bytes, 0).connect(
-		std::bind(&localnode::on_write_completed, this, promise, ph::_1, ph::_2)
+		cocaine::trace_t::bind(&localnode::on_write_completed, this, promise, ph::_1, ph::_2)
 	);
-
-	COCAINE_LOG_DEBUG(m_log, "{}: EXIT", __func__);
 
 	return promise;
 }
 
 deferred<localnode::lookup_result> localnode::lookup(const dnet_raw_id &key, const std::vector<int> &groups, uint64_t cflags)
 {
+	debug_log_scope scope(*m_log, __func__);
+
+	uint64_t trace_id = cocaine::trace_t::current().get_trace_id();
+
 	auto s = m_session_proto.clone();
+	s.set_trace_id(trace_id);
 	s.set_exceptions_policy(session::no_exceptions);
 	override_groups(s, groups);
 
@@ -169,7 +189,7 @@ deferred<localnode::lookup_result> localnode::lookup(const dnet_raw_id &key, con
 	deferred<lookup_result> promise;
 
 	s.lookup(elliptics::key(key)).connect(
-		std::bind(&localnode::on_write_completed, this, promise, ph::_1, ph::_2)
+		cocaine::trace_t::bind(&localnode::on_write_completed, this, promise, ph::_1, ph::_2)
 	);
 
 	return promise;
@@ -179,7 +199,7 @@ void localnode::on_read_completed(deferred<localnode::read_result> promise,
 		const std::vector<newapi::read_result_entry> &results,
 		const error_info &error)
 {
-	COCAINE_LOG_DEBUG(m_log, "{}: ENTER", __func__);
+	debug_log_scope scope(*m_log, __func__);
 
 	if (error) {
 		COCAINE_LOG_ERROR(m_log, "{}: return error {}, {}", __func__, error.code(), error.message());
@@ -198,15 +218,13 @@ void localnode::on_read_completed(deferred<localnode::read_result> promise,
 			COCAINE_LOG_ERROR(m_log, "{}: write failed {}", __func__, e.what());
 		}
 	}
-
-	COCAINE_LOG_DEBUG(m_log, "{}: EXIT", __func__);
 }
 
 void localnode::on_write_completed(deferred<write_result> promise,
 		const std::vector<newapi::write_result_entry> &results,
 		const error_info &error)
 {
-	COCAINE_LOG_DEBUG(m_log, "{}: ENTER", __func__);
+	debug_log_scope scope(*m_log, __func__);
 
 	if (error) {
 		COCAINE_LOG_ERROR(m_log, "{}: return error {}, {}", __func__, error.code(), error.message());
@@ -225,8 +243,6 @@ void localnode::on_write_completed(deferred<write_result> promise,
 			COCAINE_LOG_ERROR(m_log, "{}: write failed {}", __func__, e.what());
 		}
 	}
-
-	COCAINE_LOG_DEBUG(m_log, "{}: EXIT", __func__);
 }
 
 }} // namespace ioremap::elliptics
