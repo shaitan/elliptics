@@ -27,14 +27,14 @@
 namespace ioremap { namespace monitor {
 
 top_stats::top_stats(size_t top_length, size_t events_size, int period_in_seconds)
-: m_stats(events_size, period_in_seconds),
- m_top_length(top_length),
- m_period_in_seconds(period_in_seconds)
-{}
+: m_stats(events_size, period_in_seconds)
+, m_top_length(top_length)
+, m_period_in_seconds(period_in_seconds) {}
 
 void top_stats::update_stats(const struct dnet_cmd *cmd, uint64_t size)
 {
-	if (size > 0 && cmd->cmd == DNET_CMD_READ) {
+	const bool is_read = (cmd->cmd == DNET_CMD_READ) || (cmd->cmd == DNET_CMD_READ_NEW);
+	if (size > 0 && is_read) {
 		key_stat_event event(cmd->id, size, 1., time(nullptr));
 		m_stats.add_event(event, event.get_time());
 	}
@@ -46,8 +46,8 @@ top_provider::top_provider(std::shared_ptr<top_stats> top_stats)
 }
 
 static void fill_top_stat(const key_stat_event &key_event,
-                      rapidjson::Value &stat_array,
-                      rapidjson::Document::AllocatorType &allocator) {
+                          rapidjson::Value &stat_array,
+                          rapidjson::Document::AllocatorType &allocator) {
 	rapidjson::Value key_stat(rapidjson::kObjectType);
 
 	key_stat.AddMember("group", key_event.get_key()->group_id, allocator);

@@ -1006,13 +1006,13 @@ static int blob_defrag_start(void *priv, enum dnet_backend_defrag_level level)
 			defrag_level = EBLOB_DEFRAG_STATE_DATA_COMPACT;
 			break;
 		default:
-			dnet_backend_log(c->blog, DNET_LOG_ERROR, "DEFRAG: unknown defragmetation level: %d", (int)level);
+			dnet_backend_log(c->blog, DNET_LOG_ERROR, "DEFRAG: unknown defragmentation level: %d", (int)level);
 			return -ENOTSUP;
 	}
 
 	int err = eblob_start_defrag_level(c->eblob, defrag_level);
 
-	dnet_backend_log(c->blog, DNET_LOG_INFO, "DEFRAG: defragmetation request: status: %d", err);
+	dnet_backend_log(c->blog, DNET_LOG_INFO, "DEFRAG: defragmentation request: status: %d", err);
 
 	return err;
 }
@@ -1197,13 +1197,13 @@ err_out_exit:
 	return err;
 }
 
-static int eblob_backend_command_handler(void *state, void *priv, struct dnet_cmd *cmd, void *data)
-{
+static int eblob_backend_command_handler(void *state, void *priv, struct dnet_cmd *cmd, void *data, void *cmd_stats) {
 	FORMATTED(HANDY_TIMER_SCOPE, ("eblob_backend.cmd.%s", dnet_cmd_string(cmd->cmd)));
 
 	int err;
 	struct eblob_backend_config *c = priv;
 
+	// TODO(shaitan): pass @cmd_stats to all blob_* functions and update statistics by them
 	switch (cmd->cmd) {
 		case DNET_CMD_LOOKUP:
 			err = blob_file_info(c, state, cmd);
@@ -1228,10 +1228,10 @@ static int eblob_backend_command_handler(void *state, void *priv, struct dnet_cm
 			err = blob_file_info_new(c, state, cmd);
 			break;
 		case DNET_CMD_READ_NEW:
-			err = blob_read_new(c, state, cmd, data);
+			err = blob_read_new(c, state, cmd, data, cmd_stats);
 			break;
 		case DNET_CMD_WRITE_NEW:
-			err = blob_write_new(c, state, cmd, data);
+			err = blob_write_new(c, state, cmd, data, cmd_stats);
 			break;
 		case DNET_CMD_ITERATOR_NEW:
 			err = blob_iterate(c, state, cmd, data);

@@ -194,13 +194,14 @@ int blob_file_info_new(eblob_backend_config *c, void *state, dnet_cmd *cmd) {
 	}
 
 	dnet_backend_log(c->blog, DNET_LOG_INFO,
-	                 "%s: EBLOB: blob-file-info-new: fd: %d, json_size: %" PRIu64", data_size: %" PRIu64,
+	                 "%s: EBLOB: blob-file-info-new: fd: %d, json_size: %" PRIu64 ", data_size: %" PRIu64,
 	                 dnet_dump_id(&cmd->id), wc.data_fd, jhdr.size, wc.size);
 
 	return 0;
 }
 
-int blob_read_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *data) {
+int blob_read_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *data,
+                  dnet_cmd_stats *cmd_stats) {
 	using namespace ioremap::elliptics;
 
 	eblob_backend *b = c->eblob;
@@ -325,6 +326,8 @@ int blob_read_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *dat
 		}
 	}
 
+	cmd_stats->size = json.size() + data_size;
+
 	auto header = serialize(dnet_read_response{
 		wc.flags,
 		ehdr.flags,
@@ -368,7 +371,8 @@ int blob_read_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *dat
 	return 0;
 }
 
-int blob_write_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *data) {
+int blob_write_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *data,
+                   dnet_cmd_stats *cmd_stats) {
 	using namespace ioremap::elliptics;
 
 	struct eblob_backend *b = c->eblob;
@@ -382,13 +386,20 @@ int blob_write_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *da
 		return request;
 	} ();
 
-	dnet_backend_log(c->blog, DNET_LOG_NOTICE,
-	                 "%s: EBLOB: blob-write-new: WRITE_NEW: start: offset: %llu, size: %llu, ioflags: %s",
-		dnet_dump_id(&cmd->id), (unsigned long long)request.data_offset, (unsigned long long)request.data_size,
-		dnet_flags_dump_ioflags(request.ioflags));
+	cmd_stats->size = request.json_size + request.data_size;
+
+	dnet_backend_log(c->blog, DNET_LOG_NOTICE, "%s: EBLOB: blob-write-new: WRITE_NEW: start: ioflags: %s,"
+	                                           "json: {size: %" PRIu64 ", capacity: %" PRIu64 "}, "
+	                                           "data: {offset: %" PRIu64 ", size: %" PRIu64 ", capacity: %" PRIu64
+	                                           ", commit_size: %" PRIu64 "}",
+	                 dnet_dump_id(&cmd->id), dnet_flags_dump_ioflags(request.ioflags),
+	                 request.json_size, request.json_capacity,
+	                 request.data_offset, request.data_size, request.data_capacity,
+	                 request.data_commit_size);
 
 	if (request.ioflags & DNET_IO_FLAGS_APPEND) {
-		dnet_backend_log(c->blog, DNET_LOG_NOTICE, "%s: EBLOB: blob-write-new: WRITE_NEW: append is not supported",
+		dnet_backend_log(c->blog, DNET_LOG_NOTICE, "%s: EBLOB: blob-write-new: WRITE_NEW: "
+		                                           "append is not supported",
 		                 dnet_dump_id(&cmd->id));
 		return -ENOTSUP;
 	}
@@ -425,9 +436,11 @@ int blob_write_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *da
 				const std::string request_ts = dnet_print_time(&request.timestamp);
 				const std::string disk_ts = dnet_print_time(&disk_ehdr.timestamp);
 
-				dnet_backend_log(c->blog, DNET_LOG_ERROR, "%s: EBLOB: blob-write-new: WRITE_NEW: cas: disk timestamp is higher "
-						 "than data to be written timestamp: disk-ts: %s, data-ts: %s",
-						 dnet_dump_id(&cmd->id), disk_ts.c_str(), request_ts.c_str());
+				dnet_backend_log(c->blog, DNET_LOG_ERROR,
+				                 "%s: EBLOB: blob-write-new: WRITE_NEW: cas: "
+				                 "disk data timestamp is higher than data to be "
+				                 "written timestamp: disk-ts: %s, data-ts: %s",
+				                 dnet_dump_id(&cmd->id), disk_ts.c_str(), request_ts.c_str());
 
 				return -EBADFD;
 			}
@@ -436,9 +449,11 @@ int blob_write_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *da
 				const std::string request_ts = dnet_print_time(&request.json_timestamp);
 				const std::string disk_ts = dnet_print_time(&disk_jhdr.timestamp);
 
-				dnet_backend_log(c->blog, DNET_LOG_ERROR, "%s: EBLOB: blob-write-new: WRITE_NEW: cas: disk json timestamp is higher "
-						 "than json to be written timestamp: disk-ts: %s, json-ts: %s",
-						 dnet_dump_id(&cmd->id), disk_ts.c_str(), request_ts.c_str());
+				dnet_backend_log(c->blog, DNET_LOG_ERROR,
+				                 "%s: EBLOB: blob-write-new: WRITE_NEW: cas: "
+				                 "disk json timestamp is higher than json to be "
+				                 "written timestamp: disk-ts: %s, json-ts: %s",
+				                 dnet_dump_id(&cmd->id), disk_ts.c_str(), request_ts.c_str());
 
 				return -EBADFD;
 			}
@@ -467,14 +482,15 @@ int blob_write_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *da
 	int err = 0;
 
 	if (request.ioflags & DNET_IO_FLAGS_PREPARE) {
-		const uint64_t prepare_size = sizeof(ehdr) + json_header.size() + request.json_capacity + request.data_capacity;
+		const uint64_t prepare_size =
+		    sizeof(ehdr) + json_header.size() + request.json_capacity + request.data_capacity;
 		err = eblob_write_prepare(b, &key, prepare_size, flags);
 		if (err) {
-			dnet_backend_log(c->blog, DNET_LOG_ERROR,
-			                 "%s: EBLOB: blob-write-new: eblob_write_prepare: "
-			                 "size: %" PRIu64 " (json_capacity: %" PRIu64 ", data_pointer: %" PRIu64 "): %s [%d]",
-			                 dnet_dump_id(&cmd->id), prepare_size,
-			                 request.json_capacity, request.data_capacity, strerror(-err), err);
+			dnet_backend_log(c->blog, DNET_LOG_ERROR, "%s: EBLOB: blob-write-new: eblob_write_prepare: "
+			                                          "size: %" PRIu64 " (json_capacity: %" PRIu64
+			                                          ", data_pointer: %" PRIu64 "): %s [%d]",
+			                 dnet_dump_id(&cmd->id), prepare_size, request.json_capacity,
+			                 request.data_capacity, strerror(-err), err);
 			return err;
 		}
 	} else {
@@ -601,7 +617,7 @@ int blob_write_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *da
 		if (wc.size >= sizeof(ehdr) + ehdr.size) {
 			wc.size -= sizeof(ehdr) + ehdr.size;
 			// wc.total_data_size -= sizeof(ehdr);
-			wc.data_offset += + sizeof(ehdr) + ehdr.size;
+			wc.data_offset += sizeof(ehdr) + ehdr.size;
 		} else
 			return -EINVAL;
 	}
@@ -630,7 +646,7 @@ int blob_write_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *da
 	}
 
 	dnet_backend_log(c->blog, DNET_LOG_INFO,
-	                 "%s: EBLOB: blob-write-new: fd: %d, json_size: %" PRIu64", data_size: %" PRIu64,
+	                 "%s: EBLOB: blob-write-new: fd: %d, json_size: %" PRIu64 ", data_size: %" PRIu64,
 	                 dnet_dump_id(&cmd->id), wc.data_fd, jhdr.size, wc.size - jhdr.capacity);
 
 	return 0;

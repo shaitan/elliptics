@@ -51,8 +51,10 @@ int dnet_remove_local(struct dnet_backend_io *backend, struct dnet_node *n, stru
 	char buffer[cmd_size];
 	struct dnet_cmd *cmd = (struct dnet_cmd *)buffer;
 	struct dnet_io_attr *io = (struct dnet_io_attr *)(cmd + 1);
+	struct dnet_cmd_stats cmd_stats;
 
 	memset(buffer, 0, cmd_size);
+	memset(&cmd_stats, 0, sizeof(cmd_stats));
 
 	cmd->id = *id;
 	cmd->size = cmd_size - sizeof(struct dnet_cmd);
@@ -66,7 +68,7 @@ int dnet_remove_local(struct dnet_backend_io *backend, struct dnet_node *n, stru
 
 	dnet_convert_io_attr(io);
 
-	err = backend->cb->command_handler(n->st, backend->cb->command_private, cmd, io);
+	err = backend->cb->command_handler(n->st, backend->cb->command_private, cmd, io, &cmd_stats);
 	dnet_log(n, DNET_LOG_NOTICE, "%s: local remove: err: %d.", dnet_dump_id(&cmd->id), err);
 
 	return err;
@@ -1243,7 +1245,7 @@ static int dnet_cmd_bulk_read(struct dnet_backend_io *backend,
                               struct dnet_net_state *st,
                               struct dnet_cmd *cmd,
                               void *data,
-                              long queue_time)
+                              struct dnet_cmd_stats *cmd_stats)
 {
 	int err = -1, ret;
 	struct dnet_io_attr *io = data;
@@ -1276,7 +1278,7 @@ static int dnet_cmd_bulk_read(struct dnet_backend_io *backend,
 			dnet_oplock(backend, &lock_id);
 		}
 
-		ret = dnet_process_cmd_raw(backend, st, &read_cmd, &ios[i], 1, queue_time);
+		ret = dnet_process_cmd_raw(backend, st, &read_cmd, &ios[i], 1, cmd_stats->queue_time);
 		dnet_log(st->n, DNET_LOG_NOTICE, "%s: processing BULK_READ.READ for %d/%d command, err: %d",
 			dnet_dump_id(&cmd->id), (int) i, (int) count, ret);
 
@@ -1432,13 +1434,11 @@ static int dnet_process_cmd_without_backend_raw(struct dnet_net_state *st, struc
 }
 
 static int dnet_process_cmd_with_backend_raw(struct dnet_backend_io *backend, struct dnet_net_state *st,
-		struct dnet_cmd *cmd, void *data, int *handled_in_cache, const long queue_time)
+		struct dnet_cmd *cmd, void *data, struct dnet_cmd_stats *cmd_stats)
 {
 	int err = 0;
 	struct dnet_node *n = st->n;
 	struct dnet_io_attr *io = NULL;
-	uint64_t iosize = 0;
-	long diff;
 	struct timeval start, end;
 	struct dnet_server_send_request *req;
 
@@ -1459,6 +1459,7 @@ static int dnet_process_cmd_with_backend_raw(struct dnet_backend_io *backend, st
 		}
 	}
 
+	// TODO(shaitan): pass @cmd_stats to all handling functions to update statistics
 	switch (cmd->cmd) {
 		case DNET_CMD_ITERATOR:
 			err = dnet_cmd_iterator(backend, st, cmd, data);
@@ -1516,13 +1517,13 @@ static int dnet_process_cmd_with_backend_raw(struct dnet_backend_io *backend, st
 			}
 
 			dnet_convert_server_send_request(req);
-			err = backend->cb->command_handler(st, backend->cb->command_private, cmd, data);
+			err = backend->cb->command_handler(st, backend->cb->command_private, cmd, data, cmd_stats);
 			break;
 		case DNET_CMD_BULK_READ:
-			err = backend->cb->command_handler(st, backend->cb->command_private, cmd, data);
+			err = backend->cb->command_handler(st, backend->cb->command_private, cmd, data, cmd_stats);
 
 			if (err == -ENOTSUP) {
-				err = dnet_cmd_bulk_read(backend, st, cmd, data, queue_time);
+				err = dnet_cmd_bulk_read(backend, st, cmd, data, cmd_stats);
 			}
 			break;
 		case DNET_CMD_READ:
@@ -1547,10 +1548,9 @@ static int dnet_process_cmd_with_backend_raw(struct dnet_backend_io *backend, st
 				io->flags |= DNET_IO_FLAGS_NOCSUM;
 
 			if (!(io->flags & DNET_IO_FLAGS_NOCACHE)) {
-				err = dnet_cmd_cache_io(backend, st, cmd, io, data + sizeof(struct dnet_io_attr));
+				err = dnet_cmd_cache_io(backend, st, cmd, io, data + sizeof(struct dnet_io_attr), cmd_stats);
 
 				if (err != -ENOTSUP) {
-					*handled_in_cache = 1;
 					break;
 				}
 			}
@@ -1576,19 +1576,17 @@ static int dnet_process_cmd_with_backend_raw(struct dnet_backend_io *backend, st
 			dnet_convert_io_attr(io);
 		default:
 			if (cmd->cmd == DNET_CMD_LOOKUP && !(cmd->flags & DNET_FLAGS_NOCACHE)) {
-				err = dnet_cmd_cache_lookup(backend, st, cmd);
+				err = dnet_cmd_cache_lookup(backend, st, cmd, cmd_stats);
 
 				if (err != -ENOTSUP && err != -ENOENT) {
-					*handled_in_cache = 1;
 					break;
 				}
 			}
 
 			if (cmd->cmd == DNET_CMD_LOOKUP_NEW && !(cmd->flags & DNET_FLAGS_NOCACHE)) {
-				err = dnet_cmd_cache_io_new(backend, st, cmd, data);
+				err = dnet_cmd_cache_io_new(backend, st, cmd, data, cmd_stats);
 
 				if (err != -ENOTSUP && err != -ENOENT) {
-					*handled_in_cache = 1;
 					break;
 				}
 			}
@@ -1599,10 +1597,9 @@ static int dnet_process_cmd_with_backend_raw(struct dnet_backend_io *backend, st
 			}
 
 			if ((cmd->cmd == DNET_CMD_WRITE_NEW) || (cmd->cmd == DNET_CMD_READ_NEW)) {
-				err = dnet_cmd_cache_io_new(backend, st, cmd, data);
+				err = dnet_cmd_cache_io_new(backend, st, cmd, data, cmd_stats);
 
 				if (err != -ENOTSUP) {
-					*handled_in_cache = 1;
 					break;
 				}
 			}
@@ -1619,7 +1616,7 @@ static int dnet_process_cmd_with_backend_raw(struct dnet_backend_io *backend, st
 			    (cmd->cmd == DNET_CMD_LOOKUP_NEW)) {
 				cmd->flags &= ~DNET_FLAGS_NEED_ACK;
 			}
-			err = backend->cb->command_handler(st, backend->cb->command_private, cmd, data);
+			err = backend->cb->command_handler(st, backend->cb->command_private, cmd, data, cmd_stats);
 
 			if (!err && (cmd->cmd == DNET_CMD_WRITE)) {
 				dnet_update_notify(st, cmd, data);
@@ -1628,22 +1625,25 @@ static int dnet_process_cmd_with_backend_raw(struct dnet_backend_io *backend, st
 	}
 
 	gettimeofday(&end, NULL);
-	diff = DIFF(start, end);
+	cmd_stats->handle_time = DIFF(start, end);
 
 	/* If there was any error - send ACK to notify client with error code and destroy transaction */
 	if (err)
 		cmd->flags |= DNET_FLAGS_NEED_ACK;
 
 	if (io) {
-		iosize = io->size;
+		// TODO(shaitan): it should be set by corresponding handler
+		// when all handlers will accept and update @cmd_stats.
+		cmd_stats->size = io->size;
 
 		// do not count error read size
 		// otherwise it leads to HUGE read traffic stats, although nothing was actually read
 		if (cmd->cmd == DNET_CMD_READ && err < 0)
-			iosize = 0;
+			cmd_stats->size = 0;
 	}
 
-	dnet_backend_command_stats_update(n, backend, cmd, iosize, *handled_in_cache, err, diff);
+	dnet_backend_command_stats_update(n, backend, cmd, cmd_stats->size, cmd_stats->handled_in_cache, err,
+	                                  cmd_stats->handle_time);
 	return err;
 }
 
@@ -1659,10 +1659,11 @@ int dnet_process_cmd_raw(struct dnet_backend_io *backend,
 	const unsigned long long tid = cmd->trans;
 	struct dnet_io_attr *io = NULL;
 	struct timeval start, end;
-	uint64_t iosize = 0;
 
-	long diff;
-	int handled_in_cache = 0;
+	struct dnet_cmd_stats cmd_stats;
+
+	memset(&cmd_stats, 0, sizeof(cmd_stats));
+	cmd_stats.queue_time = queue_time;
 
 	HANDY_TIMER_SCOPE(recursive ? "io.cmd_recursive" : "io.cmd");
 	FORMATTED(HANDY_TIMER_SCOPE, ("io.cmd%s.%s", (recursive ? "_recursive" : ""), dnet_cmd_string(cmd->cmd)));
@@ -1671,11 +1672,11 @@ int dnet_process_cmd_raw(struct dnet_backend_io *backend,
 
 	err = dnet_process_cmd_without_backend_raw(st, cmd, data);
 	if (err == -ENOTSUP && backend) {
-		err = dnet_process_cmd_with_backend_raw(backend, st, cmd, data, &handled_in_cache, queue_time);
+		err = dnet_process_cmd_with_backend_raw(backend, st, cmd, data, &cmd_stats);
 	}
 
 	gettimeofday(&end, NULL);
-	diff = DIFF(start, end);
+	cmd_stats.handle_time = DIFF(start, end);
 
 	switch (cmd->cmd) {
 		case DNET_CMD_READ:
@@ -1688,7 +1689,7 @@ int dnet_process_cmd_raw(struct dnet_backend_io *backend,
 				break;
 			}
 
-			// no need to convert IO attribute here, it is aloready converted in backend processing code
+			// no need to convert IO attribute here, it is already converted in backend processing code
 			io = data;
 
 
@@ -1700,26 +1701,29 @@ int dnet_process_cmd_raw(struct dnet_backend_io *backend,
 	if (((cmd->cmd == DNET_CMD_READ) || (cmd->cmd == DNET_CMD_WRITE)) && io) {
 		/* io has been already set in the switch above */
 
+		// TODO(shaitan): it should be set by corresponding handler
+		// when all handlers will accept and update @cmd_stats.
+
 		// do not count error read size
 		// otherwise it leads to HUGE read traffic stats, although nothing was actually read
-		iosize = io->size;
+		cmd_stats.size = io->size;
 		if (cmd->cmd == DNET_CMD_READ && err < 0)
-			iosize = 0;
+			cmd_stats.size = 0;
 
 		dnet_log(n, DNET_LOG_INFO, "%s: %s: client: %s, trans: %llu, cflags: %s, %s, "
 				"time: %ld usecs, queue_time: %ld, err: %d.",
 				dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), dnet_state_dump_addr(st),
 				tid, dnet_flags_dump_cflags(cmd->flags),
 				dnet_print_io(io),
-				diff, queue_time, err);
+				cmd_stats.handle_time, queue_time, err);
 	} else {
 		dnet_log(n, DNET_LOG_INFO, "%s: %s: client: %s, trans: %llu, cflags: %s, time: %ld usecs, queue_time: %ld usecs, err: %d.",
 				dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), dnet_state_dump_addr(st),
-				tid, dnet_flags_dump_cflags(cmd->flags), diff, queue_time, err);
+				tid, dnet_flags_dump_cflags(cmd->flags), cmd_stats.handle_time, queue_time, err);
 	}
 
 	// we must provide real error from the backend into statistics
-	dnet_monitor_stats_update(n, cmd, err, handled_in_cache, iosize, diff);
+	dnet_monitor_stats_update(n, cmd, err, cmd_stats.handled_in_cache, cmd_stats.size, cmd_stats.handle_time);
 
 	err = dnet_send_ack(st, cmd, err, recursive);
 
