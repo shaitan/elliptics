@@ -39,7 +39,7 @@ Depends: ${shlibs:Depends},
          elliptics-client (= ${Source-Version}),
          handystats (>= 1.11.0),
          libkora-util1 (= 1.1.0-rc1),
-         libcocaine-core3 (>= 0.12.9), libcocaine-core3 (<< 0.12.10),
+         libcocaine-core3 (>= 0.12.9.0-alpha5), libcocaine-core3 (<< 0.12.10),
          libcocaine-plugin-node3 (>= 0.12.9), libcocaine-plugin-node3 (<< 0.12.10),
          libblackhole1 (>= 1.0.0-1)
 Replaces: elliptics-2.10, srw
@@ -71,7 +71,7 @@ Architecture: any
 Depends: elliptics-client (= ${Source-Version})
 Suggests: eblob (>= 0.23.11),
           libkora-util1 (= 1.1.0-rc1),
-          libcocaine-core3 (>= 0.12.9), libcocaine-core3 (<< 0.12.10),
+          libcocaine-core3 (>= 0.12.9.0-alpha5), libcocaine-core3 (<< 0.12.10),
           libcocaine-plugin-node3 (>= 0.12.9), libcocaine-plugin-node3 (<< 0.12.10),
           libcocaine-framework-native1 (>= 0.12.9), libcocaine-framework-native1 (<< 0.12.10),
 Description: Distributed hash table storage (includes)

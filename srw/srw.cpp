@@ -31,6 +31,8 @@
 #include <cocaine/context.hpp>
 #include <cocaine/hpack/header.hpp>
 #include <cocaine/api/stream.hpp>
+#include <cocaine/repository.hpp>
+#include <cocaine/repository/service.hpp>
 #include <cocaine/rpc/actor.hpp>
 #include <cocaine/service/node.hpp>
 #include <cocaine/service/node/overseer.hpp>
@@ -46,6 +48,7 @@
 
 #include "localnode.hpp"
 #include "cocaine/traits/localnode.hpp"
+#include "cocaine/api/elliptics_node.hpp"
 
 #include "../bindings/cpp/exec_context_data_p.hpp"
 #include "elliptics/srw.h"
@@ -516,7 +519,6 @@ struct srw {
 	};
 
 	srw(struct dnet_node *n, const std::string &config);
-	~srw();
 
 	void register_job(int job_id, const std::shared_ptr<exec_session> &exec_session);
 	bool unregister_job(const std::string &signature, int job_id);
@@ -543,47 +545,25 @@ struct srw {
 srw::srw(struct dnet_node *n, const std::string &config)
 	: m_node(n)
 	// NOTE: context_t ctor throws an exception on config parse error
-	, m_ctx(cocaine::make_context(cocaine::make_config(config), std::make_unique<logger_adapter>(m_node)))
+	, m_ctx()
 {
 	atomic_set(&m_job_id_counter, 0);
 
-	/* register `localnode` service
-	 *
-	 * the hard way, with asio::io_service exposed and other internal details visible
-	 * also note explicit upcast from localnode to service_t base
-	 * also note that there are two use sites for asio::io_service, and while its
-	 * customary to use the same object at both sites, but that's not strictly required
-	 *
-	 * this is the only possible way now
+	using namespace cocaine::api;
+	typedef elliptics_node_t::factory_t factory_t;
+
+	/*
+	 * Create repository manually to insert elliptics specific components
+	 * (elliptics node provider and localnode service) before context initialization
 	 */
-	{
-		auto reactor = std::make_shared<asio::io_service>();
-		std::unique_ptr<cocaine::api::service_t> service(
-			new ioremap::elliptics::localnode(
-				*m_ctx, *reactor, "localnode", cocaine::dynamic_t(), m_node
-			)
-		);
-		m_ctx->insert("localnode", std::make_unique<cocaine::actor_t>(
-			*m_ctx,
-			reactor,
-			std::move(service)
-		));
-	}
+	std::unique_ptr<cocaine::api::repository_t> repository(
+		new cocaine::api::repository_t(std::make_unique<logger_adapter>(m_node)));
+	repository->insert<elliptics_node_t>("elliptics_node", std::unique_ptr<factory_t>(new factory_t(m_node)));
+	repository->insert<localnode>("localnode");
 
-	// simpler way, for the time when cocaine core will develop proper api
-	//
-	// std::unique_ptr<cocaine::api::service_t> service(
-	// 	   new ioremap::elliptics::localnode(
-	// 	       m_ctx, "localnode", cocaine::dynamic_t(), m_node
-	//     )
-	// );
-	// m_ctx.insert_service("localnode", std::move(service));
-}
-
-srw::~srw()
-{
-	// manually inserted services require manual removal
-	m_ctx->remove("localnode");
+	m_ctx = cocaine::make_context(cocaine::make_config(config),
+	                              std::make_unique<logger_adapter>(m_node),
+	                              std::move(repository));
 }
 
 void srw::register_job(int job_id, const std::shared_ptr<exec_session> &exec_session)
