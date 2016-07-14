@@ -39,6 +39,12 @@
 
 #include "treap.hpp"
 
+namespace ioremap { namespace elliptics {
+
+struct dnet_write_request;
+
+}}  /* namespace ioremap::elliptics */
+
 namespace ioremap { namespace cache {
 
 struct data_lru_tag_t;
@@ -88,7 +94,8 @@ public:
 	, m_only_append(false)
 	, m_removed_from_page(true)
 	, m_sync_state(sync_state_t::NOT_SYNCING)
-	, m_json()
+	, m_data(std::make_shared<std::string>(data, size))
+	, m_json(std::make_shared<std::string>())
 	{
 		memcpy(m_id.id, id, DNET_ID_SIZE);
 		dnet_empty_time(&m_timestamp);
@@ -96,8 +103,6 @@ public:
 
 		if (lifetime)
 			m_lifetime = lifetime + time(NULL);
-
-		m_data = std::make_shared<std::string>(data, size);
 	}
 
 	data_t(const data_t &other) = delete;
@@ -156,6 +161,13 @@ public:
 
 	void clear_synctime() {
 		m_synctime = 0;
+	}
+
+	void clear_json() {
+		if (m_json) {
+			m_json->clear();
+			dnet_empty_time(&m_json_timestamp);
+		}
 	}
 
 	const dnet_time &timestamp() const {
@@ -338,19 +350,48 @@ struct cache_stats {
 	}
 };
 
+struct write_request {
+	write_request(struct dnet_io_attr *io, char *data);
+	write_request(struct ioremap::elliptics::dnet_write_request &req, void *request_data, char *data);
+
+	uint64_t ioflags;
+	uint64_t user_flags;
+	dnet_time timestamp;
+
+	uint64_t json_size;
+	uint64_t json_capacity;
+	dnet_time json_timestamp;
+
+	uint64_t data_offset;
+	uint64_t data_size;
+	uint64_t data_capacity;
+	uint64_t data_commit_size;
+
+	uint64_t cache_lifetime;
+
+	uint8_t (*data_checksum)[DNET_ID_SIZE];
+	void *request_data;
+	char *data;
+	char *json;
+};
+
+enum class write_response {
+	ERROR,
+	HANDLED_IN_BACKEND,
+	HANDLED_IN_CACHE
+};
+
 class slru_cache_t;
 
 class cache_manager {
 public:
 	cache_manager(dnet_backend_io *backend, dnet_node *n, const cache_config &config);
 
-	~cache_manager();
+	std::pair<write_response, int> write(const unsigned char *id, dnet_net_state *st, dnet_cmd *cmd, const write_request &request);
 
-	int write(const unsigned char *id, dnet_net_state *st, dnet_cmd *cmd, dnet_io_attr *io, const char *data);
+	data_t *read(const unsigned char *id, uint64_t ioflags);
 
-	std::shared_ptr<std::string> read(const unsigned char *id, dnet_cmd *cmd, dnet_io_attr *io);
-
-	int remove(const unsigned char *id, dnet_io_attr *io);
+	int remove(const unsigned char *id, uint64_t ioflags);
 
 	int lookup(const unsigned char *id, dnet_net_state *st, dnet_cmd *cmd);
 

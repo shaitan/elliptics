@@ -57,6 +57,8 @@ struct dnet_write_request {
 	uint64_t data_size;
 	uint64_t data_capacity;
 	uint64_t data_commit_size;
+
+	uint64_t cache_lifetime;
 };
 
 struct dnet_lookup_response {

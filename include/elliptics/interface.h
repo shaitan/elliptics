@@ -894,7 +894,7 @@ int dnet_send_file_info(void *state, struct dnet_cmd *cmd, int fd, uint64_t offs
 int dnet_send_file_info_without_fd(void *state, struct dnet_cmd *cmd, const void *data, int64_t size);
 int dnet_send_file_info_ts(void *state, struct dnet_cmd *cmd, int fd,
                            uint64_t offset, int64_t size, struct dnet_time *timestamp, uint64_t record_flags);
-int dnet_send_file_info_ts_without_fd(void *state, struct dnet_cmd *cmd, const void *data, int64_t size, struct dnet_time *timestamp);
+int dnet_send_file_info_ts_without_fd(void *state, struct dnet_cmd *cmd, const void *data, int64_t size, const struct dnet_time *timestamp);
 
 
 /*

@@ -51,6 +51,7 @@ class session_data
 		result_checker		checker;
 		result_error_handler	error_handler;
 		uint32_t		policy;
+		uint64_t		cache_lifetime;
 };
 
 }} // namespace ioremap::elliptics

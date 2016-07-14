@@ -30,11 +30,11 @@ public:
 
 	~slru_cache_t();
 
-	int write(const unsigned char *id, dnet_net_state *st, dnet_cmd *cmd, dnet_io_attr *io, const char *data);
+	std::pair<write_response, int> write(const unsigned char *id, dnet_net_state *st, dnet_cmd *cmd, const write_request &request);
 
-	std::shared_ptr<std::string> read(const unsigned char *id, dnet_cmd *cmd, dnet_io_attr *io);
+	data_t *read(const unsigned char *id, uint64_t ioflags);
 
-	int remove(const unsigned char *id, dnet_io_attr *io);
+	int remove(const unsigned char *id, uint64_t ioflags);
 
 	int lookup(const unsigned char *id, dnet_net_state *st, dnet_cmd *cmd);
 
@@ -74,7 +74,7 @@ private:
 		return page_number + 1;
 	}
 
-	int check_cas(const data_t* it, const dnet_cmd *cmd, const dnet_io_attr *io) const;
+	int check_cas(const data_t* it, const dnet_cmd *cmd, const write_request &request) const;
 
 	void sync_if_required(data_t* it, elliptics_unique_lock<std::mutex> &guard);
 

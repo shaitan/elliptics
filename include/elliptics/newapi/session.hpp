@@ -34,6 +34,9 @@ public:
 	dnet_time get_json_timestamp() const;
 	void reset_json_timestamp();
 
+	void set_cache_lifetime(uint64_t lifetime);
+	uint64_t get_cache_lifetime() const;
+
 	/* Lookup information for key \a id.
 	 */
 	async_lookup_result lookup(const key &id);

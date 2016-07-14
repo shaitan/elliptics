@@ -118,12 +118,19 @@ inline dnet_write_request &operator >>(msgpack::object o, dnet_write_request &v)
 		p[2].convert(&v.json_timestamp);
 	}
 
+	if (o.via.array.size > 10) {
+		p[10].convert(&v.cache_lifetime);
+	} else {
+		// older protocol
+		v.cache_lifetime = 0;
+	}
+
 	return v;
 }
 
 template <typename Stream>
 inline msgpack::packer<Stream> &operator <<(msgpack::packer<Stream> &o, const dnet_write_request &v) {
-	o.pack_array(10);
+	o.pack_array(11);
 	o.pack(v.ioflags);
 	o.pack(v.user_flags);
 
@@ -138,6 +145,7 @@ inline msgpack::packer<Stream> &operator <<(msgpack::packer<Stream> &o, const dn
 	o.pack(v.data_commit_size);
 
 	o.pack(v.json_timestamp);
+	o.pack(v.cache_lifetime);
 
 	return o;
 }

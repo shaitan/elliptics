@@ -20,6 +20,8 @@
 
 #include <fstream>
 
+#include "library/protocol.hpp"
+
 #include "monitor/monitor.h"
 #include "monitor/monitor.hpp"
 #include "monitor/statistics.hpp"
@@ -69,23 +71,19 @@ cache_manager::cache_manager(dnet_backend_io *backend, dnet_node *n, const cache
 	}
 }
 
-cache_manager::~cache_manager() {
+std::pair<write_response, int> cache_manager::write(const unsigned char *id,
+                                                    dnet_net_state *st,
+                                                    dnet_cmd *cmd,
+                                                    const write_request &request) {
+	return m_caches[idx(id)]->write(id, st, cmd, request);
 }
 
-int cache_manager::write(const unsigned char *id,
-                         dnet_net_state *st,
-                         dnet_cmd *cmd,
-                         dnet_io_attr *io,
-                         const char *data) {
-	return m_caches[idx(id)]->write(id, st, cmd, io, data);
+data_t *cache_manager::read(const unsigned char *id, uint64_t ioflags) {
+	return m_caches[idx(id)]->read(id, ioflags);
 }
 
-std::shared_ptr<std::string> cache_manager::read(const unsigned char *id, dnet_cmd *cmd, dnet_io_attr *io) {
-	return m_caches[idx(id)]->read(id, cmd, io);
-}
-
-int cache_manager::remove(const unsigned char *id, dnet_io_attr *io) {
-	return m_caches[idx(id)]->remove(id, io);
+int cache_manager::remove(const unsigned char *id, uint64_t ioflags) {
+	return m_caches[idx(id)]->remove(id, ioflags);
 }
 
 int cache_manager::lookup(const unsigned char *id, dnet_net_state *st, dnet_cmd *cmd) {
@@ -196,9 +194,188 @@ size_t cache_manager::idx(const unsigned char *id) {
 	return (i ^ j) % m_caches.size();
 }
 
+write_request::write_request(struct dnet_io_attr *io, char *data)
+: ioflags(io->flags)
+, user_flags(io->user_flags)
+, timestamp(io->timestamp)
+, json_size(0)
+, json_capacity(0)
+, data_offset(io->offset)
+, data_size(io->size)
+, data_capacity(0)
+, data_commit_size(0)
+, cache_lifetime(io->start)
+, data_checksum(&io->parent)
+, request_data(io)
+, data(data)
+, json(nullptr)
+{
+	dnet_empty_time(&json_timestamp);
+}
+
+write_request::write_request(struct ioremap::elliptics::dnet_write_request &req, void *request_data, char *data)
+: ioflags(req.ioflags)
+, user_flags(req.user_flags)
+, timestamp(req.timestamp)
+, json_size(req.json_size)
+, json_capacity(req.json_capacity)
+, json_timestamp(req.json_timestamp)
+, data_offset(req.data_offset)
+, data_size(req.data_size)
+, data_capacity(req.data_capacity)
+, data_commit_size(req.data_commit_size)
+, cache_lifetime(req.cache_lifetime)
+, data_checksum(nullptr)
+, request_data(request_data)
+, data(data + json_size)
+, json(json_size ? data : nullptr)
+{
+}
+
 }} /* namespace ioremap::cache */
 
 using namespace ioremap::cache;
+
+static int dnet_cmd_cache_io_write(struct cache_manager *cache,
+                                   struct dnet_net_state *st,
+                                   struct dnet_cmd *cmd,
+                                   struct dnet_io_attr *io,
+                                   char *data)
+{
+	int err;
+	write_response write_resp;
+
+	std::tie(write_resp, err) = cache->write(io->id, st, cmd, write_request(io, data));
+
+	switch (write_resp) {
+		case write_response::ERROR: break;
+		case write_response::HANDLED_IN_BACKEND:
+			cmd->flags &= ~DNET_FLAGS_NEED_ACK;
+			break;
+		case write_response::HANDLED_IN_CACHE:
+			cmd->flags &= ~DNET_FLAGS_NEED_ACK;
+			err = dnet_send_file_info_ts_without_fd(st, cmd, data, io->size, &io->timestamp);
+			break;
+	}
+
+	return err;
+}
+
+static int dnet_cmd_cache_io_write_new(struct cache_manager *cache,
+                                       struct dnet_net_state *st,
+                                       struct dnet_cmd *cmd,
+                                       void *data)
+{
+	using namespace ioremap::elliptics;
+
+	int err;
+	write_response write_resp;
+
+	auto data_p = data_pointer::from_raw(data, cmd->size);
+
+	auto request = [&data_p] () {
+		size_t offset = 0;
+	        dnet_write_request request;
+		deserialize(data_p, request, offset);
+		data_p = data_p.skip(offset);
+		return request;
+	} ();
+
+	std::tie(write_resp, err) = cache->write(reinterpret_cast<unsigned char *>(&cmd->id.id), st, cmd,
+						 write_request(request, data, data_p.data<char>()));
+
+	// TODO: return data_t from write() and fill response properly
+	auto response = serialize(dnet_lookup_response{
+			0,
+			request.user_flags,
+			"",
+
+			request.json_timestamp,
+			0,
+			request.json_size,
+			request.json_capacity,
+
+			request.timestamp,
+			0,
+			request.data_size,
+	});
+
+	switch (write_resp) {
+		case write_response::ERROR: break;
+		case write_response::HANDLED_IN_BACKEND:
+			cmd->flags &= ~DNET_FLAGS_NEED_ACK;
+			break;
+		case write_response::HANDLED_IN_CACHE:
+			cmd->flags &= ~DNET_FLAGS_NEED_ACK;
+			err = dnet_send_reply(st, cmd, response.data(), response.size(), 0);
+			break;
+	}
+
+	return err;
+}
+
+static int dnet_cmd_cache_io_read(struct cache_manager *cache,
+                                  struct dnet_net_state *st,
+                                  struct dnet_cmd *cmd,
+                                  struct dnet_io_attr *io)
+{
+	struct dnet_node *n = st->n;
+
+	auto it = cache->read(io->id, io->flags);
+	if (!it) {
+		if (!(io->flags & DNET_IO_FLAGS_CACHE)) {
+			return -ENOTSUP;
+		}
+
+		return -ENOENT;
+	}
+
+	auto d = it->data();
+
+	/*!
+	 * When offset is larger then size of the file, operation is definitely incorrect
+	 */
+	if (io->offset >= d->size()) {
+		BH_LOG(*n->log, DNET_LOG_ERROR, "%s: %s cache: invalid offset: "
+		       "offset: %llu, size: %llu, cached-size: %zd",
+		       dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd),
+		       (unsigned long long)io->offset, (unsigned long long)io->size,
+		       d->size());
+		return -EINVAL;
+	}
+
+	/*!
+	 * If offset is correct, but offset + read_size is bigger then file_size
+	 * then we should return data from offset position till the end of the file
+	 * This situation happens when for example we want to read first 100 bytes of
+	 * the file and it's size appears to be less then 100 bytes.
+	 */
+	io->size = std::min(io->size, d->size() - io->offset);
+
+	/*!
+	 * 0 is special value for io operation size and in this case we should read all file
+	 */
+	if (io->size == 0)
+		io->size = d->size() - io->offset;
+
+	io->total_size = d->size();
+
+	io->timestamp = it->timestamp();
+	io->user_flags = it->user_flags();
+
+	cmd->flags &= ~DNET_FLAGS_NEED_ACK;
+	return dnet_send_read_data(st, cmd, io, &d->at(io->offset), -1, io->offset, 0);
+}
+
+static int dnet_cmd_cache_io_read_new(struct cache_manager *cache,
+                                      struct dnet_net_state *st,
+                                      struct dnet_cmd *cmd,
+                                      void *data)
+{
+	using namespace ioremap::elliptics;
+	// TODO: implement
+	return -ENOTSUP;
+}
 
 int dnet_cmd_cache_io(struct dnet_backend_io *backend,
                       struct dnet_net_state *st,
@@ -216,61 +393,55 @@ int dnet_cmd_cache_io(struct dnet_backend_io *backend,
 		return -ENOTSUP;
 	}
 
-	cache_manager *cache = (cache_manager *)backend->cache;
-	std::shared_ptr<std::string> d;
+	auto cache = reinterpret_cast<cache_manager *>(backend->cache);
 
 	FORMATTED(HANDY_TIMER_SCOPE, ("cache.%s", dnet_cmd_string(cmd->cmd)));
 
 	try {
 		switch (cmd->cmd) {
 			case DNET_CMD_WRITE:
-				err = cache->write(io->id, st, cmd, io, data);
+				err = dnet_cmd_cache_io_write(cache, st, cmd, io, data);
 				break;
 			case DNET_CMD_READ:
-				d = cache->read(io->id, cmd, io);
-				if (!d) {
-					if (!(io->flags & DNET_IO_FLAGS_CACHE)) {
-						return -ENOTSUP;
-					}
-
-					err = -ENOENT;
-					break;
-				}
-
-				/*!
-				 * When offset is larger then size of the file, operation is definitely incorrect
-				 */
-				if (io->offset >= d->size()) {
-					BH_LOG(*n->log, DNET_LOG_ERROR, "%s: %s cache: invalid offset: "
-							"offset: %llu, size: %llu, cached-size: %zd",
-							dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd),
-							(unsigned long long)io->offset, (unsigned long long)io->size,
-							d->size());
-					err = -EINVAL;
-					break;
-				}
-
-				/*!
-				 * If offset is correct, but offset + read_size is bigger then file_size
-				 * then we should return data from offset position till the end of the file
-				 * This situation happens when for example we want to read first 100 bytes of
-				 * the file and it's size appears to be less then 100 bytes.
-				 */
-				io->size = std::min(io->size, d->size() - io->offset);
-
-				/*!
-				 * 0 is special value for io operation size and in this case we should read all file
-				 */
-				if (io->size == 0)
-					io->size = d->size() - io->offset;
-
-				io->total_size = d->size();
-
-				cmd->flags &= ~DNET_FLAGS_NEED_ACK;
-				err = dnet_send_read_data(st, cmd, io, &d->at(io->offset), -1, io->offset, 0);
+				err = dnet_cmd_cache_io_read(cache, st, cmd, io);
 				break;
 			case DNET_CMD_DEL:
-				err = cache->remove(cmd->id.id, io);
+				err = cache->remove(cmd->id.id, io->flags);
+				break;
+		}
+	} catch (const std::exception &e) {
+		BH_LOG(*n->log, DNET_LOG_ERROR, "%s: %s cache operation failed: %s",
+				dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), e.what());
+		err = -ENOENT;
+	}
+
+	return err;
+}
+
+int dnet_cmd_cache_io_new(struct dnet_backend_io *backend,
+                          struct dnet_net_state *st,
+                          struct dnet_cmd *cmd,
+                          void *data)
+{
+	struct dnet_node *n = st->n;
+	int err = -ENOTSUP;
+
+	if (!backend->cache) {
+		dnet_log(n, DNET_LOG_NOTICE, "%s: cache is not supported", dnet_dump_id(&cmd->id));
+		return -ENOTSUP;
+	}
+
+	auto cache = reinterpret_cast<cache_manager *>(backend->cache);
+
+	FORMATTED(HANDY_TIMER_SCOPE, ("cache.%s", dnet_cmd_string(cmd->cmd)));
+
+	try {
+		switch (cmd->cmd) {
+			case DNET_CMD_WRITE_NEW:
+				err = dnet_cmd_cache_io_write_new(cache, st, cmd, data);
+				break;
+			case DNET_CMD_READ_NEW:
+				err = dnet_cmd_cache_io_read_new(cache, st, cmd, data);
 				break;
 		}
 	} catch (const std::exception &e) {
