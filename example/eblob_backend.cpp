@@ -319,7 +319,7 @@ int blob_read_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *dat
 			dnet_backend_log(c->blog, DNET_LOG_ERROR,
 			                 "%s: EBLOB: blob-read-new: READ_NEW: failed to verify checksum for data: "
 			                 "offset: %" PRIu64 ", size: %" PRIu64 "%s [%d]",
-			                 dnet_dump_id(&cmd->id), request.data_offset, request.data_offset,
+			                 dnet_dump_id(&cmd->id), request.data_offset, request.data_size,
 			                 strerror(-err), err);
 			return err;
 		}
@@ -340,7 +340,6 @@ int blob_read_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *dat
 		data_size,
 	});
 
-	cmd->flags &= ~DNET_FLAGS_NEED_ACK;
 	auto response = data_pointer::allocate(sizeof(*cmd) + header.size() + json.size());
 	memcpy(response.data(), cmd, sizeof(*cmd));
 	memcpy(response.skip(sizeof(*cmd)).data(), header.data(), header.size());
@@ -351,6 +350,7 @@ int blob_read_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *dat
 	response.data<dnet_cmd>()->flags |= DNET_FLAGS_REPLY;
 	response.data<dnet_cmd>()->flags &= ~DNET_FLAGS_NEED_ACK;
 
+	cmd->flags &= ~DNET_FLAGS_NEED_ACK;
 	err = dnet_send_fd((dnet_net_state *)state, response.data(), response.size(),
 	                   wc.data_fd, data_offset, data_size, 0);
 
