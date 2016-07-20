@@ -689,6 +689,7 @@ static int dnet_process_send_single(struct dnet_net_state *st)
 
 			dnet_io_req_free(r);
 			st->send_offset = 0;
+			break;
 		}
 
 		if (err)
