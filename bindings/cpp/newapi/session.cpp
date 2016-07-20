@@ -694,7 +694,7 @@ async_iterator_result session::start_iterator(const address &addr, uint32_t back
 
 	transport_control control;
 	control.set_command(DNET_CMD_ITERATOR_NEW);
-	control.set_cflags(get_cflags() | DNET_FLAGS_NEED_ACK);
+	control.set_cflags(get_cflags() | DNET_FLAGS_NEED_ACK | DNET_FLAGS_NOLOCK);
 	control.set_data(request.data(), request.size());
 
 	auto session = clean_clone();
