@@ -333,6 +333,17 @@ class session
 		 */
 		void set_direct_id(const address &remote_addr);
 		void set_direct_id(const address &remote_addr, uint32_t backend_id);
+		void reset_direct_id();
+
+		/*!
+		 * Stick session to particular remote address.
+		 * This remote won't handle request but will resend it to proper server node.
+		 * If proper server node isn't available on forward node, forward node will fail
+		 * request with -ENOTSUP error.
+		 */
+		void set_forward(const address &remote);
+		address get_forward() const;
+		void reset_forward();
 
 		/*!
 		 * Gets command flags of the session.
@@ -1016,6 +1027,7 @@ class session
 		 * Returns pointer to dnet_session.
 		 */
 		dnet_session *get_native();
+		const dnet_session *get_native() const;
 
 	protected:
 		std::shared_ptr<session_data> m_data;

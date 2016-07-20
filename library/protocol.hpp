@@ -27,6 +27,8 @@ struct dnet_read_request {
 	uint64_t read_flags;
 	uint64_t data_offset;
 	uint64_t data_size;
+
+	dnet_time deadline;
 };
 
 struct dnet_read_response {
@@ -59,6 +61,8 @@ struct dnet_write_request {
 	uint64_t data_commit_size;
 
 	uint64_t cache_lifetime;
+
+	dnet_time deadline;
 };
 
 struct dnet_lookup_response {

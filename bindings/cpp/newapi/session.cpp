@@ -296,6 +296,9 @@ async_read_result session::read_json(const key &id) {
 	request.ioflags = get_ioflags();
 	request.read_flags = DNET_READ_FLAGS_JSON;
 
+	dnet_current_time(&request.deadline);
+	request.deadline.tsec += get_timeout();
+
 	return send_read(*this, id, request, std::move(groups));
 }
 
@@ -311,6 +314,9 @@ async_read_result session::read_data(const key &id, uint64_t offset, uint64_t si
 	request.data_offset = offset;
 	request.data_size = size;
 
+	dnet_current_time(&request.deadline);
+	request.deadline.tsec += get_timeout();
+
 	return send_read(*this, id, request, std::move(groups));
 }
 
@@ -325,6 +331,9 @@ async_read_result session::read(const key &id, uint64_t offset, uint64_t size) {
 	request.read_flags = DNET_READ_FLAGS_JSON | DNET_READ_FLAGS_DATA;
 	request.data_offset = offset;
 	request.data_size = size;
+
+	dnet_current_time(&request.deadline);
+	request.deadline.tsec += get_timeout();
 
 	return send_read(*this, id, request, std::move(groups));
 }
@@ -489,6 +498,9 @@ static dnet_write_request create_write_request(const session &sess)
 	if (dnet_time_is_empty(&request.json_timestamp)) {
 		request.json_timestamp = request.timestamp;
 	}
+
+	dnet_current_time(&request.deadline);
+	request.deadline.tsec += sess.get_timeout();
 
 	return request;
 }

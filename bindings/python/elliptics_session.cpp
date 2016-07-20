@@ -205,6 +205,23 @@ public:
 		}
 	}
 
+	void set_forward(const bp::api::object &remote) {
+		if (remote.ptr() != Py_None) {
+			bp::extract<std::string> get_remote(remote);
+			session::set_forward(address(get_remote()));
+		} else {
+			session::reset_forward();
+		}
+	}
+
+	bp::api::object get_forward() {
+		if (session::get_cflags() & DNET_FLAGS_FORWARD) {
+			return bp::object(session::get_forward().to_string_with_family());
+		}
+
+		return bp::object();
+	}
+
 	struct elliptics_id get_direct_id() {
 		return session::get_direct_id();
 	}
@@ -1110,6 +1127,19 @@ void init_elliptics_session() {
 		    "get_direct_id()\n"
 		    "    Returns elliptics.Id of current direct node\n\n"
 		    "    id = session.get_direct_id()")
+
+		.add_property("forward",
+		              &elliptics_session::get_forward,
+		              &elliptics_session::set_forward,
+		              "Stick session to particular remote address.\n"
+		              "This remote won't handle request but will resend it to proper server node.\n"
+		              "If proper server node isn't available on forward node, forward node will fail\n"
+		              "request with -ENOTSUP error.\n\n"
+		              "# set forward\n"
+		              "session.forward = elliptics.Address.from_host_port_family(host='host.com', port=1025, family=AF_INET)\n"
+		              "print session.forward\n"
+		              "session.forward = None  # reset forward\n"
+		              "del session.forward  # reset forward")
 
 		.add_property("exceptions_policy",
 		              &elliptics_session::get_exceptions_policy,

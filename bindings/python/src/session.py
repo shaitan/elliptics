@@ -20,6 +20,8 @@ from elliptics.log import logged_class
 
 @logged_class
 class Session(Session):
+    __forward = Session.forward
+
     def __init__(self, node):
         '''
         Initializes session by the node"
@@ -32,7 +34,7 @@ class Session(Session):
     def clone(self):
         '''
         Creates and returns session which is equal to current"
-        but complitely independent from it."
+        but completely independent from it."
 
         cloned_session = session.clone()
         '''
@@ -97,7 +99,7 @@ class Session(Session):
 
     def update_indexes(self, id, indexes, datas=None):
         """
-        Adds id to additional indees and or updates data for the id in specified indexes.
+        Adds id to additional indexes and or updates data for the id in specified indexes.
         Also it updates list of indexes where id is.
         Return elliptics.AsyncResult.
         -- id - string or elliptics.Id
@@ -125,7 +127,7 @@ class Session(Session):
 
     def update_indexes_internal(self, id, indexes, datas=None):
         """
-        Adds id to additional indees and or updates data for the id in specified indexes.
+        Adds id to additional indexes and or updates data for the id in specified indexes.
         It doesn't update list of indexes where id is.
         Return elliptics.AsyncResult.
         -- id - string or elliptics.Id
@@ -166,6 +168,25 @@ class Session(Session):
                                                port=address.port,
                                                family=address.family,
                                                backend_id=backend_id)
+
+    @property
+    def forward(self):
+        """
+        If is set stick session to particular remote address.
+        This remote won't handle request but will resend it to proper server node.
+        If proper server node isn't available on forward node, forward node will fail request with -ENOTSUP error.
+        """
+        if self.__forward is None:
+            return None
+        return Address.from_host_port_family(self.__forward)
+
+    @forward.setter
+    def forward(self, remote):
+        self.__forward = None if remote is None else str(remote)
+
+    @forward.deleter
+    def forward(self):
+        self.__forward = None
 
     def update_status(self, address, status):
         """

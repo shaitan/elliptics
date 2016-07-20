@@ -186,6 +186,9 @@ enum dnet_backend_defrag_level {
 /* Do not use queue timeout for the request */
 #define DNET_FLAGS_NO_QUEUE_TIMEOUT	(1<<10)
 
+/* Send this request to forward node which should resend it to proper node */
+#define DNET_FLAGS_FORWARD		(1<<11)
+
 struct flag_info
 {
 	uint64_t flag;
@@ -235,6 +238,7 @@ static inline const char *dnet_flags_dump_cflags(uint64_t flags)
 		{ DNET_FLAGS_TRACE_BIT, "tracebit" },
 		{ DNET_FLAGS_REPLY, "reply" },
 		{ DNET_FLAGS_NO_QUEUE_TIMEOUT, "no_queue_timeout"},
+		{ DNET_FLAGS_FORWARD, "forward"}
 	};
 
 	dnet_flags_dump_raw(buffer, sizeof(buffer), flags, infos, sizeof(infos) / sizeof(infos[0]));

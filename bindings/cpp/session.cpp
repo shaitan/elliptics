@@ -607,15 +607,44 @@ dnet_id session::get_direct_id()
 
 void session::set_direct_id(const address &remote_addr)
 {
+	reset_forward();
 	set_cflags((get_cflags() | DNET_FLAGS_DIRECT) & ~DNET_FLAGS_DIRECT_BACKEND);
 	dnet_session_set_direct_addr(get_native(), &remote_addr.to_raw());
 }
 
 void session::set_direct_id(const address &remote_addr, uint32_t backend_id)
 {
+	reset_forward();
 	dnet_session_set_direct_addr(get_native(), &remote_addr.to_raw());
 	dnet_session_set_direct_backend(get_native(), backend_id);
 	set_cflags(get_cflags() | DNET_FLAGS_DIRECT | DNET_FLAGS_DIRECT_BACKEND);
+}
+
+void session::reset_direct_id() {
+	set_cflags(get_cflags() & ~(DNET_FLAGS_DIRECT | DNET_FLAGS_DIRECT_BACKEND));
+
+	static const address empty;
+	dnet_session_set_direct_addr(get_native(), &empty.to_raw());
+	dnet_session_set_direct_backend(get_native(), 0);
+}
+
+void session::set_forward(const address &remote) {
+	reset_direct_id();
+	set_cflags(get_cflags() | DNET_FLAGS_FORWARD);
+	auto str = remote.to_string_with_family();
+	dnet_session_set_forward(get_native(), &remote.to_raw());
+}
+
+address session::get_forward() const {
+	// TODO(shaitan): Add check that forward is set and maybe throw exception if it is not
+	return address(*dnet_session_get_forward(get_native()));
+}
+
+void session::reset_forward() {
+	set_cflags(get_cflags() & ~DNET_FLAGS_FORWARD);
+
+	static const address empty;
+	dnet_session_set_forward(get_native(), &empty.to_raw());
 }
 
 void session::set_cflags(uint64_t cflags)
@@ -2828,6 +2857,10 @@ dnet_node *session::get_native_node() const
 
 dnet_session *session::get_native()
 {
+	return m_data->session_ptr;
+}
+
+const dnet_session *session::get_native() const {
 	return m_data->session_ptr;
 }
 
