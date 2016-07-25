@@ -906,6 +906,7 @@ struct dnet_session *dnet_session_copy(struct dnet_session *s)
 	new_s->trace_id = s->trace_id;
 	new_s->cflags = s->cflags;
 	new_s->ioflags = s->ioflags;
+	new_s->cache_lifetime = s->cache_lifetime;
 	new_s->ts = s->ts;
 	new_s->json_ts = s->json_ts;
 	new_s->user_flags = s->user_flags;
@@ -1030,6 +1031,16 @@ err_out_exit:
 uint32_t dnet_session_get_ioflags(struct dnet_session *s)
 {
 	return s->ioflags;
+}
+
+void dnet_session_set_cache_lifetime(struct dnet_session *s, uint64_t lifetime)
+{
+	s->cache_lifetime = lifetime;
+}
+
+uint64_t dnet_session_get_cache_lifetime(struct dnet_session *s)
+{
+	return s->cache_lifetime;
 }
 
 void dnet_session_set_cflags(struct dnet_session *s, uint64_t cflags)

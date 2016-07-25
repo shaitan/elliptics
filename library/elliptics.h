@@ -683,6 +683,7 @@ struct dnet_session {
 	uint64_t		user_flags;
 	trace_id_t		trace_id;
 	uint32_t		ioflags;
+	uint64_t		cache_lifetime;
 
 	/*
 	 * If DNET_FLAGS_DIRECT is set then direct_id is used for sticking

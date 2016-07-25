@@ -94,12 +94,12 @@ void session::reset_json_timestamp()
 
 void session::set_cache_lifetime(uint64_t lifetime)
 {
-	m_data->cache_lifetime = lifetime;
+	dnet_session_set_cache_lifetime(m_data->session_ptr, lifetime);
 }
 
 uint64_t session::get_cache_lifetime() const
 {
-	return m_data->cache_lifetime;
+	return dnet_session_get_cache_lifetime(m_data->session_ptr);
 }
 
 class lookup_handler: public multigroup_handler<lookup_handler, lookup_result_entry> {

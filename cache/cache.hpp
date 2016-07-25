@@ -61,6 +61,14 @@ struct treap_node_traits<data_t> {
 	typedef size_t priority_type;
 };
 
+struct cache_item {
+	dnet_time timestamp;
+	dnet_time json_timestamp;
+	uint64_t user_flags;
+	std::shared_ptr<std::string> data;
+	std::shared_ptr<std::string> json;
+};
+
 class data_t : public lru_list_base_hook_t, public treap_node_t<data_t> {
 public:
 	enum class sync_state_t : char {
@@ -72,6 +80,7 @@ public:
 	data_t(const unsigned char *id)
 	: m_lifetime(0)
 	, m_synctime(0)
+	, m_json_timestamp{0, 0}
 	, m_user_flags(0)
 	, m_remove_from_disk(false)
 	, m_remove_from_cache(false)
@@ -82,12 +91,12 @@ public:
 	{
 		memcpy(m_id.id, id, DNET_ID_SIZE);
 		dnet_empty_time(&m_timestamp);
-		dnet_empty_time(&m_json_timestamp);
 	}
 
 	data_t(const unsigned char *id, size_t lifetime, const char *data, size_t size, bool remove_from_disk)
 	: m_lifetime(0)
 	, m_synctime(0)
+	, m_json_timestamp{0, 0}
 	, m_user_flags(0)
 	, m_remove_from_disk(remove_from_disk)
 	, m_remove_from_cache(false)
@@ -99,7 +108,6 @@ public:
 	{
 		memcpy(m_id.id, id, DNET_ID_SIZE);
 		dnet_empty_time(&m_timestamp);
-		dnet_empty_time(&m_json_timestamp);
 
 		if (lifetime)
 			m_lifetime = lifetime + time(NULL);
@@ -163,13 +171,6 @@ public:
 		m_synctime = 0;
 	}
 
-	void clear_json() {
-		if (m_json) {
-			m_json->clear();
-			dnet_empty_time(&m_json_timestamp);
-		}
-	}
-
 	const dnet_time &timestamp() const {
 		return m_timestamp;
 	}
@@ -184,6 +185,10 @@ public:
 
 	void set_json_timestamp(const dnet_time &timestamp) {
 		m_json_timestamp = timestamp;
+	}
+
+	void clear_json_timestamp() {
+		dnet_empty_time(&m_json_timestamp);
 	}
 
 	uint64_t user_flags() const {
@@ -249,6 +254,10 @@ public:
 	size_t capacity(void) const {
 		return (m_data ? m_data->capacity() : 0) +
 		       (m_json ? m_json->capacity() : 0);
+	}
+
+	cache_item get_cache_item() const {
+		return {m_timestamp, m_json_timestamp, m_user_flags, m_data, m_json};
 	}
 
 	friend bool operator< (const data_t &a, const data_t &b) {
@@ -351,19 +360,20 @@ struct cache_stats {
 };
 
 struct write_request {
-	write_request(struct dnet_io_attr *io, char *data);
-	write_request(struct ioremap::elliptics::dnet_write_request &req, void *request_data, char *data);
+	write_request(unsigned char *id, struct dnet_io_attr *io, ioremap::elliptics::data_pointer &data);
+	write_request(unsigned char *id, struct ioremap::elliptics::dnet_write_request &req, void *request_data,
+		      ioremap::elliptics::data_pointer &data, ioremap::elliptics::data_pointer &json);
+
+	unsigned char *id;
 
 	uint64_t ioflags;
 	uint64_t user_flags;
 	dnet_time timestamp;
 
-	uint64_t json_size;
 	uint64_t json_capacity;
 	dnet_time json_timestamp;
 
 	uint64_t data_offset;
-	uint64_t data_size;
 	uint64_t data_capacity;
 	uint64_t data_commit_size;
 
@@ -371,15 +381,18 @@ struct write_request {
 
 	uint8_t (*data_checksum)[DNET_ID_SIZE];
 	void *request_data;
-	char *data;
-	char *json;
+	ioremap::elliptics::data_pointer data;
+	ioremap::elliptics::data_pointer json;
 };
 
-enum class write_response {
+enum class write_status {
 	ERROR,
 	HANDLED_IN_BACKEND,
 	HANDLED_IN_CACHE
 };
+
+typedef std::tuple<write_status, int, cache_item> write_response_t;
+typedef std::tuple<int, cache_item> read_response_t;
 
 class slru_cache_t;
 
@@ -387,13 +400,13 @@ class cache_manager {
 public:
 	cache_manager(dnet_backend_io *backend, dnet_node *n, const cache_config &config);
 
-	std::pair<write_response, int> write(const unsigned char *id, dnet_net_state *st, dnet_cmd *cmd, const write_request &request);
+	write_response_t write(dnet_net_state *st, dnet_cmd *cmd, const write_request &request);
 
-	data_t *read(const unsigned char *id, uint64_t ioflags);
+	read_response_t read(const unsigned char *id, uint64_t ioflags);
 
 	int remove(const unsigned char *id, uint64_t ioflags);
 
-	int lookup(const unsigned char *id, dnet_net_state *st, dnet_cmd *cmd);
+	read_response_t lookup(const unsigned char *id);
 
 	int indexes_find(dnet_cmd *cmd, dnet_indexes_request *request);
 

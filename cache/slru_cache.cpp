@@ -67,18 +67,17 @@ slru_cache_t::~slru_cache_t() {
 	dnet_log(m_node, DNET_LOG_NOTICE, "cache: disable: backend: %zu: destructed\n", m_backend->backend_id);
 }
 
-std::pair<write_response, int> slru_cache_t::write(const unsigned char *id, dnet_net_state *st, dnet_cmd *cmd, const write_request &request)
+write_response_t slru_cache_t::write(dnet_net_state *st, dnet_cmd *cmd, const write_request &request)
 {
 	TIMER_SCOPE("write");
 
-	const size_t lifetime = request.cache_lifetime;
-	const size_t data_size = request.data_size;
+	const auto id = request.id;
 	const bool remove_from_disk = (request.ioflags & DNET_IO_FLAGS_CACHE_REMOVE_FROM_DISK);
 	const bool cache = (request.ioflags & DNET_IO_FLAGS_CACHE);
 	const bool cache_only = (request.ioflags & DNET_IO_FLAGS_CACHE_ONLY);
 	const bool append = (request.ioflags & DNET_IO_FLAGS_APPEND);
-	const bool reset_json = !request.json &&
-		!(request.ioflags & DNET_IO_FLAGS_PLAIN_WRITE) && !(request.ioflags & DNET_IO_FLAGS_COMMIT);
+	const bool update_data = (request.ioflags & DNET_IO_FLAGS_PREPARE) || request.data.size();
+	const bool update_json = (request.ioflags & (DNET_IO_FLAGS_PREPARE | DNET_IO_FLAGS_UPDATE_JSON)) || request.json.size();
 
 	TIMER_START("write.lock");
 	elliptics_unique_lock<std::mutex> guard(m_lock, m_node, "%s: CACHE WRITE: %p", dnet_dump_id_str(id), this);
@@ -90,10 +89,9 @@ std::pair<write_response, int> slru_cache_t::write(const unsigned char *id, dnet
 
 	if (!it && !cache) {
 		dnet_log(m_node, DNET_LOG_DEBUG, "%s: CACHE: not a cache call", dnet_dump_id_str(id));
-		return {write_response::ERROR, -ENOTSUP};
+		return write_response_t{write_status::ERROR, -ENOTSUP, cache_item()};
 	}
 
-	// Optimization for append-only commands
 	if (!cache_only && !append && it && it->only_append()) {
 		TIMER_SCOPE("write.after_append_only");
 
@@ -103,7 +101,7 @@ std::pair<write_response, int> slru_cache_t::write(const unsigned char *id, dnet
 
 		it = populate_from_disk(guard, id, false, &err);
 
-		return {write_response::HANDLED_IN_BACKEND, err};
+		return write_response_t{write_status::HANDLED_IN_BACKEND, err, it->get_cache_item()};
 	}
 
 	bool new_page = false;
@@ -116,7 +114,7 @@ std::pair<write_response, int> slru_cache_t::write(const unsigned char *id, dnet
 			new_page = true;
 
 			if (err != 0 && err != -ENOENT)
-				return {write_response::ERROR, err};
+				return write_response_t{write_status::ERROR, err, cache_item()};
 		}
 
 		// Create empty data for code simplifying
@@ -131,27 +129,27 @@ std::pair<write_response, int> slru_cache_t::write(const unsigned char *id, dnet
 
 	int err = check_cas(it, cmd, request);
 	if (err)
-		return {write_response::ERROR, err};
+		return write_response_t{write_status::ERROR, err, cache_item()};
 
 	dnet_log(m_node, DNET_LOG_DEBUG, "%s: CACHE: CAS checked", dnet_dump_id_str(id));
 
 	auto raw = it->data();
 
 	const size_t new_json_size = [&] () -> size_t {
-		if (request.json) {
-			return request.json_size;
-		} else if (reset_json) {
-			return 0;
+		if (update_json) {
+			return request.json.size();
 		} else {
 			return it->json()->size();
 		}
 	} ();
 
 	const size_t new_data_size = [&] () -> size_t {
-		if (append) {
-			return raw->size() + data_size;
+		if (!update_data) {
+			return raw->size();
+		} else if (append) {
+			return raw->size() + request.data.size();
 		} else {
-			return request.data_offset + request.data_size;
+			return request.data_offset + request.data.size();
 		}
 	} ();
 
@@ -173,18 +171,28 @@ std::pair<write_response, int> slru_cache_t::write(const unsigned char *id, dnet
 	m_cache_stats.size_of_objects -= it->size();
 
 	TIMER_START("write.modify");
-	if (request.json) {
-		it->json()->assign(request.json, request.json_size);
-		it->set_json_timestamp(request.json_timestamp);
-	} else if (reset_json) {
-		it->clear_json();
+	if (update_json) {
+		if (request.json.size()) {
+			it->json()->assign(reinterpret_cast<char *>(request.json.data()), request.json.size());
+		} else {
+			it->json()->clear();
+		}
+
+		if (cmd->cmd == DNET_CMD_WRITE_NEW) {
+			it->set_json_timestamp(request.json_timestamp);
+		} else {
+			it->clear_json_timestamp();
+		}
 	}
 
-	if (append) {
-		raw->append(request.data, data_size);
-	} else {
-		raw->resize(new_data_size);
-		raw->replace(request.data_offset, std::string::npos, request.data, data_size);
+	if (update_data) {
+		if (append) {
+			raw->append(reinterpret_cast<char *>(request.data.data()), request.data.size());
+		} else {
+			raw->resize(new_data_size);
+			raw->replace(request.data_offset, std::string::npos,
+				     reinterpret_cast<char *>(request.data.data()), request.data.size());
+		}
 	}
 	TIMER_STOP("write.modify");
 	m_cache_stats.size_of_objects += it->size();
@@ -201,8 +209,8 @@ std::pair<write_response, int> slru_cache_t::write(const unsigned char *id, dnet
 		it->set_synctime(current_time + m_sync_timeout);
 	}
 
-	if (lifetime) {
-		it->set_lifetime(current_time + lifetime);
+	if (request.cache_lifetime) {
+		it->set_lifetime(current_time + request.cache_lifetime);
 	}
 
 	if (previous_eventtime != it->eventtime()) {
@@ -210,23 +218,26 @@ std::pair<write_response, int> slru_cache_t::write(const unsigned char *id, dnet
 		m_treap.decrease_key(it);
 	}
 
-	it->set_timestamp(request.timestamp);
-	it->set_user_flags(request.user_flags);
+	if (update_data) {
+		it->set_timestamp(request.timestamp);
+		it->set_user_flags(request.user_flags);
+	}
 
-	return {write_response::HANDLED_IN_CACHE, 0};
+	return write_response_t{write_status::HANDLED_IN_CACHE, 0, it->get_cache_item()};
 }
 
-data_t *slru_cache_t::read(const unsigned char *id, uint64_t ioflags) {
+read_response_t slru_cache_t::read(const unsigned char *id, uint64_t ioflags) {
 	TIMER_SCOPE("read");
 
 	const bool cache = (ioflags & DNET_IO_FLAGS_CACHE);
 	const bool cache_only = (ioflags & DNET_IO_FLAGS_CACHE_ONLY);
 
+	int err = 0;
+	bool new_page = false;
+
 	TIMER_START("read.lock");
 	elliptics_unique_lock<std::mutex> guard(m_lock, m_node, "%s: CACHE READ: %p", dnet_dump_id_str(id), this);
 	TIMER_STOP("read.lock");
-
-	bool new_page = false;
 
 	TIMER_START("read.find");
 	data_t* it = m_treap.find(id);
@@ -238,7 +249,6 @@ data_t *slru_cache_t::read(const unsigned char *id, uint64_t ioflags) {
 	}
 
 	if (!it && cache && !cache_only) {
-		int err = 0;
 		it = populate_from_disk(guard, id, false, &err);
 		new_page = true;
 	}
@@ -257,10 +267,13 @@ data_t *slru_cache_t::read(const unsigned char *id, uint64_t ioflags) {
 		}
 
 		move_data_between_pages(id, page_number, new_page_number, &*it);
-		return it;
+		return read_response_t{0, it->get_cache_item()};
 	}
 
-	return nullptr;
+	if (!err) {
+		err = cache ? -ENOENT : -ENOTSUP;
+	}
+	return read_response_t{err, cache_item()};
 }
 
 int slru_cache_t::remove(const unsigned char *id, uint64_t ioflags) {
@@ -316,10 +329,8 @@ int slru_cache_t::remove(const unsigned char *id, uint64_t ioflags) {
 	return err;
 }
 
-int slru_cache_t::lookup(const unsigned char *id, dnet_net_state *st, dnet_cmd *cmd) {
+read_response_t slru_cache_t::lookup(const unsigned char *id) {
 	TIMER_SCOPE("lookup");
-
-	int err = 0;
 
 	TIMER_START("lookup.lock");
 	elliptics_unique_lock<std::mutex> guard(m_lock, m_node, "%s: CACHE LOOKUP: %p", dnet_dump_id_str(id), this);
@@ -329,34 +340,11 @@ int slru_cache_t::lookup(const unsigned char *id, dnet_net_state *st, dnet_cmd *
 	data_t* it = m_treap.find(id);
 	TIMER_STOP("lookup.find");
 
-	if (!it) {
-		return -ENOENT;
+	if (it) {
+		return read_response_t{0, it->get_cache_item()};
 	}
 
-	auto timestamp = it->timestamp();
-
-	guard.unlock();
-
-	// go check object on disk
-	TIMER_START("lookup.local");
-	local_session sess(m_backend, m_node);
-	cmd->flags |= DNET_FLAGS_NOCACHE;
-	ioremap::elliptics::data_pointer data = sess.lookup(*cmd, &err);
-	cmd->flags &= ~DNET_FLAGS_NOCACHE;
-	TIMER_STOP("lookup.local");
-
-	cmd->flags &= ~(DNET_FLAGS_MORE | DNET_FLAGS_NEED_ACK);
-
-	if (err) {
-		// zero size means 'we didn't find key on disk', but yet it exists in cache
-		// lookup by its nature is 'show me what is on disk' command
-		return dnet_send_file_info_ts_without_fd(st, cmd, NULL, 0, &timestamp);
-	}
-
-	auto info = data.skip<dnet_addr>().data<dnet_file_info>();
-	info->mtime = timestamp;
-
-	return dnet_send_reply(st, cmd, data.data(), data.size(), 0);
+	return read_response_t{-ENOENT, cache_item()};
 }
 
 void slru_cache_t::clear() {
@@ -424,18 +412,32 @@ int slru_cache_t::check_cas(const data_t* it, const dnet_cmd *cmd, const write_r
 	if (request.ioflags & DNET_IO_FLAGS_CAS_TIMESTAMP) {
 		TIMER_SCOPE("write.cas_timestamp");
 
-		if (raw->size() != 0) {
-			struct dnet_time cache_ts = it->timestamp();
+		if (!raw->empty()) {
+			auto cache_ts = it->timestamp();
 
 			// cache timestamp is greater than timestamp of the data to be written
 			// do not allow it
 			if (dnet_time_cmp(&cache_ts, &request.timestamp) > 0) {
-				dnet_log(m_node, DNET_LOG_ERROR, "%s: cas: cache timestamp is larger "
+				dnet_log(m_node, DNET_LOG_ERROR, "%s: cas: cache data timestamp is larger "
 				                                 "than data to be written timestamp: "
 				                                 "cache-ts: %lld.%lld, data-ts: %lld.%lld",
 				         dnet_dump_id(&cmd->id), (unsigned long long)cache_ts.tsec,
 				         (unsigned long long)cache_ts.tnsec, (unsigned long long)request.timestamp.tsec,
 				         (unsigned long long)request.timestamp.tnsec);
+				return -EBADFD;
+			}
+		}
+
+		if (!it->json()->empty()) {
+			auto cache_ts = it->json_timestamp();
+
+			if (dnet_time_cmp(&cache_ts, &request.json_timestamp) > 0) {
+				dnet_log(m_node, DNET_LOG_ERROR, "%s: cas: cache json timestamp is larger "
+				                                 "than data to be written timestamp: "
+				                                 "cache-ts: %lld.%lld, data-ts: %lld.%lld",
+				         dnet_dump_id(&cmd->id), (unsigned long long)cache_ts.tsec,
+				         (unsigned long long)cache_ts.tnsec, (unsigned long long)request.json_timestamp.tsec,
+				         (unsigned long long)request.json_timestamp.tnsec);
 				return -EBADFD;
 			}
 		}
@@ -788,9 +790,9 @@ void slru_cache_t::life_check(void) {
 
 			{
 				TIMER_SCOPE("life_check.remove_local");
-				std::for_each(remove.begin(), remove.end(), [this](struct dnet_id &id) {
+				for (struct dnet_id &id : remove) {
 				        dnet_remove_local(m_backend, m_node, &id);
-				});
+				}
 			}
 
 			{

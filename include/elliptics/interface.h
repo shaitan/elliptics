@@ -406,6 +406,9 @@ int dnet_session_get_trace_bit(struct dnet_session *s);
 void dnet_session_set_ioflags(struct dnet_session *s, uint32_t ioflags);
 uint32_t dnet_session_get_ioflags(struct dnet_session *s);
 
+void dnet_session_set_cache_lifetime(struct dnet_session *s, uint64_t lifetime);
+uint64_t dnet_session_get_cache_lifetime(struct dnet_session *s);
+
 void dnet_session_set_cflags(struct dnet_session *s, uint64_t cflags);
 uint64_t dnet_session_get_cflags(struct dnet_session *s);
 

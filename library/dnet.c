@@ -1575,9 +1575,17 @@ static int dnet_process_cmd_with_backend_raw(struct dnet_backend_io *backend, st
 
 			dnet_convert_io_attr(io);
 		default:
-			/* TODO: DNET_CMD_LOOKUP_NEW */
 			if (cmd->cmd == DNET_CMD_LOOKUP && !(cmd->flags & DNET_FLAGS_NOCACHE)) {
 				err = dnet_cmd_cache_lookup(backend, st, cmd);
+
+				if (err != -ENOTSUP && err != -ENOENT) {
+					*handled_in_cache = 1;
+					break;
+				}
+			}
+
+			if (cmd->cmd == DNET_CMD_LOOKUP_NEW && !(cmd->flags & DNET_FLAGS_NOCACHE)) {
+				err = dnet_cmd_cache_io_new(backend, st, cmd, data);
 
 				if (err != -ENOTSUP && err != -ENOENT) {
 					*handled_in_cache = 1;
@@ -1590,9 +1598,7 @@ static int dnet_process_cmd_with_backend_raw(struct dnet_backend_io *backend, st
 				break;
 			}
 
-			if (!(cmd->flags & DNET_FLAGS_NOCACHE) &&
-			    ((cmd->cmd == DNET_CMD_WRITE_NEW) ||
-			     (cmd->cmd == DNET_CMD_READ_NEW))) {
+			if ((cmd->cmd == DNET_CMD_WRITE_NEW) || (cmd->cmd == DNET_CMD_READ_NEW)) {
 				err = dnet_cmd_cache_io_new(backend, st, cmd, data);
 
 				if (err != -ENOTSUP) {

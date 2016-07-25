@@ -30,13 +30,13 @@ public:
 
 	~slru_cache_t();
 
-	std::pair<write_response, int> write(const unsigned char *id, dnet_net_state *st, dnet_cmd *cmd, const write_request &request);
+	write_response_t write(dnet_net_state *st, dnet_cmd *cmd, const write_request &request);
 
-	data_t *read(const unsigned char *id, uint64_t ioflags);
+	read_response_t read(const unsigned char *id, uint64_t ioflags);
 
 	int remove(const unsigned char *id, uint64_t ioflags);
 
-	int lookup(const unsigned char *id, dnet_net_state *st, dnet_cmd *cmd);
+	read_response_t lookup(const unsigned char *id);
 
 	void clear();
 
