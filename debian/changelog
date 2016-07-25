@@ -1,3 +1,28 @@
+elliptics (2.26.11.0-5) unstable; urgency=medium
+
+  * dnet_client: --json/--json-file and or --data/--data-file can be omitted
+  * iter: reset size of uncommitted records because it is unknown.
+  * tests: update newapi iterator tests for testing 7a48176
+  * packages: add libblackhole1 to elliptics and elliptics-client depends
+  * iterator: add to DNET_FLAGS_NOLOCK cflags for iterator
+  * net: fix addicting net thread on sending responses to one state
+  * remove useless #if #include #else #include #endif
+  * cache: replace raw_data_t by std::string
+  * Cleanup code
+  * cache: add json and json_timestamp to data_t
+  * cache: cleanup code
+  * cache: refactoring
+  * cache: handling of WRITE_NEW command with json
+  * backend: fix in log message for WRITE_NEW: data_offset -> data_size
+  * python: wrap python_async_result::iterator to free GIL in long operations
+  * cache: handling of READ_NEW & LOOKUP_NEW command with json
+  * tests: added cache tests to new api tests
+  * cocaine: remove libcocaine-plugin-elliptics
+  * session: added description of set_cache_lifetime()
+  * stats: update commands and top statistics for {READ,WRITE}_NEW
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Tue, 26 Jul 2016 00:10:05 +0300
+
 elliptics (2.26.11.0-4) unstable; urgency=medium
 
   * tests: fixed bad cast of err in locks test
