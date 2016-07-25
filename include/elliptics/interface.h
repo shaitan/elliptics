@@ -258,7 +258,8 @@ struct dnet_io_local
 
 struct dnet_backend_callbacks {
 	/* command handler processes DNET_CMD_* commands */
-	int			(* command_handler)(void *state, void *priv, struct dnet_cmd *cmd, void *data);
+	int			(* command_handler)(void *state, void *priv, struct dnet_cmd *cmd, void *data,
+	                                            void *cmd_stats);
 
 	/* this must be provided as @priv argument to all above and below callbacks*/
 	void			*command_private;

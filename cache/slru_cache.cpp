@@ -97,7 +97,8 @@ write_response_t slru_cache_t::write(dnet_net_state *st, dnet_cmd *cmd, const wr
 
 		sync_after_append(guard, false, &*it);
 
-		int err = m_backend->cb->command_handler(st, m_backend->cb->command_private, cmd, request.request_data);
+		dnet_cmd_stats stats;
+		int err = m_backend->cb->command_handler(st, m_backend->cb->command_private, cmd, request.request_data, &stats);
 
 		it = populate_from_disk(guard, id, false, &err);
 

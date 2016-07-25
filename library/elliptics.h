@@ -66,6 +66,7 @@ struct dnet_test_settings;
 struct dnet_node;
 struct dnet_group;
 struct dnet_net_state;
+struct dnet_cmd_stats;
 
 extern __thread uint64_t trace_id;
 
@@ -878,9 +879,21 @@ void dnet_data_unmap(struct dnet_map_fd *map);
 
 void *dnet_cache_init(struct dnet_node *n, struct dnet_backend_io *backend, const void *config);
 void dnet_cache_cleanup(void *);
-int dnet_cmd_cache_io(struct dnet_backend_io *backend, struct dnet_net_state *st, struct dnet_cmd *cmd, struct dnet_io_attr *io, char *data);
-int dnet_cmd_cache_io_new(struct dnet_backend_io *backend, struct dnet_net_state *st, struct dnet_cmd *cmd, void *data);
-int dnet_cmd_cache_lookup(struct dnet_backend_io *backend, struct dnet_net_state *st, struct dnet_cmd *cmd);
+int dnet_cmd_cache_io(struct dnet_backend_io *backend,
+                      struct dnet_net_state *st,
+                      struct dnet_cmd *cmd,
+                      struct dnet_io_attr *io,
+                      char *data,
+                      struct dnet_cmd_stats *cmd_stats);
+int dnet_cmd_cache_io_new(struct dnet_backend_io *backend,
+                          struct dnet_net_state *st,
+                          struct dnet_cmd *cmd,
+                          void *data,
+                          struct dnet_cmd_stats *cmd_stats);
+int dnet_cmd_cache_lookup(struct dnet_backend_io *backend,
+                          struct dnet_net_state *st,
+                          struct dnet_cmd *cmd,
+                          struct dnet_cmd_stats *cmd_stats);
 
 int dnet_indexes_init(struct dnet_node *, struct dnet_config *);
 void dnet_indexes_cleanup(struct dnet_node *);
@@ -1091,6 +1104,16 @@ static inline const char* dnet_print_trans(const struct dnet_trans *t) {
 	         t->wait_ts.tv_sec);
 	return __dnet_print_trans;
 }
+
+/*
+ * Statistics about handled command
+ */
+struct dnet_cmd_stats {
+	long queue_time;	// time that the command spent in queue
+	int handled_in_cache;	// whether the command handled by cache
+	long handle_time;	// time spent on the command handle
+	uint64_t size;		// size of data received or sent by command
+};
 
 
 #ifdef __cplusplus
