@@ -357,15 +357,15 @@ static int run_servers(const rapidjson::Value &doc)
 #ifdef HAVE_COCAINE
 	if (srw) {
 		const std::vector<int> groups(unique_groups.begin(), unique_groups.end());
-
-		try {
-			tests::upload_application(setup->nodes[0].locator_port(), tests::application_name(),
-			                          setup->directory.path());
-		} catch (std::exception &exc) {
-			test::log << "Can not upload application: " << exc.what() << test::endl;
-			return 1;
-		}
 		for (size_t i = 0; i < setup->nodes.size(); ++i) {
+			try {
+				tests::upload_application(setup->nodes[i].locator_port(), tests::application_name(),
+				                          setup->directory.path() + "/cocaine/spool");
+			} catch (std::exception &exc) {
+				test::log << "Can not upload application: " << exc.what() << test::endl;
+				return 1;
+			}
+
 			try {
 				tests::start_application(setup->nodes[i].locator_port(), tests::application_name());
 
