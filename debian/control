@@ -58,18 +58,6 @@ Replaces: elliptics-2.10
 Description: Distributed hash table storage (client library)
  Elliptics network is a fault tolerant distributed hash table object storage.
 
-Package: libcocaine-plugin-elliptics
-Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, elliptics-client (= ${Source-Version})
-Description: Distributed hash table storage (cocaine plugin)
- Elliptics network is a fault tolerant distributed hash table object storage.
-
-Package: libcocaine-plugin-elliptics-dev
-Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, libcocaine-framework-native-dev (>= 0.12.8-6), libcocaine-framework-native-dev (<< 0.12.9)
-Description: Distributed hash table storage (cocaine plugin includes)
- Elliptics network is a fault tolerant distributed hash table object storage.
-
 Package: elliptics-dbg
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}, elliptics (= ${Source-Version}) | elliptics-client (= ${Source-Version})

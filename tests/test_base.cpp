@@ -907,6 +907,8 @@ nodes_data::ptr start_nodes(start_nodes_config &start_config) {
 			config.options("remote", remotes);
 
 #ifdef HAVE_COCAINE
+		const std::string cocaine_path = server_path + "/cocaine";
+		create_directory(cocaine_path);
 		if (start_config.srw) {
 			const std::string server_run_path = run_path + server_suffix;
 			create_directory(server_run_path);
@@ -938,13 +940,14 @@ nodes_data::ptr start_nodes(start_nodes_config &start_config) {
 				{ "COCAINE_PLUGINS_PATH", cocaine_config_plugins() },
 				{ "ELLIPTICS_REMOTES", cocaine_remotes },
 				{ "ELLIPTICS_GROUPS", cocaine_groups },
-				{ "COCAINE_LOG_PATH", server_path + "/cocaine.log" },
-				{ "COCAINE_RUN_PATH", server_run_path }
+				{ "COCAINE_LOG_PATH", cocaine_path + "/log.log" },
+				{ "COCAINE_RUN_PATH", server_run_path },
+				{ "COCAINE_STORAGE_PATH", cocaine_path + "/storage"}
 			};
-			create_cocaine_config(server_path + "/cocaine.conf", cocaine_config_template,
+			create_cocaine_config(cocaine_path + "/cocaine.conf", cocaine_config_template,
 			                      cocaine_variables);
 
-			config.options("srw_config", server_path + "/cocaine.conf");
+			config.options("srw_config", cocaine_path + "/cocaine.conf");
 		}
 #endif // HAVE_COCAINE
 

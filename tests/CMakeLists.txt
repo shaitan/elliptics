@@ -240,7 +240,7 @@ if(WITH_COCAINE)
     add_executable(dnet_cpp_srw_test srw_test.cpp)
     set_target_properties(dnet_cpp_srw_test ${TEST_PROPERTIES})
     target_link_libraries(dnet_cpp_srw_test ${TEST_LIBRARIES} ${TEST_SRW_LIBRARIES})
-    add_test_target(test_srw dnet_cpp_srw_test DEPENDS dnet_cpp_srw_test_app elliptics-extensions)
+    add_test_target(test_srw dnet_cpp_srw_test DEPENDS dnet_cpp_srw_test_app)
 
     add_executable(dnet_cpp_srw_test_app srw_test_app.cpp)
     set_target_properties(dnet_cpp_srw_test_app ${TEST_PROPERTIES})
@@ -263,7 +263,7 @@ if(WITH_COCAINE)
     # Append test_srw to general list of tests
     #
     list(APPEND TESTS_LIST dnet_cpp_srw_test)
-    list(APPEND TESTS_DEPS dnet_cpp_srw_test_app elliptics-extensions)
+    list(APPEND TESTS_DEPS dnet_cpp_srw_test_app)
 endif()
 
 #
