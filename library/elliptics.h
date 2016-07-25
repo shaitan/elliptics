@@ -683,6 +683,7 @@ struct dnet_session {
 	uint64_t		user_flags;
 	trace_id_t		trace_id;
 	uint32_t		ioflags;
+	uint64_t		cache_lifetime;
 
 	/*
 	 * If DNET_FLAGS_DIRECT is set then direct_id is used for sticking
@@ -878,6 +879,7 @@ void dnet_data_unmap(struct dnet_map_fd *map);
 void *dnet_cache_init(struct dnet_node *n, struct dnet_backend_io *backend, const void *config);
 void dnet_cache_cleanup(void *);
 int dnet_cmd_cache_io(struct dnet_backend_io *backend, struct dnet_net_state *st, struct dnet_cmd *cmd, struct dnet_io_attr *io, char *data);
+int dnet_cmd_cache_io_new(struct dnet_backend_io *backend, struct dnet_net_state *st, struct dnet_cmd *cmd, void *data);
 int dnet_cmd_cache_lookup(struct dnet_backend_io *backend, struct dnet_net_state *st, struct dnet_cmd *cmd);
 
 int dnet_indexes_init(struct dnet_node *, struct dnet_config *);

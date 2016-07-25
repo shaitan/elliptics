@@ -406,6 +406,9 @@ int dnet_session_get_trace_bit(struct dnet_session *s);
 void dnet_session_set_ioflags(struct dnet_session *s, uint32_t ioflags);
 uint32_t dnet_session_get_ioflags(struct dnet_session *s);
 
+void dnet_session_set_cache_lifetime(struct dnet_session *s, uint64_t lifetime);
+uint64_t dnet_session_get_cache_lifetime(struct dnet_session *s);
+
 void dnet_session_set_cflags(struct dnet_session *s, uint64_t cflags);
 uint64_t dnet_session_get_cflags(struct dnet_session *s);
 
@@ -894,7 +897,7 @@ int dnet_send_file_info(void *state, struct dnet_cmd *cmd, int fd, uint64_t offs
 int dnet_send_file_info_without_fd(void *state, struct dnet_cmd *cmd, const void *data, int64_t size);
 int dnet_send_file_info_ts(void *state, struct dnet_cmd *cmd, int fd,
                            uint64_t offset, int64_t size, struct dnet_time *timestamp, uint64_t record_flags);
-int dnet_send_file_info_ts_without_fd(void *state, struct dnet_cmd *cmd, const void *data, int64_t size, struct dnet_time *timestamp);
+int dnet_send_file_info_ts_without_fd(void *state, struct dnet_cmd *cmd, const void *data, int64_t size, const struct dnet_time *timestamp);
 
 
 /*

@@ -472,22 +472,26 @@ static void create_session_data(session_data &sess, struct dnet_node *node)
 	sess.policy = session::default_exceptions;
 }
 
-session_data::session_data(const node &n) : logger(n.get_log(), blackhole::log::attributes_t())
+session_data::session_data(const node &n)
+: logger(n.get_log()
+, blackhole::log::attributes_t())
 {
 	create_session_data(*this, n.get_native());
 }
 
-session_data::session_data(dnet_node *node) : logger(*dnet_node_get_logger(node), blackhole::log::attributes_t())
+session_data::session_data(dnet_node *node)
+: logger(*dnet_node_get_logger(node)
+, blackhole::log::attributes_t())
 {
 	create_session_data(*this, node);
 }
 
 session_data::session_data(session_data &other)
-	: logger(other.logger, blackhole::log::attributes_t()),
-	  filter(other.filter),
-	  checker(other.checker),
-	  error_handler(other.error_handler),
-	  policy(other.policy)
+: logger(other.logger, blackhole::log::attributes_t())
+, filter(other.filter)
+, checker(other.checker)
+, error_handler(other.error_handler)
+, policy(other.policy)
 {
 	session_ptr = dnet_session_copy(other.session_ptr);
 	if (!session_ptr)

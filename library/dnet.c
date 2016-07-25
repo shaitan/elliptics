@@ -1584,9 +1584,27 @@ static int dnet_process_cmd_with_backend_raw(struct dnet_backend_io *backend, st
 				}
 			}
 
+			if (cmd->cmd == DNET_CMD_LOOKUP_NEW && !(cmd->flags & DNET_FLAGS_NOCACHE)) {
+				err = dnet_cmd_cache_io_new(backend, st, cmd, data);
+
+				if (err != -ENOTSUP && err != -ENOENT) {
+					*handled_in_cache = 1;
+					break;
+				}
+			}
+
 			if ((n->ro || backend->read_only) && (cmd->cmd == DNET_CMD_WRITE_NEW)) {
 				err = -EROFS;
 				break;
+			}
+
+			if ((cmd->cmd == DNET_CMD_WRITE_NEW) || (cmd->cmd == DNET_CMD_READ_NEW)) {
+				err = dnet_cmd_cache_io_new(backend, st, cmd, data);
+
+				if (err != -ENOTSUP) {
+					*handled_in_cache = 1;
+					break;
+				}
 			}
 
 			/* Remove DNET_FLAGS_NEED_ACK flags for READ/WRITE/LOOKUP commands
@@ -1973,7 +1991,7 @@ int dnet_send_file_info_without_fd(void *state, struct dnet_cmd *cmd, const void
 	return dnet_send_file_info_ts_without_fd(state, cmd, data, size, NULL);
 }
 
-int dnet_send_file_info_ts_without_fd(void *state, struct dnet_cmd *cmd, const void *data, int64_t size, struct dnet_time *timestamp)
+int dnet_send_file_info_ts_without_fd(void *state, struct dnet_cmd *cmd, const void *data, int64_t size, const struct dnet_time *timestamp)
 {
 	struct dnet_net_state *st = state;
 	struct dnet_file_info *info;

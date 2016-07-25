@@ -34,6 +34,13 @@ public:
 	dnet_time get_json_timestamp() const;
 	void reset_json_timestamp();
 
+	/* Sets cache lifetime in seconds for given session.
+	 * Any write operation to the cache with positive cache \a lifetime value forces discarding
+	 * of a written key from cache after given \a lifetime period.
+	 */
+	void set_cache_lifetime(uint64_t lifetime);
+	uint64_t get_cache_lifetime() const;
+
 	/* Lookup information for key \a id.
 	 */
 	async_lookup_result lookup(const key &id);
