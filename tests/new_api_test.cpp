@@ -41,6 +41,7 @@ struct record {
 	uint64_t json_capacity;
 	std::string data;
 	uint64_t data_capacity;
+	bool in_cache;
 };
 
 void check_lookup_result(ioremap::elliptics::newapi::async_lookup_result &async,
@@ -58,36 +59,48 @@ void check_lookup_result(ioremap::elliptics::newapi::async_lookup_result &async,
 		auto record_info = result.record_info();
 
 		BOOST_REQUIRE_EQUAL(record_info.user_flags, record.user_flags);
-		BOOST_REQUIRE_EQUAL(record_info.record_flags,
-		                    DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM);
 
-		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.json_timestamp, &record.json_timestamp), 0);
-		constexpr uint64_t eblob_headers_size = sizeof(eblob_disk_control) + sizeof(dnet_ext_list_hdr);
-		BOOST_REQUIRE(record_info.json_offset >= eblob_headers_size);
-		BOOST_REQUIRE_EQUAL(record_info.json_size, record.json.size());
-		BOOST_REQUIRE_EQUAL(record_info.json_capacity, record.json_capacity);
-
-		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.data_timestamp, &record.timestamp), 0);
-		BOOST_REQUIRE_EQUAL(record_info.data_offset, record_info.json_offset + record.json_capacity);
-		BOOST_REQUIRE_EQUAL(record_info.data_size, record.data.size());
-
-		std::ifstream blob(result.path(), std::ifstream::binary);
-		BOOST_REQUIRE(blob);
-		if (record.json.size())
-		{
-			blob.seekg(record_info.json_offset);
-			auto buffer = ioremap::elliptics::data_pointer::allocate(record.json.size());
-			blob.read(buffer.data<char>(), buffer.size());
-			BOOST_REQUIRE(blob);
-			BOOST_REQUIRE_EQUAL(buffer.to_string(), record.json);
+		if (!record.in_cache) {
+			BOOST_REQUIRE_EQUAL(record_info.record_flags,
+			                    DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM);
 		}
 
-		if (record.data.size()) {
-			blob.seekg(record_info.data_offset);
-			auto buffer = ioremap::elliptics::data_pointer::allocate(record.data.size());
-			blob.read(buffer.data<char>(), buffer.size());
+		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.json_timestamp, &record.json_timestamp), 0);
+		if (!record.in_cache) {
+			constexpr uint64_t eblob_headers_size = sizeof(eblob_disk_control) + sizeof(dnet_ext_list_hdr);
+			BOOST_REQUIRE(record_info.json_offset >= eblob_headers_size);
+		}
+		BOOST_REQUIRE_EQUAL(record_info.json_size, record.json.size());
+
+		if (!record.in_cache) {
+			BOOST_REQUIRE_EQUAL(record_info.json_capacity, record.json_capacity);
+		}
+
+		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.data_timestamp, &record.timestamp), 0);
+		if (!record.in_cache) {
+			BOOST_REQUIRE_EQUAL(record_info.data_offset, record_info.json_offset + record.json_capacity);
+		}
+		BOOST_REQUIRE_EQUAL(record_info.data_size, record.data.size());
+
+		if (!record.in_cache) {
+			std::ifstream blob(result.path(), std::ifstream::binary);
 			BOOST_REQUIRE(blob);
-			BOOST_REQUIRE_EQUAL(buffer.to_string(), record.data);
+			if (record.json.size())
+			{
+				blob.seekg(record_info.json_offset);
+				auto buffer = ioremap::elliptics::data_pointer::allocate(record.json.size());
+				blob.read(buffer.data<char>(), buffer.size());
+				BOOST_REQUIRE(blob);
+				BOOST_REQUIRE_EQUAL(buffer.to_string(), record.json);
+			}
+
+			if (record.data.size()) {
+				blob.seekg(record_info.data_offset);
+				auto buffer = ioremap::elliptics::data_pointer::allocate(record.data.size());
+				blob.read(buffer.data<char>(), buffer.size());
+				BOOST_REQUIRE(blob);
+				BOOST_REQUIRE_EQUAL(buffer.to_string(), record.data);
+			}
 		}
 
 		++count;
@@ -233,16 +246,24 @@ void test_read_json(const ioremap::elliptics::newapi::session &session, const re
 			auto info = result.record_info();
 
 			BOOST_REQUIRE_EQUAL(info.user_flags, record.user_flags);
-			BOOST_REQUIRE_EQUAL(info.record_flags,
-			                    DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM);
+			if (!record.in_cache) {
+				BOOST_REQUIRE_EQUAL(info.record_flags,
+						    DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM);
+			}
 
 			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.json_timestamp, &record.json_timestamp), 0);
-			BOOST_REQUIRE_EQUAL(info.json_offset, 0);
+			if (!record.in_cache) {
+				BOOST_REQUIRE_EQUAL(info.json_offset, 0);
+			}
 			BOOST_REQUIRE_EQUAL(info.json_size, record.json.size());
-			BOOST_REQUIRE_EQUAL(info.json_capacity, record.json_capacity);
+			if (!record.in_cache) {
+				BOOST_REQUIRE_EQUAL(info.json_capacity, record.json_capacity);
+			}
 
 			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&info.data_timestamp, &record.timestamp), 0);
-			BOOST_REQUIRE_EQUAL(info.data_offset, 0);
+			if (!record.in_cache) {
+				BOOST_REQUIRE_EQUAL(info.data_offset, 0);
+			}
 			BOOST_REQUIRE_EQUAL(info.data_size, record.data.size());
 
 			BOOST_REQUIRE_EQUAL(result.json().to_string(), record.json);
@@ -282,16 +303,24 @@ void test_read_data(const ioremap::elliptics::newapi::session &session, const re
 			auto record_info = result.record_info();
 
 			BOOST_REQUIRE_EQUAL(record_info.user_flags, record.user_flags);
-			BOOST_REQUIRE_EQUAL(record_info.record_flags,
-			                    DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM);
+			if (!record.in_cache) {
+				BOOST_REQUIRE_EQUAL(record_info.record_flags,
+						    DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM);
+			}
 
 			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.json_timestamp, &record.json_timestamp), 0);
-			BOOST_REQUIRE_EQUAL(record_info.json_offset, 0);
+			if (!record.in_cache) {
+				BOOST_REQUIRE_EQUAL(record_info.json_offset, 0);
+			}
 			BOOST_REQUIRE_EQUAL(record_info.json_size, record.json.size());
-			BOOST_REQUIRE_EQUAL(record_info.json_capacity, record.json_capacity);
+			if (!record.in_cache) {
+				BOOST_REQUIRE_EQUAL(record_info.json_capacity, record.json_capacity);
+			}
 
 			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.data_timestamp, &record.timestamp), 0);
-			BOOST_REQUIRE_EQUAL(record_info.data_offset, 0);
+			if (!record.in_cache) {
+				BOOST_REQUIRE_EQUAL(record_info.data_offset, 0);
+			}
 			BOOST_REQUIRE_EQUAL(record_info.data_size, record.data.size());
 
 			BOOST_REQUIRE(result.json().empty());
@@ -332,16 +361,24 @@ void test_read(const ioremap::elliptics::newapi::session &session, const record 
 			auto record_info = result.record_info();
 
 			BOOST_REQUIRE_EQUAL(record_info.user_flags, record.user_flags);
-			BOOST_REQUIRE_EQUAL(record_info.record_flags,
-			                    DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM);
+			if (!record.in_cache) {
+				BOOST_REQUIRE_EQUAL(record_info.record_flags,
+						    DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM);
+			}
 
 			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.json_timestamp, &record.json_timestamp), 0);
-			BOOST_REQUIRE_EQUAL(record_info.json_offset, 0);
+			if (!record.in_cache) {
+				BOOST_REQUIRE_EQUAL(record_info.json_offset, 0);
+			}
 			BOOST_REQUIRE_EQUAL(record_info.json_size, record.json.size());
-			BOOST_REQUIRE_EQUAL(record_info.json_capacity, record.json_capacity);
+			if (!record.in_cache) {
+				BOOST_REQUIRE_EQUAL(record_info.json_capacity, record.json_capacity);
+			}
 
 			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.data_timestamp, &record.timestamp), 0);
-			BOOST_REQUIRE_EQUAL(record_info.data_offset, 0);
+			if (!record.in_cache) {
+				BOOST_REQUIRE_EQUAL(record_info.data_offset, 0);
+			}
 			BOOST_REQUIRE_EQUAL(record_info.data_size, record.data.size());
 
 			BOOST_REQUIRE_EQUAL(result.json().to_string(), record.json);
@@ -384,19 +421,27 @@ void test_write_chunked(const ioremap::elliptics::newapi::session &session, cons
 		auto record_info = result.record_info();
 
 		BOOST_REQUIRE_EQUAL(record_info.user_flags, record.user_flags);
-		BOOST_REQUIRE_EQUAL(record_info.record_flags, DNET_RECORD_FLAGS_EXTHDR |
-		                                              DNET_RECORD_FLAGS_CHUNKED_CSUM |
-		                                              DNET_RECORD_FLAGS_UNCOMMITTED);
+		if (!record.in_cache) {
+			BOOST_REQUIRE_EQUAL(record_info.record_flags, DNET_RECORD_FLAGS_EXTHDR |
+		                                                      DNET_RECORD_FLAGS_CHUNKED_CSUM |
+		                                                      DNET_RECORD_FLAGS_UNCOMMITTED);
+		}
 
 		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.json_timestamp, &record.json_timestamp), 0);
-		constexpr uint64_t eblob_headers_size = sizeof(eblob_disk_control) + sizeof(dnet_ext_list_hdr);
-		BOOST_REQUIRE(record_info.json_offset >= eblob_headers_size);
+		if (!record.in_cache) {
+			constexpr uint64_t eblob_headers_size = sizeof(eblob_disk_control) + sizeof(dnet_ext_list_hdr);
+			BOOST_REQUIRE(record_info.json_offset >= eblob_headers_size);
+		}
 		BOOST_REQUIRE_EQUAL(record_info.json_size, 0);
-		BOOST_REQUIRE_EQUAL(record_info.json_capacity, record.json_capacity);
+		if (!record.in_cache) {
+			BOOST_REQUIRE_EQUAL(record_info.json_capacity, record.json_capacity);
+		}
 
 		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.data_timestamp, &record.timestamp), 0);
-		BOOST_REQUIRE_EQUAL(record_info.data_offset, record_info.json_offset + record.json_capacity);
-		BOOST_REQUIRE_EQUAL(record_info.data_size, 0);
+		if (!record.in_cache) {
+			BOOST_REQUIRE_EQUAL(record_info.data_offset, record_info.json_offset + record.json_capacity);
+			BOOST_REQUIRE_EQUAL(record_info.data_size, 0);
+		}
 		++count;
 	}
 	BOOST_REQUIRE_EQUAL(count, groups.size());
@@ -416,19 +461,27 @@ void test_write_chunked(const ioremap::elliptics::newapi::session &session, cons
 		auto record_info = result.record_info();
 
 		BOOST_REQUIRE_EQUAL(record_info.user_flags, record.user_flags);
-		BOOST_REQUIRE_EQUAL(record_info.record_flags, DNET_RECORD_FLAGS_EXTHDR |
-		                                              DNET_RECORD_FLAGS_CHUNKED_CSUM |
-		                                              DNET_RECORD_FLAGS_UNCOMMITTED);
+		if (!record.in_cache) {
+			BOOST_REQUIRE_EQUAL(record_info.record_flags, DNET_RECORD_FLAGS_EXTHDR |
+		                                                      DNET_RECORD_FLAGS_CHUNKED_CSUM |
+		                                                      DNET_RECORD_FLAGS_UNCOMMITTED);
+		}
 
 		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.json_timestamp, &record.json_timestamp), 0);
-		constexpr uint64_t eblob_headers_size = sizeof(eblob_disk_control) + sizeof(dnet_ext_list_hdr);
-		BOOST_REQUIRE(record_info.json_offset >= eblob_headers_size);
+		if (!record.in_cache) {
+			constexpr uint64_t eblob_headers_size = sizeof(eblob_disk_control) + sizeof(dnet_ext_list_hdr);
+			BOOST_REQUIRE(record_info.json_offset >= eblob_headers_size);
+		}
 		BOOST_REQUIRE_EQUAL(record_info.json_size, record.json.size());
-		BOOST_REQUIRE_EQUAL(record_info.json_capacity, record.json_capacity);
+		if (!record.in_cache) {
+			BOOST_REQUIRE_EQUAL(record_info.json_capacity, record.json_capacity);
+		}
 
 		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.data_timestamp, &record.timestamp), 0);
-		BOOST_REQUIRE_EQUAL(record_info.data_offset, record_info.json_offset + record.json_capacity);
-		BOOST_REQUIRE_EQUAL(record_info.data_size, 0);
+		if (!record.in_cache) {
+			BOOST_REQUIRE_EQUAL(record_info.data_offset, record_info.json_offset + record.json_capacity);
+			BOOST_REQUIRE_EQUAL(record_info.data_size, 0);
+		}
 		++count;
 	}
 	BOOST_REQUIRE_EQUAL(count, groups.size());
@@ -448,19 +501,27 @@ void test_write_chunked(const ioremap::elliptics::newapi::session &session, cons
 		auto record_info = result.record_info();
 
 		BOOST_REQUIRE_EQUAL(record_info.user_flags, record.user_flags);
-		BOOST_REQUIRE_EQUAL(record_info.record_flags, DNET_RECORD_FLAGS_EXTHDR |
-		                                              DNET_RECORD_FLAGS_CHUNKED_CSUM |
-		                                              DNET_RECORD_FLAGS_UNCOMMITTED);
+		if (!record.in_cache) {
+			BOOST_REQUIRE_EQUAL(record_info.record_flags, DNET_RECORD_FLAGS_EXTHDR |
+		                                                      DNET_RECORD_FLAGS_CHUNKED_CSUM |
+		                                                      DNET_RECORD_FLAGS_UNCOMMITTED);
+		}
 
 		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.json_timestamp, &record.json_timestamp), 0);
-		constexpr uint64_t eblob_headers_size = sizeof(eblob_disk_control) + sizeof(dnet_ext_list_hdr);
-		BOOST_REQUIRE(record_info.json_offset >= eblob_headers_size);
+		if (!record.in_cache) {
+			constexpr uint64_t eblob_headers_size = sizeof(eblob_disk_control) + sizeof(dnet_ext_list_hdr);
+			BOOST_REQUIRE(record_info.json_offset >= eblob_headers_size);
+		}
 		BOOST_REQUIRE_EQUAL(record_info.json_size, record.json.size());
-		BOOST_REQUIRE_EQUAL(record_info.json_capacity, record.json_capacity);
+		if (!record.in_cache) {
+			BOOST_REQUIRE_EQUAL(record_info.json_capacity, record.json_capacity);
+		}
 
 		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.data_timestamp, &record.timestamp), 0);
-		BOOST_REQUIRE_EQUAL(record_info.data_offset, record_info.json_offset + record.json_capacity);
-		BOOST_REQUIRE_EQUAL(record_info.data_size, 0);
+		if (!record.in_cache) {
+			BOOST_REQUIRE_EQUAL(record_info.data_offset, record_info.json_offset + record.json_capacity);
+			BOOST_REQUIRE_EQUAL(record_info.data_size, 0);
+		}
 		++count;
 	}
 	BOOST_REQUIRE_EQUAL(count, groups.size());
@@ -480,17 +541,25 @@ void test_write_chunked(const ioremap::elliptics::newapi::session &session, cons
 		auto record_info = result.record_info();
 
 		BOOST_REQUIRE_EQUAL(record_info.user_flags, record.user_flags);
-		BOOST_REQUIRE_EQUAL(record_info.record_flags,
-		                    DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM);
+		if (!record.in_cache) {
+			BOOST_REQUIRE_EQUAL(record_info.record_flags,
+					    DNET_RECORD_FLAGS_EXTHDR | DNET_RECORD_FLAGS_CHUNKED_CSUM);
+		}
 
 		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.json_timestamp, &record.json_timestamp), 0);
-		constexpr uint64_t eblob_headers_size = sizeof(eblob_disk_control) + sizeof(dnet_ext_list_hdr);
-		BOOST_REQUIRE(record_info.json_offset >= eblob_headers_size);
+		if (!record.in_cache) {
+			constexpr uint64_t eblob_headers_size = sizeof(eblob_disk_control) + sizeof(dnet_ext_list_hdr);
+			BOOST_REQUIRE(record_info.json_offset >= eblob_headers_size);
+		}
 		BOOST_REQUIRE_EQUAL(record_info.json_size, record.json.size());
-		BOOST_REQUIRE_EQUAL(record_info.json_capacity, record.json_capacity);
+		if (!record.in_cache) {
+			BOOST_REQUIRE_EQUAL(record_info.json_capacity, record.json_capacity);
+		}
 
 		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.data_timestamp, &record.timestamp), 0);
-		BOOST_REQUIRE_EQUAL(record_info.data_offset, record_info.json_offset + record.json_capacity);
+		if (!record.in_cache) {
+			BOOST_REQUIRE_EQUAL(record_info.data_offset, record_info.json_offset + record.json_capacity);
+		}
 		BOOST_REQUIRE_EQUAL(record_info.data_size, 3*record.data.size());
 		++count;
 	}
@@ -510,6 +579,7 @@ void test_old_write_new_read_compatibility(const ioremap::elliptics::newapi::ses
 		s.set_groups(groups);
 		s.set_trace_id(rand());
 		s.set_user_flags(user_flags);
+		s.set_ioflags(session.get_ioflags());
 		s.set_timestamp(timestamp);
 
 		auto async = s.write_data(key, data, 0);
@@ -521,9 +591,13 @@ void test_old_write_new_read_compatibility(const ioremap::elliptics::newapi::ses
 			auto file_info = result.file_info();
 			BOOST_REQUIRE(file_info != nullptr);
 
-			BOOST_REQUIRE_EQUAL(file_info->record_flags, record_flags);
+			if (!(s.get_ioflags() & DNET_IO_FLAGS_CACHE)) {
+				BOOST_REQUIRE_EQUAL(file_info->record_flags, record_flags);
+			}
 			BOOST_REQUIRE_EQUAL(file_info->size, data.size());
-			BOOST_REQUIRE(file_info->offset >= eblob_headers_size);
+			if (!(s.get_ioflags() & DNET_IO_FLAGS_CACHE)) {
+				BOOST_REQUIRE(file_info->offset >= eblob_headers_size);
+			}
 			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&file_info->mtime, &timestamp), 0);
 			++count;
 		}
@@ -545,15 +619,23 @@ void test_old_write_new_read_compatibility(const ioremap::elliptics::newapi::ses
 			auto record_info = result.record_info();
 
 			BOOST_REQUIRE_EQUAL(record_info.user_flags, user_flags);
-			BOOST_REQUIRE_EQUAL(record_info.record_flags, record_flags);
+			if (!(s.get_ioflags() & DNET_IO_FLAGS_CACHE)) {
+				BOOST_REQUIRE_EQUAL(record_info.record_flags, record_flags);
+			}
 
 			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.json_timestamp, &empty_time), 0);
-			BOOST_REQUIRE(record_info.json_offset >= eblob_headers_size);
+			if (!(s.get_ioflags() & DNET_IO_FLAGS_CACHE)) {
+				BOOST_REQUIRE(record_info.json_offset >= eblob_headers_size);
+			}
 			BOOST_REQUIRE_EQUAL(record_info.json_size, 0);
-			BOOST_REQUIRE_EQUAL(record_info.json_capacity, 0);
+			if (!(s.get_ioflags() & DNET_IO_FLAGS_CACHE)) {
+				BOOST_REQUIRE_EQUAL(record_info.json_capacity, 0);
+			}
 
 			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.data_timestamp, &timestamp), 0);
-			BOOST_REQUIRE_EQUAL(record_info.data_offset, record_info.json_offset);
+			if (!(s.get_ioflags() & DNET_IO_FLAGS_CACHE)) {
+				BOOST_REQUIRE_EQUAL(record_info.data_offset, record_info.json_offset);
+			}
 			BOOST_REQUIRE_EQUAL(record_info.data_size, data.size());
 
 			++count;
@@ -576,15 +658,23 @@ void test_old_write_new_read_compatibility(const ioremap::elliptics::newapi::ses
 			auto record_info = result.record_info();
 
 			BOOST_REQUIRE_EQUAL(record_info.user_flags, user_flags);
-			BOOST_REQUIRE_EQUAL(record_info.record_flags, record_flags);
+			if (!(s.get_ioflags() & DNET_IO_FLAGS_CACHE)) {
+				BOOST_REQUIRE_EQUAL(record_info.record_flags, record_flags);
+			}
 
 			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.json_timestamp, &empty_time), 0);
-			BOOST_REQUIRE_EQUAL(record_info.json_offset, 0);
+			if (!(s.get_ioflags() & DNET_IO_FLAGS_CACHE)) {
+				BOOST_REQUIRE_EQUAL(record_info.json_offset, 0);
+			}
 			BOOST_REQUIRE_EQUAL(record_info.json_size, 0);
-			BOOST_REQUIRE_EQUAL(record_info.json_capacity, 0);
+			if (!(s.get_ioflags() & DNET_IO_FLAGS_CACHE)) {
+				BOOST_REQUIRE_EQUAL(record_info.json_capacity, 0);
+			}
 
 			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.data_timestamp, &timestamp), 0);
-			BOOST_REQUIRE_EQUAL(record_info.data_offset, 0);
+			if (!(s.get_ioflags() & DNET_IO_FLAGS_CACHE)) {
+				BOOST_REQUIRE_EQUAL(record_info.data_offset, 0);
+			}
 			BOOST_REQUIRE_EQUAL(record_info.data_size, data.size());
 
 			BOOST_REQUIRE(result.json().empty());
@@ -620,15 +710,23 @@ void test_old_write_new_read_compatibility(const ioremap::elliptics::newapi::ses
 			auto record_info = result.record_info();
 
 			BOOST_REQUIRE_EQUAL(record_info.user_flags, user_flags);
-			BOOST_REQUIRE_EQUAL(record_info.record_flags, record_flags);
+			if (!(s.get_ioflags() & DNET_IO_FLAGS_CACHE)) {
+				BOOST_REQUIRE_EQUAL(record_info.record_flags, record_flags);
+			}
 
 			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.json_timestamp, &empty_time), 0);
-			BOOST_REQUIRE_EQUAL(record_info.json_offset, 0);
+			if (!(s.get_ioflags() & DNET_IO_FLAGS_CACHE)) {
+				BOOST_REQUIRE_EQUAL(record_info.json_offset, 0);
+			}
 			BOOST_REQUIRE_EQUAL(record_info.json_size, 0);
-			BOOST_REQUIRE_EQUAL(record_info.json_capacity, 0);
+			if (!(s.get_ioflags() & DNET_IO_FLAGS_CACHE)) {
+				BOOST_REQUIRE_EQUAL(record_info.json_capacity, 0);
+			}
 
 			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.data_timestamp, &timestamp), 0);
-			BOOST_REQUIRE_EQUAL(record_info.data_offset, 0);
+			if (!(s.get_ioflags() & DNET_IO_FLAGS_CACHE)) {
+				BOOST_REQUIRE_EQUAL(record_info.data_offset, 0);
+			}
 			BOOST_REQUIRE_EQUAL(record_info.data_size, data.size());
 
 			BOOST_REQUIRE(result.json().empty());
@@ -680,15 +778,23 @@ void test_new_write_old_read_compatibility(const ioremap::elliptics::newapi::ses
 			auto record_info = result.record_info();
 
 			BOOST_REQUIRE_EQUAL(record_info.user_flags, user_flags);
-			BOOST_REQUIRE_EQUAL(record_info.record_flags, record_flags);
+			if (!(s.get_ioflags() & DNET_IO_FLAGS_CACHE)) {
+				BOOST_REQUIRE_EQUAL(record_info.record_flags, record_flags);
+			}
 
 			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.json_timestamp, &timestamp), 0);
-			BOOST_REQUIRE(record_info.json_offset >= eblob_headers_size);
+			if (!(s.get_ioflags() & DNET_IO_FLAGS_CACHE)) {
+				BOOST_REQUIRE(record_info.json_offset >= eblob_headers_size);
+			}
 			BOOST_REQUIRE_EQUAL(record_info.json_size, json.size());
-			BOOST_REQUIRE_EQUAL(record_info.json_capacity, json_capacity);
+			if (!(s.get_ioflags() & DNET_IO_FLAGS_CACHE)) {
+				BOOST_REQUIRE_EQUAL(record_info.json_capacity, json_capacity);
+			}
 
 			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.data_timestamp, &timestamp), 0);
-			BOOST_REQUIRE_EQUAL(record_info.data_offset, record_info.json_offset + json_capacity);
+			if (!(s.get_ioflags() & DNET_IO_FLAGS_CACHE)) {
+				BOOST_REQUIRE_EQUAL(record_info.data_offset, record_info.json_offset + json_capacity);
+			}
 			BOOST_REQUIRE_EQUAL(record_info.data_size, data.size());
 			++count;
 		}
@@ -710,7 +816,9 @@ void test_new_write_old_read_compatibility(const ioremap::elliptics::newapi::ses
 			auto file_info = result.file_info();
 			BOOST_REQUIRE(file_info != nullptr);
 
-			BOOST_REQUIRE_EQUAL(file_info->record_flags, record_flags);
+			if (!(session.get_ioflags() & DNET_IO_FLAGS_CACHE)) {
+				BOOST_REQUIRE_EQUAL(file_info->record_flags, record_flags);
+			}
 			BOOST_REQUIRE_EQUAL(file_info->size, data.size());
 			BOOST_REQUIRE(file_info->offset >= eblob_headers_size);
 			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&file_info->mtime, &timestamp), 0);
@@ -738,7 +846,9 @@ void test_new_write_old_read_compatibility(const ioremap::elliptics::newapi::ses
 			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&io->timestamp, &timestamp), 0);
 			BOOST_REQUIRE_EQUAL(io->user_flags, user_flags);
 			BOOST_REQUIRE_EQUAL(io->total_size, data.size());
-			BOOST_REQUIRE_EQUAL(io->record_flags, record_flags);
+			if (!(session.get_ioflags() & DNET_IO_FLAGS_CACHE)) {
+				BOOST_REQUIRE_EQUAL(io->record_flags, record_flags);
+			}
 			BOOST_REQUIRE_EQUAL(io->offset, 0);
 			BOOST_REQUIRE_EQUAL(io->size, data.size());
 
@@ -1232,72 +1342,96 @@ bool register_tests(const nodes_data *setup) {
 		std::string{"{\"key\": \"key\"}"},
 		512,
 		std::string{"key data"},
-		1024
+		1024,
+	        false
 	};
+	uint32_t ioflags = 0;
+
+	auto cache_record = record;
+	cache_record.key = std::string{"cache_key"};
+	cache_record.in_cache = true;
 
 	auto n = setup->node->get_native();
 
-	ELLIPTICS_TEST_CASE(test_write, use_session(n), record);
-	ELLIPTICS_TEST_CASE(test_lookup, use_session(n), record);
-	ELLIPTICS_TEST_CASE(test_read_json, use_session(n), record);
-	ELLIPTICS_TEST_CASE(test_read_data, use_session(n), record, 0, 0);
-	ELLIPTICS_TEST_CASE(test_read_data, use_session(n), record, 0, 1);
-	ELLIPTICS_TEST_CASE(test_read_data, use_session(n), record, 0, std::numeric_limits<uint64_t>::max());
-	ELLIPTICS_TEST_CASE(test_read_data, use_session(n), record, 1, 0);
-	ELLIPTICS_TEST_CASE(test_read_data, use_session(n), record, 2, 1);
-	ELLIPTICS_TEST_CASE(test_read_data, use_session(n), record, 3, std::numeric_limits<uint64_t>::max());
-	ELLIPTICS_TEST_CASE(test_read, use_session(n), record, 0, 0);
-	ELLIPTICS_TEST_CASE(test_read, use_session(n), record, 0, 1);
-	ELLIPTICS_TEST_CASE(test_read, use_session(n), record, 0, std::numeric_limits<uint64_t>::max());
-	ELLIPTICS_TEST_CASE(test_read, use_session(n), record, 1, 0);
-	ELLIPTICS_TEST_CASE(test_read, use_session(n), record, 2, 1);
-	ELLIPTICS_TEST_CASE(test_read, use_session(n), record, 3, std::numeric_limits<uint64_t>::max());
+	auto run_tests = [&] (bool in_cache) {
+		if (in_cache) {
+			record = cache_record;
+			ioflags = DNET_IO_FLAGS_CACHE;
+		}
 
-	record.json = R"json({
-		"record": {
-			"key": "key",
-			"useful": "some useful info about the key"}
-	})json";
-	record.json_timestamp = dnet_time{11,22};
-	ELLIPTICS_TEST_CASE(test_update_json, use_session(n), record);
-	ELLIPTICS_TEST_CASE(test_read_json, use_session(n), record);
-	ELLIPTICS_TEST_CASE(test_read_data, use_session(n), record, 0, 0);
+		ELLIPTICS_TEST_CASE(test_write, use_session(n, {}, 0, ioflags), record);
+		ELLIPTICS_TEST_CASE(test_lookup, use_session(n, {}, 0, ioflags), record);
+		ELLIPTICS_TEST_CASE(test_read_json, use_session(n, {}, 0, ioflags), record);
+		ELLIPTICS_TEST_CASE(test_read_data, use_session(n, {}, 0, ioflags), record, 0, 0);
+		ELLIPTICS_TEST_CASE(test_read_data, use_session(n, {}, 0, ioflags), record, 0, 1);
+		ELLIPTICS_TEST_CASE(test_read_data, use_session(n, {}, 0, ioflags), record, 0, std::numeric_limits<uint64_t>::max());
+		ELLIPTICS_TEST_CASE(test_read_data, use_session(n, {}, 0, ioflags), record, 1, 0);
+		ELLIPTICS_TEST_CASE(test_read_data, use_session(n, {}, 0, ioflags), record, 2, 1);
+		ELLIPTICS_TEST_CASE(test_read_data, use_session(n, {}, 0, ioflags), record, 3, std::numeric_limits<uint64_t>::max());
+		ELLIPTICS_TEST_CASE(test_read, use_session(n, {}, 0, ioflags), record, 0, 0);
+		ELLIPTICS_TEST_CASE(test_read, use_session(n, {}, 0, ioflags), record, 0, 1);
+		ELLIPTICS_TEST_CASE(test_read, use_session(n, {}, 0, ioflags), record, 0, std::numeric_limits<uint64_t>::max());
+		ELLIPTICS_TEST_CASE(test_read, use_session(n, {}, 0, ioflags), record, 1, 0);
+		ELLIPTICS_TEST_CASE(test_read, use_session(n, {}, 0, ioflags), record, 2, 1);
+		ELLIPTICS_TEST_CASE(test_read, use_session(n, {}, 0, ioflags), record, 3, std::numeric_limits<uint64_t>::max());
 
-	record.json = "";
-	record.json_timestamp = dnet_time{12,23};
-	ELLIPTICS_TEST_CASE(test_update_json, use_session(n), record);
-	ELLIPTICS_TEST_CASE(test_read_json, use_session(n), record);
-	ELLIPTICS_TEST_CASE(test_read_data, use_session(n), record, 0, 0);
+		record.json = R"json({
+			"record": {
+				"key": "key",
+				"useful": "some useful info about the key"}
+		})json";
+		record.json_timestamp = dnet_time{11,22};
+		ELLIPTICS_TEST_CASE(test_update_json, use_session(n, {}, 0, ioflags), record);
+		ELLIPTICS_TEST_CASE(test_read_json, use_session(n, {}, 0, ioflags), record);
+		ELLIPTICS_TEST_CASE(test_read_data, use_session(n, {}, 0, ioflags), record, 0, 0);
 
-	ELLIPTICS_TEST_CASE(test_update_bigger_json, use_session(n), record);
+		record.json = "";
+		record.json_timestamp = dnet_time{12,23};
+		ELLIPTICS_TEST_CASE(test_update_json, use_session(n, {}, 0, ioflags), record);
+		ELLIPTICS_TEST_CASE(test_read_json, use_session(n, {}, 0, ioflags), record);
+		ELLIPTICS_TEST_CASE(test_read_data, use_session(n, {}, 0, ioflags), record, 0, 0);
 
-	record.key = {"chunked_key"};
-	record.json_timestamp = record.timestamp;
-	ELLIPTICS_TEST_CASE(test_write_chunked, use_session(n), record);
+		if (!in_cache) {
+			ELLIPTICS_TEST_CASE(test_update_bigger_json, use_session(n, {}, 0, ioflags), record);
+		}
 
-	ELLIPTICS_TEST_CASE(test_update_json_noexist, use_session(n));
-	ELLIPTICS_TEST_CASE(test_update_json_uncommitted, use_session(n));
+		record.key = {in_cache ? "cache_chunked_key" : "chunked_key"};
+		record.json_timestamp = record.timestamp;
+		ELLIPTICS_TEST_CASE(test_write_chunked, use_session(n, {}, 0, ioflags), record);
 
-	ELLIPTICS_TEST_CASE(test_old_write_new_read_compatibility, use_session(n));
-	ELLIPTICS_TEST_CASE(test_new_write_old_read_compatibility, use_session(n));
+		if (!in_cache) {
+			ELLIPTICS_TEST_CASE(test_update_json_noexist, use_session(n, {}, 0, ioflags));
+			ELLIPTICS_TEST_CASE(test_update_json_uncommitted, use_session(n, {}, 0, ioflags));
+		}
 
-	ELLIPTICS_TEST_CASE(test_read_corrupted_json, use_session(n));
-	ELLIPTICS_TEST_CASE(test_read_json_with_corrupted_data_part, use_session(n));
-	ELLIPTICS_TEST_CASE(test_read_json_with_big_capacity_and_corrupted_data_part, use_session(n));
-	ELLIPTICS_TEST_CASE(test_read_data_with_corrupted_json, use_session(n));
-	ELLIPTICS_TEST_CASE(test_read_data_with_corrupted_json_with_big_capacity, use_session(n));
-	ELLIPTICS_TEST_CASE(test_read_data_with_corrupted_data, use_session(n));
-	ELLIPTICS_TEST_CASE(test_read_data_part_with_corrupted_first_data, use_session(n));
-	ELLIPTICS_TEST_CASE(test_read_data_part_with_corrupted_second_data, use_session(n));
+		ELLIPTICS_TEST_CASE(test_old_write_new_read_compatibility, use_session(n, {}, 0, ioflags));
+		ELLIPTICS_TEST_CASE(test_new_write_old_read_compatibility, use_session(n, {}, 0, ioflags));
 
-	ELLIPTICS_TEST_CASE(test_data_and_json_timestamp, use_session(n));
+		if (!in_cache) {
+			ELLIPTICS_TEST_CASE(test_read_corrupted_json, use_session(n, {}, 0, ioflags));
+			ELLIPTICS_TEST_CASE(test_read_json_with_corrupted_data_part, use_session(n, {}, 0, ioflags));
+			ELLIPTICS_TEST_CASE(test_read_json_with_big_capacity_and_corrupted_data_part, use_session(n, {}, 0, ioflags));
+			ELLIPTICS_TEST_CASE(test_read_data_with_corrupted_json, use_session(n, {}, 0, ioflags));
+			ELLIPTICS_TEST_CASE(test_read_data_with_corrupted_json_with_big_capacity, use_session(n, {}, 0, ioflags));
+			ELLIPTICS_TEST_CASE(test_read_data_with_corrupted_data, use_session(n, {}, 0, ioflags));
+			ELLIPTICS_TEST_CASE(test_read_data_part_with_corrupted_first_data, use_session(n, {}, 0, ioflags));
+			ELLIPTICS_TEST_CASE(test_read_data_part_with_corrupted_second_data, use_session(n, {}, 0, ioflags));
+		}
 
-	ELLIPTICS_TEST_CASE(test_write_plain_into_nonexistent_key, use_session(n));
-	ELLIPTICS_TEST_CASE(test_write_plain_into_committed_key, use_session(n));
+		ELLIPTICS_TEST_CASE(test_data_and_json_timestamp, use_session(n, {}, 0, ioflags));
 
-	ELLIPTICS_TEST_CASE(test_write_cas, use_session(n));
+		if (!in_cache) {
+			ELLIPTICS_TEST_CASE(test_write_plain_into_nonexistent_key, use_session(n, {}, 0, ioflags));
+			ELLIPTICS_TEST_CASE(test_write_plain_into_committed_key, use_session(n, {}, 0, ioflags));
+		}
 
-	ELLIPTICS_TEST_CASE(test_write_to_readonly_backend, use_session(n), setup);
+		ELLIPTICS_TEST_CASE(test_write_cas, use_session(n, {}, 0, ioflags));
+
+		ELLIPTICS_TEST_CASE(test_write_to_readonly_backend, use_session(n, {}, 0, ioflags), setup);
+	};
+
+	run_tests(false);
+	run_tests(true);
 
 	return true;
 }
@@ -1316,7 +1450,8 @@ record record{
 	std::string{"{\"key\":\"test_write_with_all_with_ack_filter::key\"}"},
 	100,
 	std::string{"test_write_with_all_with_ack_filter::data"},
-	100};
+        100,
+	false};
 
 void test_write(ioremap::elliptics::newapi::session &s) {
 	s.set_groups(groups);
