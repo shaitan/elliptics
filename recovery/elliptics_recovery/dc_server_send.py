@@ -20,7 +20,7 @@ class BucketsManager(object):
     def __init__(self, ctx):
         self.ctx = ctx
         self.bucket_index = -1
-        self.buckets = dict()
+        self.buckets = {}
 
     def get_next_bucket(self):
         '''
@@ -151,16 +151,12 @@ class ServerSendRecovery(object):
         Recovers bunch of newest @keys from replica with appropriate @group_id to other replicas via server-send.
         '''
         log.info("Server-send bucket: source group_id: {0}, num keys: {1}".format(group_id, len(keys)))
-        keys_bunch = dict() # remote_groups -> [list of newest keys]
+        keys_bunch = {} # remote_groups -> [list of newest keys]
         for key, key_infos in keys:
             unprocessed_key_infos = self._get_unprocessed_key_infos(key_infos, group_id)
 
             is_first_attempt = len(unprocessed_key_infos) == len(key_infos)
             if is_first_attempt and self._process_uncommited_keys(key, key_infos):
-                continue
-
-            if not self._can_use_server_send(unprocessed_key_infos):
-                self.buckets.move_to_rest_bucket(key, key_infos)
                 continue
 
             dest_groups = self._get_dest_groups(unprocessed_key_infos)
@@ -171,8 +167,8 @@ class ServerSendRecovery(object):
 
         for b in keys_bunch.iteritems():
             remote_groups = b[0]
-            newest_keys = list()
-            key_infos_map = dict()
+            newest_keys = []
+            key_infos_map = {}
             for key, key_infos in b[1]:
                 log.debug("Prepare server-send key: {0}, group_id: {1}".format(key, key.group_id))
                 newest_keys.append(key)
@@ -361,9 +357,6 @@ class ServerSendRecovery(object):
             if k.group_id == group_id:
                 return original_key_infos[i:]
         return []
-
-    def _can_use_server_send(self, key_infos):
-        return key_infos[0].size < self.ctx.chunk_size
 
     def _get_next_group_id(self, key_infos, group_id):
         '''
