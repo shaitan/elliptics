@@ -35,7 +35,7 @@ class localnode : public cocaine::api::service_t, public cocaine::dispatch<io::l
 {
 public:
 	localnode(cocaine::context_t &context, asio::io_service &reactor, const std::string &name,
-	          const cocaine::dynamic_t &args, dnet_node *node);
+	          const cocaine::dynamic_t &args);
 
 	// service_t interface
 	const cocaine::io::basic_dispatch_t &prototype() const { return *this; }
@@ -59,6 +59,7 @@ private:
 	);
 
 private:
+	dnet_node* m_node;
 	newapi::session m_session_proto;
 	std::shared_ptr<cocaine::logging::logger_t> m_log;
 };

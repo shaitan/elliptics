@@ -25,6 +25,7 @@
 #include <cocaine/rpc/actor.hpp> // for factory
 #include <cocaine/logging.hpp>
 
+#include "cocaine/api/elliptics_node.hpp"
 #include "cocaine/idl/localnode.hpp"
 #include "cocaine/traits/localnode.hpp"
 #include "localnode.hpp"
@@ -66,10 +67,11 @@ std::vector<int> find_local_groups(dnet_node *node)
 }
 
 localnode::localnode(cocaine::context_t &context, asio::io_service &reactor, const std::string &name,
-                     const cocaine::dynamic_t &args, dnet_node *node)
+                     const cocaine::dynamic_t &args)
 : cocaine::api::service_t(context, reactor, name, args)
 , cocaine::dispatch<io::localnode_tag>(name)
-, m_session_proto(node)
+, m_node(context.repository().get<cocaine::api::elliptics_node_t>("elliptics_node"))
+, m_session_proto(m_node)
 , m_log(context.log(name)) {
 	COCAINE_LOG_DEBUG(m_log, "{}: ENTER", __func__);
 
@@ -83,7 +85,7 @@ localnode::localnode(cocaine::context_t &context, asio::io_service &reactor, con
 	{
 		// We are forced to find all local groups anyway because there is no other
 		// way to get the total number of the groups this node serves.
-		const auto local_groups = find_local_groups(node);
+		const auto local_groups = find_local_groups(m_node);
 		COCAINE_LOG_INFO(m_log, "{}: found local groups: [{}]", __func__, to_string(local_groups).c_str());
 		if (local_groups.size() == 1) {
 			m_session_proto.set_groups(local_groups);
