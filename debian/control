@@ -53,7 +53,7 @@ Depends: ${shlibs:Depends},
          ${misc:Depends},
          msgpack-python | python-msgpack,
          handystats (>= 1.11.0),
-         libblackhole1 (>= 1.0.0-0alpha10), libblackhole1 (<< 1.0.0-0rc1),
+         libblackhole1 (>= 1.0.0-1),
 Replaces: elliptics-2.10
 Description: Distributed hash table storage (client library)
  Elliptics network is a fault tolerant distributed hash table object storage.
