@@ -163,6 +163,11 @@ install(FILES
         DESTINATION include/elliptics/newapi/
         )
 
+install(FILES
+        cocaine/include/cocaine/api/elliptics_node.hpp
+        DESTINATION include/cocaine/api/
+        )
+
 set(INSTALL_INCLUDE_DIR "${CMAKE_INSTALL_PREFIX}/include")
 set(INSTALL_LIBRARY_DIR "${CMAKE_INSTALL_PREFIX}/lib${LIB_SUFFIX}")
 
