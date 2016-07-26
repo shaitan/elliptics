@@ -1,3 +1,9 @@
+elliptics (2.26.11.0-7) unstable; urgency=medium
+
+  * debian: fixed elliptics-client depends on libblackhole1
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Tue, 26 Jul 2016 18:39:45 +0300
+
 elliptics (2.26.11.0-6) unstable; urgency=medium
 
   * debian: add elliptics_node.hpp to elliptics-dev
