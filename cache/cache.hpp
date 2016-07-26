@@ -188,7 +188,7 @@ public:
 	}
 
 	void clear_json_timestamp() {
-		dnet_empty_time(&m_json_timestamp);
+		m_json_timestamp = {0, 0};
 	}
 
 	uint64_t user_flags() const {
