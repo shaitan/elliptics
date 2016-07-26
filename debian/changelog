@@ -1,3 +1,13 @@
+elliptics (2.26.11.0-6) unstable; urgency=medium
+
+  * debian: add elliptics_node.hpp to elliptics-dev
+  * srw: use new cocaine repository interface
+  * srw: adapt to cocaine-v12.9, blackhole-v1.0.0rc1
+  * debian: remove install files of cocaine-plugin-elliptics
+  * cache: small fix in clear_json_timestamp()
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Tue, 26 Jul 2016 17:31:28 +0300
+
 elliptics (2.26.11.0-5) unstable; urgency=medium
 
   * dnet_client: --json/--json-file and or --data/--data-file can be omitted
