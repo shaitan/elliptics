@@ -200,6 +200,7 @@ class DirectOperation(object):
         # sets groups
         self.session.groups = [group]
         self.id = id
+        self.stats_cmd = ctx.stats['commands']
         self.stats = RecoverStat()
         self.attempt = 0
         self.ctx = ctx
@@ -233,6 +234,7 @@ class LookupDirect(DirectOperation):
                     self.run()
 
             if error.code:
+                self.stats_cmd.counter('read.{0}'.format(error.code), 1)
                 self.stats.lookup_failed += 1
                 self.callback(None, self.stats)
             else:
@@ -255,6 +257,7 @@ class RemoveDirect(DirectOperation):
     def onremove(self, results, error):
         try:
             if error.code:
+                self.stats_cmd.counter('remove.{0}'.format(error.code), 1)
                 log.debug("Remove key: {0} on node: {1}/{2} has been failed: {3}"
                           .format(self.id, self.address, self.backend_id, repr(error)))
                 # if removing filed - retry it predetermined number of times

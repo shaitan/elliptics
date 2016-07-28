@@ -37,6 +37,7 @@ class KeyRecover(object):
         self.complete = threading.Event()
         self.callback = callback
         self.stats = RecoverStat()
+        self.stats_cmd = ctx.stats['commands']
         self.key = key
         self.key_flags = 0
         self.key_infos = key_infos
@@ -240,8 +241,9 @@ class KeyRecover(object):
         try:
             if error.code:
                 log.error("Failed to read key: {0} from groups: {1}: {2}".format(self.key, self.same_groups, error))
+                self.stats_cmd.counter('read.{0}'.format(error.code), 1)
                 self.stats.read_failed += len(results)
-                if error.code == errno.ETIMEDOUT:
+                if error.code == -errno.ETIMEDOUT:
                     if self.attempt < self.ctx.attempts:
                         self.attempt += 1
                         old_timeout = self.read_session.timeout
@@ -307,6 +309,7 @@ class KeyRecover(object):
     def onwrite(self, results, error):
         try:
             if error.code:
+                self.stats_cmd.counter('write.{0}'.format(error.code), 1)
                 self.stats.write_failed += 1
                 log.error("Failed to write key: {0}: to groups: {1}: {2}"
                           .format(self.key, self.write_session.groups, error))
@@ -347,6 +350,7 @@ class KeyRecover(object):
     def onremove(self, results, error):
         try:
             if error.code:
+                self.stats_cmd.counter('remove.{0}'.format(error.code), 1)
                 self.stats.remove_failed += 1
                 log.error("Failed to remove key: {0}: from groups: {1}: {2}"
                           .format(self.key, self.remove_session.groups, error))
