@@ -115,6 +115,7 @@ class ServerSendRecovery(object):
     def __init__(self, ctx, node):
         self.ctx = ctx
         self.stats = ctx.stats['recover']
+        self.stats_cmd = ctx.stats['commands']
         self.node = node
         self.buckets = BucketsManager(ctx)
 
@@ -375,6 +376,8 @@ class ServerSendRecovery(object):
         if status != -errno.ETIMEDOUT:
             self.stats.counter('recovered_keys', 1 if status == 0 else -1)
             self.ctx.stats.counter('recovered_keys', 1 if status == 0 else -1)
+        if status != 0:
+            self.stats_cmd.counter('server_send.{0}'.format(status), 1)
 
     def _update_timeouted_keys_stats(self, num_timeouted_keys):
         self.stats.counter('recovered_keys', -num_timeouted_keys)

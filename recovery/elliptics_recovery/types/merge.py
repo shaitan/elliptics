@@ -65,6 +65,7 @@ class Recovery(object):
         self.session.groups = [group]
         self.session.trace_id = ctx.trace_id
         self.ctx = ctx
+        self.stats_cmd = ctx.stats['commands']
         self.stats = RecoverStat()
         self.result = True
         self.attempt = 0
@@ -222,6 +223,9 @@ class Recovery(object):
 
     def onread(self, results, error):
         try:
+            if error.code:
+                self.stats_cmd.counter('read.{0}'.format(error.code), 1)
+
             if error.code or len(results) < 1:
                 log.debug("Read key: {0} on node: {1}/{2} has been timed out: {3}"
                           .format(repr(self.key), self.address, self.backend_id, error))
@@ -268,6 +272,9 @@ class Recovery(object):
     def onwrite(self, results, error):
         self.write_result = None
         try:
+            if error.code:
+                self.stats_cmd.counter('write.{0}'.format(error.code), 1)
+
             if error.code or len(results) < 1:
                 log.debug("Write key: {0} on node: {1}/{2} has been timed out: {3}"
                           .format(repr(self.key),
@@ -329,6 +336,7 @@ class Recovery(object):
 def iterate_node(ctx, node, address, backend_id, ranges, eid, stats):
     try:
         log.debug("Running iterator on node: {0}/{1}".format(address, backend_id))
+        stats_cmd = ctx.stats['commands']
         timestamp_range = ctx.timestamp.to_etime(), Time.time_max().to_etime()
         flags = elliptics.iterator_flags.key_range | elliptics.iterator_flags.ts_range
         key_ranges = [IdRange(r[0], r[1]) for r in ranges]
@@ -342,6 +350,7 @@ def iterate_node(ctx, node, address, backend_id, ranges, eid, stats):
                                                          group_id=eid.group_id,
                                                          batch_size=ctx.batch_size,
                                                          stats=stats,
+                                                         stats_cmd=stats_cmd,
                                                          flags=flags,
                                                          leave_file=False,)
         if result is None:
@@ -698,6 +707,7 @@ class ServerSendRecovery(object):
         self.session.groups = [group]
         self.session.trace_id = ctx.trace_id
         self.ctx = ctx
+        self.stats_cmd = ctx.stats['commands']
 
     def _prepare_routes(self, ctx, group):
         '''
@@ -760,6 +770,8 @@ class ServerSendRecovery(object):
             key = result.response.key
             r = (key, status, addr, backend_id)
             log.debug("Server-send result: key: {0}, status: {1}".format(str(key), status))
+            if status:
+                self.stats_cmd.counter("server_send.{0}".format(status), 1)
             responses[str(key)].append(r)
 
     def _remove_bad_keys(self, responses):
@@ -780,6 +792,8 @@ class ServerSendRecovery(object):
         for i, r in enumerate(results):
             status = r.get()[0].status
             log.info("Removing key: {0}, status: ".format(bad_keys[i], status))
+            if status:
+                self.stats_cmd.counter("remove.{0}".format(status), 1)
 
     def _check_bad_key(self, response):
         status = response[1]

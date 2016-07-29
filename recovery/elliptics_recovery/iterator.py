@@ -268,7 +268,8 @@ class Iterator(object):
               backend_id=0,
               group_id=0,
               leave_file=False,
-              batch_size=1024):
+              batch_size=1024,
+              stats_cmd=None):
         assert flags & elliptics.iterator_flags.data == 0, "Only metadata iterator is supported for now"
         assert len(key_ranges) > 0, "There should be at least one iteration range."
         self.ranges = key_ranges
@@ -314,6 +315,9 @@ class Iterator(object):
                 if record.status != 0:
                     raise RuntimeError("Iteration status check failed: {0}".format(record.status))
 
+                if record.response.status and stats_cmd is not None:
+                    stats_cmd.counter("iterate.{0}".format(record.response.status), 1)
+
                 iterated_keys = record.response.iterated_keys
                 total_keys = record.response.total_keys
 
@@ -352,7 +356,7 @@ class Iterator(object):
 
     def iterate_with_stats(self, eid, timestamp_range,
                            key_ranges, tmp_dir, address, group_id, backend_id, batch_size,
-                           stats, flags, leave_file=False):
+                           stats, stats_cmd, flags, leave_file=False):
         result = self.start(eid=eid,
                             flags=flags,
                             key_ranges=key_ranges,
@@ -362,7 +366,8 @@ class Iterator(object):
                             backend_id=backend_id,
                             group_id=group_id,
                             leave_file=leave_file,
-                            batch_size=batch_size,)
+                            batch_size=batch_size,
+                            stats_cmd=stats_cmd)
         result_len = 0
         for it in result:
             if it is None:

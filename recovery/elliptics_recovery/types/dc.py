@@ -33,6 +33,7 @@ def iterate_node(arg):
     ctx, address, backend_id, ranges = arg
     elog = elliptics.Logger(ctx.log_file, int(ctx.log_level))
     stats = ctx.stats["iterate"][str(address)][str(backend_id)]
+    stats_cmd = ctx.stats['commands']
     stats.timer('process', 'started')
     log.info("Running iterator on node: {0}/{1}".format(address, backend_id))
     log.debug("Ranges:")
@@ -69,6 +70,7 @@ def iterate_node(arg):
             group_id=node_id.group_id,
             batch_size=ctx.batch_size,
             stats=stats,
+            stats_cmd=stats_cmd,
             flags=flags,
             leave_file=True)
 
@@ -386,6 +388,7 @@ def main(ctx):
 def lookup_keys(ctx):
     log.info("Start looking up keys")
     stats = ctx.stats["lookup"]
+    stats_cmd = ctx.stats['commands']
     stats.timer('process', 'started')
     elog = elliptics.Logger(ctx.log_file, int(ctx.log_level))
     node = elliptics_create_node(address=ctx.address,
@@ -397,6 +400,8 @@ def lookup_keys(ctx):
                                  remotes=ctx.remotes)
     session = elliptics.newapi.Session(node)
     session.trace_id = ctx.trace_id
+    session.exceptions_policy = elliptics.exceptions_policy.no_exceptions
+    session.set_filter(elliptics.filters.all_final)
     filename = os.path.join(ctx.tmp_dir, 'merged_result')
     rest_keys_filename = os.path.join(ctx.tmp_dir, 'rest_keys')
     ctx.rest_file = open(rest_keys_filename, 'wb')
@@ -412,8 +417,9 @@ def lookup_keys(ctx):
             key_infos = []
 
             for i, l in enumerate(lookups):
-                try:
-                    result = l.get()[0]
+                result = l.get()[0]
+                status = result.status
+                if status == 0:
                     address = result.address
                     key_infos.append(KeyInfo(address,
                                              ctx.groups[i],
@@ -421,9 +427,10 @@ def lookup_keys(ctx):
                                              result.record_info.data_size,
                                              result.record_info.user_flags,
                                              result.record_info.record_flags))
-                except Exception, e:
-                    log.debug("Failed to lookup key: {0} in group: {1}: {2}, traceback: {3}"
-                              .format(id, ctx.groups[i], repr(e), traceback.format_exc()))
+                else:
+                    log.debug("Failed to lookup key: {0} in group: {1}: {2}"
+                              .format(id, ctx.groups[i], status))
+                    stats_cmd.counter('lookup.{0}'.format(status), 1)
                     stats.counter("lookups", -1)
             if len(key_infos) > 0:
                 key_data = (id, key_infos)
