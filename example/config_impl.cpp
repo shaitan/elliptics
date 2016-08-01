@@ -4,7 +4,14 @@
 #include <kora/dynamic.hpp>
 #include <kora/config.hpp>
 
+#include "monitor/monitor.hpp"
+
 using namespace ioremap::elliptics::config;
+
+config_data::config_data()
+: logger(logger_base, blackhole::log::attributes_t()) {
+	dnet_empty_time(&config_timestamp);
+}
 
 std::shared_ptr<kora::config_parser_t> config_data::parse_config() {
 	struct stat st;

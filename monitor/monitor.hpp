@@ -20,7 +20,7 @@
 #ifndef __DNET_MONITOR_MONITOR_HPP
 #define __DNET_MONITOR_MONITOR_HPP
 
-#include "../library/elliptics.h"
+#include "library/elliptics.h"
 
 #include "server.hpp"
 #include "statistics.hpp"
