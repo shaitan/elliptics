@@ -7,11 +7,16 @@
 #include <blackhole/attribute.hpp>
 
 #include <elliptics/session.hpp>
-#include "../library/backend.h"
-#include "../library/elliptics.h"
-#include "../monitor/monitor.hpp"
+#include "library/backend.h"
+#include "library/elliptics.h"
 
-namespace ioremap { namespace elliptics { namespace config {
+namespace ioremap {
+
+namespace monitor {
+	struct monitor_config;
+} /* namespace monitor */
+
+namespace elliptics { namespace config {
 
 class config_error : public std::exception
 {
@@ -67,12 +72,8 @@ private:
 	std::string m_message;
 };
 
-struct config_data : public dnet_config_data
-{
-	config_data() : logger(logger_base, blackhole::log::attributes_t())
-	{
-		dnet_empty_time(&config_timestamp);
-	}
+struct config_data : public dnet_config_data {
+	config_data();
 
 	std::shared_ptr<kora::config_parser_t> parse_config();
 

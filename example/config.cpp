@@ -48,9 +48,10 @@
 #include "elliptics/error.hpp"
 #include "elliptics/session.hpp"
 
-#include "../library/elliptics.h"
-#include "../monitor/monitor.h"
-#include "../cache/cache.hpp"
+#include "library/elliptics.h"
+#include "monitor/monitor.h"
+#include "monitor/monitor.hpp"
+#include "cache/cache.hpp"
 
 #include <boost/lexical_cast.hpp>
 
