@@ -1,3 +1,12 @@
+elliptics (2.26.11.0-8) unstable; urgency=medium
+
+  * forward: add ability to set forward node in session
+  * client: remove boost asio symbols from elliptics_client
+  * recovery: added 'commands' section in statistics
+  * recovery: do not skip big keys in dc recovery via server send
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Tue, 02 Aug 2016 12:32:41 +0300
+
 elliptics (2.26.11.0-7) unstable; urgency=medium
 
   * debian: fixed elliptics-client depends on libblackhole1
