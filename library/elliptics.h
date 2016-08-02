@@ -695,6 +695,12 @@ struct dnet_session {
 	struct dnet_addr	direct_addr;
 	int			direct_backend;
 
+	/*
+	 * If DNET_FLAGS_FORWARD is set then forward_addr is used for sticking
+	 * requests to the node.
+	 */
+	struct dnet_addr	forward_addr;
+
 	/* Namespace */
 	char			*ns;
 	int			nsize;
@@ -836,6 +842,8 @@ int dnet_trans_iterate_move_transaction(struct dnet_net_state *st, struct list_h
 int dnet_state_reset_nolock_noclean(struct dnet_net_state *st, int error, struct list_head *head);
 
 int dnet_trans_send(struct dnet_trans *t, struct dnet_io_req *req);
+
+int dnet_trans_forward(struct dnet_io_req *r, struct dnet_net_state *orig, struct dnet_net_state *forward);
 
 int dnet_recv_list(struct dnet_node *n, struct dnet_net_state *st);
 

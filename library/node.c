@@ -912,6 +912,7 @@ struct dnet_session *dnet_session_copy(struct dnet_session *s)
 	new_s->user_flags = s->user_flags;
 	new_s->direct_addr = s->direct_addr;
 	new_s->direct_backend = s->direct_backend;
+	new_s->forward_addr = s->forward_addr;
 
 	if (s->group_num > 0) {
 		err = dnet_session_set_groups(new_s, s->groups, s->group_num);
@@ -1139,4 +1140,12 @@ uint32_t dnet_session_get_direct_backend(struct dnet_session *s)
 void dnet_session_set_direct_backend(struct dnet_session *s, uint32_t backend_id)
 {
 	s->direct_backend = backend_id;
+}
+
+void dnet_session_set_forward(struct dnet_session *s, const struct dnet_addr *addr) {
+	s->forward_addr = *addr;
+}
+
+const struct dnet_addr *dnet_session_get_forward(const struct dnet_session *s) {
+	return &s->forward_addr;
 }

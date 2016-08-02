@@ -373,19 +373,29 @@ void dnet_io_trans_alloc_send(struct dnet_session *s, struct dnet_io_control *ct
 
 	memcpy(io, &ctl->io, sizeof(struct dnet_io_attr));
 
-	if ((s->cflags & DNET_FLAGS_DIRECT) == 0) {
-		int backend_id = 0;
-		t->st = dnet_state_get_first_with_backend(n, &cmd->id, &backend_id);
-		if (!(s->cflags & DNET_FLAGS_DIRECT_BACKEND))
-			cmd->backend_id = backend_id;
-	} else {
+	if (s->cflags & DNET_FLAGS_DIRECT) {
 		/* We're requested to execute request on particular node */
 		request_addr = &s->direct_addr;
 		t->st = dnet_state_search_by_addr(n, &s->direct_addr);
 		if (!t->st) {
-			dnet_log(n, DNET_LOG_ERROR, "%s: %s: io_trans_send: could not find network state for address",
-				dnet_dump_id(&cmd->id), dnet_addr_string(&s->direct_addr));
+			dnet_log(n, DNET_LOG_ERROR,
+			         "%s: %s: io_trans_send: could not find network state for direct address",
+			         dnet_dump_id(&cmd->id), dnet_addr_string(&s->direct_addr));
 		}
+	} else if (s->cflags & DNET_FLAGS_FORWARD) {
+		/* We're requested to forward request by particular node */
+		request_addr = &s->forward_addr;
+		t->st = dnet_state_search_by_addr(n, &s->forward_addr);
+		if (!t->st) {
+			dnet_log(n, DNET_LOG_ERROR,
+			         "%s: %s: io_trans_send: could not find network state for forward address",
+			         dnet_dump_id(&cmd->id), dnet_addr_string(&s->forward_addr));
+		}
+	} else {
+		int backend_id = 0;
+		t->st = dnet_state_get_first_with_backend(n, &cmd->id, &backend_id);
+		if (!(s->cflags & DNET_FLAGS_DIRECT_BACKEND))
+			cmd->backend_id = backend_id;
 	}
 
 	if (!t->st) {

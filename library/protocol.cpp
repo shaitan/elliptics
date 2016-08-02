@@ -37,16 +37,24 @@ inline dnet_read_request &operator >>(msgpack::object o, dnet_read_request &v) {
 	p[2].convert(&v.data_offset);
 	p[3].convert(&v.data_size);
 
+	if (o.via.array.size > 4) {
+		p[4].convert(&v.deadline);
+	} else {
+		// for older protocol
+		dnet_empty_time(&v.deadline);
+	}
+
 	return v;
 }
 
 template <typename Stream>
 inline msgpack::packer<Stream> &operator <<(msgpack::packer<Stream> &o, const dnet_read_request &v) {
-	o.pack_array(4);
+	o.pack_array(5);
 	o.pack(v.ioflags);
 	o.pack(v.read_flags);
 	o.pack(v.data_offset);
 	o.pack(v.data_size);
+	o.pack(v.deadline);
 
 	return o;
 }
@@ -125,12 +133,19 @@ inline dnet_write_request &operator >>(msgpack::object o, dnet_write_request &v)
 		v.cache_lifetime = 0;
 	}
 
+	if (o.via.array.size > 11) {
+		p[11].convert(&v.deadline);
+	} else {
+		// for older protocol
+		dnet_empty_time(&v.deadline);
+	}
+
 	return v;
 }
 
 template <typename Stream>
 inline msgpack::packer<Stream> &operator <<(msgpack::packer<Stream> &o, const dnet_write_request &v) {
-	o.pack_array(11);
+	o.pack_array(12);
 	o.pack(v.ioflags);
 	o.pack(v.user_flags);
 
@@ -145,7 +160,10 @@ inline msgpack::packer<Stream> &operator <<(msgpack::packer<Stream> &o, const dn
 	o.pack(v.data_commit_size);
 
 	o.pack(v.json_timestamp);
+
 	o.pack(v.cache_lifetime);
+
+	o.pack(v.deadline);
 
 	return o;
 }

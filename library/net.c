@@ -601,66 +601,6 @@ out_exit:
 	return err;
 }
 
-static int dnet_trans_complete_forward(struct dnet_addr *addr __unused, struct dnet_cmd *cmd, void *priv)
-{
-	struct dnet_trans *t = priv;
-	struct dnet_net_state *orig = t->orig;
-	int err = -EINVAL;
-
-	if (!is_trans_destroyed(cmd)) {
-		uint64_t size = cmd->size;
-
-		cmd->trans = t->rcv_trans;
-		cmd->flags |= DNET_FLAGS_REPLY;
-
-		dnet_convert_cmd(cmd);
-
-		err = dnet_send_data(orig, cmd, sizeof(struct dnet_cmd), cmd + 1, size);
-	}
-
-	return err;
-}
-
-static int dnet_trans_forward(struct dnet_io_req *r,
-		struct dnet_net_state *orig, struct dnet_net_state *forward)
-{
-	struct dnet_cmd *cmd = r->header;
-	struct dnet_trans *t;
-
-	t = dnet_trans_alloc(orig->n, 0);
-	if (!t)
-		return -ENOMEM;
-
-	t->rcv_trans = cmd->trans;
-	cmd->trans = t->cmd.trans = t->trans = atomic_inc(&orig->n->trans);
-
-	memcpy(&t->cmd, cmd, sizeof(struct dnet_cmd));
-
-	dnet_convert_cmd(cmd);
-
-	t->command = cmd->cmd;
-	t->complete = dnet_trans_complete_forward;
-	t->priv = t;
-
-	t->orig = dnet_state_get(orig);
-	t->st = dnet_state_get(forward);
-
-	r->st = forward;
-
-	{
-		char saddr[128];
-		char daddr[128];
-
-		dnet_log(orig->n, DNET_LOG_INFO, "%s: %s: forwarding trans: %s -> %s, trans: %llu -> %llu",
-				dnet_dump_id(&t->cmd.id), dnet_cmd_string(t->command),
-				dnet_addr_string_raw(&orig->addr, saddr, sizeof(saddr)),
-				dnet_addr_string_raw(&forward->addr, daddr, sizeof(daddr)),
-				(unsigned long long)t->rcv_trans, (unsigned long long)t->trans);
-	}
-
-	return dnet_trans_send(t, r);
-}
-
 static int dnet_process_update_ids(struct dnet_net_state *st, struct dnet_cmd *cmd, struct dnet_id_container *id_container)
 {
 	struct dnet_backend_ids **backends;

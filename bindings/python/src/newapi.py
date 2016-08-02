@@ -22,6 +22,7 @@ import elliptics.core
 @logged_class
 class Session(elliptics.core.newapi.Session):
     """New elliptics session interface."""
+    __forward = elliptics.core.newapi.Session.forward
 
     def __init__(self, node):
         """
@@ -162,6 +163,25 @@ class Session(elliptics.core.newapi.Session):
                                                port=address.port,
                                                family=address.family,
                                                backend_id=backend_id)
+
+    @property
+    def forward(self):
+        """
+        If is set stick session to particular remote address.
+        This remote won't handle request but will resend it to proper server node.
+        If proper server node isn't available on forward node, forward node will fail request with -ENOTSUP error.
+        """
+        if self.__forward is None:
+            return None
+        return Address.from_host_port_family(self.__forward)
+
+    @forward.setter
+    def forward(self, remote):
+        self.__forward = None if remote is None else str(remote)
+
+    @forward.deleter
+    def forward(self):
+        self.__forward = None
 
     def update_status(self, address, status):
         """

@@ -38,6 +38,7 @@
 #include "elliptics/packet.h"
 #include "elliptics/interface.h"
 #include "common.hpp"
+#include "protocol.hpp"
 
 #undef dnet_log
 #undef dnet_log_error
@@ -1363,4 +1364,99 @@ int dnet_add_state(dnet_node *node, const dnet_addr *addrs, int num, int flags)
 	}
 
 	return at_least_one_exist ? std::max(0, err) : err;
+}
+
+static int dnet_trans_complete_forward(struct dnet_addr * /*addr*/, struct dnet_cmd *cmd, void *priv) {
+	auto t = static_cast<dnet_trans *>(priv);
+	int err = -EINVAL;
+
+	if (!is_trans_destroyed(cmd)) {
+		const uint64_t size = cmd->size;
+
+		cmd->trans = t->rcv_trans;
+		cmd->flags |= DNET_FLAGS_REPLY;
+
+		dnet_convert_cmd(cmd);
+
+		err = dnet_send_data(t->orig, cmd, sizeof(struct dnet_cmd), cmd + 1, size);
+	}
+
+	return err;
+}
+
+int dnet_trans_forward(struct dnet_io_req *r, struct dnet_net_state *orig, struct dnet_net_state *forward) {
+	dnet_cmd *cmd = static_cast<dnet_cmd *>(r->header);
+
+	auto t = dnet_trans_alloc(orig->n, 0);
+	if (!t)
+		return -ENOMEM;
+
+	t->rcv_trans = cmd->trans;
+	cmd->trans = t->cmd.trans = t->trans = atomic_inc(&orig->n->trans);
+
+	memcpy(&t->cmd, cmd, sizeof(*cmd));
+
+	dnet_convert_cmd(cmd);
+
+	t->wait_ts = [&cmd, &t, &r]() -> timespec {
+		using namespace ioremap::elliptics;
+		auto data_p = data_pointer::from_raw(r->data, cmd->size);
+
+		dnet_time deadline;
+		dnet_empty_time(&deadline);
+		if (cmd->cmd == DNET_CMD_WRITE_NEW) {
+			dnet_write_request request;
+			deserialize(data_p, request);
+			deadline = request.deadline;
+		} else if (cmd->cmd == DNET_CMD_READ_NEW) {
+			dnet_read_request request;
+			deserialize(data_p, request);
+			deadline = request.deadline;
+		}
+
+		if (dnet_time_is_empty(&deadline)) {
+			return t->wait_ts;
+		}
+
+		dnet_time current;
+		dnet_current_time(&current);
+		if (dnet_time_before(&deadline, &current)) {
+			return timespec{0, 0};
+		}
+
+		static const long second = 1000000000;
+
+		const long diff = (deadline.tsec - current.tsec) * second + (deadline.tnsec - current.tnsec);
+
+		return timespec{
+			diff / second,
+			diff % second
+		};
+	}();
+
+	if (!t->wait_ts.tv_sec && !t->wait_ts.tv_nsec) {
+		return -ETIMEDOUT;
+	}
+
+	t->command = cmd->cmd;
+	t->complete = dnet_trans_complete_forward;
+	t->priv = t;
+
+	t->orig = dnet_state_get(orig);
+	t->st = dnet_state_get(forward);
+
+	r->st = forward;
+
+	{
+		char saddr[128];
+		char daddr[128];
+
+		dnet_log(orig->n, DNET_LOG_INFO, "%s: %s: forwarding trans: %s -> %s, trans: %llu -> %llu",
+		         dnet_dump_id(&t->cmd.id), dnet_cmd_string(t->command),
+		         dnet_addr_string_raw(&orig->addr, saddr, sizeof(saddr)),
+		         dnet_addr_string_raw(&forward->addr, daddr, sizeof(daddr)), (unsigned long long)t->rcv_trans,
+		         (unsigned long long)t->trans);
+	}
+
+	return dnet_trans_send(t, r);
 }

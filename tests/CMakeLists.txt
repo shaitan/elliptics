@@ -169,7 +169,7 @@ add_test_target(test_locks dnet_locks_test DEPENDS ${TESTS_DEPS})
 
 add_executable(dnet_crypto_test crypto_test.cpp)
 set_target_properties(dnet_crypto_test ${TEST_PROPERTIES})
-target_link_libraries(dnet_crypto_test ${TEST_LIBRARIES})
+target_link_libraries(dnet_crypto_test elliptics)
 add_test_target(test_crypto dnet_crypto_test DEPENDS ${TESTS_DEPS})
 
 add_executable(dnet_server_send_test server_send.cpp)
@@ -204,6 +204,11 @@ set_target_properties(dnet_new_api_server_send_test ${TEST_PROPERTIES})
 target_link_libraries(dnet_new_api_server_send_test ${TEST_LIBRARIES})
 add_test_target(test_new_api_server_send dnet_new_api_server_send_test DEPENDS ${TESTS_DEPS})
 
+add_executable(dnet_forwarding_test forwarding_test.cpp)
+set_target_properties(dnet_forwarding_test ${TEST_PROPERTIES})
+target_link_libraries(dnet_forwarding_test ${TEST_LIBRARIES})
+add_test_target(test_forwarding dnet_forwarding_test DEPENDS ${TESTS_DEPS})
+
 #
 # General list of test modules (implemented in C++).
 #
@@ -221,6 +226,8 @@ set(TESTS_LIST
     dnet_server_send_test
     dnet_queue_timeout_test
     dnet_new_api_test
+    dnet_new_api_server_send_test
+    dnet_forwarding_test
 )
 
 if(WITH_COCAINE)
