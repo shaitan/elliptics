@@ -114,6 +114,7 @@ class RecoverStat(object):
         self.remove_old = 0
         self.remove_old_failed = 0
         self.remove_old_bytes = 0
+        self.removed_uncommitted_keys = 0
         self.merged_indexes = 0
 
     def apply(self, stats):
@@ -155,6 +156,8 @@ class RecoverStat(object):
             stats.counter('local_removes_old', -self.remove_old_failed)
         if self.remove_old_bytes:
             stats.counter('local_removes_old_bytes', self.remove_old_bytes)
+        if self.removed_uncommitted_keys:
+            stats.counter('removed_uncommitted_keys', self.removed_uncommitted_keys)
         if self.merged_indexes:
             stats.counter("merged_indexes", self.merged_indexes)
 
@@ -181,6 +184,7 @@ class RecoverStat(object):
         ret.remove_old = self.remove_old + b.remove_old
         ret.remove_old_failed = self.remove_old_failed + b.remove_old_failed
         ret.remove_old_bytes = self.remove_old_bytes + b.remove_old_bytes
+        ret.removed_uncommitted_keys = self.removed_uncommitted_keys + b.removed_uncommitted_keys
         ret.merged_indexes = self.merged_indexes + b.merged_indexes
         return ret
 

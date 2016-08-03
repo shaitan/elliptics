@@ -286,15 +286,17 @@ class ServerSendRecovery(object):
                 results.append(result)
 
             timeouted_keys = []
-            timeouted_groups = set()
+            timeouted_groups = []
             is_last_attempt = (attempt == self.ctx.attempts - 1)
             for i, r in enumerate(results):
                 status = r.get()[0].status
                 log.info("Removing corrupted key: {0}, status: {1}, last attempt: {2}".format(keys[i], status, is_last_attempt))
+                if status == 0:
+                    self.stats.counter("removed_corrupted_keys", 1)
                 if status == -errno.ETIMEDOUT:
                     timeouted_keys.append(keys[i])
-                    timeouted_groups.add(keys[i].group_id)
-            keys, groups = timeouted_keys, list(timeouted_groups)
+                    timeouted_groups.append(keys[i].group_id)
+            keys, groups = timeouted_keys, timeouted_groups
 
     def _process_uncommited_keys(self, key, key_infos):
         same_ts = lambda lhs, rhs: lhs.timestamp == rhs.timestamp
