@@ -352,9 +352,13 @@ class KeyRecover(object):
             if error.code:
                 self.stats_cmd.counter('remove.{0}'.format(error.code), 1)
                 self.stats.remove_failed += 1
+                failed_groups = [r.group_id for r in results if r.status != 0]
+                # NB: used hard-coded 'removed_uncommitted_keys', since remove method is called only for uncommitted keys
+                self.stats.removed_uncommitted_keys += len(self.remove_session.groups) - len(failed_groups)
                 log.error("Failed to remove key: {0}: from groups: {1}: {2}"
-                          .format(self.key, self.remove_session.groups, error))
+                          .format(self.key, failed_groups, error))
                 if self.attempt < self.ctx.attempts:
+                    self.remove_session.groups = failed_groups
                     old_timeout = self.remove_session.timeout
                     self.remove_session.timeout *= 2
                     self.attempt += 1
@@ -366,12 +370,12 @@ class KeyRecover(object):
                                      old_timeout))
                     self.stats.remove_retries += 1
                     self.remove()
-                    return
-                self.stop(False)
-                return
-
-            self.stats.remove += len(results)
-            self.stop(True)
+                else:
+                    self.stop(False)
+            else:
+                self.stats.removed_uncommitted_keys += len(self.remove_session.groups)
+                self.stats.remove += len(results)
+                self.stop(True)
         except:
             log.exception("Failed to handle remove result key: {0} from groups: {1}"
                           .format(self.key, self.remove_session.groups))
