@@ -177,12 +177,20 @@ void localnode::on_read_completed(deferred<localnode::read_result> promise,
 
 	if (error) {
 		COCAINE_LOG_ERROR(m_log, "{}: return error {}, {}", __func__, error.code(), error.message());
-		promise.abort(std::error_code(-error.code(), std::generic_category()), error.message());
+		try {
+			promise.abort(std::error_code(-error.code(), std::generic_category()), error.message());
+		} catch(const std::exception &e) {
+			COCAINE_LOG_ERROR(m_log, "{}: abort failed {}", __func__, e.what());
+		}
 
 	} else {
-		COCAINE_LOG_DEBUG(m_log, "{}: return success", __func__);
 		const auto &r = results[0];
-		promise.write(std::make_tuple(r.record_info(), r.data()));
+		COCAINE_LOG_DEBUG(m_log, "{}: return success", __func__);
+		try {
+			promise.write(std::make_tuple(r.record_info(), r.data()));
+		} catch(const std::exception &e) {
+			COCAINE_LOG_ERROR(m_log, "{}: write failed {}", __func__, e.what());
+		}
 	}
 
 	COCAINE_LOG_DEBUG(m_log, "{}: EXIT", __func__);
@@ -196,12 +204,20 @@ void localnode::on_write_completed(deferred<write_result> promise,
 
 	if (error) {
 		COCAINE_LOG_ERROR(m_log, "{}: return error {}, {}", __func__, error.code(), error.message());
-		promise.abort(std::error_code(-error.code(), std::generic_category()), error.message());
+		try {
+			promise.abort(std::error_code(-error.code(), std::generic_category()), error.message());
+		} catch(const std::exception &e) {
+			COCAINE_LOG_ERROR(m_log, "{}: abort failed {}", __func__, e.what());
+		}
 
 	} else {
 		const auto &r = results[0];
 		COCAINE_LOG_DEBUG(m_log, "{}: return success", __func__);
-		promise.write(std::make_tuple(r.record_info(), r.path()));
+		try {
+			promise.write(std::make_tuple(r.record_info(), r.path()));
+		} catch(const std::exception &e) {
+			COCAINE_LOG_ERROR(m_log, "{}: write failed {}", __func__, e.what());
+		}
 	}
 
 	COCAINE_LOG_DEBUG(m_log, "{}: EXIT", __func__);
