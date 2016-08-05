@@ -379,7 +379,9 @@ struct dnet_config
 	/* Config values for srw backend */
 	struct srw_init_ctl	srw;
 
-	int			reserved_for_future_use_2[5];
+	int			send_limit;
+
+	int			reserved_for_future_use_2[4];
 
 	/* Config file name for handystats library */
 	const char 	*handystats_config;

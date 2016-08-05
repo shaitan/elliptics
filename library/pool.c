@@ -650,6 +650,7 @@ static int dnet_process_send_single(struct dnet_net_state *st)
 {
 	struct dnet_io_req *r = NULL;
 	int err;
+	uint32_t counter = 0;
 
 	while (1) {
 		r = NULL;
@@ -689,7 +690,15 @@ static int dnet_process_send_single(struct dnet_net_state *st)
 
 			dnet_io_req_free(r);
 			st->send_offset = 0;
-			break;
+			/* exit the loop, if @send_limit was set and it has been reached, and switch net thread to
+			 * another ready state.
+			 */
+			if (st->n->send_limit && ++counter >= st->n->send_limit) {
+				dnet_log(st->n, DNET_LOG_INFO, "Limit on number of packet sent to one state in a row "
+				                               "has been reached: limit: %" PRIu32,
+				         st->n->send_limit);
+				break;
+			}
 		}
 
 		if (err)

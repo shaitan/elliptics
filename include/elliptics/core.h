@@ -85,6 +85,8 @@
 
 #define DNET_DEFAULT_CACHE_PAGES_NUMBER 1
 
+#define DNET_DEFAULT_SEND_LIMIT 1000
+
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
 
 #ifndef dnet_offsetof
