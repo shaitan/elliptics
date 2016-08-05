@@ -160,6 +160,14 @@ deferred<localnode::lookup_result> localnode::lookup(const dnet_raw_id &key, con
 	s.set_exceptions_policy(session::no_exceptions);
 	override_groups(s, groups);
 
+	//XXX: NOLOCK flag should not be set here unconditionally,
+	// as such it breaks generality of localnode interface;
+	// localnode interface must evolve further to allow that kind of configurability;
+	// but right now we badly need NOLOCK for reads (we know for sure
+	// that in our usecase there are no updates to the existing resources
+	// and its safe to perform a read without locking on a key)
+	s.set_cflags(DNET_FLAGS_NOLOCK);
+
 	deferred<lookup_result> promise;
 
 	s.lookup(elliptics::key(key)).connect(
