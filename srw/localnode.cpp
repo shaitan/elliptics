@@ -46,6 +46,12 @@ std::string to_string(const std::vector<int> &v) {
 
 }
 
+namespace {
+
+const uint64_t CFLAGS_WHITELIST = DNET_FLAGS_NOLOCK | DNET_FLAGS_NO_QUEUE_TIMEOUT | DNET_FLAGS_TRACE_BIT;
+const uint64_t IOFLAGS_WHITELIST = DNET_IO_FLAGS_NOCSUM | DNET_IO_FLAGS_CACHE | DNET_IO_FLAGS_CACHE_ONLY;
+
+}
 
 namespace ioremap { namespace elliptics {
 
@@ -75,9 +81,9 @@ localnode::localnode(cocaine::context_t &context, asio::io_service &reactor, con
 , m_log(context.log(name)) {
 	COCAINE_LOG_DEBUG(m_log, "{}: ENTER", __func__);
 
-	on<io::localnode::read>(std::bind(&localnode::read, this, ph::_1, ph::_2, ph::_3, ph::_4));
-	on<io::localnode::write>(std::bind(&localnode::write, this, ph::_1, ph::_2, ph::_3));
-	on<io::localnode::lookup>(std::bind(&localnode::lookup, this, ph::_1, ph::_2));
+	on<io::localnode::read>(std::bind(&localnode::read, this, ph::_1, ph::_2, ph::_3, ph::_4, ph::_5, ph::_6));
+	on<io::localnode::write>(std::bind(&localnode::write, this, ph::_1, ph::_2, ph::_3, ph::_4, ph::_5));
+	on<io::localnode::lookup>(std::bind(&localnode::lookup, this, ph::_1, ph::_2, ph::_3));
 
 	// In the simplest case when node serves exactly one group, we want to free
 	// client from the bother of providing group number: client will be allowed
@@ -107,7 +113,7 @@ inline void override_groups(session &s, const std::vector<int> &groups)
 	}
 }
 
-deferred<localnode::read_result> localnode::read(const dnet_raw_id &key, const std::vector<int> &groups, uint64_t offset, uint64_t size)
+deferred<localnode::read_result> localnode::read(const dnet_raw_id &key, const std::vector<int> &groups, uint64_t offset, uint64_t size, uint64_t cflags, uint32_t ioflags)
 {
 	COCAINE_LOG_DEBUG(m_log, "{}: ENTER", __func__);
 
@@ -115,13 +121,8 @@ deferred<localnode::read_result> localnode::read(const dnet_raw_id &key, const s
 	s.set_exceptions_policy(session::no_exceptions);
 	override_groups(s, groups);
 
-	//XXX: NOLOCK flag should not be set here unconditionally,
-	// as such it breaks generality of localnode interface;
-	// localnode interface must evolve further to allow that kind of configurability;
-	// but right now we badly need NOLOCK for reads (we know for sure
-	// that in our usecase there are no updates to the existing resources
-	// and its safe to perform a read without locking on a key)
-	s.set_cflags(DNET_FLAGS_NOLOCK);
+	s.set_cflags(cflags & CFLAGS_WHITELIST);
+	s.set_ioflags(ioflags & IOFLAGS_WHITELIST);
 
 	deferred<read_result> promise;
 
@@ -134,13 +135,16 @@ deferred<localnode::read_result> localnode::read(const dnet_raw_id &key, const s
 	return promise;
 }
 
-deferred<localnode::write_result> localnode::write(const dnet_raw_id &key, const std::vector<int> &groups, const std::string &bytes)
+deferred<localnode::write_result> localnode::write(const dnet_raw_id &key, const std::vector<int> &groups, const std::string &bytes, uint64_t cflags, uint32_t ioflags)
 {
 	COCAINE_LOG_DEBUG(m_log, "{}: ENTER", __func__);
 
 	auto s = m_session_proto.clone();
 	s.set_exceptions_policy(session::no_exceptions);
 	override_groups(s, groups);
+
+	s.set_cflags(cflags & CFLAGS_WHITELIST);
+	s.set_ioflags(ioflags & IOFLAGS_WHITELIST);
 
 	deferred<write_result> promise;
 
@@ -154,19 +158,13 @@ deferred<localnode::write_result> localnode::write(const dnet_raw_id &key, const
 	return promise;
 }
 
-deferred<localnode::lookup_result> localnode::lookup(const dnet_raw_id &key, const std::vector<int> &groups)
+deferred<localnode::lookup_result> localnode::lookup(const dnet_raw_id &key, const std::vector<int> &groups, uint64_t cflags)
 {
 	auto s = m_session_proto.clone();
 	s.set_exceptions_policy(session::no_exceptions);
 	override_groups(s, groups);
 
-	//XXX: NOLOCK flag should not be set here unconditionally,
-	// as such it breaks generality of localnode interface;
-	// localnode interface must evolve further to allow that kind of configurability;
-	// but right now we badly need NOLOCK for reads (we know for sure
-	// that in our usecase there are no updates to the existing resources
-	// and its safe to perform a read without locking on a key)
-	s.set_cflags(DNET_FLAGS_NOLOCK);
+	s.set_cflags(cflags & CFLAGS_WHITELIST);
 
 	deferred<lookup_result> promise;
 

@@ -531,6 +531,31 @@ static void test_localnode(session &client, const std::vector<int> &groups, int 
 #undef CMP
 
 	BOOST_CHECK_EQUAL(std::get<1>(read_result).to_string(), value);
+
+	// check if methods could take flags
+	{
+		auto future = localnode.invoke<io::localnode::write>(key.raw_id(), groups, value,
+			DNET_FLAGS_NOLOCK,
+			DNET_IO_FLAGS_CACHE_ONLY
+		);
+		BOOST_REQUIRE_EQUAL(future.valid(), true);
+		BOOST_REQUIRE_NO_THROW(future.get());
+	}
+	{
+		auto future = localnode.invoke<io::localnode::lookup>(key.raw_id(), groups,
+			DNET_FLAGS_NOLOCK
+		);
+		BOOST_REQUIRE_EQUAL(future.valid(), true);
+		BOOST_REQUIRE_NO_THROW(future.get());
+	}
+	{
+		auto future = localnode.invoke<io::localnode::read>(key.raw_id(), groups, 0, 0,
+			DNET_FLAGS_NOLOCK,
+			DNET_IO_FLAGS_CACHE | DNET_IO_FLAGS_NOCSUM
+		);
+		BOOST_REQUIRE_EQUAL(future.valid(), true);
+		BOOST_REQUIRE_NO_THROW(future.get());
+	}
 }
 
 

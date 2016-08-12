@@ -40,7 +40,11 @@ struct localnode {
 			/* Offset */
 			uint64_t,
 			/* Size */
-			uint64_t
+			uint64_t,
+			/* Command flags */
+			cocaine::io::optional<uint64_t>,
+			/* I/O related flags */
+			cocaine::io::optional<uint32_t>
 		> argument_type;
 
 		typedef cocaine::io::option_of<
@@ -62,7 +66,11 @@ struct localnode {
 			/* Writing group list */
 			std::vector<int>,
 			/* Raw bytes of the value */
-			std::string
+			std::string,
+			/* Command flags */
+			cocaine::io::optional<uint64_t>,
+			/* I/O related flags */
+			cocaine::io::optional<uint32_t>
 		> argument_type;
 
 		typedef cocaine::io::option_of<
@@ -82,7 +90,9 @@ struct localnode {
 			/* Elliptics id */
 			dnet_raw_id,
 			/* Reading group list */
-			std::vector<int>
+			std::vector<int>,
+			/* Command flags */
+			cocaine::io::optional<uint64_t>
 		> argument_type;
 
 		typedef cocaine::io::option_of<
