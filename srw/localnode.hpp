@@ -45,9 +45,9 @@ private:
 	typedef std::tuple<dnet_record_info, std::string> lookup_result;
 	typedef lookup_result write_result;
 
-	deferred<read_result> read(const dnet_raw_id &key, const std::vector<int> &groups, uint64_t offset, uint64_t size);
-	deferred<lookup_result> lookup(const dnet_raw_id &key, const std::vector<int> &groups);
-	deferred<write_result> write(const dnet_raw_id &key, const std::vector<int> &groups, const std::string &bytes);
+	deferred<read_result> read(const dnet_raw_id &key, const std::vector<int> &groups, uint64_t offset, uint64_t size, uint64_t cflags, uint32_t ioflags);
+	deferred<lookup_result> lookup(const dnet_raw_id &key, const std::vector<int> &groups, uint64_t cflags);
+	deferred<write_result> write(const dnet_raw_id &key, const std::vector<int> &groups, const std::string &bytes, uint64_t cflags, uint32_t ioflags);
 
 	void on_read_completed(deferred<read_result> promise,
 		const std::vector<newapi::read_result_entry> &results,
