@@ -79,6 +79,8 @@ void test_wrapper_with_session::operator() () const
 
 	newapi::session client(n);
 
+	//XXX: make trace_id to be not random but derived from test case?
+	// (md5 over test_name and session args)
 	uint64_t trace_id = 0;
 	auto buffer = reinterpret_cast<unsigned char *>(&trace_id);
 	for (size_t i = 0; i < sizeof(trace_id); ++i) {

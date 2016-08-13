@@ -472,6 +472,13 @@ static void test_localnode(session &client, const std::vector<int> &groups, int 
 	service_manager_t::endpoint_type endpoint(boost::asio::ip::address_v4::loopback(), locator_port);
 	service_manager_t manager({endpoint}, 1);
 
+	cocaine::trace_t::current() = cocaine::trace_t(
+		// trace
+		client.get_trace_id(), client.get_trace_id(), cocaine::trace_t::zero_value,
+		// rpc_name
+		"srw_test"
+	);
+
 	auto localnode = manager.create<io::localnode_tag>("localnode");
 
 	key key(gen_random(8));
@@ -574,7 +581,7 @@ bool register_tests(const nodes_data *setup)
 	auto n = setup->node->get_native();
 
 	/* prerequisite: launch and init test application
-	 *TODO: turn them collectively to fixture
+	 * TODO: turn them collectively into some fixture
 	 */
 	ELLIPTICS_TEST_CASE(upload_application, setup->nodes[0].locator_port(), app, setup->directory.path());
 	for (const auto &i : setup->nodes) {
