@@ -1,3 +1,16 @@
+elliptics (2.26.11.0-9) unstable; urgency=medium
+
+  * net: add send_limit option
+  * localnode: add tracing support
+  * srw: better headers logging in tests
+  * srw: connect tracing mechanics of elliptics and cocaine
+  * localnode: accept {c,io}flags by all methods
+  * localnode: set DNET_FLAGS_NOLOCK for lookups
+  * localnode: handle exceptions for cocaine::deferred method calls
+  * recovery: added removed_uncommitted_keys & removed_corrupted_keys stats to 'recover' section
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Mon, 15 Aug 2016 00:06:47 +0300
+
 elliptics (2.26.11.0-8) unstable; urgency=medium
 
   * forward: add ability to set forward node in session
