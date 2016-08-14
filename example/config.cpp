@@ -271,6 +271,7 @@ void parse_options(config_data *data, const kora::config_t &options)
 	data->cfg_state.flags |= (options.at("join", false) ? DNET_CFG_JOIN_NETWORK : 0);
 	data->cfg_state.flags |= (options.at("flags", 0) & ~DNET_CFG_JOIN_NETWORK);
 	data->cfg_state.io_thread_num = options.at<unsigned>("io_thread_num");
+	data->cfg_state.send_limit = options.at<unsigned>("send_limit", DNET_DEFAULT_SEND_LIMIT);
 	data->cfg_state.nonblocking_io_thread_num = options.at<unsigned>("nonblocking_io_thread_num");
 	data->cfg_state.net_thread_num = options.at<unsigned>("net_thread_num");
 	data->cfg_state.bg_ionice_class = options.at("bg_ionice_class", 0);

@@ -666,6 +666,11 @@ struct dnet_node
 	struct dnet_test_settings *test_settings;
 	/* Lock for test_settings */
 	pthread_rwlock_t	test_settings_lock;
+
+	/* Maximum number of packets sent to one state in a row. It is quota for fast connections
+	 * after which net thread will switch to next ready connection.
+	 */
+	uint32_t		send_limit;
 };
 
 

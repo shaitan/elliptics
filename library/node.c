@@ -760,6 +760,7 @@ struct dnet_node *dnet_node_create(struct dnet_config *cfg)
 	n->removal_delay = cfg->removal_delay;
 	n->flags = cfg->flags;
 	n->indexes_shard_count = cfg->indexes_shard_count;
+	n->send_limit = cfg->send_limit;
 
 	if (!n->log)
 		dnet_log_init(n, cfg->log);
