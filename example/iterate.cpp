@@ -191,7 +191,7 @@ int main(int argc, char *argv[]) {
 		if (vm.count("group"))
 			ctx.groups = vm["group"].as<std::vector<int>>();
 		log_file = vm["log-file"].as<std::string>();
-		log_level = ioremap::elliptics::file_logger::parse_level(vm["log-level"].as<std::string>());
+		log_level = dnet_log_parse_level(vm["log-level"].as<std::string>().c_str());
 		if (vm.count("remote"))
 			remotes = vm["remote"].as<std::vector<std::string>>();
 		if (vm.count("data"))
@@ -226,8 +226,7 @@ int main(int argc, char *argv[]) {
 		exit(1);
 	}
 
-	ioremap::elliptics::file_logger logger(log_file.c_str(), log_level);
-	ioremap::elliptics::node node(ioremap::elliptics::logger(logger, blackhole::log::attributes_t()));
+	ioremap::elliptics::node node(ioremap::elliptics::make_file_logger(log_file.c_str(), log_level));
 	for (auto it = remotes.begin(), end = remotes.end(); it != end; ++it) {
 		try {
 			node.add_remote(it->c_str());

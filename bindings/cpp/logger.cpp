@@ -1,303 +1,280 @@
-#include <elliptics/logger.hpp>
-#include <elliptics/session.hpp>
-#include "../../library/elliptics.h"
+#include "library/logger.hpp"
+
 #include <stdarg.h>
+#include <iomanip>
 
-#include "node_p.hpp"
 
-// For BigBang
-#include <blackhole/repository.hpp>
-
-#include <blackhole/sink/files.hpp>
+#include <blackhole/attribute.hpp>
+#include <blackhole/builder.hpp>
+#include <blackhole/extensions/writer.hpp>
 #include <blackhole/formatter/string.hpp>
-#include <blackhole/frontend/files.hpp>
+#include <blackhole/handler/blocking.hpp>
+#include <blackhole/root.hpp>
+#include <blackhole/sink/file.hpp>
+#include <blackhole/record.hpp>
 
-#include <boost/io/ios_state.hpp>
-
-__thread trace_id_t backend_trace_id_hook;
+#include "elliptics/session.hpp"
+#include "library/elliptics.h"
 
 namespace ioremap { namespace elliptics {
+struct trace {
+public:
+	trace(uint64_t trace_id, bool trace_bit)
+	: trace_id(trace_id)
+	, trace_bit(trace_bit) {}
 
-typedef blackhole::sink::files_t<
-    blackhole::sink::files::boost_backend_t,
-    blackhole::sink::rotator_t<
-        blackhole::sink::files::boost_backend_t,
-        blackhole::sink::rotation::watcher::move_t
-    >
-> elliptics_file_t;
+	uint64_t trace_id;
+	bool trace_bit;
 
-file_logger::file_logger(const char *file, log_level level)
-{
-	verbosity(level);
-
-	auto formatter = blackhole::utils::make_unique<blackhole::formatter::string_t>(format());
-	formatter->set_mapper(file_logger::mapping());
-	auto sink = blackhole::utils::make_unique<elliptics_file_t>(elliptics_file_t::config_type(file));
-	auto frontend = blackhole::utils::make_unique
-		<blackhole::frontend_t<blackhole::formatter::string_t, elliptics_file_t>>
-			(std::move(formatter), std::move(sink));
-
-	add_frontend(std::move(frontend));
-
-	add_attribute(keyword::request_id() = 0);
-}
-
-std::string file_logger::format()
-{
-	return "%(timestamp)s %(request_id)s/%(lwp)s/%(pid)s %(severity)s: %(message)s, attrs: [%(...L)s]";
-}
-
-static const char *severity_names[] = {
-	"debug",
-	"notice",
-	"info",
-	"warning",
-	"error"
-};
-static const size_t severity_names_count = sizeof(severity_names) / sizeof(severity_names[0]);
-
-std::string file_logger::generate_level(log_level level)
-{
-	typedef blackhole::aux::underlying_type<log_level>::type level_type;
-	auto value = static_cast<level_type>(level);
-
-	if (value < 0 || value >= static_cast<level_type>(severity_names_count)) {
-		return "unknown";
+	static trace current() {
+		return trace_stack.front();
 	}
 
-	return severity_names[value];
-}
-
-log_level file_logger::parse_level(const std::string &name)
-{
-	auto it = std::find(severity_names, severity_names + severity_names_count, name);
-	if (it == severity_names + severity_names_count) {
-		throw std::logic_error("Unknown log level: " + name);
+	static void pop() {
+		auto stack = trace_stack;
+		if (stack.size() > 1) {
+			trace_stack.pop_front();
+		}
 	}
 
-	return static_cast<log_level>(it - severity_names);
-}
+	static void push(uint64_t trace_id, bool trace_bit) {
+		trace_stack.emplace_front(trace_id, trace_bit);
+	}
 
-static void format_request_id(blackhole::aux::attachable_ostringstream &out, uint64_t request_id)
-{
-	boost::io::ios_flags_saver ifs(out);
-	out << std::setw(16) << std::setfill('0') << std::hex << request_id;
-}
-
-struct localtime_formatter_action {
-    blackhole::aux::datetime::generator_t generator;
-
-    localtime_formatter_action(const std::string &format) :
-	generator(blackhole::aux::datetime::generator_factory_t::make(format))
-    {
-    }
-
-    void operator() (blackhole::aux::attachable_ostringstream &stream, const timeval &value) const
-    {
-	std::tm tm;
-	localtime_r(&value.tv_sec, &tm);
-	generator(stream, tm, value.tv_usec);
-    }
+private:
+	static thread_local std::list<trace> trace_stack;
 };
 
-blackhole::mapping::value_t file_logger::mapping()
-{
-	blackhole::mapping::value_t mapper;
-	mapper.add<blackhole::keyword::tag::timestamp_t>(localtime_formatter_action("%Y-%m-%d %H:%M:%S.%f"));
-	mapper.add<keyword::tag::request_id_t>(format_request_id);
-	mapper.add<blackhole::keyword::tag::severity_t<log_level>>(blackhole::defaults::map_severity);
-	return mapper;
+thread_local std::list<trace> trace::trace_stack = {{0, false}};
+
+struct backend {
+	backend(int id)
+	: id(id) {}
+
+	int id;
+
+	static backend &current() {
+		static thread_local backend current{-1};
+		return current;
+	}
+};
+
+bool log_filter(const blackhole::record_t &record, int level) {
+	return trace::current().trace_bit || record.severity() >= level;
 }
 
-}} // namespace ioremap::elliptics
+std::unique_ptr<dnet_logger> make_file_logger(const std::string &path, dnet_log_level level) {
+	static const std::string pattern =
+	        "{timestamp} {trace_id}/{thread:x}/{process} {severity}: {message}, attrs: [{...}]";
 
-dnet_logger *dnet_node_get_logger(struct dnet_node *node)
-{
+	static auto sevmap = [](std::size_t severity, const std::string &spec, blackhole::writer_t &writer) {
+		static const std::array<const char *, 5> mapping = {{"DEBUG", "NOTICE", "INFO", "WARNING", "ERROR"}};
+		if (severity < mapping.size()) {
+			writer.write(spec, mapping[severity]);
+		} else {
+			writer.write(spec, severity);
+		}
+	};
+
+	std::vector<std::unique_ptr<blackhole::handler_t>> handlers;
+	handlers.push_back(
+		blackhole::builder<blackhole::handler::blocking_t>()
+			.set(blackhole::builder<blackhole::formatter::string_t>(pattern)
+				.mapping(sevmap)
+				.build())
+			.add(blackhole::builder<blackhole::sink::file_t>(path)
+				.build())
+			.build()
+	);
+
+	std::unique_ptr<blackhole::root_logger_t> logger(new blackhole::root_logger_t(std::move(handlers)));
+
+	logger->filter([level](const blackhole::record_t &record) {
+		return log_filter(record, level);
+	});
+
+	return std::move(logger);
+}
+
+std::string to_hex_string(uint64_t value) {
+	std::ostringstream stream;
+	stream << std::setfill('0') << std::setw(16) << std::hex << value;
+	return stream.str();
+}
+
+trace_scope::trace_scope(uint64_t trace_id, bool trace_bit) {
+	dnet_node_set_trace_id(trace_id, trace_bit);
+}
+
+trace_scope::~trace_scope() {
+	dnet_node_unset_trace_id();
+}
+
+backend_scope::backend_scope(int backend_id) {
+	dnet_node_set_backend_id(backend_id);
+}
+
+backend_scope::~backend_scope() {
+	dnet_node_unset_backend_id();
+}
+
+static blackhole::attribute_list make_view(const blackhole::attributes_t &attributes) {
+	blackhole::attribute_list attr_list;
+	for (const auto &attribute : attributes) {
+		attr_list.emplace_back(attribute);
+	}
+	return attr_list;
+}
+
+wrapper_t::wrapper_t(std::unique_ptr<dnet_logger> logger)
+: m_inner(std::move(logger)) {}
+
+void wrapper_t::log(blackhole::severity_t severity, const blackhole::message_t &message) {
+	blackhole::attribute_pack pack;
+	auto attr = attributes();
+	auto attr_list = make_view(attr);
+	pack.push_back(attr_list);
+	log(severity, message, pack);
+}
+
+void wrapper_t::log(blackhole::severity_t severity,
+                    const blackhole::message_t &message,
+                    blackhole::attribute_pack &pack) {
+	auto attr = attributes();
+	auto attr_list = make_view(attr);
+	pack.push_back(attr_list);
+	m_inner->log(severity, message, pack);
+}
+
+void wrapper_t::log(blackhole::severity_t severity,
+                    const blackhole::lazy_message_t &message,
+                    blackhole::attribute_pack &pack) {
+	auto attr = attributes();
+	auto attr_list = make_view(attr);
+	pack.push_back(attr_list);
+	m_inner->log(severity, message, pack);
+}
+
+blackhole::scope::manager_t &wrapper_t::manager() {
+	return m_inner->manager();
+}
+
+dnet_logger *wrapper_t::inner_logger() {
+	return m_inner.get();
+}
+
+dnet_logger *wrapper_t::base_logger() {
+	auto wrapper = dynamic_cast<wrapper_t *>(inner_logger());
+	if (wrapper) {
+		return wrapper->base_logger();
+	}
+
+	return inner_logger();
+}
+
+trace_wrapper_t::trace_wrapper_t(std::unique_ptr<dnet_logger> logger)
+: wrapper_t(std::move(logger)) {}
+
+blackhole::attributes_t trace_wrapper_t::attributes() {
+	return {
+		// should be replaced by plain trace::current().trace_id when blackhole gets mapping
+		// and cocaine start to specify trace_id as uint64_t
+		{"trace_id", to_hex_string(trace::current().trace_id)}
+	};
+}
+
+backend_wrapper_t::backend_wrapper_t(std::unique_ptr<dnet_logger> logger)
+: wrapper_t(std::move(logger)) {}
+
+blackhole::attributes_t backend_wrapper_t::attributes() {
+	blackhole::attributes_t attributes;
+	if (backend::current().id != -1) {
+		attributes.emplace_back("backend_id", backend::current().id);
+	}
+
+	return attributes;
+}
+
+dnet_logger *get_base_logger(dnet_logger *logger) {
+	auto wrapper = dynamic_cast<wrapper_t *>(logger);
+	if (wrapper) {
+		return wrapper->base_logger();
+	}
+	return logger;
+}
+
+}} /* namespace ioremap::elliptics */
+
+void dnet_node_set_trace_id(uint64_t trace_id, int trace_bit) {
+	ioremap::elliptics::trace::push(trace_id, !!trace_bit);
+}
+
+void dnet_node_unset_trace_id() {
+	ioremap::elliptics::trace::pop();
+}
+
+uint64_t dnet_node_get_trace_bit() {
+	return ioremap::elliptics::trace::current().trace_bit ? (1ll << 63) : 0;
+}
+
+void dnet_node_set_backend_id(int backend_id) {
+	ioremap::elliptics::backend::current() = {backend_id};
+}
+
+void dnet_node_unset_backend_id() {
+	ioremap::elliptics::backend::current() = {-1};
+}
+
+dnet_logger *dnet_node_get_logger(struct dnet_node* node) {
 	return node->log;
 }
 
-namespace blackhole_scoped_attributes {
+static const std::array<std::string, 5> severity_names = {{"debug", "notice", "info", "warning", "error"}};
 
-enum {
-	DNET_SCOPED_LIMIT = 5
-};
+enum dnet_log_level dnet_log_parse_level(const char *name) {
+	auto it = std::find(severity_names.begin(), severity_names.end(), name);
+	if (it == severity_names.end()) {
+		throw std::logic_error(std::string{"Unknown log level: "} + name);
+	}
 
-static __thread char scoped_buffer[DNET_SCOPED_LIMIT][sizeof(blackhole::scoped_attributes_t)];
-static __thread blackhole::scoped_attributes_t *scoped_attributes[DNET_SCOPED_LIMIT];
-static __thread uint64_t scoped_trace_id_hook[DNET_SCOPED_LIMIT];
-static __thread size_t scoped_count = 0;
-
+	return static_cast<dnet_log_level>(it - severity_names.begin());
 }
 
-void dnet_node_set_trace_id(dnet_logger *logger, uint64_t trace_id, int tracebit, int backend_id)
-{
-	using blackhole::scoped_attributes_t;
-	using namespace blackhole_scoped_attributes;
+const char* dnet_log_print_level(enum dnet_log_level level) {
+	if (level > severity_names.size()) {
+		throw std::logic_error(std::string{"Unknown log level: "} + std::to_string(level));
+	}
+	return severity_names[level].c_str();
+}
 
-	if (scoped_count >= DNET_SCOPED_LIMIT) {
-		dnet_log_only_log(logger, DNET_LOG_ERROR,
-			"logic error: you may not call dnet_node_set_trace_id twice, dnet_node_unset_trace_id call missed");
-		scoped_count++;
+void dnet_log_raw(dnet_logger *logger, dnet_log_level level, const char *format, ...) {
+	if (!logger) {
 		return;
 	}
 
-	auto &local_attributes = scoped_attributes[scoped_count];
-	local_attributes = reinterpret_cast<scoped_attributes_t *>(scoped_buffer[scoped_count]);
-
-	scoped_trace_id_hook[scoped_count] = tracebit ? ~0ull : 0;
-
-	try {
-		blackhole::log::attributes_t attributes = {
-			ioremap::elliptics::keyword::request_id() = trace_id,
-			blackhole::keyword::tracebit() = bool(tracebit)
-		};
-
-		if (backend_id >= 0) {
-			attributes.insert(std::make_pair(std::string("backend_id"), blackhole::log::attribute_t(backend_id)));
-		}
-
-
-		new (local_attributes) scoped_attributes_t(*logger, std::move(attributes));
-
-		// Set all bits to ensure that it has tracebit set
-		backend_trace_id_hook = scoped_trace_id_hook[scoped_count];
-	} catch (const std::exception &e) {
-		dnet_log_only_log(logger, DNET_LOG_ERROR,
-			"%s: trace_id: %08llx, tracebit: %d, backend_id: %d, caught exception: %s",
-			__func__, (unsigned long long)trace_id, tracebit, backend_id, e.what());
-	}
-
-	// scoped_count has to be increased in any case, since it will be followed by
-	// dnet_node_unset_trace_id() which doesn't know whether corresponding
-	// dnet_node_set_trace_id() succeeded or not
-	++scoped_count;
-}
-
-void dnet_node_unset_trace_id()
-{
-	using namespace blackhole_scoped_attributes;
-
-	if (scoped_count > 0) {
-		--scoped_count;
-
-		if (scoped_count < DNET_SCOPED_LIMIT) {
-			auto &local_attributes = scoped_attributes[scoped_count];
-			local_attributes->~scoped_attributes_t();
-			local_attributes = NULL;
-
-			if (scoped_count > 0)
-				backend_trace_id_hook = scoped_trace_id_hook[scoped_count - 1];
-			else
-				backend_trace_id_hook = 0;
-
-		}
-	}
-}
-
-static __thread char dnet_logger_record_buffer[sizeof(dnet_logger_record)];
-
-dnet_logger_record *dnet_log_open_record(dnet_logger *logger, dnet_log_level level)
-{
-	dnet_logger_record *record = reinterpret_cast<dnet_logger_record *>(dnet_logger_record_buffer);
-
-	try {
-		new (record) blackhole::log::record_t(logger->open_record(level));
-	} catch (...) {
-		return NULL;
-	}
-
-	if (!record->valid()) {
-		record->~record_t();
-		return NULL;
-	}
-	return record;
-}
-
-int dnet_log_enabled(dnet_logger *logger, dnet_log_level level)
-{
-	dnet_logger_record *record = reinterpret_cast<dnet_logger_record *>(dnet_logger_record_buffer);
-	try {
-		new (record) blackhole::log::record_t(logger->open_record(level));
-		int result = record->valid();
-		record->~record_t();
-		return result;
-	} catch (...) {
-		return 0;
-	}
-}
-
-dnet_log_level dnet_log_get_verbosity(dnet_logger *logger)
-{
-	return logger->log().verbosity();
-}
-
-void dnet_log_set_verbosity(dnet_logger *logger, dnet_log_level level)
-{
-	logger->log().verbosity(level);
-}
-
-static void dnet_log_add_message(dnet_logger_record *record, const char *format, va_list args)
-{
 	char buffer[2048];
-	const size_t buffer_size = sizeof(buffer);
-
-	vsnprintf(buffer, buffer_size, format, args);
-
-	buffer[buffer_size - 1] = '\0';
-
-	size_t len = strlen(buffer);
-	while (len > 0 && buffer[len - 1] == '\n')
-		buffer[--len] = '\0';
-
-	try {
-		record->attributes.insert(blackhole::keyword::message() = buffer);
-	} catch (...) {
-	}
-}
-
-void dnet_log_vwrite(dnet_logger *logger, dnet_logger_record *record, const char *format, va_list args)
-{
-	dnet_log_add_message(record, format, args);
-
-	logger->push(std::move(*record));
-}
-
-void dnet_log_write(dnet_logger *logger, dnet_logger_record *record, const char *format, ...)
-{
-	va_list args;
-	va_start(args, format);
-	dnet_log_add_message(record, format, args);
-	va_end(args);
-
-	logger->push(std::move(*record));
-}
-
-void dnet_log_write_err(dnet_logger *logger, dnet_logger_record *record, int err, const char *format, ...)
-{
-	(void) err;
 
 	va_list args;
 	va_start(args, format);
-	dnet_log_add_message(record, format, args);
+
+	/* This lambda will be called by logger after filtering
+	 * NB! it is promised that this lambda will be called from this thread
+	 */
+	auto lazy_format = [&]() -> blackhole::string_view {
+		vsnprintf(buffer, sizeof(buffer), format, args);
+		size_t length = strlen(buffer);
+		while (length && buffer[length - 1] == '\n') {
+			--length;
+		}
+		buffer[length] = '\0';
+		return {buffer, length};
+	};
+
+	blackhole::lazy_message_t lazy_message{std::string() /* empty pattern */,
+	                                       lazy_format /* supplier */};
+	blackhole::attribute_pack empty_pack;
+
+	logger->log(level, lazy_message, empty_pack);
+
 	va_end(args);
-
-	logger->push(std::move(*record));
-}
-
-void dnet_log_close_record(dnet_logger_record *record)
-{
-	//FIXME: this check is required to avoid double-free error
-	if (record->valid()) {
-		record->~record_t();
-	}
-}
-
-
-void dnet_log_record_set_request_id(dnet_logger_record *record, uint64_t trace_id, int tracebit)
-{
-	try {
-		record->attributes.insert(ioremap::elliptics::keyword::request_id() = trace_id);
-		record->attributes.insert(blackhole::keyword::tracebit() = tracebit);
-	} catch (...) {
-	}
 }

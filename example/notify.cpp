@@ -99,7 +99,7 @@ int main(int argc, char *argv[])
 	const char *logfile = "/dev/stderr", *notify_file = "/dev/stdout";
 	FILE *notify;
 	std::vector<int> groups;
-	dnet_log_level log_level = DNET_LOG_INFO;
+	auto log_level = DNET_LOG_INFO;
 
 	memset(&cfg, 0, sizeof(struct dnet_config));
 
@@ -109,7 +109,7 @@ int main(int argc, char *argv[])
 		switch (ch) {
 			case 'm':
 				try {
-					log_level = file_logger::parse_level(optarg);
+					log_level = dnet_log_parse_level(optarg);
 				} catch (std::exception &exc) {
 					std::cerr << exc.what() << std::endl;
 					return -1;
@@ -165,9 +165,7 @@ int main(int argc, char *argv[])
 	}
 
 	try {
-		file_logger log(logfile, log_level);
-
-		node n(logger(log, blackhole::log::attributes_t()), cfg);
+		node n(make_file_logger(logfile, log_level), cfg);
 		n.add_remote(address(remote_addr, remote_port, remote_family));
 
 		session s(n);

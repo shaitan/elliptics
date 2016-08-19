@@ -32,8 +32,11 @@
 
 #include <netinet/in.h>
 
+#include <blackhole/attribute.hpp>
+
 #include "elliptics/cppdef.h"
 #include "elliptics/backends.h"
+#include "elliptics/logger.hpp"
 
 #include "common.h"
 
@@ -131,7 +134,7 @@ int main(int argc, char *argv[])
 	size = offset = 0;
 
 	cfg.wait_timeout = 60;
-	dnet_log_level log_level = DNET_LOG_ERROR;
+	auto log_level = DNET_LOG_ERROR;
 
 	while ((ch = getopt(argc, argv, "i:d:C:A:f:F:M:N:g:u:O:S:m:zsU:aL:w:l:c:k:I:r:W:R:D:hHb:B:p:")) != -1) {
 		switch (ch) {
@@ -153,7 +156,7 @@ int main(int argc, char *argv[])
 				break;
 			case 'M':
 				try {
-					node_status.log_level = static_cast<uint32_t>(file_logger::parse_level(optarg));
+					node_status.log_level = dnet_log_parse_level(optarg);
 				} catch (std::exception &exc) {
 					std::cerr << "remote log level: " << exc.what() << std::endl;
 					return -1;
@@ -175,7 +178,7 @@ int main(int argc, char *argv[])
 				break;
 			case 'm':
 				try {
-					log_level = file_logger::parse_level(optarg);
+					log_level = dnet_log_parse_level(optarg);
 				} catch (std::exception &exc) {
 					std::cerr << exc.what() << std::endl;
 					return -1;
@@ -255,8 +258,6 @@ int main(int argc, char *argv[])
 	}
 
 	try {
-		file_logger log(logfile, log_level);
-
 		/*
 		 * Only request stats or start defrag on the single node
 		 */
@@ -265,7 +266,7 @@ int main(int argc, char *argv[])
 			cfg.flags |= DNET_CFG_NO_ROUTE_LIST;
 		}
 
-		node n(logger(log, blackhole::log::attributes_t()), cfg);
+		node n(make_file_logger(logfile, log_level), cfg);
 		session s(n);
 
 		s.set_cflags(cflags);
@@ -288,8 +289,8 @@ int main(int argc, char *argv[])
 
 		err = dnet_create_addr(&ra, remote_addr, port, family);
 		if (err) {
-			BH_LOG(n.get_log(), DNET_LOG_ERROR, "Failed to get address info for %s:%d, family: %d, err: %d: %s.",
-					remote_addr, port, family, err, strerror(-err));
+			DNET_LOG_ERROR(n.get_native(), "Failed to get address info for {}:{}, family: {}, err: {}: {}",
+			               remote_addr, port, family, err, strerror(-err));
 			return err;
 		}
 

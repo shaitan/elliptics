@@ -41,7 +41,6 @@ include(CheckProcStats)
 include(CreateStdint)
 include(FixRpath)
 
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/foreign/blackhole/src)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include/)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/monitor)
@@ -103,6 +102,9 @@ else()
         add_definitions("-DHANDYSTATS_DISABLE=1")
     endif()
 endif()
+
+find_package(Blackhole REQUIRED)
+include_directories(${BLACKHOLE_INCLUDE_DIRS})
 
 option(WITH_DOXYGEN "Generate documentation by Doxygen" ON)
 

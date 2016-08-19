@@ -63,7 +63,7 @@ static void on_update_index_finished(async_update_indexes_handler handler, const
 }
 
 /*!
- * There are several modifying index methods with similiar behaviour.
+ * There are several modifying index methods with similar behaviour.
  * Some of them send requests to 'object's list of indexes', other to
  * 'index's list of objects', some to both of them.
  *
@@ -227,8 +227,9 @@ static async_set_indexes_result session_set_indexes(session &orig_sess, const ke
 	result.connect(std::bind(on_update_index_entry, handler, std::placeholders::_1),
 		std::bind(on_update_index_finished, handler, std::placeholders::_1));
 
-	dnet_log(orig_sess.get_native_node(), DNET_LOG_INFO, "%s: key: %s, indexes: %zd",
-			dnet_dump_id(&request_id.id()), request_id.to_string().c_str(), indexes.size());
+	auto log = orig_sess.get_logger();
+	DNET_LOG_INFO(log, "{}: key: {}, indexes: {}", dnet_dump_id(&request_id.id()), request_id.to_string(),
+	              indexes.size());
 
 	return final_result;
 }
@@ -269,7 +270,7 @@ async_set_indexes_result session::set_indexes(const key &id, const std::vector<s
 		const std::vector<data_pointer> &datas)
 {
 	if (datas.size() != indexes.size())
-		throw_error(-EINVAL, id, "session::set_indexes: indexes and datas sizes mismtach");
+		throw_error(-EINVAL, id, "session::set_indexes: indexes and datas sizes mismatch");
 
 	std::vector<index_entry> raw_indexes;
 	session_convert_indexes(*this, raw_indexes, indexes, datas);
@@ -288,7 +289,7 @@ async_set_indexes_result session::update_indexes_internal(const key &id,
 		const std::vector<std::string> &indexes, const std::vector<data_pointer> &datas)
 {
 	if (datas.size() != indexes.size())
-		throw_error(-EINVAL, id, "session::update_indexes_internal: indexes and datas sizes mismtach");
+		throw_error(-EINVAL, id, "session::update_indexes_internal: indexes and datas sizes mismatch");
 
 	std::vector<index_entry> raw_indexes;
 	session_convert_indexes(*this, raw_indexes, indexes, datas);
@@ -463,12 +464,11 @@ struct on_remove_index : std::enable_shared_from_this<on_remove_index>
 			std::bind(&on_remove_index::on_request_finished, shared_from_this(), _1));
 
 		{
-			logger &log = sess.get_logger();
-			char index_name[2 * DNET_ID_SIZE + 1];
-			char object_name[2 * DNET_ID_SIZE + 1];
-			BH_LOG(log, DNET_LOG_DEBUG, "on_remove_index: Removed index %s from object %s",
-				dnet_dump_id_len_raw(index_id.id, DNET_DUMP_NUM, index_name),
-				dnet_dump_id_len_raw(entry.id.id, DNET_DUMP_NUM, object_name));
+			const std::string index_name = dnet_dump_id_str(index_id.id);
+			const std::string object_name = dnet_dump_id_str(entry.id.id);
+			auto log = sess.get_logger();
+			DNET_LOG_DEBUG(log, "on_remove_index: Removed index {} from object {}", index_name,
+			               object_name);
 		}
 
 		if (remove_data) {
@@ -567,7 +567,7 @@ async_set_indexes_result session::update_indexes(const key &id,
 		const std::vector<std::string> &indexes, const std::vector<data_pointer> &datas)
 {
 	if (datas.size() != indexes.size())
-		throw_error(-EINVAL, id, "session::update_indexes: indexes and datas sizes mismtach");
+		throw_error(-EINVAL, id, "session::update_indexes: indexes and datas sizes mismatch");
 
 	std::vector<index_entry> raw_indexes;
 	session_convert_indexes(*this, raw_indexes, indexes, datas);
@@ -703,7 +703,6 @@ public:
 	find_indexes_handler(const session &sess, const async_generic_result &result, std::vector<int> &&groups,
 		const std::vector<dnet_raw_id> &indexes, bool intersect) :
 		parent_type(sess, result, std::move(groups)),
-		m_logger(m_sess.get_logger()),
 		m_intersect(intersect),
 		m_shard_count(dnet_node_get_indexes_shard_count(sess.get_native_node())),
 		m_indexes(indexes)
@@ -716,7 +715,7 @@ public:
 
 		/*
 		 * index_requests_set contains all requests we have to send for this bulk-request.
-		 * All indexes a splitted for shards, so we have to send separate logical request
+		 * All indexes are split for shards, so we have to send separate logical request
 		 * to certain shard for all indexes. This logical requests may be joined to one
 		 * transaction if some of shards are situated on one elliptics node.
 		 */
@@ -739,7 +738,8 @@ public:
 			m_index_requests_set.insert(index_id(m_id_precalc[shard_id * m_indexes.size()], shard_id));
 		}
 
-		debug("INDEXES_FIND, callback: %p, shard_count: %d, indexes_count: %llu", this, m_shard_count, m_indexes.size());
+		DNET_LOG_DEBUG(node, "INDEXES_FIND, callback: {:p}, shard_count: {}, indexes_count: {}", (void *)this,
+		               m_shard_count, m_indexes.size());
 	}
 
 	id_map &&take_convert_map()
@@ -766,15 +766,15 @@ public:
 		net_state_id next;
 		dnet_id next_id = id;
 
-		debug("INDEXES_FIND, callback: %p, group: %d, next", this, group_id);
+		DNET_LOG_DEBUG(node, "INDEXES_FIND, callback: {:p}, group: {}, next", (void *)this, group_id);
 
 		if (!cur) {
-			debug("INDEXES_FIND, callback: %p, group: %d, id: %s, state: failed",
-				this, group_id, dnet_dump_id(&id));
+			DNET_LOG_DEBUG(node, "INDEXES_FIND, callback: {:p}, group: {}, id: {}, state: failed",
+			               (void *)this, group_id, dnet_dump_id(&id));
 			return aggregated(m_sess, results.begin(), results.end());
 		}
-		debug("INDEXES_FIND, callback: %p, id: %s, state: %s, backend: %d",
-			this, dnet_dump_id(&id), dnet_state_dump_addr(cur.state()), cur.backend());
+		DNET_LOG_DEBUG(node, "INDEXES_FIND, callback: {:p}, id: {}, state: {}, backend: {}", (void *)this,
+		               dnet_dump_id(&id), dnet_state_dump_addr(cur.state()), cur.backend());
 
 		dnet_trans_control control;
 		memset(&control, 0, sizeof(control));
@@ -812,12 +812,14 @@ public:
 
 				next.reset(node, &next_id);
 				if (!next) {
-					debug("INDEXES_FIND, callback: %p, group: %d, id: %s, state: failed",
-						this, group_id, dnet_dump_id(&next_id));
+					DNET_LOG_DEBUG(node,
+					               "INDEXES_FIND, callback: {:p}, group: {}, id: {}, state: failed",
+					               (void *)this, group_id, dnet_dump_id(&next_id));
 					return aggregated(m_sess, results.begin(), results.end());
 				}
-				debug("INDEXES_FIND, callback: %p, id: %s, state: %s, backend: %d",
-					this, dnet_dump_id(&next_id), dnet_state_dump_addr(next.state()), next.backend());
+				DNET_LOG_DEBUG(node, "INDEXES_FIND, callback: {:p}, id: {}, state: {}, backend: {}",
+				               (void *)this, dnet_dump_id(&next_id), dnet_state_dump_addr(next.state()),
+				               next.backend());
 
 				/* Send command only if state changes or it's a last id */
 				more = (cur == next);
@@ -849,24 +851,23 @@ public:
 
 			memcpy(&control.id, &id, sizeof(id));
 
-			notice("INDEXES_FIND: callback: %p, count: %llu, state: %s, backend: %d",
-				this,
-				index_requests_count,
-				dnet_state_dump_addr(cur.state()), cur.backend());
+			DNET_LOG_NOTICE(node, "INDEXES_FIND: callback: {:p}, count: {}, state: {}, backend: {}",
+			                (void *)this, index_requests_count, dnet_state_dump_addr(cur.state()),
+			                cur.backend());
 
 			++count;
 			index_requests_count = 0;
 
 			results.emplace_back(send_to_single_state(m_sess, control));
 
-			debug("INDEXES_FIND, callback: %p, group: %d", this, group_id);
+			DNET_LOG_DEBUG(node, "INDEXES_FIND, callback: {:p}, group: {}", (void *)this, group_id);
 
 			cur.reset();
 			std::swap(next, cur);
 			memcpy(&id, &next_id, sizeof(struct dnet_id));
 		}
 
-		debug("INDEXES_FIND, callback: %p, group: %d, count: %d", this, group_id, count);
+		DNET_LOG_DEBUG(node, "INDEXES_FIND, callback: {:p}, group: {}, count: {}", (void *)this, group_id, count);
 
 		return aggregated(m_sess, results.begin(), results.end());
 	}
@@ -874,9 +875,11 @@ public:
 	bool need_next_group(const error_info &error)
 	{
 		(void) error;
-
-		debug("INDEXES_FIND, callback: %p, index_requests_set.size: %llu, group_index: %llu, group_count: %llu",
-			  this, m_index_requests_set.size(), m_group_index, m_groups.size());
+		auto log = m_sess.get_logger();
+		DNET_LOG_DEBUG(
+		        log,
+		        "INDEXES_FIND, callback: {:p}, index_requests_set.size: {}, group_index: {}, group_count: {}",
+		        (void *)this, m_index_requests_set.size(), m_group_index, m_groups.size());
 
 		// all results are found or all groups are iterated
 		return !m_index_requests_set.empty();
@@ -891,7 +894,6 @@ public:
 	}
 
 private:
-	const dnet_logger &m_logger;
 	const bool m_intersect;
 	const int m_shard_count;
 	std::set<index_id> m_index_requests_set;
@@ -920,7 +922,8 @@ static void on_find_indexes_process(session sess, std::shared_ptr<find_indexes_h
 
 			auto converted = convert_map->find(id);
 			if (converted == convert_map->end()) {
-				BH_LOG(sess.get_logger(), DNET_LOG_ERROR, "%s: on_find_indexes_process, unknown id", dnet_dump_id_str(id.id));
+				DNET_LOG_ERROR(node, "{}: on_find_indexes_process, unknown id",
+				               dnet_dump_id_str(id.id));
 				continue;
 			}
 
@@ -1117,7 +1120,8 @@ struct get_index_metadata_callback
 		metadata.index_size = get_index_size(content, err);
 		if (err) {
 			metadata.is_valid = false;
-			BH_LOG(sess.get_logger(), DNET_LOG_ERROR, "get_index_metadata: Incorrect msgpack format: err: %d", err);
+			auto log = sess.get_logger();
+			DNET_LOG_ERROR(log, "get_index_metadata: Incorrect msgpack format: err: {}", err);
 		} else {
 			metadata.is_valid = true;
 		}
@@ -1153,7 +1157,7 @@ async_get_index_metadata_result session::get_index_metadata(const dnet_raw_id &i
 
 	/*
 	 * index_requests_set contains all requests we have to send for this bulk-request.
-	 * All indexes a splitted for shards, so we have to send separate logical request
+	 * All indexes are split for shards, so we have to send separate logical request
 	 * to certain shard for all indexes. This logical requests may be joined to one
 	 * transaction if some of shards are situated on one elliptics node.
 	 */
@@ -1226,10 +1230,10 @@ struct merge_indexes_callback
 	};
 
 	/*!
-	 * This class returnes result of merged indexes one-by-one.
+	 * This class returns result of merged indexes one-by-one.
 	 *
 	 * It stores in the heap the biggest not-processed-yet from every group.
-	 * If any element is poped from the heap it is replaced by the next element
+	 * If any element is popped from the heap it is replaced by the next element
 	 * from the same group.
 	 *
 	 * When user asks for next element the following logic is applied:
@@ -1300,10 +1304,10 @@ struct merge_indexes_callback
 
 	void operator() (const sync_read_result &raw_indexes, const error_info &error)
 	{
-		logger &log = write_session.get_logger();
+		auto log = write_session.get_logger();
 
 		if (error) {
-			BH_LOG(log, DNET_LOG_ERROR, "%s: failed to read indexes: %s", dnet_dump_id(&id.id()), error.message());
+			DNET_LOG_ERROR(log, "{}: failed to read indexes: {}", dnet_dump_id(&id.id()), error.message());
 
 			handler.complete(error);
 			return;
@@ -1315,8 +1319,8 @@ struct merge_indexes_callback
 		// Unpack all retrieved results if possible
 		for (auto it = raw_indexes.begin(); it != raw_indexes.end(); ++it) {
 			try {
-				BH_LOG(log, DNET_LOG_DEBUG, "%s: unpacking indexes, size: %llu",
-					dnet_dump_id(&id.id()), static_cast<unsigned long long>(it->file().size()));
+				DNET_LOG_DEBUG(log, "{}: unpacking indexes, size: {}", dnet_dump_id(&id.id()),
+				               it->file().size());
 
 				dnet_indexes tmp;
 				indexes_unpack_raw(it->file(), &tmp);
@@ -1327,7 +1331,8 @@ struct merge_indexes_callback
 				handler.complete(error_info(-ENOMEM, std::string()));
 				return;
 			} catch (std::exception &e) {
-				BH_LOG(log, DNET_LOG_ERROR, "%s: failed to unpack indexes: %s", dnet_dump_id(&id.id()), e.what());
+				DNET_LOG_ERROR(log, "{}: failed to unpack indexes: {}", dnet_dump_id(&id.id()),
+				               e.what());
 			}
 		}
 
@@ -1356,8 +1361,9 @@ struct merge_indexes_callback
 				continue;
 			}
 			if (it->shard_id != shard_id || it->shard_count != shard_count) {
-				BH_LOG(log, DNET_LOG_ERROR, "%s: mismatched indexes metadata: (%d, %d) vs (%d, %d)",
-					dnet_dump_id(&id.id()), shard_id, shard_count, it->shard_id, it->shard_count);
+				DNET_LOG_ERROR(log, "{}: mismatched indexes metadata: ({}, {}) vs ({}, {})",
+				               dnet_dump_id(&id.id()), shard_id, shard_count, it->shard_id,
+				               it->shard_count);
 				handler.complete(create_error(-EINVAL, id, "mismatched indexes metadata"));
 				return;
 			}
@@ -1372,7 +1378,7 @@ struct merge_indexes_callback
 		while (heap.has_next())
 			result.indexes.push_back(heap.next());
 
-		// Head of the heap is the buggest element, so final list must be reversed
+		// Head of the heap is the biggest element, so final list must be reversed
 		std::reverse(result.indexes.begin(), result.indexes.end());
 
 		// Pack indexes and write serialized data to server
@@ -1443,20 +1449,19 @@ async_write_result session::merge_indexes(const key &id, const std::vector<int> 
  * \li ...
  * \li PROFIT
  *
- * Process is finished when any step fails or every step is succesfully completed.
+ * Process is finished when any step fails or every step is successfully completed.
  */
 struct recover_index_callback : public std::enable_shared_from_this<recover_index_callback>
 {
 	key index;
 	session sess;
-	logger &log;
 	async_result_handler<callback_result_entry> handler;
 	std::atomic_size_t counter;
 	std::mutex error_mutex;
 	error_info total_error;
 
 	recover_index_callback(const session &sess, const async_generic_result &result) :
-		sess(sess), log(sess.get_logger()), handler(result), counter(0)
+		sess(sess), handler(result), counter(0)
 	{
 	}
 
@@ -1477,9 +1482,10 @@ struct recover_index_callback : public std::enable_shared_from_this<recover_inde
 
 	void on_find_indexes_process(const find_indexes_result_entry &entry)
 	{
+		auto log = sess.get_logger();
 		for (auto it = entry.indexes.begin(); it != entry.indexes.end(); ++it) {
-			BH_LOG(log, DNET_LOG_DEBUG, "recovery, index: %s, object: %s, data: %s",
-				index.to_string().c_str(), dnet_dump_id_str(entry.id.id), it->data.to_string().c_str());
+			DNET_LOG_DEBUG(log, "recovery, index: {}, object: {}, data: {}", index.to_string(),
+			               dnet_dump_id_str(entry.id.id), it->data.to_string());
 		}
 
 		if (!entry.indexes.empty()) {
@@ -1497,7 +1503,7 @@ struct recover_index_callback : public std::enable_shared_from_this<recover_inde
 	void on_find_indexes_complete(const error_info &error)
 	{
 		if (error) {
-			// Something bad is happened, there were no successfull
+			// Something bad is happened, there were no successful
 			// find if this happened, so we are free to exit
 			handler.complete(error);
 		} else {

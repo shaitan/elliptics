@@ -183,7 +183,7 @@ static void ssend_test_copy(session &s, const std::vector<int> &dst_groups, int 
 
 		char buffer[2*DNET_ID_SIZE + 1] = {0};
 
-		logger &log = s.get_logger();
+		auto log = s.get_logger();
 
 		for (auto it = iter.begin(), end = iter.end(); it != end; ++it) {
 #if 1
@@ -192,17 +192,13 @@ static void ssend_test_copy(session &s, const std::vector<int> &dst_groups, int 
 			 * following error:
 			 * error: cannot bind packed field ... to int&
 			 */
-			BH_LOG(log, DNET_LOG_DEBUG, "ssend_test: "
-			                            "key: %s, backend: %d, user_flags: %llx, ts: %s (%lld.%09lld), "
-			                            "status: %d (should be: %d), size: %lld, "
-			                            "iterated_keys: %lld/%lld",
-			       dnet_dump_id_len_raw(it->reply()->key.id, DNET_ID_SIZE, buffer),
-			       (int)it->command()->backend_id, (unsigned long long)it->reply()->user_flags,
-			       dnet_print_time(&it->reply()->timestamp),
-			       (unsigned long long)it->reply()->timestamp.tsec,
-			       (unsigned long long)it->reply()->timestamp.tnsec, (int)it->reply()->status, status,
-			       (unsigned long long)it->reply()->size, (unsigned long long)it->reply()->iterated_keys,
-			       (unsigned long long)it->reply()->total_keys);
+			DNET_LOG_DEBUG(log, "ssend_test: key: {}, backend: {}, user_flags: {:x}, ts: {} ({}), status: "
+			                    "{} (should be: {}), size: {}, iterated_keys: {}/{}",
+			               dnet_dump_id_len_raw(it->reply()->key.id, DNET_ID_SIZE, buffer),
+			               it->command()->backend_id, it->reply()->user_flags,
+			               dnet_print_time(&it->reply()->timestamp), it->reply()->timestamp.tsec,
+			               it->reply()->timestamp.tnsec, it->reply()->status, status, it->reply()->size,
+			               it->reply()->iterated_keys, it->reply()->total_keys);
 #endif
 
 			BOOST_REQUIRE_EQUAL(it->command()->status, 0);
@@ -218,9 +214,8 @@ static void ssend_test_copy(session &s, const std::vector<int> &dst_groups, int 
 			copied++;
 		}
 
-		BH_LOG(log, DNET_LOG_NOTICE, "ssend_test: %s: dst_groups: %s, copied: %d",
-				id.to_string(),
-				print_groups(dst_groups), copied);
+		DNET_LOG_NOTICE(log, "ssend_test: {}: dst_groups: {}, copied: {}", id.to_string(),
+		                print_groups(dst_groups), copied);
 
 		return copied;
 	};
@@ -237,7 +232,7 @@ static void ssend_test_copy(session &s, const std::vector<int> &dst_groups, int 
 static void ssend_test_server_send(session &s, int num, const std::string &id_prefix, const std::string &data_prefix,
                                    const std::vector<int> &dst_groups, uint64_t iflags, int status,
                                    uint32_t exception_policy, const long timeout) {
-	logger &log = s.get_logger();
+	auto log = s.get_logger();
 
 	s.set_exceptions_policy(exception_policy);
 	s.set_timeout(timeout);
@@ -252,8 +247,7 @@ static void ssend_test_server_send(session &s, int num, const std::string &id_pr
 		keys.push_back(id);
 	}
 
-	BH_LOG(log, DNET_LOG_NOTICE, "%s: keys: %d, dst_groups: %s, starting copy",
-			__func__, num, print_groups(dst_groups));
+	DNET_LOG_NOTICE(log, "{}: keys: {}, dst_groups: {}, starting copy", __func__, num, print_groups(dst_groups));
 
 	//char buffer[2*DNET_ID_SIZE + 1] = {0};
 
@@ -266,10 +260,10 @@ static void ssend_test_server_send(session &s, int num, const std::string &id_pr
 		 * following error:
 		 * error: cannot bind packed field ... to int&
 		 */
-		BH_LOG(log, DNET_LOG_DEBUG,
+		DNET_LOG_DEBUG(log,
 				"ssend_test: "
-				"key: %s, backend: %d, user_flags: %llx, ts: %lld.%09lld, status: %d, size: %lld, "
-				"iterated_keys: %lld/%lld",
+				"key: {}, backend: {}, user_flags: {:x}, ts: {}.{}, status: {}, size: {}, "
+				"iterated_keys: {}/{}",
 			dnet_dump_id_len_raw(it->reply()->key.id, DNET_ID_SIZE, buffer),
 			(int)it->command()->backend_id,
 			(unsigned long long)it->reply()->user_flags,
@@ -283,8 +277,8 @@ static void ssend_test_server_send(session &s, int num, const std::string &id_pr
 		copied++;
 	}
 
-	BH_LOG(log, DNET_LOG_NOTICE, "%s: keys: %d, dst_groups: %s, copied total: %d",
-			__func__, num, print_groups(dst_groups), copied);
+	DNET_LOG_NOTICE(log, "{}: keys: {}, dst_groups: {}, copied total: {}", __func__, num, print_groups(dst_groups),
+	                copied);
 
 	/* timeout check is different, session timeout (i.e. transaction timeout) is the same as timeout for every write
 	 * command send by the iterator or server_send method, which means that if write expires (slow backend), session

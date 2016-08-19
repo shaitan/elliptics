@@ -29,6 +29,7 @@
 #include "elliptics.h"
 #include "elliptics/packet.h"
 #include "elliptics/interface.h"
+#include "library/logger.hpp"
 
 /*
  * Ascending transaction order
@@ -96,21 +97,21 @@ int dnet_trans_insert_nolock(struct dnet_net_state *st, struct dnet_trans *a)
 }
 
 /**
- * Timer functinos are used for timeout check.
+ * Timer functions are used for timeout check.
  * We insert transaction into timer tree ordered/indexed by time-to-timeout-death.
  *
- * Checking thread periodically looks at the begining of the timer tree and kills
+ * Checking thread periodically looks at the beginning of the timer tree and kills
  * those transactions which are past the deadline. When transaction reply has been
  * received transaction is removed from the timer tree, its time-to-timeout-death
  * is updated and transaction inserted into the timer tree again.
  *
  * It is possible, that multiple transaction were created at the same time with
- * the same time-to-timeout-death, in this case we compare them additionaly using
+ * the same time-to-timeout-death, in this case we compare them additionally using
  * transaction number, which is unique for node.
  *
  * This particular trans2,trans1 order of arguments is very significant - argument order plus
  * the way they are compared below ends up with ascending timeout order, i.e. the smaller
- * timeout (the closer death-time) the closer transaction is to the begining of the timer tree
+ * timeout (the closer death-time) the closer transaction is to the beginning of the timer tree
  * (do not confuse it with the tree root).
  */
 static inline int dnet_trans_cmp_timer(struct dnet_trans *trans2, struct dnet_trans *trans1)
@@ -243,7 +244,7 @@ void dnet_trans_destroy(struct dnet_trans *t)
 	if (!t)
 		return;
 
-	dnet_node_set_trace_id(t->n->log, t->cmd.trace_id, t->cmd.flags & DNET_FLAGS_TRACE_BIT, -1);
+	dnet_node_set_trace_id(t->cmd.trace_id, t->cmd.flags & DNET_FLAGS_TRACE_BIT);
 
 	gettimeofday(&tv, NULL);
 	diff = 1000000 * (tv.tv_sec - t->start.tv_sec) + (tv.tv_usec - t->start.tv_usec);
@@ -462,7 +463,7 @@ void dnet_trans_clean_list(struct list_head *head, int error)
 		t->cmd.flags &= ~DNET_FLAGS_REPLY;
 		t->cmd.status = error;
 
-		dnet_node_set_trace_id(t->n->log, t->cmd.trace_id, t->cmd.flags & DNET_FLAGS_TRACE_BIT, -1);
+		dnet_node_set_trace_id(t->cmd.trace_id, t->cmd.flags & DNET_FLAGS_TRACE_BIT);
 		if (t->complete) {
 			t->complete(dnet_state_addr(t->st), &t->cmd, t->priv);
 		}
@@ -554,7 +555,7 @@ int dnet_trans_iterate_move_transaction(struct dnet_net_state *st, struct list_h
 
 		// TODO: We may use dnet_log_record_set_request_id here,
 		// but blackhole currently has higher priority for scoped attributes =(
-		dnet_node_set_trace_id(st->n->log, t->cmd.trace_id, t->cmd.flags & DNET_FLAGS_TRACE_BIT, -1);
+		dnet_node_set_trace_id(t->cmd.trace_id, t->cmd.flags & DNET_FLAGS_TRACE_BIT);
 
 		dnet_log(st->n, DNET_LOG_ERROR, "%s: %s: TIMEOUT/need-exit %s, "
 				"need-exit: %d, started: %s.%06lu",
@@ -817,5 +818,5 @@ void dnet_check_thread_stop(struct dnet_node *n)
 {
 	pthread_join(n->reconnect_tid, NULL);
 	pthread_join(n->check_tid, NULL);
-	dnet_log(n, DNET_LOG_NOTICE, "Checking thread stopped.");
+	dnet_log(n, DNET_LOG_NOTICE, "Checking thread stopped");
 }

@@ -3,7 +3,6 @@ set(ELLIPTICS_CLIENT_SRCS
     crypto.c
     crypto/sha512.c
     dnet_common.c
-    log.c
     net.c
     net.cpp
     node.c
@@ -24,7 +23,6 @@ set(ELLIPTICS_SRCS
     backend.cpp
     ../example/config.hpp
     ../example/config.cpp
-    ../example/config_impl.cpp
     ../example/backends.c
     ../example/eblob_backend.cpp
     ../example/eblob_backend.c
@@ -41,7 +39,7 @@ set_target_properties(elliptics_client PROPERTIES
     SOVERSION ${ELLIPTICS_VERSION_ABI}
     LINKER_LANGUAGE CXX
     )
-target_link_libraries(elliptics_client ${CMAKE_THREAD_LIBS_INIT} ${Boost_THREAD_LIBRARY} ${Boost_SYSTEM_LIBRARY} ${Boost_FILESYSTEM_LIBRARY})
+target_link_libraries(elliptics_client ${BLACKHOLE_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} ${Boost_THREAD_LIBRARY} ${Boost_SYSTEM_LIBRARY} ${Boost_FILESYSTEM_LIBRARY})
 if (WITH_STATS)
     target_link_libraries(elliptics_client ${HANDYSTATS_LIBRARY})
 endif()

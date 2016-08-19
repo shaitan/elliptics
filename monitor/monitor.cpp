@@ -22,6 +22,7 @@
 #include "compress.hpp"
 
 #include <exception>
+#include <iostream>
 
 #include "library/elliptics.h"
 #include "io_stat_provider.hpp"
@@ -63,7 +64,7 @@ std::unique_ptr<monitor_config> monitor_config::parse(const kora::config_t &moni
 		cfg.period_in_seconds = top.at<int>("period_in_seconds", DNET_DEFAULT_MONITOR_TOP_PERIOD);
 		cfg.has_top = (cfg.top_length > 0) && (cfg.events_size > 0) && (cfg.period_in_seconds > 0);
 	}
-	return blackhole::utils::make_unique<monitor_config>(cfg);
+	return std::unique_ptr<monitor_config>(new monitor_config(cfg));
 }
 
 monitor::monitor(struct dnet_node *n, struct dnet_config *cfg)
@@ -75,16 +76,20 @@ monitor::monitor(struct dnet_node *n, struct dnet_config *cfg)
 	if (cfg->handystats_config != nullptr) {
 		//TODO: add parse/configuration errors logging when handystats will allow to get them
 		if (HANDY_CONFIG_FILE(cfg->handystats_config)) {
-			BH_LOG(*cfg->log, DNET_LOG_INFO, "monitor: initializing stats subsystem, config file '%s'", cfg->handystats_config);
+			DNET_LOG_INFO(n, "monitor: initializing stats subsystem, config file '{}'",
+			              cfg->handystats_config);
 		} else {
-			BH_LOG(*cfg->log, DNET_LOG_ERROR, "monitor: initializing stats subsystem, error parsing config file '%s', using defaults", cfg->handystats_config);
+			DNET_LOG_ERROR(
+			        n,
+			        "monitor: initializing stats subsystem, error parsing config file '{}', using defaults",
+			        cfg->handystats_config);
 		}
 	} else {
-		BH_LOG(*cfg->log, DNET_LOG_INFO, "monitor: initializing stats subsystem, no config file specified, using defaults");
+		DNET_LOG_INFO(n, "monitor: initializing stats subsystem, no config file specified, using defaults");
 	}
 	HANDY_INIT();
 #else
-	BH_LOG(*cfg->log, DNET_LOG_INFO, "monitor: stats subsystem disabled at compile time");
+	DNET_LOG_INFO(n, "monitor: stats subsystem disabled at compile time");
 #endif
 }
 
@@ -117,31 +122,31 @@ void remove_provider(dnet_node *n, const std::string &name)
 		real_monitor->get_statistics().remove_provider(name);
 }
 
-static void init_io_stat_provider(struct dnet_node *n, struct dnet_config *cfg) {
+static void init_io_stat_provider(struct dnet_node *n) {
 	try {
 		add_provider(n, new io_stat_provider(n), "io");
 	} catch (const std::exception &e) {
-		BH_LOG(*cfg->log, DNET_LOG_ERROR, "monitor: failed to initialize io_stat_provider: %s.", e.what());
+		DNET_LOG_ERROR(n, "monitor: failed to initialize io_stat_provider: {}", e.what());
 	}
 }
 
-static void init_backends_stat_provider(struct dnet_node *n, struct dnet_config *cfg) {
+static void init_backends_stat_provider(struct dnet_node *n) {
 	try {
 		add_provider(n, new backends_stat_provider(n), "backends");
 	} catch (const std::exception &e) {
-		BH_LOG(*cfg->log, DNET_LOG_ERROR, "monitor: failed to initialize backends_stat_provider: %s.", e.what());
+		DNET_LOG_ERROR(n, "monitor: failed to initialize backends_stat_provider: {}", e.what());
 	}
 }
 
-static void init_procfs_provider(struct dnet_node *n, struct dnet_config *cfg) {
+static void init_procfs_provider(struct dnet_node *n) {
 	try {
 		add_provider(n, new procfs_provider(n), "procfs");
 	} catch (const std::exception &e) {
-		BH_LOG(*cfg->log, DNET_LOG_ERROR, "monitor: failed to initialize procfs_stat_provider: %s.", e.what());
+		DNET_LOG_ERROR(n, "monitor: failed to initialize procfs_stat_provider: {}", e.what());
 	}
 }
 
-static void init_top_provider(struct dnet_node *n, struct dnet_config *cfg) {
+static void init_top_provider(struct dnet_node *n) {
 	try {
 		bool top_loaded = false;
 		const auto monitor = get_monitor(n);
@@ -155,14 +160,15 @@ static void init_top_provider(struct dnet_node *n, struct dnet_config *cfg) {
 
 		const auto monitor_cfg = get_monitor_config(n);
 		if (top_loaded && monitor_cfg) {
-			BH_LOG(*cfg->log, DNET_LOG_INFO, "monitor: top provider loaded: top length: %lu, events size: %lu, period: %d",
-			       monitor_cfg->top_length, monitor_cfg->events_size, monitor_cfg->period_in_seconds);
+			DNET_LOG_INFO(n, "monitor: top provider loaded: top length: {}, events size: {}, period: {}",
+			              monitor_cfg->top_length, monitor_cfg->events_size,
+			              monitor_cfg->period_in_seconds);
 		} else {
-			BH_LOG(*cfg->log, DNET_LOG_INFO, "monitor: top provider is disabled");
+			DNET_LOG_INFO(n, "monitor: top provider is disabled");
 		}
 
 	} catch (const std::exception &e) {
-		BH_LOG(*cfg->log, DNET_LOG_ERROR, "monitor: failed to initialize top_stat_provider: %s.", e.what());
+		DNET_LOG_ERROR(n, "monitor: failed to initialize top_stat_provider: {}", e.what());
 	}
 }
 
@@ -171,21 +177,22 @@ static void init_top_provider(struct dnet_node *n, struct dnet_config *cfg) {
 int dnet_monitor_init(struct dnet_node *n, struct dnet_config *cfg) {
 	if (!get_monitor_port(n) || !cfg->family) {
 		n->monitor = NULL;
-		BH_LOG(*cfg->log, DNET_LOG_ERROR, "monitor: monitor hasn't been initialized because monitor port is zero.");
+		DNET_LOG_ERROR(n, "monitor: monitor hasn't been initialized because monitor port is zero");
 		return 0;
 	}
 
 	try {
 		n->monitor = static_cast<void*>(new ioremap::monitor::monitor(n, cfg));
 	} catch (const std::exception &e) {
-		BH_LOG(*cfg->log, DNET_LOG_ERROR, "monitor: failed to initialize monitor on port: %d: %s.", get_monitor_port(n), e.what());
+		DNET_LOG_ERROR(n, "monitor: failed to initialize monitor on port: {}: {}", get_monitor_port(n),
+		               e.what());
 		return -ENOMEM;
 	}
 
-	ioremap::monitor::init_io_stat_provider(n, cfg);
-	ioremap::monitor::init_backends_stat_provider(n, cfg);
-	ioremap::monitor::init_procfs_provider(n, cfg);
-	ioremap::monitor::init_top_provider(n, cfg);
+	ioremap::monitor::init_io_stat_provider(n);
+	ioremap::monitor::init_backends_stat_provider(n);
+	ioremap::monitor::init_procfs_provider(n);
+	ioremap::monitor::init_top_provider(n);
 
 	return 0;
 }
@@ -225,15 +232,15 @@ void dnet_monitor_stats_update(struct dnet_node *n, const struct dnet_cmd *cmd,
 			}
 		}
 	} catch (const std::exception &e) {
-		dnet_log(n, DNET_LOG_DEBUG, "monitor: failed to update stats: %s", e.what());
+		DNET_LOG_DEBUG(n, "monitor: failed to update stats: {}", e.what());
 	}
 }
 
 int dnet_monitor_process_cmd(struct dnet_net_state *orig, struct dnet_cmd *cmd __unused, void *data)
 {
 	if (cmd->size != sizeof(dnet_monitor_stat_request)) {
-		dnet_log(orig->n, DNET_LOG_DEBUG, "monitor: %s: %s: process MONITOR_STAT, invalid size: %llu",
-			dnet_state_dump_addr(orig), dnet_dump_id(&cmd->id), static_cast<unsigned long long>(cmd->size));
+		DNET_LOG_DEBUG(orig->n, "monitor: {}: {}: process MONITOR_STAT, invalid size: {}",
+		               dnet_state_dump_addr(orig), dnet_dump_id(&cmd->id), cmd->size);
 		return -EINVAL;
 	}
 
@@ -242,8 +249,8 @@ int dnet_monitor_process_cmd(struct dnet_net_state *orig, struct dnet_cmd *cmd _
 	dnet_convert_monitor_stat_request(req);
 	static const std::string disabled_reply = ioremap::monitor::compress("{\"monitor_status\":\"disabled\"}");
 
-	dnet_log(orig->n, DNET_LOG_DEBUG, "monitor: %s: %s: process MONITOR_STAT, categories: %lx, monitor: %p",
-		dnet_state_dump_addr(orig), dnet_dump_id(&cmd->id), req->categories, n->monitor);
+	DNET_LOG_DEBUG(orig->n, "monitor: {}: {}: process MONITOR_STAT, categories: {:x}, monitor: {:p}",
+	               dnet_state_dump_addr(orig), dnet_dump_id(&cmd->id), req->categories, (void *)n->monitor);
 
 	auto real_monitor = ioremap::monitor::get_monitor(n);
 	if (!real_monitor)
@@ -254,7 +261,7 @@ int dnet_monitor_process_cmd(struct dnet_net_state *orig, struct dnet_cmd *cmd _
 		return dnet_send_reply(orig, cmd, &*json.begin(), json.size(), 0);
 	} catch(const std::exception &e) {
 		const std::string rep = ioremap::monitor::compress("{\"monitor_status\":\"failed: " + std::string(e.what()) + "\"}");
-		dnet_log(orig->n, DNET_LOG_DEBUG, "monitor: failed to generate json: %s", e.what());
+		DNET_LOG_DEBUG(orig->n, "monitor: failed to generate json: {}", e.what());
 		return dnet_send_reply(orig, cmd, &*rep.begin(), rep.size(), 0);
 	}
 }

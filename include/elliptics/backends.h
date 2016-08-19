@@ -81,9 +81,10 @@ struct dnet_config_backend {
 
 	dnet_logger			*log;
 
-	int				(* init)(struct dnet_config_backend *b);
+	int				(* init)(struct dnet_config_backend *b, enum dnet_log_level);
 	void				(* cleanup)(struct dnet_config_backend *b);
 	int				(* to_json)(struct dnet_config_backend *b, char **json_stat, size_t *size);
+	void				(* set_verbosity)(struct dnet_config_backend *b, enum dnet_log_level level);
 
 	struct dnet_backend_callbacks	cb;
 };
@@ -134,14 +135,6 @@ int dnet_eblob_backend_init(void);
 void dnet_eblob_backend_exit(void);
 
 int backend_storage_size(struct dnet_config_backend *b, const char *root);
-
-int dnet_backend_check_log_level(dnet_logger *logger, int level);
-void dnet_backend_log_raw(dnet_logger *logger, int level, const char *fmt, ...) __attribute__ ((format(printf, 3, 4)));
-#define dnet_backend_log(logger, level, format, a...)				\
-	do {								\
-		if (dnet_backend_check_log_level((logger), (int)(level)))		\
-			dnet_backend_log_raw((logger), (int)(level), (format), ##a); 	\
-	} while (0)
 
 #ifdef __cplusplus
 }

@@ -165,7 +165,8 @@ void upload_application(int locator_port, const std::string &app_name, const std
 void init_application_impl(session &sess, const std::string &app_name, const nodes_data *setup)
 {
 	sess.set_timeout(600);
-	dnet_log_only_log(&sess.get_logger(), DNET_LOG_INFO, "Sending @init");
+	auto log = sess.get_logger();
+	DNET_LOG_INFO(log, "Sending @init");
 
 	node_info info = node_info_create(setup, sess.get_groups());
 

@@ -120,8 +120,7 @@ int dnet_sendfile(struct dnet_net_state *st, int fd, uint64_t *offset, uint64_t 
 	err = lseek(fd, *offset, SEEK_SET);
 	if (err < 0) {
 		err = -errno;
-		dnet_log_err(st->n, "failed to seek to %llu",
-				(unsigned long long)*offset);
+		DNET_ERROR(st->n, "failed to seek to %llu", (unsigned long long)*offset);
 		return err;
 	}
 
@@ -136,8 +135,7 @@ int dnet_sendfile(struct dnet_net_state *st, int fd, uint64_t *offset, uint64_t 
 			if (errno == EAGAIN || errno == EINTR)
 				break;
 			err = -errno;
-			dnet_log_err(st->n, "failed to read %zu bytes at %llu",
-					sz, (unsigned long long)*offset);
+			DNET_ERROR(st->n, "failed to read %zu bytes at %llu", sz, (unsigned long long)*offset);
 			return err;
 		}
 

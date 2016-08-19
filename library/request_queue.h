@@ -4,6 +4,7 @@
 #include "elliptics.h"
 
 #ifdef __cplusplus
+#include <list>
 #include <unordered_map>
 #include <condition_variable>
 #include <mutex>

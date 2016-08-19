@@ -1,7 +1,8 @@
 #include "elliptics.h"
-#include "../monitor/monitor.hpp"
-#include "../example/config.hpp"
-#include "../bindings/cpp/functional_p.h"
+#include "monitor/monitor.hpp"
+#include "example/config.hpp"
+#include "bindings/cpp/functional_p.h"
+#include "library/logger.hpp"
 
 #include <fstream>
 #include <memory>
@@ -21,27 +22,27 @@ static int dnet_ids_generate(struct dnet_node *n, const char *file, unsigned lon
 
 	if (!in) {
 		err = -errno;
-		dnet_log_err(n, "failed to open '%s' as source of ids file '%s'", random_source, file);
+		DNET_LOG_ERROR(n, "failed to open '{}' as source of ids file '{}'", random_source, file);
 		goto err_out_exit;
 	}
 
 	out.open(file, std::ofstream::binary | std::ofstream::trunc);
 	if (!out) {
 		err = -errno;
-		dnet_log_err(n, "failed to open/create ids file '%s'", file);
+		DNET_LOG_ERROR(n, "failed to open/create ids file '{}'", file);
 		goto err_out_unlink;
 	}
 
 	for (size_t i = 0; i < num; ++i) {
 		if (!in.read(reinterpret_cast<char *>(tmp.id), sizeof(tmp.id))) {
 			err = -errno;
-			dnet_log_err(n, "failed to read id from '%s'", random_source);
+			DNET_LOG_ERROR(n, "failed to read id from '{}'", random_source);
 			goto err_out_unlink;
 		}
 
 		if (!out.write(reinterpret_cast<char *>(tmp.id), sizeof(tmp.id))) {
 			err = -errno;
-			dnet_log_err(n, "failed to write id into ids file '%s'", file);
+			DNET_LOG_ERROR(n, "failed to write id into ids file '{}'", file);
 			goto err_out_unlink;
 		}
 	}
@@ -82,7 +83,7 @@ again:
 			goto again;
 		}
 
-		dnet_log_err(n, "failed to open ids file '%s'", path);
+		DNET_LOG_ERROR(n, "failed to open ids file '{}'", (const char *)path);
 		goto err_out_exit;
 	}
 
@@ -91,14 +92,14 @@ again:
 		goto err_out_close;
 
 	if (st.st_size % sizeof(struct dnet_raw_id)) {
-		dnet_log(n, DNET_LOG_ERROR, "Ids file size (%lu) is wrong, must be modulo of raw ID size (%zu).",
-				(unsigned long)st.st_size, sizeof(struct dnet_raw_id));
+		DNET_LOG_ERROR(n, "Ids file size ({}) is wrong, must be modulo of raw ID size ({})", st.st_size,
+		               sizeof(struct dnet_raw_id));
 		goto err_out_close;
 	}
 
 	num = st.st_size / sizeof(struct dnet_raw_id);
 	if (!num) {
-		dnet_log(n, DNET_LOG_ERROR, "No ids read, exiting.");
+		DNET_LOG_ERROR(n, "No ids read, exiting");
 		err = -EINVAL;
 		goto err_out_close;
 	}
@@ -115,7 +116,7 @@ again:
 	err = read(fd, ids, st.st_size);
 	if (err != st.st_size) {
 		err = -errno;
-		dnet_log_err(n, "Failed to read ids file '%s'", path);
+		DNET_LOG_ERROR(n, "Failed to read ids file '{}'", (const char *)path);
 		goto err_out_free;
 	}
 
@@ -139,9 +140,8 @@ static int dnet_backend_io_init(struct dnet_node *n, struct dnet_backend_io *io,
 
 	err = dnet_backend_command_stats_init(io);
 	if (err) {
-		dnet_log(n, DNET_LOG_ERROR, "dnet_backend_io_init: backend: %zu, "
-				"failed to allocate command stat structure: %d",
-				io->backend_id, err);
+		DNET_LOG_ERROR(n, "dnet_backend_io_init: backend: {}, failed to allocate command stat structure: {}",
+		               io->backend_id, err);
 		goto err_out_exit;
 	}
 
@@ -179,7 +179,7 @@ static void dnet_backend_io_cleanup(struct dnet_node *n, struct dnet_backend_io 
 	dnet_work_pool_exit(&io->pool.recv_pool_nb);
 	dnet_backend_command_stats_cleanup(io);
 
-	dnet_log(n, DNET_LOG_NOTICE, "dnet_backend_io_cleanup: backend: %zu", io->backend_id);
+	DNET_LOG_NOTICE(n, "dnet_backend_io_cleanup: backend: {}", io->backend_id);
 }
 
 static const char *elapsed(const dnet_time &start)
@@ -203,7 +203,7 @@ static int dnet_backend_init(struct dnet_node *node, size_t backend_id)
 
 	auto backend = node->config_data->backends->get_backend(backend_id);
 	if (!backend) {
-		dnet_log(node, DNET_LOG_ERROR, "backend_init: backend: %zu, invalid backend id", backend_id);
+		DNET_LOG_ERROR(node, "backend_init: backend: {}, invalid backend id", backend_id);
 		return -EINVAL;
 	}
 
@@ -213,9 +213,9 @@ static int dnet_backend_init(struct dnet_node *node, size_t backend_id)
 	{
 		std::lock_guard<std::mutex> guard(*backend->state_mutex);
 		if (backend->state != DNET_BACKEND_DISABLED) {
-			dnet_log(node, DNET_LOG_ERROR, "backend_init: backend: %zu, "
-					"trying to activate not disabled backend, elapsed: %s",
-				backend_id, elapsed(start));
+			DNET_LOG_ERROR(
+			        node, "backend_init: backend: {}, trying to activate not disabled backend, elapsed: {}",
+			        backend_id, elapsed(start));
 			switch (backend->state) {
 				case DNET_BACKEND_ENABLED:
 					return -EALREADY;
@@ -231,7 +231,7 @@ static int dnet_backend_init(struct dnet_node *node, size_t backend_id)
 		backend->state = DNET_BACKEND_ACTIVATING;
 	}
 
-	dnet_log(node, DNET_LOG_INFO, "backend_init: backend: %zu, initializing", backend_id);
+	DNET_LOG_INFO(node, "backend_init: backend: {}, initializing", backend_id);
 
 	int err;
 	dnet_backend_io *backend_io;
@@ -256,19 +256,19 @@ static int dnet_backend_init(struct dnet_node *node, size_t backend_id)
 
 		if (!found) {
 			err = -EBADF;
-			dnet_log(node, DNET_LOG_ERROR, "backend_init: backend: %zu, "
-				"have not found backend section in configuration file, elapsed: %s",
-				backend_id, elapsed(start));
+			DNET_LOG_ERROR(node, "backend_init: backend: {}, have not found backend section in "
+			                     "configuration file, elapsed: {}",
+			               backend_id, elapsed(start));
 			goto err_out_exit;
 		}
 	} catch (std::bad_alloc &) {
 		err = -ENOMEM;
-		dnet_log(node, DNET_LOG_ERROR, "backend_init: backend: %zu, failed as not enough memory, elapsed: %s",
-			backend_id, elapsed(start));
+		DNET_LOG_ERROR(node, "backend_init: backend: {}, failed as not enough memory, elapsed: {}", backend_id,
+		               elapsed(start));
 		goto err_out_exit;
 	} catch (std::exception &exc) {
-		dnet_log(node, DNET_LOG_ERROR, "backend_init: backend: %zu, failed to read configuration file: %s, elapsed: %s",
-			backend_id, exc.what(), elapsed(start));
+		DNET_LOG_ERROR(node, "backend_init: backend: {}, failed to read configuration file: {}, elapsed: {}",
+		               backend_id, exc.what(), elapsed(start));
 		err = -EBADF;
 		goto err_out_exit;
 	}
@@ -287,10 +287,10 @@ static int dnet_backend_init(struct dnet_node *node, size_t backend_id)
 		entry.entry->callback(&backend->config, entry.entry->key, entry.value_template.data());
 	}
 
-	err = backend->config.init(&backend->config);
+	err = backend->config.init(&backend->config, (dnet_log_level)dnet_node_get_verbosity(node));
 	if (err) {
-		dnet_log(node, DNET_LOG_ERROR, "backend_init: backend: %zu, failed to init backend: %d, elapsed: %s",
-			backend_id, err, elapsed(start));
+		DNET_LOG_ERROR(node, "backend_init: backend: {}, failed to init backend: {}, elapsed: {}", backend_id,
+		               err, elapsed(start));
 		goto err_out_exit;
 	}
 
@@ -298,8 +298,8 @@ static int dnet_backend_init(struct dnet_node *node, size_t backend_id)
 
 	err = dnet_backend_io_init(node, backend_io, backend->io_thread_num, backend->nonblocking_io_thread_num);
 	if (err) {
-		dnet_log(node, DNET_LOG_ERROR, "backend_init: backend: %zu, failed to init io pool, err: %d, elapsed: %s",
-			backend_id, err, elapsed(start));
+		DNET_LOG_ERROR(node, "backend_init: backend: {}, failed to init io pool, err: {}, elapsed: {}",
+		               backend_id, err, elapsed(start));
 		goto err_out_backend_cleanup;
 	}
 
@@ -307,8 +307,8 @@ static int dnet_backend_init(struct dnet_node *node, size_t backend_id)
 		backend_io->cache = backend->cache = dnet_cache_init(node, backend_io, backend->cache_config.get());
 		if (!backend->cache) {
 			err = -ENOMEM;
-			dnet_log(node, DNET_LOG_ERROR, "backend_init: backend: %zu, failed to init cache, err: %d, elapsed: %s",
-				backend_id, err, elapsed(start));
+			DNET_LOG_ERROR(node, "backend_init: backend: {}, failed to init cache, err: {}, elapsed: {}",
+			               backend_id, err, elapsed(start));
 			goto err_out_backend_io_cleanup;
 		}
 	}
@@ -317,21 +317,23 @@ static int dnet_backend_init(struct dnet_node *node, size_t backend_id)
 	ids = dnet_ids_init(node, backend->history.c_str(), &ids_num, backend->config.storage_free, node->addrs, backend_id);
 	if (ids == NULL) {
 		err = -EINVAL;
-		dnet_log(node, DNET_LOG_ERROR, "backend_init: backend: %zu, history path: %s, "
-				"failed to initialize ids, elapsed: %s: %s [%d]",
-				backend_id, backend->history.c_str(), elapsed(start), strerror(-err), err);
+		DNET_LOG_ERROR(
+		        node,
+		        "backend_init: backend: {}, history path: {}, failed to initialize ids, elapsed: {}: {} [{}]",
+		        backend_id, backend->history, elapsed(start), strerror(-err), err);
 		goto err_out_cache_cleanup;
 	}
 	err = dnet_route_list_enable_backend(node->route, backend_id, backend->group, ids, ids_num);
 	free(ids);
 
 	if (err) {
-		dnet_log(node, DNET_LOG_ERROR, "backend_init: backend: %zu, failed to add backend to route list, "
-				"err: %d, elapsed: %s", backend_id, err, elapsed(start));
+		DNET_LOG_ERROR(node,
+		               "backend_init: backend: {}, failed to add backend to route list, err: {}, elapsed: {}",
+		               backend_id, err, elapsed(start));
 		goto err_out_cache_cleanup;
 	}
 
-	dnet_log(node, DNET_LOG_INFO, "backend_init: backend: %zu, initialized, elapsed: %s", backend_id, elapsed(start));
+	DNET_LOG_INFO(node, "backend_init: backend: {}, initialized, elapsed: {}", backend_id, elapsed(start));
 
 	{
 		std::lock_guard<std::mutex> guard(*backend->state_mutex);
@@ -376,8 +378,8 @@ static int dnet_backend_cleanup(struct dnet_node *node, size_t backend_id)
 	{
 		std::lock_guard<std::mutex> guard(*backend->state_mutex);
 		if (backend->state != DNET_BACKEND_ENABLED) {
-			dnet_log(node, DNET_LOG_ERROR, "backend_cleanup: backend: %zu, trying to destroy not activated backend",
-				backend_id);
+			DNET_LOG_ERROR(node, "backend_cleanup: backend: {}, trying to destroy not activated backend",
+			               backend_id);
 			switch (backend->state) {
 				case DNET_BACKEND_DISABLED:
 					return -EALREADY;
@@ -393,7 +395,7 @@ static int dnet_backend_cleanup(struct dnet_node *node, size_t backend_id)
 		backend->state = DNET_BACKEND_DEACTIVATING;
 	}
 
-	dnet_log(node, DNET_LOG_INFO, "backend_cleanup: backend: %zu, destroying", backend_id);
+	DNET_LOG_INFO(node, "backend_cleanup: backend: {}, destroying", backend_id);
 
 	if (node->route)
 		dnet_route_list_disable_backend(node->route, backend_id);
@@ -407,11 +409,11 @@ static int dnet_backend_cleanup(struct dnet_node *node, size_t backend_id)
 	if (backend_io)
 		backend_io->need_exit = 1;
 
-	dnet_log(node, DNET_LOG_INFO, "backend_cleanup: backend: %zu: cleaning cache", backend_id);
+	DNET_LOG_INFO(node, "backend_cleanup: backend: {}: cleaning cache", backend_id);
 	dnet_cache_cleanup(backend->cache);
 	backend->cache = NULL;
 
-	dnet_log(node, DNET_LOG_INFO, "backend_cleanup: backend: %zu: cleaning io: %p", backend_id, backend_io);
+	DNET_LOG_INFO(node, "backend_cleanup: backend: {}: cleaning io: {:p}", backend_id, (void *)backend_io);
 	if (backend_io) {
 		dnet_backend_io_cleanup(node, backend_io);
 		backend_io->cb = NULL;
@@ -425,7 +427,7 @@ static int dnet_backend_cleanup(struct dnet_node *node, size_t backend_id)
 		backend->state = DNET_BACKEND_DISABLED;
 	}
 
-	dnet_log(node, DNET_LOG_INFO, "backend_cleanup: backend: %zu, destroyed", backend_id);
+	DNET_LOG_INFO(node, "backend_cleanup: backend: {}, destroyed", backend_id);
 
 	return 0;
 }
@@ -434,15 +436,14 @@ static int dnet_backend_cleanup(struct dnet_node *node, size_t backend_id)
 static int dnet_backend_remove(struct dnet_node *node, size_t backend_id) {
 	const int err = dnet_backend_cleanup(node, backend_id);
 	if (err && err != -EALREADY) {
-		dnet_log(node, DNET_LOG_INFO,
-		         "backend_remove: backend: %zu, failed to disable backend: %s [%d]",
-		         backend_id, strerror(-err), err);
+		DNET_LOG_INFO(node, "backend_remove: backend: {}, failed to disable backend: {} [{}]", backend_id,
+		              strerror(-err), err);
 		return err;
 	}
 
 	node->config_data->backends->remove_backend(backend_id);
 
-	dnet_log(node, DNET_LOG_INFO, "backend_remove: backend: %zu, removed", backend_id);
+	DNET_LOG_INFO(node, "backend_remove: backend: {}, removed", backend_id);
 	return 0;
 }
 
@@ -469,12 +470,11 @@ int dnet_backend_create(struct dnet_node *node, size_t backend_id)
 			}
 		}
 	} catch (std::bad_alloc &) {
-		dnet_log(node, DNET_LOG_ERROR, "backend_create: backend: %zu, failed as not enough memory",
-			backend_id);
+		DNET_LOG_ERROR(node, "backend_create: backend: {}, failed as not enough memory", backend_id);
 		return -ENOMEM;
 	} catch (std::exception &exc) {
-		dnet_log(node, DNET_LOG_ERROR, "backend_create: backend: %zu, failed to read configuration file: %s",
-			backend_id, exc.what());
+		DNET_LOG_ERROR(node, "backend_create: backend: {}, failed to read configuration file: {}", backend_id,
+		               exc.what());
 		return -EBADF;
 	}
 
@@ -561,7 +561,8 @@ int dnet_backend_init_all(struct dnet_node *node)
 		err = -EINVAL;
 	}
 
-	dnet_log(node, err ? DNET_LOG_ERROR : DNET_LOG_NOTICE, "backend_init_all: finished initializing all backends: %d", err);
+	DNET_LOG(node, err ? DNET_LOG_ERROR : DNET_LOG_NOTICE,
+	         "backend_init_all: finished initializing all backends: {}", err);
 
 	return err;
 }
@@ -581,9 +582,10 @@ static int dnet_backend_set_ids(dnet_node *node, uint32_t backend_id, dnet_raw_i
 	}
 
 	if (backend->history.empty()) {
-		dnet_log(node, DNET_LOG_ERROR, "backend_set_ids: backend_id: %u, "
-				"failed to open temporary ids file: history is not specified",
-				backend_id);
+		DNET_LOG_ERROR(
+		        node,
+		        "backend_set_ids: backend_id: {}, failed to open temporary ids file: history is not specified",
+		        backend_id);
 		return -EINVAL;
 	}
 
@@ -596,9 +598,8 @@ static int dnet_backend_set_ids(dnet_node *node, uint32_t backend_id, dnet_raw_i
 	std::ofstream out(tmp_ids, std::ofstream::binary | std::ofstream::trunc);
 	if (!out) {
 		err = -errno;
-		dnet_log(node, DNET_LOG_ERROR, "backend_set_ids: backend_id: %u, "
-				"failed to open temporary ids file: %s, err: %d",
-				backend_id, tmp_ids, err);
+		DNET_LOG_ERROR(node, "backend_set_ids: backend_id: {}, failed to open temporary ids file: {}, err: {}",
+		               backend_id, tmp_ids, err);
 		return err;
 	}
 
@@ -609,9 +610,10 @@ static int dnet_backend_set_ids(dnet_node *node, uint32_t backend_id, dnet_raw_i
 
 		if (!out) {
 			err = -errno;
-			dnet_log(node, DNET_LOG_ERROR, "backend_set_ids: backend_id: %u, "
-					"failed to write ids to temporary file: %s, err: %d",
-					backend_id, tmp_ids, err);
+			DNET_LOG_ERROR(
+			        node,
+			        "backend_set_ids: backend_id: {}, failed to write ids to temporary file: {}, err: {}",
+			        backend_id, tmp_ids, err);
 		} else {
 
 			if (!err) {
@@ -700,6 +702,15 @@ void dnet_backend_info_manager::remove_backend(size_t backend_id) {
 	backends.erase(backend_id);
 }
 
+void dnet_backend_info_manager::set_verbosity(dnet_log_level level) {
+	std::lock_guard<std::mutex> guard(backends_mutex);
+	for (auto &backend: backends) {
+		if (backend.second->state == DNET_BACKEND_ENABLED) {
+			backend.second->config.set_verbosity(&backend.second->config, level);
+		}
+	}
+}
+
 static int dnet_cmd_backend_control_dangerous(struct dnet_net_state *st, struct dnet_cmd *cmd, void *data)
 {
 	int err = 0;
@@ -709,8 +720,8 @@ static int dnet_cmd_backend_control_dangerous(struct dnet_net_state *st, struct 
 	if (dnet_backend_command(control->command) == DNET_BACKEND_ENABLE) {
 		err = dnet_backend_create(node, control->backend_id);
 		if (err) {
-			dnet_log(node, DNET_LOG_ERROR, "backend_control: backend creation failed: %u, state: %s: %d",
-				 control->backend_id, dnet_state_dump_addr(st), err);
+			DNET_LOG_ERROR(node, "backend_control: backend creation failed: {}, state: {}: {}",
+			               control->backend_id, dnet_state_dump_addr(st), err);
 			return err;
 		}
 	}
@@ -718,23 +729,23 @@ static int dnet_cmd_backend_control_dangerous(struct dnet_net_state *st, struct 
 	auto backends = node->config_data->backends;
 	auto backend = backends->get_backend(control->backend_id);
 	if (!backend) {
-		dnet_log(node, DNET_LOG_ERROR, "backend_control: there is no such backend: %u, state: %s",
-				control->backend_id, dnet_state_dump_addr(st));
+		DNET_LOG_ERROR(node, "backend_control: there is no such backend: {}, state: {}", control->backend_id,
+		               dnet_state_dump_addr(st));
 		return -EINVAL;
 	}
 
 	if (cmd->size != sizeof(dnet_backend_control) + control->ids_count * sizeof(dnet_raw_id)) {
-		dnet_log(node, DNET_LOG_ERROR, "backend_control: command size is not enough for ids, state: %s",
-				dnet_state_dump_addr(st));
+		DNET_LOG_ERROR(node, "backend_control: command size is not enough for ids, state: {}",
+		               dnet_state_dump_addr(st));
 		return -EINVAL;
 	}
 
-	dnet_log(node, DNET_LOG_INFO, "backend_control: received BACKEND_CONTROL: backend_id: %u, command: %u, state: %s",
-		control->backend_id, control->command, dnet_state_dump_addr(st));
+	DNET_LOG_INFO(node, "backend_control: received BACKEND_CONTROL: backend_id: {}, command: {}, state: {}",
+	              control->backend_id, control->command, dnet_state_dump_addr(st));
 
 	if (backend->state == DNET_BACKEND_UNITIALIZED) {
-		dnet_log(node, DNET_LOG_ERROR, "backend_control: there is no such backend: %u, state: %s",
-				control->backend_id, dnet_state_dump_addr(st));
+		DNET_LOG_ERROR(node, "backend_control: there is no such backend: {}, state: {}", control->backend_id,
+		               dnet_state_dump_addr(st));
 		return -EINVAL;
 	}
 
@@ -823,27 +834,22 @@ int dnet_cmd_backend_control(struct dnet_net_state *st, struct dnet_cmd *cmd, vo
 	dnet_node *node = st->n;
 
 	if (cmd->size < sizeof(dnet_backend_control)) {
-		dnet_log(node, DNET_LOG_ERROR,
-				"backend_control: command size is not enough for dnet_backend_control, state: %s",
-				dnet_state_dump_addr(st));
+		DNET_LOG_ERROR(node, "backend_control: command size is not enough for dnet_backend_control, state: {}",
+		               dnet_state_dump_addr(st));
 		return -EINVAL;
 	}
 
 	struct dnet_backend_control *control = reinterpret_cast<dnet_backend_control *>(data);
 
 	try {
-		blackhole::log::attributes_t attributes = {
-			blackhole::attribute::make("backend_id", uint32_t(control->backend_id))
-		};
-
-		blackhole::scoped_attributes_t scoped(*node->log, std::move(attributes));
+		ioremap::elliptics::backend_scope backend_scope{int(control->backend_id)};
 
 		return dnet_cmd_backend_control_dangerous(st, cmd, data);
 	} catch (std::bad_alloc &) {
-		dnet_log(node, DNET_LOG_ERROR, "backend_control: insufficient memory");
+		DNET_LOG_ERROR(node, "backend_control: insufficient memory");
 		return -ENOMEM;
 	} catch (std::exception &exc) {
-		dnet_log(node, DNET_LOG_ERROR, "backend_control: %s", exc.what());
+		DNET_LOG_ERROR(node, "backend_control: {}", exc.what());
 		return -EINVAL;
 	}
 }
@@ -924,7 +930,7 @@ void dnet_backend_info::parse(ioremap::elliptics::config::config_data *data,
 		const auto cache = backend["cache"];
 		cache_config = ioremap::cache::cache_config::parse(cache);
 	} else if (data->cache_config) {
-		cache_config = blackhole::utils::make_unique<ioremap::cache::cache_config>(*data->cache_config);
+		cache_config = std::unique_ptr<ioremap::cache::cache_config>(new ioremap::cache::cache_config(*data->cache_config));
 	}
 
 	io_thread_num = backend.at("io_thread_num", data->cfg_state.io_thread_num);

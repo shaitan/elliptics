@@ -22,8 +22,7 @@ Build-Depends: cdbs,
                eblob (>= 0.23.11),
                handystats (>= 1.11.0),
                libkora-util-dev (= 1.1.0-rc1),
-               blackhole-dev (>= 1.0.0-1),
-               blackhole-migration-dev (>= 1.0.0-1),
+               blackhole-dev (>= 1.1.0-1),
                libcocaine-dev (>= 0.12.9), libcocaine-dev (<< 0.12.10),
                libcocaine-plugin-node-dev (>= 0.12.9), libcocaine-plugin-node-dev (<< 0.12.10),
                libcocaine-framework-native-dev (>= 0.12.9), libcocaine-framework-native-dev (<< 0.12.10),
@@ -41,7 +40,7 @@ Depends: ${shlibs:Depends},
          libkora-util1 (= 1.1.0-rc1),
          libcocaine-core3 (>= 0.12.9.0-alpha5), libcocaine-core3 (<< 0.12.10),
          libcocaine-plugin-node3 (>= 0.12.9), libcocaine-plugin-node3 (<< 0.12.10),
-         libblackhole1 (>= 1.0.0-1)
+         libblackhole1 (>= 1.1.0-1)
 Replaces: elliptics-2.10, srw
 Provides: elliptics-2.10
 Description: Distributed hash table storage
@@ -53,7 +52,7 @@ Depends: ${shlibs:Depends},
          ${misc:Depends},
          msgpack-python | python-msgpack,
          handystats (>= 1.11.0),
-         libblackhole1 (>= 1.0.0-1),
+         libblackhole1 (>= 1.1.0-1),
 Replaces: elliptics-2.10
 Description: Distributed hash table storage (client library)
  Elliptics network is a fault tolerant distributed hash table object storage.

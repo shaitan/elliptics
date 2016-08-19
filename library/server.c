@@ -38,7 +38,7 @@ static int dnet_node_check_stack(struct dnet_node *n)
 	err = pthread_attr_getstacksize(&n->attr, &stack_size);
 	if (err) {
 		err = -err;
-		dnet_log_err(n, "Failed to get stack size: %d", err);
+		DNET_ERROR(n, "Failed to get stack size: %d", err);
 		goto err_out_exit;
 	}
 
@@ -121,7 +121,7 @@ struct dnet_node *dnet_server_node_create(struct dnet_config_data *cfg_data)
 		if (err)
 			goto err_out_monitor_destroy;
 
-		dnet_log(n, DNET_LOG_NOTICE, "No notify hash size provided, using default %d.",
+		dnet_log(n, DNET_LOG_NOTICE, "No notify hash size provided, using default %d",
 				n->notify_hash_size);
 	}
 
@@ -141,7 +141,7 @@ struct dnet_node *dnet_server_node_create(struct dnet_config_data *cfg_data)
 
 		err = dnet_create_addr(&la, NULL, cfg->port, cfg->family);
 		if (err < 0) {
-			dnet_log(n, DNET_LOG_ERROR, "Failed to get address info for 0.0.0.0:%d, family: %d, err: %d: %s.",
+			dnet_log(n, DNET_LOG_ERROR, "Failed to get address info for 0.0.0.0:%d:%d, err: %d: %s",
 				cfg->port, cfg->family, err, strerror(-err));
 			goto err_out_route_list_destroy;
 		}
@@ -188,7 +188,7 @@ struct dnet_node *dnet_server_node_create(struct dnet_config_data *cfg_data)
 		}
 	}
 
-	dnet_log(n, DNET_LOG_DEBUG, "New server node has been created at port %d.", cfg->port);
+	dnet_log(n, DNET_LOG_DEBUG, "New server node has been created at port %d", cfg->port);
 
 	pthread_sigmask(SIG_SETMASK, &previous_sigset, NULL);
 	return n;
@@ -217,7 +217,7 @@ err_out_exit:
 
 void dnet_server_node_destroy(struct dnet_node *n)
 {
-	dnet_log(n, DNET_LOG_DEBUG, "Destroying server node.");
+	dnet_log(n, DNET_LOG_DEBUG, "Destroying server node");
 
 	/*
 	 * Stop network and backend thread pools
@@ -247,7 +247,7 @@ void dnet_server_node_destroy(struct dnet_node *n)
 	/*
 	 * Can't do it later, logger gets destroyed in n->config_data->destroy_config_data call
 	 */
-	dnet_log(n, DNET_LOG_DEBUG, "Server node destroyed.");
+	dnet_log(n, DNET_LOG_DEBUG, "Server node destroyed");
 
 	if (n->config_data)
 		n->config_data->destroy_config_data(n->config_data);

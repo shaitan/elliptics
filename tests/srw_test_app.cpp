@@ -6,7 +6,7 @@
 
 #include "elliptics/session.hpp"
 
-#include <blackhole/v1/attribute.hpp>
+#include <blackhole/attribute.hpp>
 #include <blackhole/message.hpp>
 #include <blackhole/extensions/facade.hpp>
 
@@ -32,7 +32,7 @@ void keep_tx_live_till_done(elliptics::async_reply_result &async, worker::sender
 	 * * but we can't capture tx object directly and instead forced to hold it by shared_ptr,
 	 *   that is because tx is movable-only, so binded functor is also movable-only
 	 *   but std::function which elliptics accepts as a callback requires functors
-	 *   to be copy constructable
+	 *   to be copy constructible
 	 */
 	async.connect(std::bind(
 		[](std::shared_ptr<worker::sender>) {},
@@ -48,7 +48,6 @@ struct app_context {
 	std::string id_;
 	std::shared_ptr<logging_service_type> log_;
 
-	std::unique_ptr<elliptics::file_logger> logger;
 	std::unique_ptr<elliptics::node> node;
 	std::unique_ptr<elliptics::session> reply_client;
 
@@ -57,7 +56,7 @@ struct app_context {
 	, log_(log)
 	{}
 
-	void log(int severity, const blackhole::v1::lazy_message_t &message, blackhole::v1::attribute_pack& pack);
+	void log(int severity, const blackhole::lazy_message_t &message, blackhole::attribute_pack& pack);
 
 	void init_elliptics_client(worker::sender tx, worker::receiver rx);
 	void echo_via_elliptics(worker::sender tx, worker::receiver rx);
@@ -68,10 +67,8 @@ struct app_context {
 	void chain_via_elliptics(worker::sender tx, worker::receiver rx, const int step, const std::string next_event);
 };
 
-void app_context::log(int severity, const blackhole::v1::lazy_message_t &message, blackhole::v1::attribute_pack& pack)
+void app_context::log(int severity, const blackhole::lazy_message_t &message, blackhole::attribute_pack & /*pack*/)
 {
-	//XXX: can't really use attribute pack: blackhole v0/v1 clash on it here
-	(void) pack;
 	log_->invoke<cocaine::io::log::emit>(
 		cocaine::logging::priorities(severity),
 		id_,
@@ -83,15 +80,15 @@ void app_context::log(int severity, const blackhole::v1::lazy_message_t &message
 #undef LOG_INFO
 #undef LOG_ERROR
 #define LOG_DEBUG(logger, ...) \
-	blackhole::v1::logger_facade<app_context>(logger).log(cocaine::logging::debug, __VA_ARGS__)
+	blackhole::logger_facade<app_context>(logger).log(cocaine::logging::debug, __VA_ARGS__)
 #define LOG_INFO(logger, ...) \
-	blackhole::v1::logger_facade<app_context>(logger).log(cocaine::logging::info, __VA_ARGS__)
+	blackhole::logger_facade<app_context>(logger).log(cocaine::logging::info, __VA_ARGS__)
 #define LOG_ERROR(logger, ...) \
-	blackhole::v1::logger_facade<app_context>(logger).log(cocaine::logging::error, __VA_ARGS__)
+	blackhole::logger_facade<app_context>(logger).log(cocaine::logging::error, __VA_ARGS__)
 
 const cocaine::hpack::header_t &find_header(const std::vector<cocaine::hpack::header_t> &headers,
                                             const std::string &name) {
-	auto found = std::find_if(headers.begin(), headers.end(), [&name](const cocaine::hpack::header_t& h) {
+	auto found = std::find_if(headers.begin(), headers.end(), [&name](const cocaine::hpack::header_t &h) {
 		return name == std::string(h.get_name().blob, h.get_name().size);
 	});
 	if (found != headers.end()) {
@@ -131,12 +128,13 @@ struct debug_log_scope
 
 void list_headers(app_context &logger, const char *func_name, const std::vector<cocaine::hpack::header_t> &headers)
 {
-	std::string v;
-	for (const auto &i : headers) {
-		const std::string name(i.get_name().blob, i.get_name().size);
-		v += " " + name + "(" + std::to_string(i.get_value().size) + ")";
+	std::stringstream stream;
+	for (const auto &header : headers) {
+		stream << " ";
+		stream.write(header.get_name().blob, header.get_name().size);
+		stream << "(" << header.get_value().size << ")";
 	}
-	LOG_DEBUG(logger, "{}: headers ({}): {}", func_name, headers.size(), v);
+	LOG_DEBUG(logger, "{}: headers ({}): {}", func_name, headers.size(), stream.str());
 }
 
 void app_context::init_elliptics_client(worker::sender tx, worker::receiver rx)
@@ -166,11 +164,7 @@ void app_context::init_elliptics_client(worker::sender tx, worker::receiver rx)
 
 	const std::string log_path = info.path + "/" + "app-client.log";
 
-	logger.reset(new elliptics::file_logger(log_path.c_str(), DNET_LOG_DEBUG));
-	// differentiate this client from others in the log
-	logger->add_attribute({"source", {"in-app-client"}});
-
-	node.reset(new elliptics::node(elliptics::logger(*logger, blackhole::log::attributes_t())));
+	node.reset(new elliptics::node(elliptics::make_file_logger(log_path, DNET_LOG_DEBUG)));
 
 	for (auto it = info.remotes.begin(); it != info.remotes.end(); ++it) {
 		node->add_remote(it->c_str());

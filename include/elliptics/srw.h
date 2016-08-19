@@ -24,7 +24,6 @@
 extern "C" {
 #endif
 
-#include <elliptics/core.h>
 #include <elliptics/packet.h>
 
 #define DNET_SPH_FLAGS_SRC_BLOCK	(1<<0)		/* when set data in @src is valid ID and can be used to send reply data, caller blocks */

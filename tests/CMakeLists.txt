@@ -23,7 +23,6 @@ endif()
 add_library(test_common STATIC
     ${CMAKE_SOURCE_DIR}/example/common.c
     ${CMAKE_SOURCE_DIR}/example/config.cpp
-    ${CMAKE_SOURCE_DIR}/example/config_impl.cpp
     ${CMAKE_SOURCE_DIR}/example/backends.c
     ${CMAKE_SOURCE_DIR}/example/eblob_backend.cpp
     ${CMAKE_SOURCE_DIR}/example/eblob_backend.c
@@ -176,13 +175,6 @@ add_executable(dnet_server_send_test server_send.cpp)
 set_target_properties(dnet_server_send_test ${TEST_PROPERTIES})
 target_link_libraries(dnet_server_send_test ${TEST_LIBRARIES})
 add_test_target(test_server_send dnet_server_send_test DEPENDS ${TESTS_DEPS})
-
-add_executable(dnet_cpp_indexes_test indexes-test.cpp)
-#FIXME: add set_target_properties?
-# set_target_properties(dnet_cpp_indexes_test ${TEST_PROPERTIES})
-target_link_libraries(dnet_cpp_indexes_test elliptics_cpp)
-#FIXME: is this also a test? Then uncomment the next line and add it to the TESTS_LIST below.
-# add_test_target(test_indexes dnet_cpp_indexes_test)
 
 add_executable(dnet_queue_timeout_test queue_timeout.cpp)
 set_target_properties(dnet_queue_timeout_test ${TEST_PROPERTIES})
