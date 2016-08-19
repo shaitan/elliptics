@@ -1,3 +1,9 @@
+elliptics (2.26.11.0-10) unstable; urgency=medium
+
+  * cache: fix truncating data after sync
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Fri, 19 Aug 2016 17:37:16 +0300
+
 elliptics (2.26.11.0-9) unstable; urgency=medium
 
   * net: add send_limit option
