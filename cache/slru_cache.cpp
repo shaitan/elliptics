@@ -455,14 +455,10 @@ void slru_cache_t::sync_if_required(data_t* it, elliptics_unique_lock<std::mutex
 		memset(&id, 0, sizeof(id));
 		memcpy(id.id, it->id().id, DNET_ID_SIZE);
 
-		std::string data;
-		uint64_t user_flags;
-		dnet_time timestamp;
-
 		bool only_append = it->only_append();
-		data = it->data()->data();
-		user_flags = it->user_flags();
-		timestamp = it->timestamp();
+		std::string data = *it->data();
+		uint64_t user_flags = it->user_flags();
+		dnet_time timestamp = it->timestamp();
 
 		guard.unlock();
 
@@ -780,7 +776,7 @@ void slru_cache_t::life_check(void) {
 
 					// sync_element uses local_session which always uses DNET_FLAGS_NOLOCK
 					if (elem->is_syncing()) {
-						sync_element(id, elem->only_append(), elem->data()->data(),
+						sync_element(id, elem->only_append(), *elem->data(),
 						             elem->user_flags(), elem->timestamp());
 						elem->set_sync_state(data_t::sync_state_t::ERASE_PHASE);
 					}
