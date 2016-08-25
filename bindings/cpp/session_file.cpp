@@ -3,6 +3,8 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
+#include <blackhole/attribute.hpp>
+
 namespace ioremap { namespace elliptics {
 
 class file_descriptor
@@ -51,8 +53,8 @@ void session::read_file(const key &id, const std::string &file, uint64_t offset,
 		throw_error(err, id, "Failed to write data into completion file: '%s'", file.c_str());
 	}
 
-	BH_LOG(get_logger(), DNET_LOG_NOTICE, "%s: read completed: file: '%s', offset: %llu, size: %llu, status: %d.",
-			dnet_dump_id(&id.id()), file, offset, uint64_t(io->size), int(result.command()->status));
+	DNET_LOG_NOTICE(get_native_node(), "{}: read completed: file: '{}', offset: {}, size: {}, status: {}",
+	                dnet_dump_id(&id.id()), file, offset, io->size, result.command()->status);
 }
 
 void session::write_file(const key &id, const std::string &file, uint64_t local_offset,
@@ -81,8 +83,7 @@ void session::write_file(const key &id, const std::string &file, uint64_t local_
 	}
 
 	if (local_offset >= (uint64_t)stat.st_size) {
-		BH_LOG(get_logger(), DNET_LOG_NOTICE, "%s: File is already uploaded: '%s'",
-				dnet_dump_id(&id.id()), file);
+		DNET_LOG_NOTICE(get_native_node(), "{}: File is already uploaded: '{}'", dnet_dump_id(&id.id()), file);
 		return;
 	}
 

@@ -51,6 +51,8 @@
 #include "example/eblob_backend.h"
 
 #include "library/elliptics.h"
+#include "library/logger.hpp"
+
 /*
  * FIXME: __unused is used internally by glibc, so it may cause conflicts.
  */
@@ -61,13 +63,6 @@
 #if EBLOB_ID_SIZE != DNET_ID_SIZE
 #error "EBLOB_ID_SIZE must be equal to DNET_ID_SIZE"
 #endif
-
-extern __thread trace_id_t backend_trace_id_hook;
-
-trace_id_t get_trace_id()
-{
-	return backend_trace_id_hook;
-}
 
 static int eblob_read_params_compare(const void *p1, const void *p2)
 {
@@ -121,10 +116,10 @@ static int blob_iterate_callback_common(struct eblob_disk_control *dc, int fd, u
 				 * and continue iteration because the rest records can be ok.
 				 * We need to reset the error to make iteration continue.
 				 */
-				char buffer[2*DNET_ID_SIZE + 1] = {0};
-				dnet_backend_log(c->blog, DNET_LOG_ERROR,
-					"blob: iter: %s: dnet_ext_hdr_read failed: %d. Use empty extended header for this key\n",
-					dnet_dump_id_len_raw((const unsigned char*)&dc->key, DNET_ID_SIZE, buffer), err);
+				DNET_LOG_ERROR(c->blog,
+				               "blob: iter: %s: dnet_ext_hdr_read failed: %d. Use empty extended "
+				               "header for this key",
+				               dnet_dump_id_str_full(dc->key.id), err);
 
 				err = 0;
 			}
@@ -133,10 +128,9 @@ static int blob_iterate_callback_common(struct eblob_disk_control *dc, int fd, u
 		if (ehdr.size) {
 			err = dnet_read_json_header(fd, data_offset + sizeof(ehdr), ehdr.size, &jhdr);
 			if (!err) {
-				char buffer[2*DNET_ID_SIZE + 1] = {0};
-				dnet_backend_log(c->blog, DNET_LOG_ERROR,
-					"blob: iter: %s: dnet_read_json_header failed: %d. Use empty json for this key\n",
-					dnet_dump_id_len_raw(dc->key.id, DNET_ID_SIZE, buffer), err);
+				DNET_LOG_ERROR(c->blog, "blob: iter: %s: dnet_read_json_header failed: %d. Use empty "
+				                        "json for this key",
+				               dnet_dump_id_str_full(dc->key.id), err);
 				err = 0;
 			}
 		}
@@ -211,8 +205,8 @@ static int blob_write(struct eblob_backend_config *c, void *state,
 	static const size_t ehdr_size = sizeof(struct dnet_ext_list_hdr);
 	int err;
 
-	dnet_backend_log(c->blog, DNET_LOG_NOTICE, "%s: EBLOB: blob-write: WRITE: start: %s",
-		dnet_dump_id_str(io->id), dnet_print_io(io));
+	DNET_LOG_NOTICE(c->blog, "%s: EBLOB: blob-write: WRITE: start: %s", dnet_dump_id_str(io->id),
+	                dnet_print_io(io));
 
 	dnet_convert_io_attr(io);
 
@@ -248,9 +242,8 @@ static int blob_write(struct eblob_backend_config *c, void *state,
 		 */
 		err = eblob_write_prepare(b, &key, io->num + ehdr_size, flags);
 		if (err) {
-			dnet_backend_log(c->blog, DNET_LOG_ERROR, "%s: EBLOB: blob-write: eblob_write_prepare: "
-					"size: %" PRIu64 ": %s %d", dnet_dump_id_str(io->id),
-					io->num + ehdr_size, strerror(-err), err);
+			DNET_LOG_ERROR(c->blog, "%s: EBLOB: blob-write: eblob_write_prepare: size: %" PRIu64 ": %s %d",
+			               dnet_dump_id_str(io->id), io->num + ehdr_size, strerror(-err), err);
 			goto err_out_exit;
 		}
 
@@ -260,14 +253,13 @@ static int blob_write(struct eblob_backend_config *c, void *state,
 
 		err = eblob_plain_writev(b, &key, iov, 1, flags);
 		if (err) {
-			dnet_backend_log(c->blog, DNET_LOG_ERROR,
-				"%s: EBLOB: blob-write: eblob_plain_writev: header WRITE: %d: %s",
-				dnet_dump_id_str(io->id), err, strerror(-err));
+			DNET_LOG_ERROR(c->blog, "%s: EBLOB: blob-write: eblob_plain_writev: header WRITE: %d: %s",
+			               dnet_dump_id_str(io->id), err, strerror(-err));
 			goto err_out_exit;
 		}
 
-		dnet_backend_log(c->blog, DNET_LOG_NOTICE, "%s: EBLOB: blob-write: eblob_write_prepare: "
-				"size: %" PRIu64 ": Ok", dnet_dump_id_str(io->id), io->num + ehdr_size);
+		DNET_LOG_NOTICE(c->blog, "%s: EBLOB: blob-write: eblob_write_prepare: size: %" PRIu64 ": Ok",
+		                dnet_dump_id_str(io->id), io->num + ehdr_size);
 	}
 
 	if (io->size) {
@@ -287,14 +279,13 @@ static int blob_write(struct eblob_backend_config *c, void *state,
 		}
 
 		if (err) {
-			dnet_backend_log(c->blog, DNET_LOG_ERROR, "%s: EBLOB: blob-write: WRITE: %d: %s",
-				dnet_dump_id_str(io->id), err, strerror(-err));
+			DNET_LOG_ERROR(c->blog, "%s: EBLOB: blob-write: WRITE: %d: %s", dnet_dump_id_str(io->id), err,
+			               strerror(-err));
 			goto err_out_exit;
 		}
 
-		dnet_backend_log(c->blog, DNET_LOG_NOTICE, "%s: EBLOB: blob-write: WRITE: Ok: "
-				"offset: %" PRIu64 ", size: %" PRIu64 ".",
-				dnet_dump_id_str(io->id), io->offset, io->size);
+		DNET_LOG_NOTICE(c->blog, "%s: EBLOB: blob-write: WRITE: Ok: offset: %" PRIu64 ", size: %" PRIu64,
+		                dnet_dump_id_str(io->id), io->offset, io->size);
 	}
 
 	if (io->flags & DNET_IO_FLAGS_COMMIT) {
@@ -308,9 +299,9 @@ static int blob_write(struct eblob_backend_config *c, void *state,
 
 			err = eblob_plain_writev(b, &key, iov, 1, flags);
 			if (err) {
-				dnet_backend_log(c->blog, DNET_LOG_ERROR,
-					"%s: EBLOB: blob-write: eblob_plain_writev: commit WRITE: %d: %s",
-					dnet_dump_id_str(io->id), err, strerror(-err));
+				DNET_LOG_ERROR(c->blog,
+				               "%s: EBLOB: blob-write: eblob_plain_writev: commit WRITE: %d: %s",
+				               dnet_dump_id_str(io->id), err, strerror(-err));
 				goto err_out_exit;
 			}
 		}
@@ -328,23 +319,22 @@ static int blob_write(struct eblob_backend_config *c, void *state,
 			}
 			err = eblob_write_commit(b, &key, csize, flags);
 			if (err) {
-				dnet_backend_log(c->blog, DNET_LOG_ERROR, "%s: EBLOB: blob-write: eblob_write_commit: "
-						"size: %" PRIu64 ": %s %d", dnet_dump_id_str(io->id),
-						csize, strerror(-err), err);
+				DNET_LOG_ERROR(c->blog,
+				               "%s: EBLOB: blob-write: eblob_write_commit: size: %" PRIu64 ": %s %d",
+				               dnet_dump_id_str(io->id), csize, strerror(-err), err);
 				goto err_out_exit;
 			}
 
-			dnet_backend_log(c->blog, DNET_LOG_NOTICE, "%s: EBLOB: blob-write: eblob_write_commit: "
-					"size: %" PRIu64 ": Ok", dnet_dump_id_str(io->id), csize);
+			DNET_LOG_NOTICE(c->blog, "%s: EBLOB: blob-write: eblob_write_commit: size: %" PRIu64 ": Ok",
+			                dnet_dump_id_str(io->id), csize);
 		}
 	}
 
 	if (!err && wc.data_fd == -1) {
 		err = eblob_read_return(b, &key, EBLOB_READ_NOCSUM, &wc);
 		if (err) {
-			dnet_backend_log(c->blog, DNET_LOG_ERROR, "%s: EBLOB: blob-write: eblob_read: "
-					"size: %" PRIu64 ": %s %d", dnet_dump_id_str(io->id),
-					io->num, strerror(-err), err);
+			DNET_LOG_ERROR(c->blog, "%s: EBLOB: blob-write: eblob_read: size: %" PRIu64 ": %s %d",
+			               dnet_dump_id_str(io->id), io->num, strerror(-err), err);
 			goto err_out_exit;
 		}
 	}
@@ -365,16 +355,16 @@ static int blob_write(struct eblob_backend_config *c, void *state,
 
 	err = dnet_send_file_info_ts(state, cmd, wc.data_fd, fd_offset, wc.size, &elist.timestamp, wc.flags);
 	if (err) {
-		dnet_backend_log(c->blog, DNET_LOG_ERROR, "%s: EBLOB: blob-write: dnet_send_file_info: "
-				"fd: %d, offset: %" PRIu64 ", offset-within-fd: %" PRIu64 ", size: %" PRIu64 ": %s %d",
-				dnet_dump_id_str(io->id), wc.data_fd, wc.offset, fd_offset, wc.size,
-				strerror(-err), err);
+		DNET_LOG_ERROR(c->blog, "%s: EBLOB: blob-write: dnet_send_file_info: fd: %d, offset: %" PRIu64
+		                        ", offset-within-fd: %" PRIu64 ", size: %" PRIu64 ": %s %d",
+		               dnet_dump_id_str(io->id), wc.data_fd, wc.offset, fd_offset, wc.size, strerror(-err),
+		               err);
 		goto err_out_exit;
 	}
 
-	dnet_backend_log(c->blog, DNET_LOG_INFO, "%s: EBLOB: blob-write: fd: %d, offset: %" PRIu64
-			", offset-within-fd: %" PRIu64 ", size: %" PRIu64 "",
-			dnet_dump_id_str(io->id), wc.data_fd, wc.offset, fd_offset, wc.size);
+	DNET_LOG_INFO(c->blog, "%s: EBLOB: blob-write: fd: %d, offset: %" PRIu64 ", offset-within-fd: %" PRIu64
+	                       ", size: %" PRIu64,
+	              dnet_dump_id_str(io->id), wc.data_fd, wc.offset, fd_offset, wc.size);
 
 err_out_exit:
 	dnet_ext_list_destroy(&elist);
@@ -400,8 +390,8 @@ static int blob_read(struct eblob_backend_config *c, void *state, struct dnet_cm
 
 	err = blob_lookup(b, &key, &wc);
 	if (err < 0) {
-		dnet_backend_log(c->blog, DNET_LOG_ERROR, "%s: EBLOB: blob-read-fd: READ: %d: %s",
-		                 dnet_dump_id_str(io->id), err, strerror(-err));
+		DNET_LOG_ERROR(c->blog, "%s: EBLOB: blob-read-fd: READ: %d: %s", dnet_dump_id_str(io->id), err,
+		               strerror(-err));
 		goto err_out_exit;
 	}
 
@@ -516,9 +506,10 @@ static int blob_read(struct eblob_backend_config *c, void *state, struct dnet_cm
 				c->random_access = 0;
 
 			if (old_ra != c->random_access) {
-				dnet_backend_log(c->blog, DNET_LOG_ERROR,
-					"EBLOB: switch RA %d -> %d, offset MSE: %llu, squared VM total: %llu",
-					old_ra, c->random_access, (unsigned long long)tmp, (unsigned long long)c->vm_total);
+				DNET_LOG_ERROR(c->blog,
+				               "EBLOB: switch RA %d -> %d, offset MSE: %llu, squared VM total: %llu",
+				               old_ra, c->random_access, (unsigned long long)tmp,
+				               (unsigned long long)c->vm_total);
 			}
 
 			c->last_read_index = 0;
@@ -620,14 +611,13 @@ static int blob_del_range_callback(struct eblob_backend_config *c, struct eblob_
 	struct eblob_key key;
 	int err;
 
-	dnet_backend_log(c->blog, DNET_LOG_DEBUG, "%s: EBLOB: blob-read-range: DEL",
-			dnet_dump_id_str(req->record_key));
+	DNET_LOG_DEBUG(c->blog, "%s: EBLOB: blob-read-range: DEL", dnet_dump_id_str(req->record_key));
 
 	memcpy(key.id, req->record_key, EBLOB_ID_SIZE);
 	err = eblob_remove(req->back, &key);
 	if (err) {
-		dnet_backend_log(c->blog, DNET_LOG_DEBUG, "%s: EBLOB: blob-read-range: DEL: err: %d",
-				dnet_dump_id_str(req->record_key), err);
+		DNET_LOG_DEBUG(c->blog, "%s: EBLOB: blob-read-range: DEL: err: %d", dnet_dump_id_str(req->record_key),
+		               err);
 	}
 
 	return err;
@@ -644,14 +634,12 @@ static int blob_range_callback(struct eblob_range_request *req)
 	dnet_dump_id_len_raw(req->end, len, end_id);
 	dnet_dump_id_len_raw(req->record_key, len, cur_id);
 
-	dnet_backend_log(p->blog, DNET_LOG_NOTICE, "%s: EBLOB: blob-range: limit: %llu [%llu, %llu]: "
-			"start: %s, end: %s: io record/requested: offset: %llu/%llu, size: %llu/%llu",
-			cur_id,
-			(unsigned long long)req->current_pos,
-			(unsigned long long)req->requested_limit_start, (unsigned long long)req->requested_limit_num,
-			start_id, end_id,
-			(unsigned long long)req->record_offset, (unsigned long long)req->requested_offset,
-			(unsigned long long)req->record_size, (unsigned long long)req->requested_size);
+	DNET_LOG_NOTICE(p->blog, "%s: EBLOB: blob-range: limit: %llu [%llu, %llu]: start: %s, end: %s: io "
+	                         "record/requested: offset: %llu/%llu, size: %llu/%llu",
+	                cur_id, (unsigned long long)req->current_pos, (unsigned long long)req->requested_limit_start,
+	                (unsigned long long)req->requested_limit_num, start_id, end_id,
+	                (unsigned long long)req->record_offset, (unsigned long long)req->requested_offset,
+	                (unsigned long long)req->record_size, (unsigned long long)req->requested_size);
 
 	if (req->requested_offset > req->record_size) {
 		err = 0;
@@ -664,15 +652,16 @@ static int blob_range_callback(struct eblob_range_request *req)
 		p->keys = realloc(p->keys, sizeof(struct eblob_range_request) * p->keys_size);
 		if (p->keys == NULL) {
 			err = -ENOMEM;
-			dnet_backend_log(p->blog, DNET_LOG_ERROR, "%s: EBLOB: blob-del-range: can't (re-)allocate memory, "
-					"new size: %" PRIu64 "", cur_id, p->keys_size);
+			DNET_LOG_ERROR(p->blog,
+			               "%s: EBLOB: blob-del-range: can't (re-)allocate memory, new size: %" PRIu64 "",
+			               cur_id, p->keys_size);
 			goto err_out_exit;
 		}
 	}
 
 	memcpy(&p->keys[p->keys_cnt], req, sizeof(struct eblob_range_request));
 	dnet_dump_id_len_raw(p->keys[p->keys_cnt].record_key, len, cur_id);
-	dnet_backend_log(p->blog, DNET_LOG_DEBUG, "%s: count: %llu", cur_id, (unsigned long long)(p->keys_cnt));
+	DNET_LOG_DEBUG(p->blog, "%s: count: %llu", cur_id, (unsigned long long)(p->keys_cnt));
 	p->keys_cnt++;
 
 	if (!err)
@@ -717,13 +706,13 @@ static int blob_read_range(struct eblob_backend_config *c, void *state, struct d
 
 	err = eblob_read_range(&req);
 	if (err) {
-		dnet_backend_log(c->blog, DNET_LOG_ERROR, "%s: EBLOB: blob-read-range: %d: %s",
-			dnet_dump_id_str(io->id), err, strerror(-err));
+		DNET_LOG_ERROR(c->blog, "%s: EBLOB: blob-read-range: %d: %s", dnet_dump_id_str(io->id), err,
+		               strerror(-err));
 		goto err_out_exit;
 	}
 
 	if ((cmd->cmd == DNET_CMD_READ_RANGE) && (cmd->flags & DNET_ATTR_SORT)) {
-		dnet_backend_log(c->blog, DNET_LOG_DEBUG, "Sorting keys before sending");
+		DNET_LOG_DEBUG(c->blog, "Sorting keys before sending");
 		qsort(p.keys, p.keys_cnt, sizeof(struct eblob_range_request), &blob_cmp_range_request);
 	}
 
@@ -736,20 +725,20 @@ static int blob_read_range(struct eblob_backend_config *c, void *state, struct d
 			case DNET_CMD_READ_RANGE:
 				if ((io->num > 0) && (i >= (io->num + start_from)))
 					break;
-				dnet_backend_log(c->blog, DNET_LOG_DEBUG, "%s: EBLOB: blob-read-range: READ",
-						dnet_dump_id_str(p.keys[i].record_key));
+				DNET_LOG_DEBUG(c->blog, "%s: EBLOB: blob-read-range: READ",
+				               dnet_dump_id_str(p.keys[i].record_key));
 				err = blob_read_range_callback(&p.keys[i]);
 				break;
 			case DNET_CMD_DEL_RANGE:
-				dnet_backend_log(c->blog, DNET_LOG_DEBUG, "%s: EBLOB: blob-read-range: DEL",
-						dnet_dump_id_str(p.keys[i].record_key));
+				DNET_LOG_DEBUG(c->blog, "%s: EBLOB: blob-read-range: DEL",
+				               dnet_dump_id_str(p.keys[i].record_key));
 				err = blob_del_range_callback(c, &p.keys[i]);
 				break;
 		}
 
 		if (err) {
-			dnet_backend_log(c->blog, DNET_LOG_DEBUG, "%s: EBLOB: blob-read-range: err: %d",
-					dnet_dump_id_str(p.keys[i].record_key), err);
+			DNET_LOG_DEBUG(c->blog, "%s: EBLOB: blob-read-range: err: %d",
+			               dnet_dump_id_str(p.keys[i].record_key), err);
 			goto err_out_exit;
 		}
 	}
@@ -780,8 +769,8 @@ static int blob_del(struct eblob_backend_config *c, struct dnet_cmd *cmd)
 
 	err = eblob_remove(c->eblob, &key);
 	if (err) {
-		dnet_backend_log(c->blog, DNET_LOG_ERROR, "%s: EBLOB: blob-del: REMOVE: %d: %s",
-			dnet_dump_id_str(cmd->id.id), err, strerror(-err));
+		DNET_LOG_ERROR(c->blog, "%s: EBLOB: blob-del: REMOVE: %d: %s", dnet_dump_id_str(cmd->id.id), err,
+		               strerror(-err));
 	}
 
 	return err;
@@ -802,8 +791,8 @@ static int blob_file_info(struct eblob_backend_config *c, void *state, struct dn
 	memcpy(key.id, cmd->id.id, EBLOB_ID_SIZE);
 	err = blob_lookup(b, &key, &wc);
 	if (err < 0) {
-		dnet_backend_log(c->blog, DNET_LOG_ERROR, "%s: EBLOB: blob-file-info: info-read: %d: %s.",
-				dnet_dump_id(&cmd->id), err, strerror(-err));
+		DNET_LOG_ERROR(c->blog, "%s: EBLOB: blob-file-info: info-read: %d: %s", dnet_dump_id(&cmd->id), err,
+		               strerror(-err));
 		goto err_out_exit;
 	}
 
@@ -850,8 +839,7 @@ static int blob_file_info(struct eblob_backend_config *c, void *state, struct dn
 
 	if (size == 0) {
 		err = -ENOENT;
-		dnet_backend_log(c->blog, DNET_LOG_INFO, "%s: EBLOB: blob-file-info: info-read: ZERO-SIZE-FILE.",
-				dnet_dump_id(&cmd->id));
+		DNET_LOG_INFO(c->blog, "%s: EBLOB: blob-file-info: info-read: ZERO-SIZE-FILE", dnet_dump_id(&cmd->id));
 		goto err_out_exit;
 	}
 
@@ -883,8 +871,8 @@ static int eblob_backend_checksum(struct dnet_node *n, void *priv, struct dnet_i
 	memcpy(key.id, id->id, EBLOB_ID_SIZE);
 	err = blob_lookup(b, &key, &wc);
 	if (err < 0) {
-		dnet_backend_log(c->blog, DNET_LOG_ERROR, "%s: EBLOB: blob-checksum: read: %d: %s.",
-							dnet_dump_id_str(id->id), err, strerror(-err));
+		DNET_LOG_ERROR(c->blog, "%s: EBLOB: blob-checksum: read: %d: %s", dnet_dump_id_str(id->id), err,
+		               strerror(-err));
 		goto err_out_exit;
 	}
 	err = 0;
@@ -928,8 +916,8 @@ static int eblob_backend_lookup(struct dnet_node *n, void *priv, struct dnet_io_
 
 	err = blob_lookup(b, &key, &wc);
 	if (err < 0) {
-		dnet_backend_log(c->blog, DNET_LOG_ERROR, "%s: EBLOB: blob-backend-lookup: LOOKUP: %d: %s",
-			 dnet_dump_id_str(io->key), err, strerror(-err));
+		DNET_ERROR(n, "%s: EBLOB: blob-backend-lookup: LOOKUP: %d: %s", dnet_dump_id_str(io->key), err,
+		           strerror(-err));
 		goto err_out_exit;
 	}
 
@@ -1006,13 +994,13 @@ static int blob_defrag_start(void *priv, enum dnet_backend_defrag_level level)
 			defrag_level = EBLOB_DEFRAG_STATE_DATA_COMPACT;
 			break;
 		default:
-			dnet_backend_log(c->blog, DNET_LOG_ERROR, "DEFRAG: unknown defragmentation level: %d", (int)level);
+			DNET_LOG_ERROR(c->blog, "DEFRAG: unknown defragmentation level: %d", (int)level);
 			return -ENOTSUP;
 	}
 
 	int err = eblob_start_defrag_level(c->eblob, defrag_level);
 
-	dnet_backend_log(c->blog, DNET_LOG_INFO, "DEFRAG: defragmentation request: status: %d", err);
+	DNET_LOG_INFO(c->blog, "DEFRAG: defragmentation request: status: %d", err);
 
 	return err;
 }
@@ -1113,8 +1101,8 @@ static int blob_send(struct eblob_backend_config *cfg, void *state, struct dnet_
 
 		err = blob_lookup(b, &key, &wc);
 		if (err < 0) {
-			dnet_backend_log(cfg->blog, DNET_LOG_ERROR, "%s: EBLOB: blob_send: lookup: %d: %s",
-					 dnet_dump_id_str(key.id), err, strerror(-err));
+			DNET_LOG_ERROR(cfg->blog, "%s: EBLOB: blob_send: lookup: %d: %s", dnet_dump_id_str(key.id), err,
+			               strerror(-err));
 			goto err_out_send_fail_reply;
 		}
 
@@ -1531,14 +1519,10 @@ static enum eblob_log_levels convert_to_eblob_log(enum dnet_log_level level)
 
 static void dnet_eblob_log_implemenation(void *priv, int level, const char *msg)
 {
-	dnet_logger *log = priv;
-
-	enum dnet_log_level dnet_level = convert_to_dnet_log(level);
-
-	dnet_backend_log(log, dnet_level, "%s", msg);
+	dnet_log_raw(priv, convert_to_dnet_log(level), "%s", msg);
 }
 
-static int dnet_blob_config_init(struct dnet_config_backend *b)
+static int dnet_blob_config_init(struct dnet_config_backend *b, enum dnet_log_level level)
 {
 	struct eblob_backend_config *c = b->data;
 	struct dnet_vm_stat st;
@@ -1547,13 +1531,13 @@ static int dnet_blob_config_init(struct dnet_config_backend *b)
 	c->blog = b->log;
 
 	if (!c->data.file) {
-		dnet_backend_log(c->blog, DNET_LOG_ERROR, "blob: no data file present. Exiting.");
+		DNET_LOG_ERROR(c->blog, "blob: no data file present. Exiting");
 		err = -EINVAL;
 		goto err_out_exit;
 	}
 
 	c->log.log_private = b->log;
-	c->log.log_level = convert_to_eblob_log(dnet_log_get_verbosity(b->log));
+	c->log.log_level = convert_to_eblob_log(level);
 	c->log.log = dnet_eblob_log_implemenation;
 
 	c->data.log = &c->log;
@@ -1561,7 +1545,7 @@ static int dnet_blob_config_init(struct dnet_config_backend *b)
 	err = pthread_mutex_init(&c->last_read_lock, NULL);
 	if (err) {
 		err = -err;
-		dnet_backend_log(c->blog, DNET_LOG_ERROR, "blob: could not create last-read lock: %d.", err);
+		DNET_LOG_ERROR(c->blog, "blob: could not create last-read lock: %d", err);
 		goto err_out_exit;
 	}
 
@@ -1578,7 +1562,7 @@ static int dnet_blob_config_init(struct dnet_config_backend *b)
 	if (err)
 		goto err_out_last_read_lock_destroy;
 
-	eblob_set_trace_id_function(&get_trace_id);
+	eblob_set_trace_id_function(&dnet_node_get_trace_bit);
 
 	c->vm_total = st.vm_total * st.vm_total * 1024 * 1024;
 
@@ -1631,6 +1615,11 @@ static void dnet_blob_config_cleanup(struct dnet_config_backend *b)
 	free(c->data.chunks_dir);
 }
 
+static void dnet_blob_set_verbosity(struct dnet_config_backend *b, enum dnet_log_level level) {
+	struct eblob_backend_config *c = b->data;
+	c->log.log_level = convert_to_eblob_log(level);
+}
+
 static struct dnet_config_entry dnet_cfg_entries_blobsystem[] = {
 	{"sync", dnet_blob_set_sync},
 	{"data", dnet_blob_set_data},
@@ -1657,6 +1646,7 @@ static struct dnet_config_backend dnet_eblob_backend = {
 	.init			= dnet_blob_config_init,
 	.cleanup		= dnet_blob_config_cleanup,
 	.to_json		= dnet_blob_config_to_json,
+	.set_verbosity		= dnet_blob_set_verbosity,
 };
 
 struct dnet_config_backend *dnet_eblob_backend_info(void)

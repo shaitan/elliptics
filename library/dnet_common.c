@@ -676,7 +676,7 @@ int dnet_request_cmd(struct dnet_session *s, struct dnet_trans_control *ctl)
 
 	gettimeofday(&end, NULL);
 	diff = (end.tv_sec - start.tv_sec) * 1000000 + end.tv_usec - start.tv_usec;
-	dnet_log(n, DNET_LOG_NOTICE, "request cmd: %s: %ld usecs, num: %d.", dnet_cmd_string(ctl->cmd), diff, num);
+	dnet_log(n, DNET_LOG_NOTICE, "request cmd: %s: %ld usecs, num: %d", dnet_cmd_string(ctl->cmd), diff, num);
 
 	return num;
 }
@@ -1519,8 +1519,7 @@ int dnet_get_vm_stat(dnet_logger *l, struct dnet_vm_stat *st) {
 	f = fopen("/proc/loadavg", "r");
 	if (!f) {
 		err = -errno;
-		dnet_log_only_log(l, DNET_LOG_ERROR, "Failed to open '/proc/loadavg': %s [%d].",
-		                 strerror(errno), errno);
+		dnet_log_raw(l, DNET_LOG_ERROR, "Failed to open '/proc/loadavg': %s [%d]", strerror(errno), errno);
 		goto err_out_exit;
 	}
 
@@ -1530,8 +1529,7 @@ int dnet_get_vm_stat(dnet_logger *l, struct dnet_vm_stat *st) {
 		if (!err)
 			err = -EINVAL;
 
-		dnet_log_only_log(l, DNET_LOG_ERROR, "Failed to read load average data: %s [%d].",
-		                 strerror(errno), errno);
+		dnet_log_raw(l, DNET_LOG_ERROR, "Failed to read load average data: %s [%d]", strerror(errno), errno);
 		goto err_out_close;
 	}
 
@@ -1544,8 +1542,7 @@ int dnet_get_vm_stat(dnet_logger *l, struct dnet_vm_stat *st) {
 	f = fopen("/proc/meminfo", "r");
 	if (!f) {
 		err = -errno;
-		dnet_log_only_log(l, DNET_LOG_ERROR, "Failed to open '/proc/meminfo': %s [%d].",
-		                 strerror(errno), errno);
+		dnet_log_raw(l, DNET_LOG_ERROR, "Failed to open '/proc/meminfo': %s [%d]", strerror(errno), errno);
 		goto err_out_exit;
 	}
 
@@ -1580,8 +1577,7 @@ int dnet_get_vm_stat(dnet_logger *l, struct dnet_vm_stat *st) {
 	err = sysctlbyname("vm.loadavg", &la, &sz, NULL, 0);
 	if (err) {
 		err = -errno;
-		dnet_log_only_log(l, DNET_LOG_ERROR, "Failed to get load average data: %s [%d].",
-				strerror(errno), errno);
+		dnet_log_raw(l, DNET_LOG_ERROR, "Failed to get load average data: %s [%d]", strerror(errno), errno);
 		return err;
 	}
 

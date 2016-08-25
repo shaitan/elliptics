@@ -118,7 +118,6 @@ using namespace tests;
 void test_write(const ioremap::elliptics::newapi::session &session, const record &record) {
 	auto s = session.clone();
 	s.set_groups(groups);
-	s.set_trace_id(rand());
 	s.set_user_flags(record.user_flags);
 
 	s.set_timestamp(record.timestamp);
@@ -134,7 +133,6 @@ void test_write(const ioremap::elliptics::newapi::session &session, const record
 void test_update_json(const ioremap::elliptics::newapi::session &session, const record &record) {
 	auto s = session.clone();
 	s.set_groups(groups);
-	s.set_trace_id(rand());
 	s.set_user_flags(record.user_flags);
 
 	s.set_json_timestamp(record.json_timestamp);
@@ -147,7 +145,6 @@ void test_update_json(const ioremap::elliptics::newapi::session &session, const 
 void test_update_bigger_json(const ioremap::elliptics::newapi::session &session, const record &record) {
 	auto s = session.clone();
 	s.set_groups(groups);
-	s.set_trace_id(rand());
 	s.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
 	s.set_filter(ioremap::elliptics::filters::all_with_ack);
 
@@ -177,7 +174,6 @@ void test_update_bigger_json(const ioremap::elliptics::newapi::session &session,
 void test_update_json_noexist(const ioremap::elliptics::newapi::session &session) {
 	auto s = session.clone();
 	s.set_groups(groups);
-	s.set_trace_id(rand());
 	s.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
 	s.set_filter(ioremap::elliptics::filters::all_with_ack);
 
@@ -196,7 +192,6 @@ void test_update_json_noexist(const ioremap::elliptics::newapi::session &session
 void test_update_json_uncommitted(const ioremap::elliptics::newapi::session &session) {
 	auto s = session.clone();
 	s.set_groups(groups);
-	s.set_trace_id(rand());
 	s.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
 	s.set_filter(ioremap::elliptics::filters::all_with_ack);
 
@@ -219,7 +214,6 @@ void test_update_json_uncommitted(const ioremap::elliptics::newapi::session &ses
 void test_lookup(const ioremap::elliptics::newapi::session &session, const record &record) {
 	auto s = session.clone();
 	s.set_groups(groups);
-	s.set_trace_id(rand());
 
 	auto async = s.lookup(record.key);
 
@@ -228,7 +222,6 @@ void test_lookup(const ioremap::elliptics::newapi::session &session, const recor
 
 void test_read_json(const ioremap::elliptics::newapi::session &session, const record &record) {
 	auto s = session.clone();
-	s.set_trace_id(rand());
 
 	size_t count = 0;
 
@@ -285,7 +278,6 @@ void test_read_json(const ioremap::elliptics::newapi::session &session, const re
 void test_read_data(const ioremap::elliptics::newapi::session &session, const record &record, uint64_t offset,
                     uint64_t size) {
 	auto s = session.clone();
-	s.set_trace_id(rand());
 
 	size_t count = 0;
 
@@ -343,7 +335,6 @@ void test_read_data(const ioremap::elliptics::newapi::session &session, const re
 void test_read(const ioremap::elliptics::newapi::session &session, const record &record, uint64_t offset,
                uint64_t size) {
 	auto s = session.clone();
-	s.set_trace_id(rand());
 
 	size_t count = 0;
 
@@ -401,7 +392,6 @@ void test_read(const ioremap::elliptics::newapi::session &session, const record 
 void test_write_chunked(const ioremap::elliptics::newapi::session &session, const record &record) {
 	auto s = session.clone();
 	s.set_groups(groups);
-	s.set_trace_id(rand());
 	s.set_user_flags(record.user_flags);
 	s.set_timestamp(record.timestamp);
 	s.set_json_timestamp(record.json_timestamp);
@@ -577,7 +567,6 @@ void test_old_write_new_read_compatibility(const ioremap::elliptics::newapi::ses
 	{
 		ioremap::elliptics::session s(session.get_native_node());
 		s.set_groups(groups);
-		s.set_trace_id(rand());
 		s.set_user_flags(user_flags);
 		s.set_ioflags(session.get_ioflags());
 		s.set_timestamp(timestamp);
@@ -608,7 +597,6 @@ void test_old_write_new_read_compatibility(const ioremap::elliptics::newapi::ses
 	{
 		auto s = session.clone();
 		s.set_groups(groups);
-		s.set_trace_id(rand());
 
 		auto async = s.lookup(key);
 
@@ -647,7 +635,6 @@ void test_old_write_new_read_compatibility(const ioremap::elliptics::newapi::ses
 	{
 		auto s = session.clone();
 		s.set_groups(groups);
-		s.set_trace_id(rand());
 
 		auto async = s.read_json(key);
 
@@ -695,7 +682,6 @@ void test_old_write_new_read_compatibility(const ioremap::elliptics::newapi::ses
 	{
 		auto s = session.clone();
 		s.set_groups(groups);
-		s.set_trace_id(rand());
 
 		auto async = s.read(key, 0, 0);
 
@@ -759,7 +745,6 @@ void test_new_write_old_read_compatibility(const ioremap::elliptics::newapi::ses
 	{
 		auto s = session.clone();
 		s.set_groups(groups);
-		s.set_trace_id(rand());
 		s.set_user_flags(user_flags);
 
 		s.set_timestamp(timestamp);
@@ -805,7 +790,6 @@ void test_new_write_old_read_compatibility(const ioremap::elliptics::newapi::ses
 	{
 		ioremap::elliptics::session s(session.get_native_node());
 		s.set_groups(groups);
-		s.set_trace_id(rand());
 
 		auto async = s.lookup(key);
 
@@ -832,7 +816,6 @@ void test_new_write_old_read_compatibility(const ioremap::elliptics::newapi::ses
 	{
 		ioremap::elliptics::session s(session.get_native_node());
 		s.set_groups(groups);
-		s.set_trace_id(rand());
 
 		auto async = s.read_data(key, 0, 0);
 
@@ -898,7 +881,6 @@ void test_read_corrupted_json(const ioremap::elliptics::newapi::session &session
 
 	auto s = session.clone();
 	s.set_groups({group});
-	s.set_trace_id(rand());
 	s.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
 	s.set_filter(ioremap::elliptics::filters::all_with_ack);
 
@@ -923,7 +905,6 @@ void test_read_json_with_corrupted_data_part(const ioremap::elliptics::newapi::s
 
 	auto s = session.clone();
 	s.set_groups({group});
-	s.set_trace_id(rand());
 	s.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
 	s.set_filter(ioremap::elliptics::filters::all_with_ack);
 
@@ -949,7 +930,6 @@ void test_read_json_with_big_capacity_and_corrupted_data_part(const ioremap::ell
 
 	auto s = session.clone();
 	s.set_groups({group});
-	s.set_trace_id(rand());
 
 	static const std::string key{"test_read_json_with_big_capacity_and_corrupted_data_part key"};
 	static const std::string data{"test_read_json_with_big_capacity_and_corrupted_data_part data"};
@@ -974,7 +954,6 @@ void test_read_data_with_corrupted_json(const ioremap::elliptics::newapi::sessio
 
 	auto s = session.clone();
 	s.set_groups({group});
-	s.set_trace_id(rand());
 	s.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
 	s.set_filter(ioremap::elliptics::filters::all_with_ack);
 
@@ -1000,7 +979,6 @@ void test_read_data_with_corrupted_json_with_big_capacity(const ioremap::ellipti
 
 	auto s = session.clone();
 	s.set_groups({group});
-	s.set_trace_id(rand());
 
 	static const std::string key{"test_read_data_with_corrupted_json_with_big_capacity key"};
 	static const std::string data{"test_read_data_with_corrupted_json_with_big_capacity data"};
@@ -1025,7 +1003,6 @@ void test_read_data_with_corrupted_data(const ioremap::elliptics::newapi::sessio
 
 	auto s = session.clone();
 	s.set_groups({group});
-	s.set_trace_id(rand());
 	s.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
 	s.set_filter(ioremap::elliptics::filters::all_with_ack);
 
@@ -1059,7 +1036,6 @@ void test_read_data_part_with_corrupted_first_data(const ioremap::elliptics::new
 
 	auto s = session.clone();
 	s.set_groups({group});
-	s.set_trace_id(rand());
 	s.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
 	s.set_filter(ioremap::elliptics::filters::all_with_ack);
 
@@ -1093,7 +1069,6 @@ void test_read_data_part_with_corrupted_second_data(const ioremap::elliptics::ne
 
 	auto s = session.clone();
 	s.set_groups({group});
-	s.set_trace_id(rand());
 	s.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
 	s.set_filter(ioremap::elliptics::filters::all_with_ack);
 
@@ -1137,7 +1112,6 @@ void test_data_and_json_timestamp(const ioremap::elliptics::newapi::session &ses
 
 	auto s = session.clone();
 	s.set_groups({group});
-	s.set_trace_id(rand());
 	s.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
 	s.set_filter(ioremap::elliptics::filters::all_with_ack);
 
@@ -1187,7 +1161,6 @@ void test_write_plain_into_nonexistent_key(const ioremap::elliptics::newapi::ses
 
 	auto s = session.clone();
 	s.set_groups({group});
-	s.set_trace_id(rand());
 	s.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
 	s.set_filter(ioremap::elliptics::filters::all_with_ack);
 
@@ -1210,7 +1183,6 @@ void test_write_plain_into_committed_key(const ioremap::elliptics::newapi::sessi
 
 	auto s = session.clone();
 	s.set_groups({group});
-	s.set_trace_id(rand());
 	s.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
 	s.set_filter(ioremap::elliptics::filters::all_with_ack);
 
@@ -1252,7 +1224,6 @@ void test_write_cas(const ioremap::elliptics::newapi::session &session) {
 
 	auto s = session.clone();
 	s.set_groups({group});
-	s.set_trace_id(rand());
 	s.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
 	s.set_filter(ioremap::elliptics::filters::all_with_ack);
 	s.set_ioflags(s.get_ioflags() | DNET_IO_FLAGS_CAS_TIMESTAMP);
@@ -1299,7 +1270,6 @@ void test_write_to_readonly_backend(const ioremap::elliptics::newapi::session &s
 	const auto backend_id = std::stoi(backend.string_value("backend_id"));
 
 	auto s = session.clone();
-	s.set_trace_id(rand());
 	s.set_direct_id(remote, backend_id);
 	s.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
 	s.set_filter(ioremap::elliptics::filters::all_with_ack);

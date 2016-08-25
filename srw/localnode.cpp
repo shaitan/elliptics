@@ -19,8 +19,6 @@
 #include "elliptics/interface.h"
 #include "elliptics.h"
 
-#include <blackhole/v1/logger.hpp>
-#include <blackhole/v1/attribute.hpp>
 #include <cocaine/context.hpp>
 #include <cocaine/rpc/actor.hpp> // for factory
 #include <cocaine/logging.hpp>

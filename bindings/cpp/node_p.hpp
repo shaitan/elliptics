@@ -17,15 +17,18 @@
 #define IOREMAP_ELLIPTICS_NODE_P_HPP
 
 #include <elliptics/cppdef.h>
-#include <blackhole/scoped_attributes.hpp>
+
+#include "library/logger.hpp"
 
 namespace ioremap { namespace elliptics {
 
 class node_data {
 	public:
-		node_data(logger &&log) : node_ptr(NULL), log(std::move(log)), destroy_node(true)
-		{
-		}
+		node_data(std::unique_ptr<dnet_logger> logger)
+		: node_ptr(NULL)
+		, logger(new trace_wrapper_t(std::move(logger)))
+		, destroy_node(true) {}
+
 		~node_data()
 		{
 			if (destroy_node && node_ptr)
@@ -33,7 +36,7 @@ class node_data {
 		}
 
 		struct dnet_node	*node_ptr;
-		logger			log;
+		std::unique_ptr<trace_wrapper_t> logger;
 		bool			destroy_node;
 };
 
@@ -46,7 +49,6 @@ class session_data
 		~session_data();
 
 		struct dnet_session	*session_ptr;
-		elliptics::logger	logger;
 		result_filter		filter;
 		result_checker		checker;
 		result_error_handler	error_handler;

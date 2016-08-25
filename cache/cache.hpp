@@ -467,7 +467,7 @@ public:
 			level = DNET_LOG_ERROR;
 
 		if (m_timer.elapsed() > 0) {
-			dnet_log(m_node, level, "%s: cache lock: constructor: vatime: %ld, total: %lld ms", m_name,
+			DNET_LOG(m_node, level, "{}: cache lock: constructor: vatime: {}, total: {} ms", m_name,
 			         vatime, m_timer.elapsed());
 		}
 
@@ -494,7 +494,7 @@ public:
 			level = DNET_LOG_ERROR;
 
 		if (m_timer.elapsed() > 0) {
-			dnet_log(m_node, level, "%s: cache lock: lock: %lld ms", m_name, m_timer.elapsed());
+			DNET_LOG(m_node, level, "{}: cache lock: lock: {} ms", m_name, m_timer.elapsed());
 		}
 
 		m_timer.restart();
@@ -510,7 +510,7 @@ public:
 			level = DNET_LOG_ERROR;
 
 		if (m_timer.elapsed() > 0) {
-			dnet_log(m_node, level, "%s: cache lock: unlock: %lld ms", m_name, m_timer.elapsed());
+			DNET_LOG(m_node, level, "{}: cache lock: unlock: {} ms", m_name, m_timer.elapsed());
 		}
 		m_timer.restart();
 	}

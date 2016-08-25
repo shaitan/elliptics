@@ -1,6 +1,8 @@
 #ifndef DNET_IOREMAP_ELLIPTICS_CAST_HPP
 #define DNET_IOREMAP_ELLIPTICS_CAST_HPP
 
+#include <algorithm>
+
 #include "result_entry.hpp"
 #include "newapi/result_entry.hpp"
 #include <elliptics/packet.h>

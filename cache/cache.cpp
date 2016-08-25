@@ -83,7 +83,7 @@ std::unique_ptr<cache_config> cache_config::parse(const kora::config_t &cache)
 	config.sync_timeout = cache.at<unsigned>("sync_timeout", DNET_DEFAULT_CACHE_SYNC_TIMEOUT_SEC);
 	config.pages_proportions =
 	    cache.at("pages_proportions", std::vector<size_t>(DNET_DEFAULT_CACHE_PAGES_NUMBER, 1));
-	return blackhole::utils::make_unique<cache_config>(config);
+	return std::unique_ptr<cache_config>(new cache_config(config));
 }
 
 cache_manager::cache_manager(dnet_backend_io *backend, dnet_node *n, const cache_config &config) : m_node(n) {
@@ -349,10 +349,8 @@ static int dnet_cmd_cache_io_read(struct cache_manager *cache,
 	 * When offset is larger then size of the file, operation is definitely incorrect
 	 */
 	if (io->offset >= d->size()) {
-		dnet_log(n, DNET_LOG_ERROR, "%s: %s cache: invalid offset: "
-		                            "offset: %llu, size: %llu, cached-size: %zd",
-		         dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), (unsigned long long)io->offset,
-		         (unsigned long long)io->size, d->size());
+		DNET_LOG_ERROR(n, "{}: {} cache: invalid offset: offset: {}, size: {}, cached-size: {}",
+		               dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), io->offset, io->size, d->size());
 		return -EINVAL;
 	}
 
@@ -544,7 +542,7 @@ int dnet_cmd_cache_io(struct dnet_backend_io *backend,
 
 	if (!backend->cache) {
 		if (io->flags & DNET_IO_FLAGS_CACHE) {
-			dnet_log(n, DNET_LOG_NOTICE, "%s: cache is not supported", dnet_dump_id(&cmd->id));
+			DNET_LOG_NOTICE(n, "{}: cache is not supported", dnet_dump_id(&cmd->id));
 		}
 		return -ENOTSUP;
 	}
@@ -569,8 +567,8 @@ int dnet_cmd_cache_io(struct dnet_backend_io *backend,
 			break;
 		}
 	} catch (const std::exception &e) {
-		dnet_log(n, DNET_LOG_ERROR, "%s: %s cache operation failed: %s",
-				dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), e.what());
+		DNET_LOG_ERROR(n, "{}: {} cache operation failed: {}", dnet_dump_id(&cmd->id),
+		               dnet_cmd_string(cmd->cmd), e.what());
 		err = -ENOENT;
 	}
 
@@ -586,7 +584,7 @@ int dnet_cmd_cache_io_new(struct dnet_backend_io *backend,
 	int err = -ENOTSUP;
 
 	if (!backend->cache) {
-		dnet_log(n, DNET_LOG_NOTICE, "%s: cache is not supported", dnet_dump_id(&cmd->id));
+		DNET_LOG_NOTICE(n, "{}: cache is not supported", dnet_dump_id(&cmd->id));
 		return -ENOTSUP;
 	}
 
@@ -607,8 +605,8 @@ int dnet_cmd_cache_io_new(struct dnet_backend_io *backend,
 			break;
 		}
 	} catch (const std::exception &e) {
-		dnet_log(n, DNET_LOG_ERROR, "%s: %s cache operation failed: %s",
-				dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), e.what());
+		DNET_LOG_ERROR(n, "{}: {} cache operation failed: {}", dnet_dump_id(&cmd->id),
+		               dnet_cmd_string(cmd->cmd), e.what());
 		err = -ENOENT;
 	}
 
@@ -631,8 +629,8 @@ int dnet_cmd_cache_lookup(struct dnet_backend_io *backend,
 	try {
 		err = dnet_cmd_cache_io_lookup(backend, cache, st, cmd, cmd_stats);
 	} catch (const std::exception &e) {
-		dnet_log(n, DNET_LOG_ERROR, "%s: %s cache operation failed: %s",
-				dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), e.what());
+		DNET_LOG_ERROR(n, "{}: {} cache operation failed: {}", dnet_dump_id(&cmd->id),
+		               dnet_cmd_string(cmd->cmd), e.what());
 		err = -ENOENT;
 	}
 
@@ -644,7 +642,7 @@ void *dnet_cache_init(struct dnet_node *n, struct dnet_backend_io *backend, cons
 	try {
 		return new cache_manager(backend, n, *reinterpret_cast<const cache_config *>(config));
 	} catch (const std::exception &e) {
-		dnet_log(n, DNET_LOG_ERROR, "Could not create cache: %s", e.what());
+		DNET_LOG_ERROR(n, "Could not create cache: {}", e.what());
 		return nullptr;
 	}
 }

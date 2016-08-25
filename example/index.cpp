@@ -95,7 +95,7 @@ int main(int argc, char *argv[])
 	memset(&cfg, 0, sizeof(struct dnet_config));
 
 	cfg.wait_timeout = 60;
-	dnet_log_level log_level = DNET_LOG_ERROR;
+	auto log_level = DNET_LOG_ERROR;
 
 	try {
 		while ((ch = getopt(argc, argv, "-i:C:N:g:m:w:l:I:r:U:Fh")) != -1) {
@@ -114,7 +114,7 @@ int main(int argc, char *argv[])
 					nsize = strlen(optarg);
 					break;
 				case 'm':
-					log_level = file_logger::parse_level(optarg);
+					log_level = dnet_log_parse_level(optarg);
 					break;
 				case 'w':
 					cfg.check_timeout = cfg.wait_timeout = atoi(optarg);
@@ -154,9 +154,7 @@ int main(int argc, char *argv[])
 			}
 		}
 
-		file_logger log(logfile, log_level);
-
-		node n(logger(log, blackhole::log::attributes_t()), cfg);
+		node n(make_file_logger(logfile, log_level), cfg);
 		session s(n);
 
 		s.set_cflags(cflags);

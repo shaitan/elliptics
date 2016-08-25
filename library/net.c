@@ -34,7 +34,8 @@
 #include "elliptics/packet.h"
 #include "elliptics/interface.h"
 
-#include "../monitor/measure_points.h"
+#include "monitor/measure_points.h"
+#include "library/logger.hpp"
 #include "tests.h"
 
 #ifndef POLLRDHUP
@@ -382,9 +383,10 @@ ssize_t dnet_send_nolock(struct dnet_net_state *st, void *data, uint64_t size)
 		err = send(st->write_s, data, size, 0);
 		if (err < 0) {
 			err = -errno;
-			if (err != -EAGAIN)
-				dnet_log_err(n, "Failed to send packet: size: %llu, socket: %d",
-					(unsigned long long)size, st->write_s);
+			if (err != -EAGAIN) {
+				DNET_ERROR(n, "Failed to send packet: size: %" PRIu64 ", socket: %d", size,
+				               st->write_s);
+			}
 			break;
 		}
 
@@ -444,8 +446,8 @@ static ssize_t dnet_send_fd_nolock(struct dnet_net_state *st, int fd, uint64_t o
 			break;
 		if (err == 0) {
 			err = -ENODATA;
-			dnet_log_err(st->n, "Looks like truncated file: fd: %d, offset: %llu, size: %llu.",
-					fd, (unsigned long long)offset, (unsigned long long)dsize);
+			DNET_ERROR(st->n, "Looks like truncated file: fd: %d, offset: %" PRIu64 ", size: %" PRIu64 "",
+			           fd, offset, dsize);
 			break;
 		}
 
@@ -536,7 +538,7 @@ int dnet_recv(struct dnet_net_state *st, void *data, unsigned int size)
 
 		err = recv(st->read_s, data, size, MSG_DONTWAIT);
 		if (err < 0) {
-			dnet_log_err(st->n, "Failed to recv packet: size: %u", size);
+			DNET_ERROR(st->n, "Failed to recv packet: size: %u", size);
 			return err;
 		}
 
@@ -1116,7 +1118,7 @@ struct dnet_net_state *dnet_state_create(struct dnet_node *n,
 		err = socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, PF_UNIX, sockets);
 		if (err < 0) {
 			err = -errno;
-			dnet_log_err(n, "%s: failed to create socket pair", dnet_addr_string(addr));
+			DNET_ERROR(n, "%s: failed to create socket pair", dnet_addr_string(addr));
 			goto err_out_free;
 		}
 
@@ -1128,7 +1130,7 @@ struct dnet_net_state *dnet_state_create(struct dnet_node *n,
 		st->write_s = dup(s);
 		if (st->write_s < 0) {
 			err = -errno;
-			dnet_log_err(n, "%s: failed to duplicate socket", dnet_addr_string(addr));
+			DNET_ERROR(n, "%s: failed to duplicate socket", dnet_addr_string(addr));
 			goto err_out_free;
 		}
 	}
@@ -1155,12 +1157,12 @@ struct dnet_net_state *dnet_state_create(struct dnet_node *n,
 		err = setsockopt(st->read_s, IPPROTO_IP, IP_TOS, &n->client_prio, 4);
 		if (err) {
 			err = -errno;
-			dnet_log_err(n, "could not set read client prio %d", n->client_prio);
+			DNET_ERROR(n, "could not set read client prio %d", n->client_prio);
 		}
 		err = setsockopt(st->write_s, IPPROTO_IP, IP_TOS, &n->client_prio, 4);
 		if (err) {
 			err = -errno;
-			dnet_log_err(n, "could not set write client prio %d", n->client_prio);
+			DNET_ERROR(n, "could not set write client prio %d", n->client_prio);
 		}
 
 		if (!err) {
@@ -1249,7 +1251,7 @@ err_out_close:
 
 err_out_exit:
 	if (err == -EEXIST)
-		dnet_log(n, DNET_LOG_NOTICE, "%s: state already exists.", dnet_addr_string(addr));
+		dnet_log(n, DNET_LOG_NOTICE, "%s: state already exists", dnet_addr_string(addr));
 	*errp = err;
 	return NULL;
 }
@@ -1330,7 +1332,7 @@ int dnet_send_request(struct dnet_net_state *st, struct dnet_io_req *r)
 
 	if (1) {
 		struct dnet_cmd *cmd = r->header ? r->header : r->data;
-		dnet_node_set_trace_id(st->n->log, cmd->trace_id, cmd->flags & DNET_FLAGS_TRACE_BIT, (ssize_t)-1);
+		dnet_node_set_trace_id(cmd->trace_id, cmd->flags & DNET_FLAGS_TRACE_BIT);
 		dnet_log(st->n, st->send_offset == 0 ? DNET_LOG_INFO : DNET_LOG_DEBUG,
 			"%s: %s: sending trans: %lld -> %s/%d: size: %llu, cflags: %s, start-sent: %zd/%zd",
 			dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), (unsigned long long)cmd->trans,

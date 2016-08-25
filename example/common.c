@@ -41,10 +41,6 @@
 
 #include "common.h"
 
-#define DNET_CONF_COMMENT	'#'
-#define DNET_CONF_DELIM		'='
-#define DNET_CONF_TIME_DELIM	'.'
-
 int dnet_parse_groups(char *value, int **groupsp)
 {
 	int len = strlen(value), i, num = 0, start = 0, pos = 0;
@@ -98,37 +94,6 @@ int dnet_parse_groups(char *value, int **groupsp)
 
 	*groupsp = groups;
 	return pos;
-}
-
-int dnet_common_prepend_data(struct timespec *ts, uint64_t size, void *buf, int *bufsize)
-{
-	void *orig = buf;
-	struct dnet_common_embed *e = buf;
-	uint64_t *edata = (uint64_t *)e->data;
-
-	if (*bufsize < (int)(sizeof(struct dnet_common_embed) + sizeof(uint64_t)) * 2)
-		return -ENOBUFS;
-
-	e->size = sizeof(uint64_t) * 2;
-	e->type = DNET_FCGI_EMBED_TIMESTAMP;
-	e->flags = 0;
-	dnet_common_convert_embedded(e);
-
-	edata[0] = dnet_bswap64(ts->tv_sec);
-	edata[1] = dnet_bswap64(ts->tv_nsec);
-
-	buf += sizeof(struct dnet_common_embed) + sizeof(uint64_t) * 2;
-
-	e = buf;
-	e->size = size;
-	e->type = DNET_FCGI_EMBED_DATA;
-	e->flags = 0;
-	dnet_common_convert_embedded(e);
-
-	buf += sizeof(struct dnet_common_embed);
-
-	*bufsize = buf - orig;
-	return 0;
 }
 
 int dnet_background(void)

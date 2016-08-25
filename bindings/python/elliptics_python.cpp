@@ -21,6 +21,8 @@
 #include <boost/python/dict.hpp>
 #include <boost/python/stl_iterator.hpp>
 
+#include <blackhole/wrapper.hpp>
+
 #include <elliptics/cppdef.h>
 
 #include <map>
@@ -140,15 +142,28 @@ dnet_config& dnet_config_config(dnet_config &config) {
 	return config;
 }
 
+class elliptics_file_logger {
+public:
+	elliptics_file_logger(const char *file, int level)
+	: m_logger(make_file_logger(file, dnet_log_level(level))) {}
+
+	std::unique_ptr<dnet_logger> get_logger() {
+		return std::unique_ptr<dnet_logger>(new blackhole::wrapper_t(*m_logger, {}));
+	}
+
+private:
+	std::unique_ptr<dnet_logger> m_logger;
+};
+
 class elliptics_node_python : public node, public bp::wrapper<node> {
 	public:
-		elliptics_node_python(logger_base &l)
-			: node(logger(l, blackhole::log::attributes_t())) {}
+		elliptics_node_python(elliptics_file_logger &logger)
+			: node(logger.get_logger()) {}
 
-		elliptics_node_python(logger_base &l, dnet_config &cfg)
-			: node(logger(l, blackhole::log::attributes_t()), cfg) {}
+		elliptics_node_python(elliptics_file_logger &logger, dnet_config &cfg)
+			: node(logger.get_logger(), cfg) {}
 
-		elliptics_node_python(const node &n): node(n) {}
+		elliptics_node_python(const node &n) : node(n) {}
 
 		void add_remotes(const bp::api::object &remotes) {
 			auto remotes_len = bp::len(remotes);
@@ -164,15 +179,6 @@ class elliptics_node_python : public node, public bp::wrapper<node> {
 
 			add_remote(std_remotes);
 		}
-};
-
-class elliptics_file_logger : public file_logger
-{
-public:
-	elliptics_file_logger(const char *file, int level)
-		: file_logger(file, dnet_log_level(level))
-	{
-	}
 };
 
 
@@ -228,11 +234,6 @@ class elliptics_error_translator
 void ios_base_failure_translator(const std::ios_base::failure &exc)
 {
 	PyErr_SetString(PyExc_IOError, exc.what());
-}
-
-void logger_log(logger_base &log, int level, const char *msg)
-{
-	BH_LOG(log, dnet_log_level(level), "%s", msg);
 }
 
 void next_impl(bp::api::object &value, const bp::api::object &next)
@@ -316,14 +317,7 @@ BOOST_PYTHON_MODULE(core)
 	bp::register_exception_translator<error>(error_translator);
 	bp::register_exception_translator<std::ios_base::failure>(ios_base_failure_translator);
 
-	bp::class_<logger_base, boost::noncopyable>("AbstractLogger")
-		.def("log", logger_log, bp::args("log_level", "log_message"),
-		    "log(self, level, message)\n"
-		    "   logs a message with level\n\n"
-		    "   logger.log(elliptics.log_level.debug, \"We've got a problem\"")
-	;
-
-	bp::class_<elliptics_file_logger, bp::bases<logger_base>, boost::noncopyable> file_logger_class(
+	bp::class_<elliptics_file_logger, boost::noncopyable> file_logger_class(
 		"Logger", "File logger for using inside Elliptics client library",
 		bp::init<const char *, int>(bp::args("log_file", "log_level"),
 		    "__init__(self, filename, log_level)\n"
@@ -353,11 +347,8 @@ BOOST_PYTHON_MODULE(core)
 
 	bp::class_<elliptics_node_python>(
 	    "Node", "Node represents a connection with Elliptics.",
-	    bp::init<logger_base &>(bp::arg("logger"),
-	        "__init__(self, logger)\n"
-	        "    Initializes node by the logger and dafault configuration\n\n"
-	        "    node = elliptics.Node(logger)"))
-		.def(bp::init<logger_base &, dnet_config &>(bp::args("logger", "config"),
+	    bp::init<elliptics_file_logger &>(bp::args("logger")))
+		.def(bp::init<elliptics_file_logger &, dnet_config &>(bp::args("logger", "config"),
 		     "__init__(self, logger, config)\n"
 		     "    Initializes node by the logger and custom configuration\n\n"
 		     "node = elliptics.Node(logger, config)"))
@@ -477,18 +468,18 @@ BOOST_PYTHON_MODULE(core)
 		.value("chunked_csum", record_flags_chunked_csum)
 	;
 
-	bp::enum_<blackhole::defaults::severity>("log_level",
+	bp::enum_<int>("log_level",
 	    "Different levels of verbosity elliptics logs:\n\n"
 	     "error\n    The level contains critical errors that materially affect the work\n"
 	     "warning\n    The level contains reports of the previous level and warnings that may not affect the work\n"
 	     "info\n    The level contains reports of the previous level and messages about the time of the various operations\n"
 	     "notice\n    The level is considered to be the first level of debugging\n"
 	     "debug\n    The level includes all sort of information about errors and work")
-		.value("error", blackhole::defaults::severity::error)
-		.value("warning", blackhole::defaults::severity::warning)
-		.value("info", blackhole::defaults::severity::info)
-		.value("notice", blackhole::defaults::severity::notice)
-		.value("debug", blackhole::defaults::severity::debug)
+		.value("error", DNET_LOG_ERROR)
+		.value("warning", DNET_LOG_WARNING)
+		.value("info", DNET_LOG_INFO)
+		.value("notice", DNET_LOG_NOTICE)
+		.value("debug", DNET_LOG_DEBUG)
 	;
 
 	bp::enum_<elliptics_exceptions_policy>("exceptions_policy",

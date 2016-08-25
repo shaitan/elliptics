@@ -78,8 +78,8 @@ def create_node(elog=None, log_file='/dev/stderr', log_level=log_level.error,
     n = Node(elog, cfg)
     try:
         n.add_remotes(map(Address.from_host_port_family, remotes))
-    except Exception as e:
-        elog.log(log_level.error, "Coudn't connect to: {0}: {1}".format(repr(remotes), repr(e)))
+    except:
+        pass
     return n
 
 

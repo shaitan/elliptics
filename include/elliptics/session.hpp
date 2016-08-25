@@ -155,15 +155,10 @@ class session_data;
 class node
 {
 	public:
-		node();
-		explicit node(const std::shared_ptr<node_data> &data);
-		explicit node(logger &&l);
-		node(logger &&l, dnet_config &cfg);
+		explicit node(std::unique_ptr<dnet_logger> logger);
+		explicit node(std::unique_ptr<dnet_logger> logger, dnet_config &cfg);
 		node(const node &other);
 		~node();
-
-		static node from_raw(dnet_node *n);
-		static node from_raw(dnet_node *n, blackhole::log::attributes_t attributes);
 
 		node &operator =(const node &other);
 
@@ -176,7 +171,7 @@ class node
 
 		void set_keepalive(int idle, int cnt, int interval);
 
-		logger &get_log() const;
+		std::unique_ptr<dnet_logger> get_logger() const;
 		dnet_node *get_native() const;
 
 	protected:
@@ -1018,7 +1013,7 @@ class session
 		/*!
 		 * Returns logger object.
 		 */
-		logger &get_logger() const;
+		std::unique_ptr<dnet_logger> get_logger() const;
 		/*!
 		 * Returns reference to parent node.
 		 */

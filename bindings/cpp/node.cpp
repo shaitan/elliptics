@@ -22,26 +22,19 @@
 #include <vector>
 
 #include "node_p.hpp"
+#include "library/elliptics.h"
 
 namespace ioremap { namespace elliptics {
 
-node::node()
-{
-}
-
-node::node(const std::shared_ptr<node_data> &data) : m_data(data)
-{
-}
-
-node::node(logger &&l) : m_data(new node_data(std::move(l)))
-{
+node::node(std::unique_ptr<dnet_logger> logger)
+: m_data(std::make_shared<node_data>(std::move(logger))) {
 	struct dnet_config cfg;
 
 	memset(&cfg, 0, sizeof(cfg));
 
 	cfg.wait_timeout = 5;
 	cfg.check_timeout = 20;
-	cfg.log = &m_data->log;
+	cfg.log = m_data->logger.get();
 
 	m_data->node_ptr = dnet_node_create(&cfg);
 	if (!m_data->node_ptr) {
@@ -49,9 +42,9 @@ node::node(logger &&l) : m_data(new node_data(std::move(l)))
 	}
 }
 
-node::node(logger &&l, dnet_config &cfg) : m_data(new node_data(std::move(l)))
-{
-	cfg.log = &m_data->log;
+node::node(std::unique_ptr<dnet_logger> logger, dnet_config &cfg)
+: m_data(std::make_shared<node_data>(std::move(logger))) {
+	cfg.log = m_data->logger.get();
 
 	m_data->node_ptr = dnet_node_create(&cfg);
 	if (!m_data->node_ptr) {
@@ -64,23 +57,6 @@ node::node(const node &other) : m_data(other.m_data)
 
 node::~node()
 {}
-
-node node::from_raw(dnet_node *n)
-{
-	return node::from_raw(n, blackhole::log::attributes_t());
-}
-
-node node::from_raw(dnet_node *n, blackhole::log::attributes_t attributes)
-{
-	node result;
-	logger log(*dnet_node_get_logger(n), std::move(attributes));
-
-	result.m_data = std::make_shared<node_data>(std::move(log));
-	result.m_data->destroy_node = false;
-	result.m_data->node_ptr = n;
-
-	return result;
-}
 
 node &node::operator =(const node &other)
 {
@@ -130,9 +106,8 @@ void node::set_keepalive(int idle, int cnt, int interval)
 		dnet_set_keepalive(m_data->node_ptr, idle, cnt, interval);
 }
 
-logger &node::get_log() const
-{
-	return m_data->log;
+std::unique_ptr<dnet_logger> node::get_logger() const {
+	return std::unique_ptr<dnet_logger>(new blackhole::wrapper_t(*m_data->logger, {}));
 }
 
 dnet_node *node::get_native() const

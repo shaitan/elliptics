@@ -18,9 +18,15 @@
 #include "callback_p.h"
 #include "functional_p.h"
 
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
+
 #include <cerrno>
 #include <sstream>
 #include <functional>
+
+#include <blackhole/attribute.hpp>
+#include <blackhole/wrapper.hpp>
 
 #include "node_p.hpp"
 #include "exec_context_data_p.hpp"
@@ -429,18 +435,15 @@ void none(const error_info &, const std::vector<dnet_cmd> &)
 
 void remove_on_fail_impl(session &sess_, const error_info &error, const std::vector<dnet_cmd> &statuses) {
 	auto sess = sess_.clone();
-
-	logger &log = sess.get_logger();
+	auto log = sess.get_logger();
 
 	if (statuses.size() == 0) {
-		BH_LOG(log, DNET_LOG_ERROR, "Unexpected empty statuses list at remove_on_fail_impl");
+		DNET_LOG_ERROR(log, "Unexpected empty statuses list at remove_on_fail_impl");
 		return;
 	}
 
-	BH_LOG(log, DNET_LOG_DEBUG, "%s: failed to exec %s: %s, going to remove_data",
-		dnet_dump_id(&statuses.front().id),
-		dnet_cmd_string(statuses.front().cmd),
-		error.message());
+	DNET_LOG_DEBUG(log, "{}: failed to exec {}: {}, going to remove_data", dnet_dump_id(&statuses.front().id),
+	               dnet_cmd_string(statuses.front().cmd), error.message());
 
 	std::vector<int> rm_groups;
 	for (auto it = statuses.begin(); it != statuses.end(); ++it) {
@@ -473,22 +476,17 @@ static void create_session_data(session_data &sess, struct dnet_node *node)
 }
 
 session_data::session_data(const node &n)
-: logger(n.get_log()
-, blackhole::log::attributes_t())
 {
 	create_session_data(*this, n.get_native());
 }
 
 session_data::session_data(dnet_node *node)
-: logger(*dnet_node_get_logger(node)
-, blackhole::log::attributes_t())
 {
 	create_session_data(*this, node);
 }
 
 session_data::session_data(session_data &other)
-: logger(other.logger, blackhole::log::attributes_t())
-, filter(other.filter)
+: filter(other.filter)
 , checker(other.checker)
 , error_handler(other.error_handler)
 , policy(other.policy)
@@ -719,10 +717,6 @@ long session::get_timeout(void) const
 void session::set_trace_id(trace_id_t trace_id)
 {
 	dnet_session_set_trace_id(m_data->session_ptr, trace_id);
-	blackhole::log::attributes_t attributes = {
-		keyword::request_id() = trace_id
-	};
-	m_data->logger = logger(m_data->logger, std::move(attributes));
 }
 
 trace_id_t session::get_trace_id() const
@@ -746,7 +740,8 @@ public:
 	read_handler(const session &sess, const async_read_result &result,
 		std::vector<int> &&groups, const dnet_io_control &control) :
 		parent_type(sess, result, std::move(groups)),
-		m_control(control)
+		m_control(control),
+		m_log(sess.get_logger())
 	{
 	}
 
@@ -793,11 +788,8 @@ public:
 				&& io
 				&& (io->size == io->total_size)
 				&& (io->offset == 0)) {
-
-			BH_LOG(m_sess.get_logger(), DNET_LOG_INFO,
-				"read_callback::read-recovery: %s: going to write %llu bytes -> %s groups",
-				dnet_dump_id_str(io->id), static_cast<unsigned long long>(io->size),
-				join_groups(m_failed_groups));
+			DNET_LOG_INFO(m_log, "read_callback::read-recovery: {}: going to write {} bytes -> {} groups",
+			              dnet_dump_id_str(io->id), io->size, join_groups(m_failed_groups));
 
 			std::sort(m_failed_groups.begin(), m_failed_groups.end());
 			m_failed_groups.erase(std::unique(m_failed_groups.begin(), m_failed_groups.end()),
@@ -819,10 +811,8 @@ public:
 			write_ctl.cmd = DNET_CMD_WRITE;
 			write_ctl.cflags = m_control.cflags;
 
-			BH_LOG(m_sess.get_logger(), DNET_LOG_INFO,
-				"read_callback::read-recovery: %s: write %llu bytes -> %s groups",
-				dnet_dump_id_str(io->id), static_cast<unsigned long long>(io->size),
-				join_groups(m_failed_groups));
+			DNET_LOG_INFO(m_log, "read_callback::read-recovery: {}: write {} bytes -> {} groups",
+			              dnet_dump_id_str(io->id), io->size, join_groups(m_failed_groups));
 
 			new_sess.write_data(write_ctl);
 		}
@@ -832,10 +822,12 @@ private:
 	dnet_io_control m_control;
 	read_result_entry m_read_result;
 	std::vector<int> m_failed_groups;
+	std::unique_ptr<dnet_logger> m_log;
 };
 
 async_read_result session::read_data(const key &id, const std::vector<int> &groups, const dnet_io_attr &io, unsigned int cmd)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	transform(id);
 
 	dnet_io_control control;
@@ -858,17 +850,20 @@ async_read_result session::read_data(const key &id, const std::vector<int> &grou
 
 async_read_result session::read_data(const key &id, const std::vector<int> &groups, const dnet_io_attr &io)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	return read_data(id, groups, io, DNET_CMD_READ);
 }
 
 async_read_result session::read_data(const key &id, int group, const dnet_io_attr &io)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	const std::vector<int> groups(1, group);
 	return read_data(id, groups, io);
 }
 
 async_read_result session::read_data(const key &id, const std::vector<int> &groups, uint64_t offset, uint64_t size)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	transform(id);
 
 	dnet_io_attr io;
@@ -886,6 +881,7 @@ async_read_result session::read_data(const key &id, const std::vector<int> &grou
 
 async_read_result session::read_data(const key &id, uint64_t offset, uint64_t size)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	DNET_SESSION_GET_GROUPS(async_read_result);
 
 	return read_data(id, std::move(groups), offset, size);
@@ -924,6 +920,7 @@ struct read_latest_callback
 
 async_read_result session::read_latest(const key &id, uint64_t offset, uint64_t size)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	DNET_SESSION_GET_GROUPS(async_read_result);
 
 	session sess = clone();
@@ -940,6 +937,7 @@ async_read_result session::read_latest(const key &id, uint64_t offset, uint64_t 
 
 async_write_result session::write_data(const dnet_io_control &ctl)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	dnet_io_control ctl_copy = ctl;
 
 	ctl_copy.cmd = DNET_CMD_WRITE;
@@ -961,6 +959,7 @@ async_write_result session::write_data(const dnet_io_control &ctl)
 
 async_write_result session::write_data(const dnet_io_attr &io, const argument_data &file)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	dnet_io_control ctl;
 	memset(&ctl, 0, sizeof(ctl));
 	dnet_empty_time(&ctl.io.timestamp);
@@ -984,6 +983,7 @@ async_write_result session::write_data(const dnet_io_attr &io, const argument_da
 
 async_write_result session::write_data(const key &id, const argument_data &file, uint64_t remote_offset)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	transform(id);
 
 	dnet_io_control ctl;
@@ -1070,6 +1070,7 @@ struct chunk_handler : public std::enable_shared_from_this<chunk_handler> {
 
 async_write_result session::write_data(const key &id, const data_pointer &file, uint64_t remote_offset, uint64_t chunk_size)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	if (file.size() <= chunk_size || chunk_size == 0)
 		return write_data(id, file, remote_offset);
 
@@ -1265,6 +1266,7 @@ struct cas_functor : std::enable_shared_from_this<cas_functor>
 async_write_result session::write_cas(const key &id, const std::function<data_pointer (const data_pointer &)> &converter,
 		uint64_t remote_offset, int count)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	DNET_SESSION_GET_GROUPS(async_write_result);
 
 	async_write_result result(*this);
@@ -1277,6 +1279,7 @@ async_write_result session::write_cas(const key &id, const std::function<data_po
 
 async_write_result session::write_cas(const key &id, const argument_data &file, const dnet_id &old_csum, uint64_t remote_offset)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	transform(id);
 	dnet_id raw = id.id();
 
@@ -1304,6 +1307,7 @@ async_write_result session::write_cas(const key &id, const argument_data &file, 
 
 async_write_result session::write_prepare(const key &id, const argument_data &file, uint64_t remote_offset, uint64_t psize)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	transform(id);
 
 	dnet_io_control ctl;
@@ -1329,6 +1333,7 @@ async_write_result session::write_prepare(const key &id, const argument_data &fi
 
 async_write_result session::write_plain(const key &id, const argument_data &file, uint64_t remote_offset)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	transform(id);
 
 	dnet_io_control ctl;
@@ -1355,6 +1360,7 @@ async_write_result session::write_plain(const key &id, const argument_data &file
 
 async_write_result session::write_commit(const key &id, const argument_data &file, uint64_t remote_offset, uint64_t csize)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	transform(id);
 
 	dnet_io_control ctl;
@@ -1379,6 +1385,7 @@ async_write_result session::write_commit(const key &id, const argument_data &fil
 
 async_write_result session::write_cache(const key &id, const argument_data &file, long timeout)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	transform(id);
 	dnet_id raw = id.id();
 
@@ -1405,6 +1412,7 @@ async_write_result session::write_cache(const key &id, const argument_data &file
 // TODO: Remove this method in elliptics-2.27
 std::string session::lookup_address(const key &id, int group_id)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	char buf[128];
 	struct dnet_addr addr;
 	int backend_id = -1;
@@ -1473,6 +1481,7 @@ private:
 
 async_lookup_result session::lookup(const key &id)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	DNET_SESSION_GET_GROUPS(async_lookup_result);
 
 	transport_control control(id.id(), DNET_CMD_LOOKUP, DNET_FLAGS_NEED_ACK);
@@ -1487,6 +1496,7 @@ async_lookup_result session::lookup(const key &id)
 
 async_lookup_result session::parallel_lookup(const key &id)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	transform(id);
 
 	transport_control control(id.id(), DNET_CMD_LOOKUP, DNET_FLAGS_NEED_ACK);
@@ -1563,6 +1573,7 @@ struct prepare_latest_functor
 
 async_lookup_result session::prepare_latest(const key &id, const std::vector<int> &groups)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	async_lookup_result result(*this);
 	async_result_handler<lookup_result_entry> result_handler(result);
 	result_handler.set_total(groups.size());
@@ -1705,6 +1716,7 @@ struct quorum_lookup_aggregator_handler
 // In both cases result also contains lookup_result_entries with error info
 async_lookup_result session::quorum_lookup(const key &id)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	// The only thing doing here: connecting helper class to async_results
 	transform(id);
 
@@ -1736,6 +1748,7 @@ async_lookup_result session::quorum_lookup(const key &id)
 
 async_remove_result session::remove(const key &id)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	transform(id);
 
 	dnet_io_control ctl;
@@ -1757,6 +1770,7 @@ async_remove_result session::remove(const key &id)
 
 async_monitor_stat_result session::monitor_stat(uint64_t categories)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	dnet_monitor_stat_request request;
 	memset(&request, 0, sizeof(struct dnet_monitor_stat_request));
 	request.categories = categories;
@@ -1773,6 +1787,7 @@ async_monitor_stat_result session::monitor_stat(uint64_t categories)
 
 async_monitor_stat_result session::monitor_stat(const address &addr, uint64_t categories)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	dnet_monitor_stat_request request;
 	memset(&request, 0, sizeof(struct dnet_monitor_stat_request));
 	request.categories = categories;
@@ -1795,16 +1810,19 @@ int session::state_num(void)
 
 async_generic_result session::request_cmd(const transport_control &ctl)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	return send_to_each_backend(*this, ctl);
 }
 
 async_generic_result session::request_single_cmd(const transport_control &ctl)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	return send_to_single_state(*this, ctl);
 }
 
 async_node_status_result session::update_status(const address &addr, const dnet_node_status &status)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	data_pointer data = data_pointer::allocate(sizeof(dnet_node_status));
 	dnet_node_status *node_status = data.data<dnet_node_status>();
 	*node_status = status;
@@ -1821,6 +1839,7 @@ async_node_status_result session::update_status(const address &addr, const dnet_
 
 async_node_status_result session::request_node_status(const address &addr)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	struct dnet_node_status node_status;
 	memset(&node_status, 0, sizeof(struct dnet_node_status));
 	node_status.nflags = -1;
@@ -1889,21 +1908,25 @@ static async_backend_control_result update_backend_status(const backend_status_p
 
 async_backend_control_result session::enable_backend(const address &addr, uint32_t backend_id)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	return update_backend_status(backend_status_params(*this, addr, backend_id, DNET_BACKEND_ENABLE));
 }
 
 async_backend_control_result session::disable_backend(const address &addr, uint32_t backend_id)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	return update_backend_status(backend_status_params(*this, addr, backend_id, DNET_BACKEND_DISABLE));
 }
 
 async_backend_control_result session::remove_backend(const address &addr, uint32_t backend_id)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	return update_backend_status(backend_status_params(*this, addr, backend_id, DNET_BACKEND_REMOVE));
 }
 
 async_backend_control_result session::start_defrag(const address &addr, uint32_t backend_id)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	backend_status_params params(*this, addr, backend_id, DNET_BACKEND_START_DEFRAG);
 	params.defrag_level = DNET_BACKEND_DEFRAG_FULL;
 	return update_backend_status(params);
@@ -1911,6 +1934,7 @@ async_backend_control_result session::start_defrag(const address &addr, uint32_t
 
 async_backend_control_result session::start_compact(const address &addr, uint32_t backend_id)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	backend_status_params params(*this, addr, backend_id, DNET_BACKEND_START_DEFRAG);
 	params.defrag_level = DNET_BACKEND_DEFRAG_COMPACT;
 	return update_backend_status(params);
@@ -1918,12 +1942,14 @@ async_backend_control_result session::start_compact(const address &addr, uint32_
 
 async_backend_control_result session::stop_defrag(const address &addr, uint32_t backend_id)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	return update_backend_status(backend_status_params(*this, addr, backend_id, DNET_BACKEND_STOP_DEFRAG));
 }
 
 async_backend_control_result session::set_backend_ids(const address &addr, uint32_t backend_id,
 		const std::vector<dnet_raw_id> &ids)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	backend_status_params params(*this, addr, backend_id, DNET_BACKEND_SET_IDS);
 	params.ids = ids;
 	return update_backend_status(params);
@@ -1931,16 +1957,19 @@ async_backend_control_result session::set_backend_ids(const address &addr, uint3
 
 async_backend_control_result session::make_readonly(const address &addr, uint32_t backend_id)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	return update_backend_status(backend_status_params(*this, addr, backend_id, DNET_BACKEND_READ_ONLY));
 }
 
 async_backend_control_result session::make_writable(const address &addr, uint32_t backend_id)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	return update_backend_status(backend_status_params(*this, addr, backend_id, DNET_BACKEND_WRITEABLE));
 }
 
 async_backend_control_result session::set_delay(const address &addr, uint32_t backend_id, uint32_t delay)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	backend_status_params params(*this, addr, backend_id, DNET_BACKEND_CTL);
 	params.delay = delay;
 	return update_backend_status(params);
@@ -1948,6 +1977,7 @@ async_backend_control_result session::set_delay(const address &addr, uint32_t ba
 
 async_backend_status_result session::request_backends_status(const address &addr)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	transport_control control;
 	control.set_command(DNET_CMD_BACKEND_STATUS);
 	control.set_cflags(DNET_FLAGS_NEED_ACK | DNET_FLAGS_DIRECT);
@@ -1963,9 +1993,10 @@ class read_data_range_callback
 		struct scope
 		{
 			scope(const session &sess, const async_result_handler<read_result_entry> &handler)
-				: sess(sess), handler(handler) {}
+				: sess(sess), log(sess.get_logger()), handler(handler) {}
 
 			session sess;
+			std::unique_ptr<dnet_logger> log;
 			dnet_io_attr io;
 			dnet_id id;
 			int group_id;
@@ -2036,20 +2067,15 @@ class read_data_range_callback
 			}
 
 			{
-				logger &log = d->sess.get_logger();
-				int len = 6;
-				char start_id[2*len + 1];
-				char next_id[2*len + 1];
-				char end_id[2*len + 1];
-				char id_str[2*len + 1];
 
-				BH_LOG(log, DNET_LOG_NOTICE, "id: %s, start: %s: next: %s, end: %s, size: %llu, cmp: %d",
-					dnet_dump_id_len_raw(d->id.id, len, id_str),
-					dnet_dump_id_len_raw(d->start.id, len, start_id),
-					dnet_dump_id_len_raw(d->next.id, len, next_id),
-					dnet_dump_id_len_raw(d->end.id, len, end_id),
-					d->size,
-					dnet_id_cmp_str(d->next.id, d->end.id));
+				const std::string id_str = dnet_dump_id_str(d->id.id);
+				const std::string start_id = dnet_dump_id_str(d->start.id);
+				const std::string next_id = dnet_dump_id_str(d->next.id);
+				const std::string end_id = dnet_dump_id_str(d->end.id);
+
+				DNET_LOG_NOTICE(d->log, "id: {}, start: {}: next: {}, end: {}, size: {}, cmp: {}",
+				                id_str, start_id, next_id, end_id, d->size,
+				                dnet_id_cmp_str(d->next.id, d->end.id));
 			}
 
 			memcpy(d->io.id, d->id.id, DNET_ID_SIZE);
@@ -2083,11 +2109,8 @@ class read_data_range_callback
 				d->last_exception = error;
 			} else {
 				dnet_io_attr *rep = &d->rep;
-
-				BH_LOG(d->sess.get_logger(),
-					DNET_LOG_NOTICE, "%s: rep_num: %llu, io_start: %llu, io_num: %llu, io_size: %llu",
-					dnet_dump_id(&d->id), (unsigned long long)rep->num, (unsigned long long)d->io.start,
-					(unsigned long long)d->io.num, (unsigned long long)d->io.size);
+				DNET_LOG_NOTICE(d->log, "{}: rep_num: {}, io_start: {}, io_num: {}, io_size: {}",
+				                dnet_dump_id(&d->id), rep->num, d->io.start, d->io.num, d->io.size);
 
 				if (d->io.start < rep->num) {
 					rep->num -= d->io.start;
@@ -2147,11 +2170,9 @@ class remove_data_range_callback : public read_data_range_callback
 				d->last_exception = error;
 			} else {
 				if (d->has_any) {
-					BH_LOG(d->sess.get_logger(), DNET_LOG_NOTICE,
-							"%s: rep_num: %llu, io_start: %llu, io_num: %llu, io_size: %llu",
-							dnet_dump_id(&d->id),
-							(unsigned long long)d->rep.num, (unsigned long long)d->io.start,
-							(unsigned long long)d->io.num, (unsigned long long)d->io.size);
+					DNET_LOG_NOTICE(
+					        d->log, "{}: rep_num: {}, io_start: {}, io_num: {}, io_size: {}",
+					        dnet_dump_id(&d->id), d->rep.num, d->io.start, d->io.num, d->io.size);
 				} else {
 					d->handler.complete(create_error(-ENOENT, d->io.id,
 						"Failed to remove range data object: group: %d, size: %llu",
@@ -2170,6 +2191,7 @@ class remove_data_range_callback : public read_data_range_callback
 
 async_read_result session::read_data_range(const dnet_io_attr &io, int group_id)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	async_read_result result(*this);
 	async_result_handler<read_result_entry> handler(result);
 	error_info error;
@@ -2181,6 +2203,7 @@ async_read_result session::read_data_range(const dnet_io_attr &io, int group_id)
 
 async_read_result session::remove_data_range(const dnet_io_attr &io, int group_id)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	async_read_result result(*this);
 	async_result_handler<read_result_entry> handler(result);
 	error_info error;
@@ -2192,7 +2215,8 @@ async_read_result session::remove_data_range(const dnet_io_attr &io, int group_i
 
 std::vector<dnet_route_entry> session::get_routes()
 {
-	scoped_trace_id guard(*this);
+	trace_scope scope{get_trace_id(), get_trace_bit()};
+
 	cstyle_scoped_pointer<dnet_route_entry> entries;
 
 	int count = dnet_get_routes(m_data->session_ptr, &entries.data());
@@ -2205,12 +2229,14 @@ std::vector<dnet_route_entry> session::get_routes()
 
 async_exec_result session::request(dnet_id *id, const exec_context &context)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	session sess = clean_clone();
 	return async_result_cast<exec_result_entry>(*this, send_srw_command(sess, id, context.m_data->srw_data.data<sph>()));
 }
 
 async_iterator_result session::iterator(const key &id, const data_pointer& request)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	if (get_groups().empty()) {
 		async_iterator_result result(*this);
 		async_result_handler<iterator_result_entry> handler(result);
@@ -2242,6 +2268,7 @@ async_iterator_result session::iterator(const key &id, const data_pointer& reque
 
 error_info session::mix_states(const key &id, std::vector<int> &groups)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	transform(id);
 
 	cstyle_scoped_pointer<int> groups_ptr;
@@ -2261,6 +2288,7 @@ error_info session::mix_states(const key &id, std::vector<int> &groups)
 async_iterator_result session::start_iterator(const key &id, const std::vector<dnet_iterator_range>& ranges,
 		uint32_t type, uint64_t flags, const dnet_time& time_begin, const dnet_time& time_end)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	if (type == DNET_ITYPE_SERVER_SEND) {
 		async_iterator_result result(*this);
 		async_result_handler<iterator_result_entry> handler(result);
@@ -2294,6 +2322,7 @@ async_iterator_result session::start_copy_iterator(const key &id,
 		const dnet_time& time_begin, const dnet_time& time_end,
 		const std::vector<int> &dst_groups)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	size_t ranges_size = ranges.size() * sizeof(ranges.front());
 	size_t groups_size = dst_groups.size() * sizeof(dst_groups.front());
 
@@ -2329,6 +2358,7 @@ async_iterator_result session::start_copy_iterator(const key &id,
 
 async_iterator_result session::pause_iterator(const key &id, uint64_t iterator_id)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	data_pointer data = data_pointer::allocate(sizeof(dnet_iterator_request));
 	auto request = data.data<dnet_iterator_request>();
 	memset(request, 0, sizeof(dnet_iterator_request));
@@ -2340,6 +2370,7 @@ async_iterator_result session::pause_iterator(const key &id, uint64_t iterator_i
 
 async_iterator_result session::continue_iterator(const key &id, uint64_t iterator_id)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	data_pointer data = data_pointer::allocate(sizeof(dnet_iterator_request));
 	auto request = data.data<dnet_iterator_request>();
 	memset(request, 0, sizeof(dnet_iterator_request));
@@ -2351,6 +2382,7 @@ async_iterator_result session::continue_iterator(const key &id, uint64_t iterato
 
 async_iterator_result session::cancel_iterator(const key &id, uint64_t iterator_id)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	data_pointer data = data_pointer::allocate(sizeof(dnet_iterator_request));
 	auto request = data.data<dnet_iterator_request>();
 	memset(request, 0, sizeof(dnet_iterator_request));
@@ -2362,6 +2394,7 @@ async_iterator_result session::cancel_iterator(const key &id, uint64_t iterator_
 
 async_iterator_result session::server_send(const std::vector<key> &keys, uint64_t iflags, const std::vector<int> &groups)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	if (get_groups().empty()) {
 		async_iterator_result result(*this);
 		async_result_handler<iterator_result_entry> handler(result);
@@ -2486,6 +2519,7 @@ async_iterator_result session::server_send(const std::vector<key> &keys, uint64_
 
 async_iterator_result session::server_send(const std::vector<dnet_raw_id> &ids, uint64_t iflags, const std::vector<int> &groups)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	std::vector<key> keys;
 	for (auto id = ids.begin(), id_end = ids.end(); id != id_end; ++id) {
 		keys.emplace_back(*id);
@@ -2496,6 +2530,7 @@ async_iterator_result session::server_send(const std::vector<dnet_raw_id> &ids, 
 
 async_iterator_result session::server_send(const std::vector<std::string> &strs, uint64_t iflags, const std::vector<int> &groups)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	std::vector<key> keys;
 	for (auto s = strs.begin(), send = strs.end(); s != send; ++s) {
 		key k(*s);
@@ -2509,11 +2544,13 @@ async_iterator_result session::server_send(const std::vector<std::string> &strs,
 
 async_exec_result session::exec(dnet_id *id, const std::string &event, const argument_data &data)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	return exec(id, -1, event, data);
 }
 
 async_exec_result session::exec(dnet_id *id, int src_key, const std::string &event, const argument_data &data)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	exec_context context = exec_context_data::create(event, data);
 
 	sph *s = context.m_data->srw_data.data<sph>();
@@ -2528,6 +2565,7 @@ async_exec_result session::exec(dnet_id *id, int src_key, const std::string &eve
 
 async_exec_result session::exec(const exec_context &tmp_context, const std::string &event, const argument_data &data)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	exec_context context = exec_context_data::copy(tmp_context, event, data);
 
 	sph *s = context.m_data->srw_data.data<sph>();
@@ -2542,6 +2580,7 @@ async_exec_result session::exec(const exec_context &tmp_context, const std::stri
 async_push_result session::push(dnet_id *id, const exec_context &tmp_context,
 		const std::string &event, const argument_data &data)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	exec_context context = exec_context_data::copy(tmp_context, event, data);
 
 	sph *s = context.m_data->srw_data.data<sph>();
@@ -2554,6 +2593,7 @@ async_push_result session::push(dnet_id *id, const exec_context &tmp_context,
 async_reply_result session::reply(const exec_context &tmp_context,
 		const argument_data &data, exec_context::final_state state)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	exec_context context = exec_context_data::copy(tmp_context, tmp_context.event(), data);
 
 	sph *s = context.m_data->srw_data.data<sph>();
@@ -2616,16 +2656,16 @@ public:
 		memset(&id, 0, sizeof(id));
 		dnet_setup_id(&id, group_id, ios[0].id);
 
-		debug("BULK_READ, callback: %p, group: %d, next", this, group_id);
+		DNET_LOG_DEBUG(m_logger, "BULK_READ, callback: {:p}, group: {}, next", (void *)this, group_id);
 
 		cur.reset(node, &id);
 		if (!cur) {
-			debug("BULK_READ, callback: %p, group: %d, id: %s, state: failed",
-				this, group_id, dnet_dump_id(&id));
+			DNET_LOG_DEBUG(m_logger, "BULK_READ, callback: {:p}, group: {}, id: {}, state: failed",
+			               (void *)this, group_id, dnet_dump_id(&id));
 			return aggregated(m_sess, results.begin(), results.end());
 		}
-		debug("BULK_READ, callback: %p, id: %s, state: %s, backend: %d",
-			this, dnet_dump_id(&id), dnet_state_dump_addr(cur.state()), cur.backend());
+		DNET_LOG_DEBUG(m_logger, "BULK_READ, callback: {:p}, id: {}, state: {}, backend: {}", (void *)this,
+		               dnet_dump_id(&id), dnet_state_dump_addr(cur.state()), cur.backend());
 
 		for (size_t i = 0; i < io_num; ++i) {
 			if ((i + 1) < io_num) {
@@ -2633,12 +2673,14 @@ public:
 
 				next.reset(node, &next_id);
 				if (!next) {
-					debug("BULK_READ, callback: %p, group: %d, id: %s, state: failed",
-						this, group_id, dnet_dump_id(&next_id));
+					DNET_LOG_DEBUG(m_logger,
+					               "BULK_READ, callback: {:p}, group: {}, id: {}, state: failed",
+					               (void *)this, group_id, dnet_dump_id(&next_id));
 					return aggregated(m_sess, results.begin(), results.end());
 				}
-				debug("BULK_READ, callback: %p, id: %s, state: %s, backend: %d",
-					this, dnet_dump_id(&next_id), dnet_state_dump_addr(next.state()), next.backend());
+				DNET_LOG_DEBUG(m_logger, "BULK_READ, callback: {:p}, id: {}, state: {}, backend: {}",
+				               (void *)this, dnet_dump_id(&next_id), dnet_state_dump_addr(next.state()),
+				               next.backend());
 
 				/* Send command only if state changes or it's a last id */
 				if (cur == next) {
@@ -2652,18 +2694,18 @@ public:
 
 			memcpy(&m_control.id, &id, sizeof(id));
 
-			notice("BULK_READ, callback: %p, start: %s: end: %s, count: %llu, state: %s, backend: %d",
-				this,
-				dnet_dump_id(&id),
-				dnet_dump_id(&next_id),
-				(unsigned long long)m_control.io.size / sizeof(struct dnet_io_attr),
-				dnet_state_dump_addr(cur.state()), cur.backend());
+			DNET_LOG_NOTICE(
+			        m_logger,
+			        "BULK_READ, callback: {:p}, start: {}: end: {}, count: {}, state: {}, backend: {}",
+			        (void *)this, dnet_dump_id(&id), dnet_dump_id(&next_id),
+			        m_control.io.size / sizeof(struct dnet_io_attr), dnet_state_dump_addr(cur.state()),
+			        cur.backend());
 
 			++count;
 
 			results.emplace_back(send_to_single_state(m_sess, m_control));
 
-			debug("BULK_READ, callback: %p, group: %d", this, group_id);
+			DNET_LOG_DEBUG(m_logger, "BULK_READ, callback: {:p}, group: {}", (void *)this, group_id);
 
 			start = i + 1;
 			cur.reset();
@@ -2672,7 +2714,8 @@ public:
 			id = next_id;
 		}
 
-		debug("BULK_READ, callback: %p, group: %d, count: %d", this, group_id, count);
+		DNET_LOG_DEBUG(m_logger, "BULK_READ, callback: {:p}, group: {}, count: {}", (void *)this, group_id,
+		               count);
 
 		return aggregated(m_sess, results.begin(), results.end());
 	}
@@ -2681,8 +2724,8 @@ public:
 	{
 		(void) error;
 
-		debug("BULK_READ, callback: %p, ios_set.size: %llu, group_index: %llu, group_count: %llu",
-		      this, m_ios_set.size(), m_group_index, m_groups.size());
+		DNET_LOG_DEBUG(m_logger, "BULK_READ, callback: {:p}, ios_set.size: {}, group_index: {}, group_count: {}",
+		               (void *)this, m_ios_set.size(), m_group_index, m_groups.size());
 
 		// all results are found or all groups are iterated
 		return !m_ios_set.empty();
@@ -2700,11 +2743,12 @@ private:
 	const dnet_id m_original_id;
 	io_attr_set m_ios_set;
 	std::vector<dnet_io_attr> m_ios_cache;
-	const dnet_logger &m_logger;
+	std::unique_ptr<dnet_logger> m_logger;
 };
 
 async_read_result session::bulk_read(const std::vector<dnet_io_attr> &ios_vector)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	if (ios_vector.empty()) {
 		error_info error = create_error(-EINVAL, "bulk_read failed: ios list is empty");
 		if (get_exceptions_policy() & throw_at_start) {
@@ -2744,6 +2788,7 @@ async_read_result session::bulk_read(const std::vector<dnet_io_attr> &ios_vector
 
 async_read_result session::bulk_read(const std::vector<std::string> &keys)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	std::vector<dnet_io_attr> ios;
 	dnet_io_attr io;
 	memset(&io, 0, sizeof(io));
@@ -2765,6 +2810,7 @@ async_read_result session::bulk_read(const std::vector<std::string> &keys)
 
 async_read_result session::bulk_read(const std::vector<key> &keys)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	std::vector<dnet_io_attr> ios;
 	dnet_io_attr io;
 	memset(&io, 0, sizeof(io));
@@ -2785,6 +2831,7 @@ async_read_result session::bulk_read(const std::vector<key> &keys)
 
 async_write_result session::bulk_write(const std::vector<dnet_io_attr> &ios, const std::vector<argument_data> &data)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	if (ios.size() != data.size()) {
 		error_info error = create_error(-EINVAL, "BULK_WRITE: ios doesn't meet data: io.size: %zd, data.size: %zd",
 			ios.size(), data.size());
@@ -2818,6 +2865,7 @@ async_write_result session::bulk_write(const std::vector<dnet_io_attr> &ios, con
 
 async_remove_result session::bulk_remove(const std::vector<key> &keys)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	std::vector<async_remove_result> results;
 
 	{
@@ -2838,6 +2886,7 @@ async_remove_result session::bulk_remove(const std::vector<key> &keys)
 
 async_write_result session::bulk_write(const std::vector<dnet_io_attr> &ios, const std::vector<std::string> &data)
 {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	std::vector<argument_data> pointer_data;
 	pointer_data.reserve(data.size());
 	for (auto it = data.begin(); it != data.end(); ++it)
@@ -2845,9 +2894,11 @@ async_write_result session::bulk_write(const std::vector<dnet_io_attr> &ios, con
 	return bulk_write(ios, pointer_data);
 }
 
-logger &session::get_logger() const
-{
-	return m_data->logger;
+std::unique_ptr<dnet_logger> session::get_logger() const {
+	auto logger = get_base_logger(dnet_node_get_logger(get_native_node()));
+	return std::unique_ptr<dnet_logger>(new blackhole::wrapper_t(*logger, {
+		{"trace_id", to_hex_string(get_trace_id())}
+	}));
 }
 
 dnet_node *session::get_native_node() const

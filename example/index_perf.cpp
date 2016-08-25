@@ -44,15 +44,13 @@ int main(int argc, char *argv[])
 
 		bpo::notify(vm);
 
-		log_level = elliptics::file_logger::parse_level(log_level_name);
+		log_level = dnet_log_parse_level(log_level_name.c_str());
 	} catch (const std::exception &e) {
 		std::cerr << "Invalid options: " << e.what() << "\n" << generic << std::endl;
 		return -1;
 	}
 
-
-	elliptics::file_logger logger(log.c_str(), log_level);
-	elliptics::node node(elliptics::logger(logger, blackhole::log::attributes_t()));
+	elliptics::node node(elliptics::make_file_logger(log.c_str(), log_level));
 
 	try {
 		node.add_remote(remote);

@@ -16,12 +16,8 @@
 #ifdef HAVE_COCAINE_SUPPORT
 
 #include <map>
-#include <vector>
 #include <sstream>
 #include <functional>
-#include <msgpack.hpp>
-
-#include <boost/thread/tss.hpp>
 
 #include <elliptics/interface.h>
 #include <elliptics/utils.hpp>
@@ -31,222 +27,101 @@
 #include <cocaine/context.hpp>
 #include <cocaine/hpack/header.hpp>
 #include <cocaine/api/stream.hpp>
+#include <cocaine/logging.hpp>
 #include <cocaine/repository.hpp>
 #include <cocaine/repository/service.hpp>
 #include <cocaine/rpc/actor.hpp>
 #include <cocaine/service/node.hpp>
 #include <cocaine/service/node/overseer.hpp>
 
-#include <blackhole/v1/attribute.hpp>
-#include <blackhole/v1/logger.hpp>
-#include <blackhole/v1/record.hpp>
-#include <blackhole/v1/formatter.hpp>
-#include <blackhole/v1/formatter/string.hpp>
-#include <blackhole/scope/watcher.hpp>
-#include <blackhole/scope/manager.hpp>
-#include <blackhole/extensions/writer.hpp>
+#include <blackhole/scope/holder.hpp>
 
 #include "localnode.hpp"
 #include "cocaine/traits/localnode.hpp"
 #include "cocaine/api/elliptics_node.hpp"
 
-#include "../bindings/cpp/exec_context_data_p.hpp"
+#include "library/logger.hpp"
+#include "bindings/cpp/exec_context_data_p.hpp"
 #include "elliptics/srw.h"
 
-#define SRW_LOG(__log__, __level__, __app__, ...) \
-	BH_LOG((__log__), (__level__), __VA_ARGS__) \
-		("app", (__app__)) \
-		("source", "srw")
+using blackhole::attribute_list;
 
-/*
- * Cocaine tracing initiated with elliptics trace_id.
- */
-namespace {
-
-const std::string srw_tracing_name("srw");
-
-void start_or_continue_trace(uint64_t trace_id)
-{
-	if (trace_id != cocaine::trace_t::zero_value) {
-		cocaine::trace_t::current() = cocaine::trace_t(
-			// trace
-			trace_id, trace_id, cocaine::trace_t::zero_value,
-			// rpc_name
-			srw_tracing_name
-		);
-	} else {
-		cocaine::trace_t::current() = cocaine::trace_t::generate(srw_tracing_name);
-	}
-}
-
-struct tracing_context {
-	tracing_context(dnet_logger *logger, uint64_t trace_id, int tracebit) {
-		dnet_node_set_trace_id(logger, trace_id, tracebit, -1);
-	}
-	~tracing_context() {
-		dnet_node_unset_trace_id();
-	}
-};
-
-}
+#define SRW_LOG(__log__, __level__, __app__, ...)                     \
+	COCAINE_LOG(__log__, __level__, __VA_ARGS__, attribute_list{{ \
+		{"source", "srw"},                                    \
+		{"app", __app__}                                      \
+	}});
 
 namespace ioremap { namespace elliptics {
-
-
-/*
- * Elliptics to cocaine logger adapter.
- *
- * Current elliptics logger is actually a wrapper over on blackhole v0.2 logger,
- * Current cocaine logger is generalized logger interface from blackhole v1.0 (which was rewritten from scratch).
- *
- * This logger_adapter wraps v0.2 logger into v1.0 logger interface.
- */
-
-inline blackhole::v1::severity_t convert_severity(dnet_log_level level) {
-	switch (level) {
-	case DNET_LOG_DEBUG:
-		return cocaine::logging::debug;
-	case DNET_LOG_NOTICE:
-	case DNET_LOG_INFO:
-		return cocaine::logging::info;
-	case DNET_LOG_WARNING:
-		return cocaine::logging::warning;
-	case DNET_LOG_ERROR:
-	default:
-		return cocaine::logging::error;
-	};
-}
-
-inline dnet_log_level convert_severity(blackhole::v1::severity_t severity) {
-	switch (severity) {
-	case cocaine::logging::debug:
-		return DNET_LOG_DEBUG;
-	case cocaine::logging::info:
-		return DNET_LOG_INFO;
-	case cocaine::logging::warning:
-		return DNET_LOG_WARNING;
-	case cocaine::logging::error:
-	default:
-		return DNET_LOG_ERROR;
-	}
-}
-
-
-/*
- * Scope manager.
- *
- * XXX: pristine copy from blackhole/root.cpp,
- * We're forced to use it because blackhole requires manager_t to remember
- * sequence of watcher_t object, dummy implementation without memory
- * will break assertion in ~watcher_t()
- */
-class thread_manager_t : public blackhole::v1::scope::manager_t {
-public:
-	thread_manager_t() : inner([](blackhole::v1::scope::watcher_t*) {}) {}
-
-	blackhole::v1::scope::watcher_t *get() const {
-		return inner.get();
-	}
-
-	void reset(blackhole::v1::scope::watcher_t* value) {
-		inner.reset(value);
-	}
-
-private:
-	boost::thread_specific_ptr<blackhole::v1::scope::watcher_t> inner;
-};
+static const blackhole::attribute_t default_trace_id{"trace_id", "0000000000000000"};
 
 /*
  * Logger interface implementation.
  */
-class logger_adapter : public cocaine::logging::logger_t
-{
+class logger_adapter : public blackhole::wrapper_t {
 public:
-	logger_adapter(dnet_node *n)
-	: elliptics_logger(dnet_node_get_logger(n))
-	{
-		using namespace blackhole::v1;
-		formatter = std::move(builder<formatter::string_t>("{message}, attrs: [{...}]")).build();
+	logger_adapter(dnet_logger *log)
+	: blackhole::wrapper_t(*log, {{"source", "srw/cocaine"}}) {}
+
+	virtual void log(blackhole::severity_t severity, const blackhole::message_t &message) {
+		blackhole::attribute_list list;
+		list.emplace_back(default_trace_id);
+
+		blackhole::attribute_pack pack;
+		pack.push_back(list);
+
+		blackhole::wrapper_t::log(convert_severity(severity), message, pack);
 	}
 
-	// logging::logger_t interface
-
-	virtual ~logger_adapter() = default;
-
-	// Logs the given message with the specified severity level.
-	virtual void log(blackhole::v1::severity_t severity, const blackhole::v1::message_t &message) {
-		blackhole::v1::attribute_pack pack;
-		log(severity, message, pack);
-	}
-
-	// Logs the given message with the specified severity level and attributes pack attached.
-	virtual void log(blackhole::v1::severity_t severity, const blackhole::v1::message_t &message,
-	                 blackhole::v1::attribute_pack &pack) {
-		if (scope_manager.get()) {
-			scope_manager.get()->collect(pack);
-		}
-
-		uint64_t trace_id = 0LL;
-		for (auto attrs : pack) {
-			for (auto attr : attrs.get()) {
-				if (attr.first == "trace_id") {
-					auto trace_id_str = blackhole::v1::attribute::get<
-					                        blackhole::v1::attribute::view_t::string_type
-					                    >(attr.second).to_string();
-					try {
-						trace_id = std::stoul(trace_id_str, 0, 16);
-					}
-					catch (const std::bad_cast &e) {
-						dnet_log_only_log(elliptics_logger, DNET_LOG_ERROR,
-						                  "failed to parse uint64_t trace_id from hex string: '%s'",
-						                  trace_id_str.c_str());
-					}
-				}
-			}
-		}
-
-		blackhole::v1::writer_t writer;
-		blackhole::v1::record_t record(severity, message, pack);
-		formatter->format(record, writer);
-
-		const std::string formatted(writer.result().to_string());
+	virtual void
+	log(blackhole::severity_t severity, const blackhole::message_t &message, blackhole::attribute_pack &pack) {
 		//FIXME: is it possible to detect if trace_id is already set?
 		//XXX: what about tracebit? where to get it?
-		if (trace_id) {
-			tracing_context scope(elliptics_logger, trace_id, 0);
-			dnet_log_only_log(elliptics_logger, convert_severity(severity), "%s", formatted.c_str());
-		} else {
-			dnet_log_only_log(elliptics_logger, convert_severity(severity), "%s", formatted.c_str());
+		blackhole::attribute_list list;
+		if (!has_trace_id(pack)) {
+			list.emplace_back(default_trace_id);
+			pack.push_back(list);
 		}
+
+		blackhole::wrapper_t::log(convert_severity(severity), message, pack);
 	}
 
-	/*
-	 * Logs a message which is only to be constructed if the result record passes filtering with
-	 * the specified severity and including the attributes pack provided.
-	 */
-	virtual void log(blackhole::v1::severity_t severity, const blackhole::v1::lazy_message_t &message,
-	                 blackhole::v1::attribute_pack &pack) {
-		//TODO: properly support message laziness
-		log(severity, message.supplier(), pack);
-	}
+	virtual void
+	log(blackhole::severity_t severity, const blackhole::lazy_message_t &message, blackhole::attribute_pack &pack) {
+		blackhole::attribute_list list;
+		if (!has_trace_id(pack)) {
+			list.emplace_back(default_trace_id);
+			pack.push_back(list);
+		}
 
-	/*
-	 * Returns a scoped attributes manager reference.
-	 *
-	 * Returned manager allows the external tools to attach scoped attributes to the current logger
-	 * instance, making every further log event to contain them until the registered scoped guard
-	 * is alive.
-	 *
-	 * \returns a scoped attributes manager.
-	 */
-	virtual blackhole::v1::scope::manager_t &manager() {
-		return scope_manager;
+		blackhole::wrapper_t::log(convert_severity(severity), message, pack);
 	}
 
 private:
-	dnet_logger *elliptics_logger;
-	thread_manager_t scope_manager;
-	std::unique_ptr<blackhole::formatter_t> formatter;
+	static bool has_trace_id(const blackhole::attribute_pack &pack) {
+		for (const auto &attributes: pack) {
+			for (const auto &attribute: attributes.get()) {
+				if (attribute.first == "trace_id") {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	static dnet_log_level convert_severity(blackhole::severity_t severity) {
+		switch (severity) {
+		case cocaine::logging::debug:
+			return DNET_LOG_DEBUG;
+		case cocaine::logging::info:
+			return DNET_LOG_INFO;
+		case cocaine::logging::warning:
+			return DNET_LOG_WARNING;
+		case cocaine::logging::error:
+		default:
+			return DNET_LOG_ERROR;
+		}
+	}
 };
 
 
@@ -264,14 +139,14 @@ struct client_session
 	, m_app(app)
 	, m_signature(signature) {
 		dnet_state_get(m_state);
-		SRW_LOG(*dnet_node_get_logger(m_state->n), DNET_LOG_DEBUG, m_app, "%s: client session open", m_signature);
+		SRW_LOG(dnet_node_get_logger(m_state->n), DNET_LOG_DEBUG, m_app, "{}: client session open", m_signature);
 
 		// set DNET_SPH_FLAGS_REPLY flag, drop all others
 		m_exec_copy.set_flags(DNET_SPH_FLAGS_REPLY);
 	}
 
 	~client_session() {
-		SRW_LOG(*dnet_node_get_logger(m_state->n), DNET_LOG_DEBUG, m_app, "%s: client session close", m_signature);
+		SRW_LOG(dnet_node_get_logger(m_state->n), DNET_LOG_DEBUG, m_app, "{}: client session close", m_signature);
 		dnet_state_put(m_state);
 	}
 
@@ -285,7 +160,7 @@ struct client_session
 			return;
 		}
 
-		SRW_LOG(*dnet_node_get_logger(m_state->n), DNET_LOG_DEBUG, m_app, "%s: client session sends data",
+		SRW_LOG(dnet_node_get_logger(m_state->n), DNET_LOG_DEBUG, m_app, "{}: client session sends data",
 		        m_signature);
 
 		/*
@@ -310,7 +185,7 @@ struct client_session
 		 * was changed incompatibly with server logic.
 		 */
 
-		SRW_LOG(*dnet_node_get_logger(m_state->n), DNET_LOG_DEBUG, m_app, "%s: client session sends ack",
+		SRW_LOG(dnet_node_get_logger(m_state->n), DNET_LOG_DEBUG, m_app, "{}: client session sends ack",
 		        m_signature);
 		dnet_send_ack(m_state, const_cast<dnet_cmd*>(&m_cmd_copy), error_code, 0);
 	}
@@ -344,7 +219,7 @@ public:
 	                 std::function<void()> notify_completion)
 	: m_logger(logger)
 	, m_client(client)
-	, m_tracebit(client->m_cmd_copy.flags & DNET_FLAGS_TRACE_BIT)
+	, m_tracebit(!!(client->m_cmd_copy.flags & DNET_FLAGS_TRACE_BIT))
 	, m_app(client->m_app)
 	, m_signature(client->m_signature)
 	, m_notify_completion(notify_completion)
@@ -360,11 +235,11 @@ public:
 	 */
 	virtual stream_t &write(cocaine::hpack::header_storage_t, const std::string &chunk) {
 		// elliptics trace id is shown in logs, setting it from cocaine trace_id
-		tracing_context scope(m_logger, cocaine::trace_t::current().get_trace_id(), m_tracebit);
+		trace_scope scope{cocaine::trace_t::current().get_trace_id(), m_tracebit};
 
 		if (chunk.empty()) {
-			SRW_LOG(*m_logger, DNET_LOG_DEBUG, m_app,
-			        "%s: stream: got chunk from app, size 0 -- 'drop me' signal", m_signature);
+			SRW_LOG(m_logger, DNET_LOG_DEBUG, m_app,
+			        "{}: stream: got chunk from app, size 0 -- 'drop me' signal", m_signature);
 			/*
 			 * empty chunk is a signal of chaining: the worker will not provide
 			 * the final result of event processing immediately but will instead
@@ -374,13 +249,13 @@ public:
 			m_client.reset();
 
 		} else {
-			SRW_LOG(*m_logger, DNET_LOG_DEBUG, m_app, "%s: stream: got chunk from app, size %ld", m_signature,
+			SRW_LOG(m_logger, DNET_LOG_DEBUG, m_app, "{}: stream: got chunk from app, size {}", m_signature,
 			        chunk.size());
 			if (auto client = m_client.lock()) {
 				client->send_chunk(chunk);
 
 			} else {
-				SRW_LOG(*m_logger, DNET_LOG_ERROR, m_app, "%s: stream: client session already closed",
+				SRW_LOG(m_logger, DNET_LOG_ERROR, m_app, "{}: stream: client session already closed",
 				        m_signature);
 			}
 		}
@@ -390,9 +265,8 @@ public:
 
 	virtual void error(cocaine::hpack::header_storage_t, const std::error_code &code, const std::string &reason) {
 		// elliptics trace id is shown in logs, setting it from cocaine trace_id
-		tracing_context scope(m_logger, cocaine::trace_t::current().get_trace_id(), m_tracebit);
-
-		SRW_LOG(*m_logger, DNET_LOG_ERROR, m_app, "%s: stream: got error from app: %s: %s", m_signature,
+		trace_scope scope{cocaine::trace_t::current().get_trace_id(), m_tracebit};
+		SRW_LOG(m_logger, DNET_LOG_ERROR, m_app, "{}: stream: got error from app: {}: {}", m_signature,
 		        code.message(), reason);
 		if (auto client = m_client.lock()) {
 			//TODO: translate cocaine errors into elliptics error code space (errno),
@@ -410,16 +284,15 @@ public:
 			m_client.reset();
 
 		} else {
-			SRW_LOG(*m_logger, DNET_LOG_DEBUG, m_app, "%s: stream: client session already closed",
+			SRW_LOG(m_logger, DNET_LOG_DEBUG, m_app, "{}: stream: client session already closed",
 			        m_signature);
 		}
 	}
 
 	virtual void close(cocaine::hpack::header_storage_t) {
 		// elliptics trace id is shown in logs, setting it from cocaine trace_id
-		tracing_context scope(m_logger, cocaine::trace_t::current().get_trace_id(), m_tracebit);
-
-		SRW_LOG(*m_logger, DNET_LOG_DEBUG, m_app, "%s: stream: got close", m_signature);
+		trace_scope scope{cocaine::trace_t::current().get_trace_id(), m_tracebit};
+		SRW_LOG(m_logger, DNET_LOG_DEBUG, m_app, "{}: stream: got close", m_signature);
 		if (auto client = m_client.lock()) {
 			client->finish();
 
@@ -434,7 +307,7 @@ public:
 			m_client.reset();
 
 		} else {
-			SRW_LOG(*m_logger, DNET_LOG_DEBUG, m_app, "%s: stream: client session already closed",
+			SRW_LOG(m_logger, DNET_LOG_DEBUG, m_app, "{}: stream: client session already closed",
 			        m_signature);
 		}
 	}
@@ -442,7 +315,7 @@ public:
 private:
 	dnet_logger *m_logger;
 	std::weak_ptr<client_session> m_client;
-	int m_tracebit;
+	bool m_tracebit;
 	const std::string m_app;
 	const std::string m_signature;
 	std::function<void()> m_notify_completion;
@@ -460,7 +333,7 @@ public:
 	push_back_stream(dnet_logger *logger, const std::shared_ptr<client_session> &client)
 	: m_logger(logger)
 	, m_client(client)
-	, m_tracebit(client->m_cmd_copy.flags & DNET_FLAGS_TRACE_BIT)
+	, m_tracebit(!!(client->m_cmd_copy.flags & DNET_FLAGS_TRACE_BIT))
 	, m_app(client->m_app)
 	, m_signature(client->m_signature)
 	{}
@@ -469,18 +342,17 @@ public:
 
 	virtual ~push_back_stream() {
 		// elliptics trace id is shown in logs, setting it from cocaine trace_id
-		tracing_context scope(m_logger, cocaine::trace_t::current().get_trace_id(), m_tracebit);
-
-		SRW_LOG(*m_logger, DNET_LOG_DEBUG, m_app, "%s: stream: close", m_signature);
+		trace_scope scope{cocaine::trace_t::current().get_trace_id(), m_tracebit};
+		SRW_LOG(m_logger, DNET_LOG_DEBUG, m_app, "{}: stream: close", m_signature);
 	}
 
 	virtual stream_t& write(cocaine::hpack::header_storage_t, const std::string& chunk) {
 		// elliptics trace id is shown in logs, setting it from cocaine trace_id
-		tracing_context scope(m_logger, cocaine::trace_t::current().get_trace_id(), m_tracebit);
+		trace_scope scope{cocaine::trace_t::current().get_trace_id(), m_tracebit};
 
 		if (chunk.empty()) {
-			SRW_LOG(*m_logger, DNET_LOG_DEBUG, m_app,
-			        "%s: stream: got chunk from app, size 0 -- 'drop me' signal", m_signature);
+			SRW_LOG(m_logger, DNET_LOG_DEBUG, m_app,
+			        "{}: stream: got chunk from app, size 0 -- 'drop me' signal", m_signature);
 			m_client->finish();
 
 			/* stream object could be held live long after its close() or error() was called,
@@ -489,8 +361,8 @@ public:
 			m_client.reset();
 
 		} else {
-			SRW_LOG(*m_logger, DNET_LOG_ERROR, m_app,
-			        "%s: stream: got chunk from app in no-reply-expected mode", m_signature);
+			SRW_LOG(m_logger, DNET_LOG_ERROR, m_app,
+			        "{}: stream: got chunk from app in no-reply-expected mode", m_signature);
 		}
 
 		return *this;
@@ -498,10 +370,9 @@ public:
 
 	virtual void error(cocaine::hpack::header_storage_t, const std::error_code& code, const std::string& reason) {
 		// elliptics trace id is shown in logs, setting it from cocaine trace_id
-		tracing_context scope(m_logger, cocaine::trace_t::current().get_trace_id(), m_tracebit);
-
-		SRW_LOG(*m_logger, DNET_LOG_ERROR, m_app,
-		        "%s: stream: got error from app in no-reply-expected mode: %s: %s", m_signature, code.message(),
+		trace_scope scope{cocaine::trace_t::current().get_trace_id(), m_tracebit};
+		SRW_LOG(m_logger, DNET_LOG_ERROR, m_app,
+		        "{}: stream: got error from app in no-reply-expected mode: {}: {}", m_signature, code.message(),
 		        reason);
 		if (m_client) {
 			m_client->finish(code.value());
@@ -514,9 +385,8 @@ public:
 
 	virtual void close(cocaine::hpack::header_storage_t) {
 		// elliptics trace id is shown in logs, setting it from cocaine trace_id
-		tracing_context scope(m_logger, cocaine::trace_t::current().get_trace_id(), m_tracebit);
-
-		SRW_LOG(*m_logger, DNET_LOG_DEBUG, m_app, "%s: stream: got close", m_signature);
+		trace_scope scope{cocaine::trace_t::current().get_trace_id(), m_tracebit};
+		SRW_LOG(m_logger, DNET_LOG_DEBUG, m_app, "{}: stream: got close", m_signature);
 		if (m_client) {
 			m_client->finish();
 
@@ -530,7 +400,7 @@ public:
 private:
 	dnet_logger *m_logger;
 	std::shared_ptr<client_session> m_client;
-	int m_tracebit;
+	bool m_tracebit;
 	const std::string m_app;
 	const std::string m_signature;
 };
@@ -615,8 +485,8 @@ struct srw {
 
 	int process(struct dnet_net_state *st, struct dnet_cmd *cmd, const void *data);
 
-	// used only as a source of the logger
-	struct dnet_node *m_node;
+	// logger
+	std::unique_ptr<dnet_logger> m_log;
 
 	// main cocaine core object -- context
 	std::unique_ptr<cocaine::context_t> m_ctx;
@@ -631,7 +501,7 @@ struct srw {
 };
 
 srw::srw(struct dnet_node *n, const std::string &config)
-	: m_node(n)
+	: m_log(new blackhole::wrapper_t(*n->log, {{"source", "srw"}}))
 	// NOTE: context_t ctor throws an exception on config parse error
 	, m_ctx()
 {
@@ -645,12 +515,13 @@ srw::srw(struct dnet_node *n, const std::string &config)
 	 * (elliptics node provider and localnode service) before context initialization
 	 */
 	std::unique_ptr<cocaine::api::repository_t> repository(
-		new cocaine::api::repository_t(std::make_unique<logger_adapter>(m_node)));
-	repository->insert<elliptics_node_t>("elliptics_node", std::unique_ptr<factory_t>(new factory_t(m_node)));
+	        new cocaine::api::repository_t(std::make_unique<logger_adapter>(get_base_logger(n->log))));
+
+	repository->insert<elliptics_node_t>("elliptics_node", std::unique_ptr<factory_t>(new factory_t(n)));
 	repository->insert<localnode>("localnode");
 
 	m_ctx = cocaine::make_context(cocaine::make_config(config),
-	                              std::make_unique<logger_adapter>(m_node),
+	                              std::make_unique<logger_adapter>(get_base_logger(n->log)),
 	                              std::move(repository));
 }
 
@@ -668,17 +539,15 @@ bool srw::unregister_job(const std::string &signature, int job_id)
 
 bool srw::unregister_job_nolock(const std::string &signature, int job_id)
 {
-	dnet_log(m_node, DNET_LOG_DEBUG, "%s: srw: request to remove job %d", signature.c_str(), job_id);
+	DNET_LOG_DEBUG(m_log, "{}: srw: request to remove job {}", signature, job_id);
 	jobs_map_t::iterator found = m_jobs.find(job_id);
 	if (found != m_jobs.end()) {
 		m_jobs.erase(found);
-		dnet_log(m_node, DNET_LOG_DEBUG, "%s: srw: job %d found and removed", signature.c_str(),
-		         job_id);
+		DNET_LOG_DEBUG(m_log, "{}: srw: job {} found and removed", signature, job_id);
 		return true;
 	} else {
 		//FIXME: fix log message text
-		dnet_log(m_node, DNET_LOG_ERROR, "%s: srw: B, no job %d to complete", signature.c_str(),
-		         job_id);
+		DNET_LOG_ERROR(m_log, "{}: srw: B, no job {} to complete", signature, job_id);
 		return false;
 	}
 }
@@ -695,7 +564,7 @@ bool srw::unregister_job_nolock(const std::string &signature, int job_id)
 // 		}
 // 	}
 // 	//FIXME: fix log message text
-// 	dnet_log(m_node, DNET_LOG_ERROR, "%s: no job: %d to complete", signature.c_str(), job_id);
+// 	DNET_LOG_ERROR(m_log, "{}: no job: {} to complete", signature, job_id);
 // 	return std::shared_ptr<exec_session>();
 // }
 
@@ -707,8 +576,7 @@ int srw::process(struct dnet_net_state *st, struct dnet_cmd *cmd, const void *da
 
 	} catch(const error &e) {
 		//TODO: add logging attribute 'source: srw'
-		dnet_log(m_node, DNET_LOG_ERROR, "%s: srw: invalid exec_context: %s", dnet_dump_id(&cmd->id),
-		         e.what());
+		DNET_LOG_ERROR(m_log, "{}: srw: invalid exec_context: {}", dnet_dump_id(&cmd->id), e.what());
 		return e.error_code();
 	}
 
@@ -720,16 +588,15 @@ int srw::process(struct dnet_net_state *st, struct dnet_cmd *cmd, const void *da
 		std::tie(app, event) = parse_srw_event(srw_event);
 		if (app.empty() || event.empty()) {
 			//TODO: add logging attribute 'source: srw'
-			dnet_log(m_node, DNET_LOG_ERROR, "%s: srw: invalid event (should be {app}@{event}): %s",
-			         dnet_dump_id(&cmd->id), srw_event.c_str());
+			DNET_LOG_ERROR(m_log, "{}: srw: invalid event (should be {{app}}@{{event}}): {}",
+			               dnet_dump_id(&cmd->id), srw_event);
 			return -EINVAL;
 		}
 	}
 
 	const std::string signature = make_log_signature(st, cmd, exec);
 
-	dnet_log(m_node, DNET_LOG_DEBUG, "%s: srw: start processing, payload size: %ld", signature.c_str(),
-	         exec.data().size());
+	DNET_LOG_DEBUG(m_log, "{}: srw: start processing, payload size: {}", signature, exec.data().size());
 
 	/**if ((event == "start-task") || (event == "start-multiple-task")) {
 		std::unique_lock<std::mutex> guard(m_lock);
@@ -746,13 +613,13 @@ int srw::process(struct dnet_net_state *st, struct dnet_cmd *cmd, const void *da
 				int pool_limit = profile["pool-limit"].asInt();
 				const int idle_min = 60 * 60 * 24 * 30;
 
-				dnet_log(m_node, DNET_LOG_INFO, "%s: multiple start: idle: %d/%d, workers: %d", signature.c_str(), idle, idle_min, pool_limit);
+				DNET_LOG_INFO(m_log, "{}: multiple start: idle: {}/{}, workers: {}", signature, idle, idle_min, pool_limit);
 
 				if (idle && idle < idle_min) {
-					dnet_log(m_node, DNET_LOG_ERROR, "%s: multiple start: "
-						"idle must be big enough, we check it to be larger than 30 days (%d seconds), "
-						"current profile value is %d",
-						signature.c_str(), idle_min, idle);
+					DNET_LOG_ERROR(m_log, "{}: multiple start: "
+						"idle must be big enough, we check it to be larger than 30 days ({} seconds), "
+						"current profile value is {}",
+						signature, idle_min, idle);
 					return -EINVAL;
 				}
 
@@ -767,10 +634,10 @@ int srw::process(struct dnet_net_state *st, struct dnet_cmd *cmd, const void *da
 
 			m_map.insert(std::make_pair(app, eng));
 
-			dnet_log(m_node, DNET_LOG_INFO, "%s: started", signature.c_str());
+			DNET_LOG_INFO(m_log, "{}: started", signature);
 
 		} else {
-			dnet_log(m_node, DNET_LOG_INFO, "%s: was already started", signature.c_str());
+			DNET_LOG_INFO(m_log, "{}: was already started", signature);
 		}
 
 	} else if (event == "stop-task") {
@@ -781,7 +648,7 @@ int srw::process(struct dnet_net_state *st, struct dnet_cmd *cmd, const void *da
 			m_map.erase(it);
 		guard.unlock();
 
-		dnet_log(m_node, DNET_LOG_INFO, "%s: stopped", signature.c_str());
+		DNET_LOG_INFO(m_log, "{}: stopped", signature);
 
 	}
 	*/
@@ -793,7 +660,7 @@ int srw::process(struct dnet_net_state *st, struct dnet_cmd *cmd, const void *da
 			|| event == "stop-task"
 			|| event == "info") {
 
-		dnet_log(m_node, DNET_LOG_INFO, "%s: srw: app control", signature.c_str());
+		DNET_LOG_INFO(m_log, "{}: srw: app control", signature);
 
 		//XXX: how we can differentiate services from apps?
 
@@ -830,15 +697,14 @@ int srw::process(struct dnet_net_state *st, struct dnet_cmd *cmd, const void *da
 
 			} catch (const std::exception &e) {
 				// exception text must be "app '{name}' is not running"
-				dnet_log(m_node, DNET_LOG_ERROR, "%s: srw: %s", signature.c_str(), e.what());
+				DNET_LOG_ERROR(m_log, "{}: srw: {}", signature, e.what());
 				return -ENOENT;
 			}
 
 		} else {
-			dnet_log(m_node, DNET_LOG_ERROR, "%s: 'node' ('node::v2') service not found, but its "
-			                                 "required to be able to run user apps; check cocaine "
-			                                 "config",
-			         signature.c_str());
+			DNET_LOG_ERROR(m_log, "{}: 'node' ('node::v2') service not found, but its required to be able "
+			                      "to run user apps; check cocaine config",
+			               signature);
 			return -ENOENT;
 		}
 
@@ -852,7 +718,7 @@ int srw::process(struct dnet_net_state *st, struct dnet_cmd *cmd, const void *da
 		if (exec.is_reply()) {
 			// This is a reply in a sequence of replies to some previous exec.
 
-			dnet_log(m_node, DNET_LOG_INFO, "%s: srw: reply pass", signature.c_str());
+			DNET_LOG_INFO(m_log, "{}: srw: reply pass", signature);
 
 			/* This segment could be marked as the final segment in a sequence,
 			 * which means exec session should be finalized and closed.
@@ -864,8 +730,7 @@ int srw::process(struct dnet_net_state *st, struct dnet_cmd *cmd, const void *da
 			jobs_map_t::iterator found = m_jobs.find(job_id);
 			if (found == m_jobs.end()) {
 				//FIXME: fix log message text
-				dnet_log(m_node, DNET_LOG_ERROR, "%s: srw: A, no job %d to complete",
-				         signature.c_str(), job_id);
+				DNET_LOG_ERROR(m_log, "{}: srw: A, no job {} to complete", signature, job_id);
 				return -ENOENT;
 			}
 
@@ -901,14 +766,13 @@ int srw::process(struct dnet_net_state *st, struct dnet_cmd *cmd, const void *da
 		} else {
 			/* This is an original exec.
 			 */
-			dnet_log(m_node, DNET_LOG_INFO, "%s: srw: forward pass", signature.c_str());
+			DNET_LOG_INFO(m_log, "{}: srw: forward pass", signature);
 
 			auto node = lookup_node_service(*m_ctx);
 			if (!node) {
-				dnet_log(m_node, DNET_LOG_ERROR, "%s: 'node' ('node::v2') service not found, "
-				                                 "but its required to be able to run user "
-				                                 "apps; check cocaine config",
-				         signature.c_str());
+				DNET_LOG_ERROR(m_log, "{}: 'node' ('node::v2') service not found, but its required to "
+				                      "be able to run user apps; check cocaine config",
+				               signature);
 				return -ENOENT;
 			}
 
@@ -918,7 +782,7 @@ int srw::process(struct dnet_net_state *st, struct dnet_cmd *cmd, const void *da
 
 			} catch (const cocaine::error_t &e) {
 				// exception text must be "app '{name}' is not running"
-				dnet_log(m_node, DNET_LOG_ERROR, "%s: srw: %s", signature.c_str(), e.what());
+				DNET_LOG_ERROR(m_log, "{}: srw: {}", signature, e.what());
 				return -ENOENT;
 			}
 
@@ -947,16 +811,14 @@ int srw::process(struct dnet_net_state *st, struct dnet_cmd *cmd, const void *da
 			auto session = std::make_shared<client_session>(
 				st, cmd, app, signature, exec_clean_copy
 			);
-			dnet_log(m_node, DNET_LOG_DEBUG,
-			         "%s: srw: exec_context original, size: total %ld, event %ld(%d), payload %ld",
-			         signature.c_str(), exec.native_data().size(), exec.event().size(),
-			         exec.native_data().data<sph>()->event_size, exec.data().size());
-			dnet_log(m_node, DNET_LOG_DEBUG,
-			         "%s: srw: exec_context session copy, size: total %ld, event %ld(%d), payload %ld",
-			         signature.c_str(), exec_clean_copy.native_data().size(),
-			         exec_clean_copy.event().size(),
-			         exec_clean_copy.native_data().data<sph>()->event_size,
-			         exec_clean_copy.data().size());
+			DNET_LOG_DEBUG(m_log,
+			               "{}: srw: exec_context original, size: total {}, event {}({}), payload {}",
+			               signature, exec.native_data().size(), exec.event().size(),
+			               exec.native_data().data<sph>()->event_size, exec.data().size());
+			DNET_LOG_DEBUG(
+			        m_log, "{}: srw: exec_context session copy, size: total {}, event {}({}), payload {}",
+			        signature, exec_clean_copy.native_data().size(), exec_clean_copy.event().size(),
+			        exec_clean_copy.native_data().data<sph>()->event_size, exec_clean_copy.data().size());
 
 			/* optional tag to stick processing to a certain worker
 			 * FIXME: what about tagging of `push` requests?
@@ -966,11 +828,10 @@ int srw::process(struct dnet_net_state *st, struct dnet_cmd *cmd, const void *da
 			std::shared_ptr<cocaine::api::stream_t> back_stream;
 			if (reply_expected) {
 				// for `exec`
-				dnet_log(m_node, DNET_LOG_INFO,
-				         "%s: srw: mode exec (src_key %d replaced with job %d)",
-				         signature.c_str(), src_key, job_id);
+				DNET_LOG_INFO(m_log, "{}: srw: mode exec (src_key {} replaced with job {})", signature,
+				              src_key, job_id);
 
-				back_stream = std::make_shared<exec_back_stream>(m_node->log, session,
+				back_stream = std::make_shared<exec_back_stream>(m_log.get(), session,
 					std::bind(&srw::unregister_job, this, signature, job_id)
 				);
 
@@ -982,9 +843,9 @@ int srw::process(struct dnet_net_state *st, struct dnet_cmd *cmd, const void *da
 
 			} else {
 				// for `push`
-				dnet_log(m_node, DNET_LOG_INFO, "%s: srw: mode push", signature.c_str());
+				DNET_LOG_INFO(m_log, "{}: srw: mode push", signature);
 
-				back_stream = std::make_shared<push_back_stream>(m_node->log, session);
+				back_stream = std::make_shared<push_back_stream>(m_log.get(), session);
 			}
 
 			try {
@@ -997,21 +858,11 @@ int srw::process(struct dnet_net_state *st, struct dnet_cmd *cmd, const void *da
 					))
 				});
 
-				// {
-				// 	dnet_log(m_node, DNET_LOG_DEBUG, "%s: header count %lu", signature.c_str(), headers.get_headers().size());
-				// 	for (const auto &i : headers.get_headers()) {
-				// 		const std::string name(i.get_name().blob, i.get_name().size);
-				// 		const std::string value(i.get_value().blob, i.get_value().size);
-				// 		dnet_log(m_node, DNET_LOG_DEBUG, "%s:   name: %s, value: %x", signature.c_str(), name.c_str(), *(int *)value.data());
-				// 	}
-				// }
-
 				//FIXME: get rid of this copy from data_pointer to a std::string
 				const std::string chunk = exec.data().to_string();
 
-				dnet_log(m_node, DNET_LOG_DEBUG,
-				         "%s: srw: enqueueing, tag '%s', event '%s', chunk size %lu",
-				         signature.c_str(), tag.c_str(), event.c_str(), chunk.size());
+				DNET_LOG_DEBUG(m_log, "{}: srw: enqueueing, tag '{}', event '{}', chunk size {}",
+				               signature, tag, event, chunk.size());
 
 				auto send_stream = app_overseer->enqueue(
 					back_stream,
@@ -1028,16 +879,14 @@ int srw::process(struct dnet_net_state *st, struct dnet_cmd *cmd, const void *da
 				// leakage.
 				send_stream->close(h::header_storage_t());
 
-				dnet_log(m_node, DNET_LOG_INFO,
-				         "%s: srw: enqueued, src_key %d, job %d, payload size %zd, block %d",
-				         signature.c_str(), src_key, job_id, exec.data().size(),
-				         reply_expected);
+				DNET_LOG_INFO(m_log, "{}: srw: enqueued, src_key {}, job {}, payload size {}, block {}",
+				              signature, src_key, job_id, exec.data().size(), reply_expected);
 
 			} catch (const std::exception &e) {
-				dnet_log(m_node, DNET_LOG_ERROR, "%s: srw: enqueue error, src_key %d, job %d, "
-				                                 "payload size %zd, block %d: %s",
-				         signature.c_str(), src_key, job_id, exec.data().size(), reply_expected,
-				         e.what());
+				DNET_LOG_ERROR(
+				        m_log,
+				        "{}: srw: enqueue error, src_key {}, job {}, payload size {}, block {}: {}",
+				        signature, src_key, job_id, exec.data().size(), reply_expected, e.what());
 				return -EXFULL;
 			}
 
@@ -1056,7 +905,7 @@ int srw::process(struct dnet_net_state *st, struct dnet_cmd *cmd, const void *da
 		return 0;
 
 	} catch(const std::exception &e) {
-		dnet_log(m_node, DNET_LOG_ERROR, "%s: processing failed: %s", signature.c_str(), e.what());
+		DNET_LOG_ERROR(m_log, "{}: processing failed: {}", signature, e.what());
 	}
 
 	return -EINVAL;
@@ -1068,18 +917,17 @@ int srw::process(struct dnet_net_state *st, struct dnet_cmd *cmd, const void *da
 int dnet_srw_init(struct dnet_node *n, struct dnet_config *cfg)
 {
 	try {
-		dnet_log(n, DNET_LOG_INFO, "srw: init, config: %s", cfg->srw.config);
+		DNET_LOG_INFO(n, "srw: init, config: {}", cfg->srw.config);
 		n->srw = new ioremap::elliptics::srw(n, cfg->srw.config);
-		dnet_log(n, DNET_LOG_INFO, "srw: init done, config: %s", cfg->srw.config);
+		DNET_LOG_INFO(n, "srw: init done, config: {}", cfg->srw.config);
 		return 0;
 
 	} catch (const cocaine::error_t &e) {
-		dnet_log(n, DNET_LOG_ERROR, "srw: init failed, config: %s, config error: %s", cfg->srw.config,
-		         e.what());
+		DNET_LOG_ERROR(n, "srw: init failed, config: {}, config error: {}", cfg->srw.config, e.what());
 		return -EINVAL;
 
 	} catch (const std::system_error &e) {
-		dnet_log(n, DNET_LOG_ERROR, "srw: init failed, config: %s, exception: %s", cfg->srw.config, e.what());
+		DNET_LOG_ERROR(n, "srw: init failed, config: {}, exception: {}", cfg->srw.config, e.what());
 		return -ENOMEM;
 	}
 }
@@ -1088,16 +936,16 @@ void dnet_srw_cleanup(struct dnet_node *n)
 {
 	if (n->srw) {
 		try {
-			dnet_log(n, DNET_LOG_INFO, "srw: fini");
+			DNET_LOG_INFO(n, "srw: fini");
 			auto *srw = static_cast<ioremap::elliptics::srw*>(n->srw);
 			delete srw;
-			dnet_log(n, DNET_LOG_INFO, "srw: fini done");
+			DNET_LOG_INFO(n, "srw: fini done");
 
 		} catch(const std::exception &e) {
-			dnet_log(n, DNET_LOG_ERROR, "srw: fini failed: %s", e.what());
+			DNET_LOG_ERROR(n, "srw: fini failed: {}", e.what());
 
 		} catch (...) {
-			dnet_log(n, DNET_LOG_ERROR, "srw: fini failed by unknown reason");
+			DNET_LOG_ERROR(n, "srw: fini failed by unknown reason");
 		}
 
 		n->srw = NULL;
@@ -1114,19 +962,24 @@ int dnet_cmd_exec(struct dnet_net_state *st, struct dnet_cmd *cmd, const void *p
 
 	// setup cocaine trace with elliptics trace_id
 	// (cocaine trace_id will be randomly generated if elliptics trace_id is zero)
-	start_or_continue_trace(cmd->trace_id);
+	cocaine::trace_t::current() = cocaine::trace_t(
+	        // trace
+	        cmd->trace_id, cmd->trace_id, cocaine::trace_t::zero_value,
+	        // rpc_name
+	        "srw"
+	);
 
-	tracing_context scope(n->log, cocaine::trace_t::current().get_trace_id(), cmd->flags & DNET_FLAGS_TRACE_BIT);
+	ioremap::elliptics::trace_scope scope{cocaine::trace_t::current().get_trace_id(), !!(cmd->flags & DNET_FLAGS_TRACE_BIT)};
 
 	try {
 		return srw->process(st, cmd, payload);
 
 	} catch(const std::exception &e) {
-		dnet_log(n, DNET_LOG_ERROR, "srw: processing failed: %s", e.what());
+		DNET_LOG_ERROR(n, "srw: processing failed: {}", e.what());
 		return -EINVAL;
 
 	} catch (...) {
-		dnet_log(n, DNET_LOG_ERROR, "srw: processing failed by unknown reason");
+		DNET_LOG_ERROR(n, "srw: processing failed by unknown reason");
 		return -EINVAL;
 	}
 }

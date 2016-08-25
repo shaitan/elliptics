@@ -10,8 +10,10 @@
 #include <memory>
 #include <mutex>
 
-#include <elliptics/error.hpp>
 #include <kora/config.hpp>
+#include <blackhole/wrapper.hpp>
+
+#include <elliptics/error.hpp>
 
 namespace ioremap { namespace elliptics { namespace config {
 class config_data;
@@ -48,16 +50,8 @@ struct dnet_backend_config_entry
 
 struct dnet_backend_info
 {
-	static blackhole::log::attributes_t make_attributes(uint32_t backend_id)
-	{
-		blackhole::log::attributes_t result = {
-			blackhole::attribute::make("backend_id", backend_id)
-		};
-		return std::move(result);
-	}
-
 	dnet_backend_info(dnet_logger &logger, uint32_t backend_id) :
-		log(new dnet_logger(logger, make_attributes(backend_id))),
+		log(new blackhole::wrapper_t(logger, {{"source", "eblob"}, {"trace_id", "0000000000000000"}, {"backend_id", backend_id}})),
 		backend_id(backend_id), group(0), cache(NULL),
 		enable_at_start(false), read_only_at_start(false),
 		state_mutex(new std::mutex), state(DNET_BACKEND_UNITIALIZED),
@@ -166,6 +160,8 @@ public:
 
 	void add_backend(std::shared_ptr<dnet_backend_info> &backend);
 	void remove_backend(size_t backend_id);
+
+	void set_verbosity(dnet_log_level level);
 
 private:
 	std::unordered_map<uint32_t, std::shared_ptr<dnet_backend_info> > backends;

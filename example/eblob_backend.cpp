@@ -126,8 +126,8 @@ int blob_file_info_new(eblob_backend_config *c, void *state, dnet_cmd *cmd) {
 		err = -ENOENT;
 
 	if (err) {
-		dnet_backend_log(c->blog, DNET_LOG_ERROR, "%s: EBLOB: blob-file-info-new: failed: %s [%d]",
-		                 dnet_dump_id(&cmd->id), strerror(-err), err);
+		DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-file-info-new: failed: {} [{}]", dnet_dump_id(&cmd->id),
+		               strerror(-err), err);
 		return err;
 	}
 
@@ -135,9 +135,8 @@ int blob_file_info_new(eblob_backend_config *c, void *state, dnet_cmd *cmd) {
 	err = dnet_get_filename(wc.data_fd, filename);
 
 	if (err) {
-		dnet_backend_log(c->blog, DNET_LOG_ERROR,
-		                 "%s: EBLOB: blob-file-info-new: dnet_get_filename: fd: %d:  failed: %s [%d]",
-		                 dnet_dump_id(&cmd->id), wc.data_fd, strerror(-err), err);
+		DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-file-info-new: dnet_get_filename: fd: {}:  failed: {} [{}]",
+		               dnet_dump_id(&cmd->id), wc.data_fd, strerror(-err), err);
 		return err;
 	}
 
@@ -187,15 +186,13 @@ int blob_file_info_new(eblob_backend_config *c, void *state, dnet_cmd *cmd) {
 
 	err = dnet_send_reply(state, cmd, response.data(), response.size(), 0);
 	if (err) {
-		dnet_backend_log(c->blog, DNET_LOG_ERROR,
-		                 "%s: EBLOB: blob-file-info-new: dnet_send_reply: data: %p, size: %zu: %s [%d]",
-		                 dnet_dump_id(&cmd->id), response.data(), response.size(), strerror(-err), err);
+		DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-file-info-new: dnet_send_reply: data: {:p}, size: {}: {} [{}]",
+		               dnet_dump_id(&cmd->id), response.data(), response.size(), strerror(-err), err);
 		return err;
 	}
 
-	dnet_backend_log(c->blog, DNET_LOG_INFO,
-	                 "%s: EBLOB: blob-file-info-new: fd: %d, json_size: %" PRIu64 ", data_size: %" PRIu64,
-	                 dnet_dump_id(&cmd->id), wc.data_fd, jhdr.size, wc.size);
+	DNET_LOG_INFO(c->blog, "{}: EBLOB: blob-file-info-new: fd: {}, json_size: {}, data_size: {}",
+	              dnet_dump_id(&cmd->id), wc.data_fd, jhdr.size, wc.size);
 
 	return 0;
 }
@@ -212,12 +209,10 @@ int blob_read_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *dat
 		return request;
 	} ();
 
-	dnet_backend_log(c->blog, DNET_LOG_NOTICE,
-	                 "%s: EBLOB: blob-read-new: READ_NEW: start: ioflags: %s, read_flags: %llu, "
-	                 "data_offset: %llu, data_size: %llu",
-	                 dnet_dump_id(&cmd->id), dnet_flags_dump_ioflags(request.ioflags),
-	                 (unsigned long long)request.read_flags,
-	                 (unsigned long long)request.data_offset, (unsigned long long)request.data_size);
+	DNET_LOG_NOTICE(c->blog, "{}: EBLOB: blob-read-new: READ_NEW: start: ioflags: {}, read_flags: {}, data_offset: "
+	                         "{}, data_size: {}",
+	                dnet_dump_id(&cmd->id), dnet_flags_dump_ioflags(request.ioflags), request.read_flags,
+	                request.data_offset, request.data_size);
 
 	eblob_key key;
 	memcpy(key.id, cmd->id.id, EBLOB_ID_SIZE);
@@ -228,8 +223,8 @@ int blob_read_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *dat
 		err = -ENOENT;
 
 	if (err) {
-		dnet_backend_log(c->blog, DNET_LOG_ERROR, "%s: EBLOB: blob-read-new: failed: %s [%d]",
-		                 dnet_dump_id(&cmd->id), strerror(-err), err);
+		DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-read-new: failed: {} [{}]", dnet_dump_id(&cmd->id),
+		               strerror(-err), err);
 		return err;
 	}
 
@@ -277,22 +272,19 @@ int blob_read_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *dat
 	if (request.read_flags & DNET_READ_FLAGS_JSON && jhdr.size) {
 		err = verify_checksum(record_offset, jhdr.size);
 		if (err) {
-			dnet_backend_log(c->blog, DNET_LOG_ERROR,
-			                 "%s: EBLOB: blob-read-new: READ_NEW: failed to verify checksum for json: "
-			                 "fd: %d, offset: %" PRIu64 ", size: %" PRIu64 "%s [%d]",
-			                 dnet_dump_id(&cmd->id), wc.data_fd, wc.offset, wc.size,
-			                 strerror(-err), err);
+			DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-read-new: READ_NEW: failed to verify checksum for "
+			                        "json: fd: {}, offset: {}, size: {}: {} [{}]",
+			               dnet_dump_id(&cmd->id), wc.data_fd, wc.offset, wc.size, strerror(-err), err);
 			return err;
 		}
 
 		json = data_pointer::allocate(jhdr.size);
 		err = dnet_read_ll(wc.data_fd, (char*)json.data(), json.size(), wc.data_offset);
 		if (err) {
-			dnet_backend_log(c->blog, DNET_LOG_ERROR,
-			                 "%s: EBLOB: blob-read-new: READ_NEW: failed to read json: "
-			                 "fd: %d, offset: %" PRIu64 ", size: %" PRIu64 "%s [%d]",
-			                 dnet_dump_id(&cmd->id),
-			                 wc.data_fd, wc.data_offset, json.size(), strerror(-err), err);
+			DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-read-new: READ_NEW: failed to read json: fd: {}, "
+			                        "offset: {}, size: {}: {} [{}]",
+			               dnet_dump_id(&cmd->id), wc.data_fd, wc.data_offset, json.size(), strerror(-err),
+			               err);
 			return err;
 		}
 	}
@@ -317,11 +309,10 @@ int blob_read_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *dat
 
 		err = verify_checksum(record_offset + jhdr.capacity, data_size);
 		if (err) {
-			dnet_backend_log(c->blog, DNET_LOG_ERROR,
-			                 "%s: EBLOB: blob-read-new: READ_NEW: failed to verify checksum for data: "
-			                 "offset: %" PRIu64 ", size: %" PRIu64 "%s [%d]",
-			                 dnet_dump_id(&cmd->id), request.data_offset, request.data_size,
-			                 strerror(-err), err);
+			DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-read-new: READ_NEW: failed to verify checksum for "
+			                        "data: offset: {}, size: {}: {} [{}]",
+			               dnet_dump_id(&cmd->id), request.data_offset, request.data_size, strerror(-err),
+			               err);
 			return err;
 		}
 	}
@@ -358,15 +349,13 @@ int blob_read_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *dat
 	                   wc.data_fd, data_offset, data_size, 0);
 
 	if (err) {
-		dnet_backend_log(c->blog, DNET_LOG_ERROR,
-		                 "%s: EBLOB: blob-read-new: dnet_send_reply: data %p, size: %zu, %s [%d]",
-		                 dnet_dump_id(&cmd->id), response.data(), response.size(), strerror(-err), err);
+		DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-read-new: dnet_send_reply: data {:p}, size: {}: {} [{}]",
+		               dnet_dump_id(&cmd->id), response.data(), response.size(), strerror(-err), err);
 		return err;
 	}
 
-	dnet_backend_log(c->blog, DNET_LOG_INFO,
-	                 "%s: EBLOB: blob-read-new: fd: %d, json_size: %" PRIu64", data_size: %" PRIu64,
-	                 dnet_dump_id(&cmd->id), wc.data_fd, json.size(), data_size);
+	DNET_LOG_INFO(c->blog, "{}: EBLOB: blob-read-new: fd: {}, json_size: {}, data_size: {}", dnet_dump_id(&cmd->id),
+	              wc.data_fd, json.size(), data_size);
 
 	return 0;
 }
@@ -388,19 +377,15 @@ int blob_write_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *da
 
 	cmd_stats->size = request.json_size + request.data_size;
 
-	dnet_backend_log(c->blog, DNET_LOG_NOTICE, "%s: EBLOB: blob-write-new: WRITE_NEW: start: ioflags: %s,"
-	                                           "json: {size: %" PRIu64 ", capacity: %" PRIu64 "}, "
-	                                           "data: {offset: %" PRIu64 ", size: %" PRIu64 ", capacity: %" PRIu64
-	                                           ", commit_size: %" PRIu64 "}",
-	                 dnet_dump_id(&cmd->id), dnet_flags_dump_ioflags(request.ioflags),
-	                 request.json_size, request.json_capacity,
-	                 request.data_offset, request.data_size, request.data_capacity,
-	                 request.data_commit_size);
+	DNET_LOG_NOTICE(c->blog, "{}: EBLOB: blob-write-new: WRITE_NEW: start: ioflags: {}, json: {{size: {}, "
+	                         "capacity: {}}}, data: {{offset: {}, size: {}, capacity: {}, commit_size: {}}}",
+	                dnet_dump_id(&cmd->id), dnet_flags_dump_ioflags(request.ioflags), request.json_size,
+	                request.json_capacity, request.data_offset, request.data_size, request.data_capacity,
+	                request.data_commit_size);
 
 	if (request.ioflags & DNET_IO_FLAGS_APPEND) {
-		dnet_backend_log(c->blog, DNET_LOG_NOTICE, "%s: EBLOB: blob-write-new: WRITE_NEW: "
-		                                           "append is not supported",
-		                 dnet_dump_id(&cmd->id));
+		DNET_LOG_NOTICE(c->blog, "{}: EBLOB: blob-write-new: WRITE_NEW: append is not supported",
+		                dnet_dump_id(&cmd->id));
 		return -ENOTSUP;
 	}
 
@@ -436,11 +421,10 @@ int blob_write_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *da
 				const std::string request_ts = dnet_print_time(&request.timestamp);
 				const std::string disk_ts = dnet_print_time(&disk_ehdr.timestamp);
 
-				dnet_backend_log(c->blog, DNET_LOG_ERROR,
-				                 "%s: EBLOB: blob-write-new: WRITE_NEW: cas: "
-				                 "disk data timestamp is higher than data to be "
-				                 "written timestamp: disk-ts: %s, data-ts: %s",
-				                 dnet_dump_id(&cmd->id), disk_ts.c_str(), request_ts.c_str());
+				DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-write-new: WRITE_NEW: cas: disk data "
+				                        "timestamp is higher than data to be written timestamp: "
+				                        "disk-ts: {}, data-ts: {}",
+				               dnet_dump_id(&cmd->id), disk_ts, request_ts);
 
 				return -EBADFD;
 			}
@@ -449,11 +433,10 @@ int blob_write_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *da
 				const std::string request_ts = dnet_print_time(&request.json_timestamp);
 				const std::string disk_ts = dnet_print_time(&disk_jhdr.timestamp);
 
-				dnet_backend_log(c->blog, DNET_LOG_ERROR,
-				                 "%s: EBLOB: blob-write-new: WRITE_NEW: cas: "
-				                 "disk json timestamp is higher than json to be "
-				                 "written timestamp: disk-ts: %s, json-ts: %s",
-				                 dnet_dump_id(&cmd->id), disk_ts.c_str(), request_ts.c_str());
+				DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-write-new: WRITE_NEW: cas: disk json "
+				                        "timestamp is higher than json to be written timestamp: "
+				                        "disk-ts: {}, json-ts: {}",
+				               dnet_dump_id(&cmd->id), disk_ts, request_ts);
 
 				return -EBADFD;
 			}
@@ -486,11 +469,10 @@ int blob_write_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *da
 		    sizeof(ehdr) + json_header.size() + request.json_capacity + request.data_capacity;
 		err = eblob_write_prepare(b, &key, prepare_size, flags);
 		if (err) {
-			dnet_backend_log(c->blog, DNET_LOG_ERROR, "%s: EBLOB: blob-write-new: eblob_write_prepare: "
-			                                          "size: %" PRIu64 " (json_capacity: %" PRIu64
-			                                          ", data_pointer: %" PRIu64 "): %s [%d]",
-			                 dnet_dump_id(&cmd->id), prepare_size, request.json_capacity,
-			                 request.data_capacity, strerror(-err), err);
+			DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-write-new: eblob_write_prepare: size: {} "
+			                        "(json_capacity: {}, data_pointer: {}): {} [{}]",
+			               dnet_dump_id(&cmd->id), prepare_size, request.json_capacity,
+			               request.data_capacity, strerror(-err), err);
 			return err;
 		}
 	} else {
@@ -547,11 +529,9 @@ int blob_write_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *da
 	if (request.json_size) {
 		if (request.json_size > jhdr.capacity) {
 			err = -E2BIG;
-			dnet_backend_log(c->blog, DNET_LOG_ERROR,
-			                 "%s: EBLOB: blob-write-new: WRITE_NEW: "
-			                 "json (%" PRIu64 ") exceed capacity (%" PRIu64"): %s [%d]",
-			                 dnet_dump_id(&cmd->id), request.json_size, jhdr.capacity,
-			                 strerror(-err), err);
+			DNET_LOG_ERROR(c->blog,
+			               "{}: EBLOB: blob-write-new: WRITE_NEW: json ({}) exceed capacity ({}): {} [{}]",
+			               dnet_dump_id(&cmd->id), request.json_size, jhdr.capacity, strerror(-err), err);
 			return err;
 		}
 		const auto offset = sizeof(ehdr) + ehdr.size;
@@ -573,9 +553,8 @@ int blob_write_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *da
 	}
 
 	if (err) {
-		dnet_backend_log(c->blog, DNET_LOG_ERROR,
-		                 "%s: EBLOB: blob-write-new: WRITE_NEW: writev failed %s [%d]",
-		                 dnet_dump_id(&cmd->id), strerror(-err), err);
+		DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-write-new: WRITE_NEW: writev failed {} [{}]",
+		               dnet_dump_id(&cmd->id), strerror(-err), err);
 		return err;
 	}
 
@@ -583,9 +562,8 @@ int blob_write_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *da
 		const uint64_t commit_size = sizeof(ehdr) + ehdr.size + jhdr.capacity + request.data_commit_size;
 		err = eblob_write_commit(b, &key, commit_size, flags);
 		if (err) {
-			dnet_backend_log(c->blog, DNET_LOG_ERROR, "%s: EBLOB: blob-write-new: eblob_write_commit: "
-			                 "size: %" PRIu64 ": %s [%d]",
-			                 dnet_dump_id(&cmd->id), commit_size, strerror(-err), err);
+			DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-write-new: eblob_write_commit: size: {}: {} [{}]",
+			               dnet_dump_id(&cmd->id), commit_size, strerror(-err), err);
 			return err;
 		}
 	}
@@ -593,9 +571,8 @@ int blob_write_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *da
 	memset(&wc, 0, sizeof(wc));
 	err = eblob_read_return(b, &key, EBLOB_READ_NOCSUM, &wc);
 	if (err) {
-		dnet_backend_log(c->blog, DNET_LOG_ERROR,
-		                 "%s: EBLOB: blob-write-new: eblob_read failed: %s [%d]",
-		                 dnet_dump_id(&cmd->id), strerror(-err), err);
+		DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-write-new: eblob_read failed: {} [{}]", dnet_dump_id(&cmd->id),
+		               strerror(-err), err);
 		return err;
 	}
 
@@ -607,9 +584,8 @@ int blob_write_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *da
 	std::string filename;
 	err = dnet_get_filename(wc.data_fd, filename);
 	if (err) {
-		dnet_backend_log(c->blog, DNET_LOG_ERROR,
-		                 "%s: EBLOB: blob-write-new: dnet_get_filename: fd: %d:  failed: %s [%d]",
-		                 dnet_dump_id(&cmd->id), wc.data_fd, strerror(-err), err);
+		DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-write-new: dnet_get_filename: fd: {}:  failed: {} [{}]",
+		               dnet_dump_id(&cmd->id), wc.data_fd, strerror(-err), err);
 		return err;
 	}
 
@@ -639,15 +615,13 @@ int blob_write_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *da
 
 	err = dnet_send_reply(state, cmd, response.data(), response.size(), 0);
 	if (err) {
-		dnet_backend_log(c->blog, DNET_LOG_ERROR,
-		                 "%s: EBLOB: blob-write-new: dnet_send_reply: data: %p, size: %zu: %s [%d]",
-		                 dnet_dump_id(&cmd->id), response.data(), response.size(), strerror(-err), err);
+		DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-write-new: dnet_send_reply: data: {:p}, size: {}: {} [{}]",
+		               dnet_dump_id(&cmd->id), (void *)response.data(), response.size(), strerror(-err), err);
 		return err;
 	}
 
-	dnet_backend_log(c->blog, DNET_LOG_INFO,
-	                 "%s: EBLOB: blob-write-new: fd: %d, json_size: %" PRIu64 ", data_size: %" PRIu64,
-	                 dnet_dump_id(&cmd->id), wc.data_fd, jhdr.size, wc.size - jhdr.capacity);
+	DNET_LOG_INFO(c->blog, "{}: EBLOB: blob-write-new: fd: {}, json_size: {}, data_size: {}",
+	              dnet_dump_id(&cmd->id), wc.data_fd, jhdr.size, wc.size - jhdr.capacity);
 
 	return 0;
 }
@@ -675,7 +649,7 @@ static bool check_key_ranges(eblob_backend_config *c, ioremap::elliptics::dnet_i
 	} ();
 
 	if (empty) {
-		dnet_backend_log(c->blog, DNET_LOG_ERROR, "EBLOB: iterator: all keys in all ranges are 0");
+		DNET_LOG_ERROR(c->blog, "EBLOB: iterator: all keys in all ranges are 0");
 		return true;
 	}
 
@@ -683,9 +657,9 @@ static bool check_key_ranges(eblob_backend_config *c, ioremap::elliptics::dnet_i
 	char k2[2 * DNET_ID_SIZE + 1];
 	for (const auto &range : request.key_ranges) {
 		if (dnet_id_cmp_str(range.key_begin.id, range.key_end.id) > 0) {
-			dnet_backend_log(c->blog, DNET_LOG_ERROR, "EBLOB: iterator: key_begin (%s) > key_end (%s)",
-			                 dnet_dump_id_len_raw(range.key_begin.id, DNET_ID_SIZE, k1),
-			                 dnet_dump_id_len_raw(range.key_end.id, DNET_ID_SIZE, k2));
+			DNET_LOG_ERROR(c->blog, "EBLOB: iterator: key_begin ({}) > key_end ({})",
+			               dnet_dump_id_len_raw(range.key_begin.id, DNET_ID_SIZE, k1),
+			               dnet_dump_id_len_raw(range.key_end.id, DNET_ID_SIZE, k2));
 			return false;
 		}
 	}
@@ -693,9 +667,9 @@ static bool check_key_ranges(eblob_backend_config *c, ioremap::elliptics::dnet_i
 	request.flags |= DNET_IFLAGS_KEY_RANGE;
 
 	for (const auto &range : request.key_ranges) {
-		dnet_backend_log(c->blog, DNET_LOG_NOTICE, "EBLOB: iterator: using key range: %s...%s",
-		                 dnet_dump_id_len_raw(range.key_begin.id, DNET_ID_SIZE, k1),
-		                 dnet_dump_id_len_raw(range.key_end.id, DNET_ID_SIZE, k2));
+		DNET_LOG_NOTICE(c->blog, "EBLOB: iterator: using key range: {}...{}",
+		                dnet_dump_id_len_raw(range.key_begin.id, DNET_ID_SIZE, k1),
+		                dnet_dump_id_len_raw(range.key_end.id, DNET_ID_SIZE, k2));
 	}
 
 	return true;
@@ -711,12 +685,12 @@ static bool check_ts_range(eblob_backend_config *c, ioremap::elliptics::dnet_ite
 	static const dnet_time empty_time{0, 0};
 	if ((memcmp(&empty_time, &std::get<0>(request.time_range), sizeof(empty_time)) == 0) &&
 	    (memcmp(&empty_time, &std::get<1>(request.time_range), sizeof(empty_time)) == 0)) {
-		dnet_backend_log(c->blog, DNET_LOG_NOTICE, "EBLOB: iterator: both times are zero");
+		DNET_LOG_NOTICE(c->blog, "EBLOB: iterator: both times are zero");
 		return true;
 	}
 
 	if (dnet_time_cmp(&std::get<0>(request.time_range), &std::get<1>(request.time_range)) > 0) {
-		dnet_backend_log(c->blog, DNET_LOG_ERROR, "EBLOB: iterator:  time_begin > time_end");
+		DNET_LOG_ERROR(c->blog, "EBLOB: iterator:  time_begin > time_end");
 		return false;
 	}
 
@@ -725,8 +699,7 @@ static bool check_ts_range(eblob_backend_config *c, ioremap::elliptics::dnet_ite
 	const std::string time_begin = dnet_print_time(&std::get<0>(request.time_range));
 	const std::string time_end = dnet_print_time(&std::get<1>(request.time_range));
 
-	dnet_backend_log(c->blog, DNET_LOG_NOTICE, "EBLOB: iterator: using ts range: %s...%s",
-	                 time_begin.c_str(), time_end.c_str());
+	DNET_LOG_NOTICE(c->blog, "EBLOB: iterator: using ts range: {}...{}", time_begin, time_end);
 	return true;
 }
 
@@ -883,8 +856,7 @@ static iterator_callback make_iterator_server_send_callback(eblob_backend_config
 	using namespace ioremap::elliptics;
 	return [=, &request, &counter, &monitor, &send_fail_reply] (std::shared_ptr<iterated_key_info> info) -> int {
 		if (st->__need_exit) {
-			dnet_backend_log(c->blog, DNET_LOG_ERROR,
-			                 "EBLOB: Interrupting server_send: peer has been disconnected");
+			DNET_LOG_ERROR(c->blog, "EBLOB: Interrupting server_send: peer has been disconnected");
 			return -EINTR;
 		}
 
@@ -937,9 +909,8 @@ static iterator_callback make_iterator_server_send_callback(eblob_backend_config
 			json = data_pointer::allocate(info->jhdr.size);
 			const int err = dnet_read_ll(info->fd, json.data<char>(), json.size(), info->json_offset);
 			if (err) {
-				dnet_backend_log(c->blog, DNET_LOG_ERROR,
-				                 "EBLOB: server_send: %s: failed to read json: %s",
-				                 dnet_dump_id_str(info->key.id), dnet_print_error(err));
+				DNET_LOG_ERROR(c->blog, "EBLOB: server_send: {}: failed to read json: {}",
+				               dnet_dump_id_str(info->key.id), dnet_print_error(err));
 				return send_fail_reply(err);
 			}
 		}
@@ -949,9 +920,8 @@ static iterator_callback make_iterator_server_send_callback(eblob_backend_config
 				data = data_pointer::allocate(info->data_size);
 				const int err = dnet_read_ll(info->fd, data.data<char>(), data.size(), info->data_offset);
 				if (err) {
-					dnet_backend_log(c->blog, DNET_LOG_ERROR,
-							 "EBLOB: server_send: %s: failed to read data: %s",
-							 dnet_dump_id_str(info->key.id), dnet_print_error(err));
+					DNET_LOG_ERROR(c->blog, "EBLOB: server_send: {}: failed to read data: {}",
+					               dnet_dump_id_str(info->key.id), dnet_print_error(err));
 					return send_fail_reply(err);
 				}
 			}
@@ -966,9 +936,10 @@ static iterator_callback make_iterator_server_send_callback(eblob_backend_config
 
 			async.connect([=, &request, &monitor] (const newapi::sync_write_result &/*results*/, const error_info &error) {
 					if (st->__need_exit) {
-						dnet_backend_log(c->blog, DNET_LOG_ERROR,
-								 "EBLOB: Interrupting server_send: peer has been disconnected");
-					} else {
+					        DNET_LOG_ERROR(
+					                c->blog,
+					                "EBLOB: Interrupting server_send: peer has been disconnected");
+				        } else {
 						auto response = serialize_response(error.code());
 						dnet_send_reply(st, cmd, response.data(), response.size(), 1);
 					}
@@ -993,9 +964,8 @@ static iterator_callback make_iterator_server_send_callback(eblob_backend_config
 				const uint64_t data_size = std::min(remaining_size, request.chunk_size);
 				int err = dnet_read_ll(info->fd, data.data<char>(), data_size, data_offset);
 				if (err) {
-					dnet_backend_log(c->blog, DNET_LOG_ERROR,
-							 "EBLOB: server_send: %s: failed to read data: %s",
-							 dnet_dump_id_str(info->key.id), dnet_print_error(err));
+					DNET_LOG_ERROR(c->blog, "EBLOB: server_send: {}: failed to read data: {}",
+					               dnet_dump_id_str(info->key.id), dnet_print_error(err));
 					return send_fail_reply(err);
 				}
 
@@ -1042,8 +1012,7 @@ static iterator_callback make_iterator_network_callback(eblob_backend_config *c,
 
 	return [=, &request] (std::shared_ptr<iterated_key_info> info) -> int {
 		if (st->__need_exit) {
-			dnet_backend_log(c->blog, DNET_LOG_ERROR,
-			                 "EBLOB: iterator: Interrupting iterator: peer has been disconnected");
+			DNET_LOG_ERROR(c->blog, "EBLOB: iterator: Interrupting iterator: peer has been disconnected");
 			return -EINTR;
 		}
 
@@ -1052,9 +1021,8 @@ static iterator_callback make_iterator_network_callback(eblob_backend_config *c,
 			json = data_pointer::allocate(info->jhdr.size);
 			const int err = dnet_read_ll(info->fd, json.data<char>(), json.size(), info->json_offset);
 			if (err) {
-				dnet_backend_log(c->blog, DNET_LOG_ERROR,
-				                 "EBLOB: iterator: %s: failed to read json: %s [%d]",
-				                 dnet_dump_id_str(info->key.id), strerror(-err), err);
+				DNET_LOG_ERROR(c->blog, "EBLOB: iterator: {}: failed to read json: {} [{}]",
+				               dnet_dump_id_str(info->key.id), strerror(-err), err);
 				return err;
 			}
 		}
@@ -1083,8 +1051,8 @@ static iterator_callback make_iterator_network_callback(eblob_backend_config *c,
 		});
 
 		if (st->__need_exit) {
-			dnet_backend_log(c->blog, DNET_LOG_ERROR,
-			                 "EBLOB: iterator: Interrupting iterator because peer has been disconnected");
+			DNET_LOG_ERROR(c->blog,
+			               "EBLOB: iterator: Interrupting iterator because peer has been disconnected");
 			return -EINTR;
 		}
 
@@ -1122,18 +1090,17 @@ static int blob_iterate_callback_common(const eblob_backend_config *c,
 		if (!(request.flags & DNET_IFLAGS_NO_META)) {
 			err = dnet_ext_hdr_read(&info->ehdr, fd, offset);
 			if (err) {
-				dnet_backend_log(c->blog, DNET_LOG_ERROR,
-				                 "EBLOB: iterator: %s: dnet_ext_hdr_read failed: %s [%d]",
-				                 dnet_dump_id_str(info->key.id), strerror(-err), err);
+				DNET_LOG_ERROR(c->blog, "EBLOB: iterator: {}: dnet_ext_hdr_read failed: {} [{}]",
+				               dnet_dump_id_str(info->key.id), strerror(-err), err);
 				return err;
 			}
 
 			if (info->ehdr.size) {
 				err = dnet_read_json_header(fd, offset + sizeof(info->ehdr), info->ehdr.size, &info->jhdr);
 				if (err) {
-					dnet_backend_log(c->blog, DNET_LOG_ERROR,
-					                 "EBLOB: iterator: %s: dnet_read_json_header failed: %s [%d]",
-					                 dnet_dump_id_str(info->key.id), strerror(-err), err);
+					DNET_LOG_ERROR(c->blog,
+					               "EBLOB: iterator: {}: dnet_read_json_header failed: {} [{}]",
+					               dnet_dump_id_str(info->key.id), strerror(-err), err);
 					return err;
 				}
 			}
@@ -1144,11 +1111,10 @@ static int blob_iterate_callback_common(const eblob_backend_config *c,
 			size -= sizeof(info->ehdr) + info->ehdr.size;
 		} else if (size) {
 			err = -EINVAL;
-			dnet_backend_log(c->blog, DNET_LOG_ERROR,
-			                 "EBLOB: iterator: %s: has invalid size: %" PRIu64 " < "
-			                 "%zu (sizeof(info.ehdr)) + %" PRIu32 "(info.ehdr.size): %s [%d]",
-			                 dnet_dump_id_str(info->key.id), size, sizeof(info->ehdr), info->ehdr.size,
-			                 strerror(-err), err);
+			DNET_LOG_ERROR(c->blog, "EBLOB: iterator: {}: has invalid size: {} < {} (sizeof(info.ehdr)) + "
+			                        "{} (info.ehdr.size): {} [{}]",
+			               dnet_dump_id_str(info->key.id), size, sizeof(info->ehdr), info->ehdr.size,
+			               strerror(-err), err);
 			return err;
 		}
 	}
@@ -1165,11 +1131,8 @@ static int blob_iterate_callback_common(const eblob_backend_config *c,
 		info->data_size = size - info->jhdr.capacity;
 	} else if (size) {
 		err = -EINVAL;
-		dnet_backend_log(c->blog, DNET_LOG_ERROR,
-		                 "EBLOB: iterator %s: has invalid size(%" PRIu64 ") < "
-		                 "info.jhdr.capacity(%" PRIu64 "): %s [%d]",
-		                 dnet_dump_id_str(info->key.id), size, info->jhdr.capacity,
-		                 strerror(-err), -err);
+		DNET_LOG_ERROR(c->blog, "EBLOB: iterator {}: has invalid size({}) < info.jhdr.capacity({}): {} [{}]",
+		               dnet_dump_id_str(info->key.id), size, info->jhdr.capacity, strerror(-err), err);
 		return err;
 	}
 
@@ -1179,13 +1142,10 @@ static int blob_iterate_callback_common(const eblob_backend_config *c,
 	const std::string data_ts = dnet_print_time(&info->ehdr.timestamp);
 	const std::string json_ts = dnet_print_time(&info->jhdr.timestamp);
 
-	dnet_backend_log(c->blog, DNET_LOG_DEBUG,
-	                 "EBLOB: iterated: key: %s, fd: %d, user_flags: 0x%" PRIx64 ", "
-	                 "json: {offset: %" PRIu64 ", size: %" PRIu64 ", capacity: %" PRIu64 ", ts: %s}, "
-	                 "data: {offset: %" PRIu64 ", size: %" PRIu64 ", ts: %s}",
-	                 dnet_dump_id_str(info->key.id), fd, info->ehdr.flags,
-	                 offset, info->jhdr.size, info->jhdr.capacity, json_ts.c_str(),
-	                 info->data_offset, info->data_size, data_ts.c_str());
+	DNET_LOG_DEBUG(c->blog, "EBLOB: iterated: key: {}, fd: {}, user_flags: {:#x}, json: {{offset: {}, size: {}, "
+	                        "capacity: {}, ts: {}}}, data: {{offset: {}, size: {}, ts: {}}}",
+	               dnet_dump_id_str(info->key.id), fd, info->ehdr.flags, offset, info->jhdr.size,
+	               info->jhdr.capacity, json_ts, info->data_offset, info->data_size, data_ts);
 
 	err = callback(info);
 	if (err) {
@@ -1200,15 +1160,13 @@ static int blob_iterator_start(struct eblob_backend_config *c, dnet_net_state *s
 	using namespace ioremap::elliptics;
 
 	if (request.flags & ~DNET_IFLAGS_ALL) {
-		dnet_backend_log(c->blog, DNET_LOG_ERROR, "EBLOB: iteration failed: unknown iteration flags: %" PRIu64,
-		                 request.flags);
+		DNET_LOG_ERROR(c->blog, "EBLOB: iteration failed: unknown iteration flags: {}", request.flags);
 		return -ENOTSUP;
 	}
 
 	if (request.type <= DNET_ITYPE_FIRST ||
 	    request.type >= DNET_ITYPE_LAST) {
-		dnet_backend_log(c->blog, DNET_LOG_ERROR, "EBLOB: iteration failed: unknown iteration type: %" PRIu32,
-		                 request.type);
+		DNET_LOG_ERROR(c->blog, "EBLOB: iteration failed: unknown iteration type: {}", request.type);
 		return -ENOTSUP;
 	}
 
@@ -1254,8 +1212,7 @@ static int blob_iterator_start(struct eblob_backend_config *c, dnet_net_state *s
 
 	switch (request.type) {
 		case DNET_ITYPE_DISK: {
-			dnet_backend_log(c->blog, DNET_LOG_ERROR,
-			                 "EBLOB: iteration failed: type: 'DNET_ITYPE_DISK' is not implemented");
+			DNET_LOG_ERROR(c->blog, "EBLOB: iteration failed: type: 'DNET_ITYPE_DISK' is not implemented");
 			return -ENOTSUP;
 		}
 		case DNET_ITYPE_NETWORK: {
@@ -1263,9 +1220,8 @@ static int blob_iterator_start(struct eblob_backend_config *c, dnet_net_state *s
 			break;
 		}
 		default: {
-			dnet_backend_log(c->blog, DNET_LOG_ERROR, "EBLOB: iteration failed: unknown type: %" PRIu32,
-			                 request.type);
-			return -ENOTSUP;
+		        DNET_LOG_ERROR(c->blog, "EBLOB: iteration failed: unknown type: {}", request.type);
+		        return -ENOTSUP;
 		}
 	}
 
@@ -1296,11 +1252,9 @@ int blob_iterate(struct eblob_backend_config *c, void *state, struct dnet_cmd *c
 	ioremap::elliptics::dnet_iterator_request request;
 	deserialize(data_pointer::from_raw(data, cmd->size), request);
 
-	dnet_backend_log(c->blog, DNET_LOG_INFO,
-	                 "EBLOB: %s started: id: %" PRIu64 ", flags: %" PRIu64 ", action: %d, "
-	                 "type: %" PRIu32 ", key_ranges: %zu, groups: %zu",
-	                 __func__, request.iterator_id, request.flags, request.action,
-	                 request.type, request.key_ranges.size(), request.groups.size());
+	DNET_LOG_INFO(c->blog, "EBLOB: {} started: id: {}, flags: {}, action: {}, type: {}, key_ranges: {}, groups: {}",
+	              __func__, request.iterator_id, request.flags, request.action, request.type,
+	              request.key_ranges.size(), request.groups.size());
 
 	/*
 	 * Check iterator action start/pause/cont
@@ -1323,9 +1277,8 @@ int blob_iterate(struct eblob_backend_config *c, void *state, struct dnet_cmd *c
 			break;
 	}
 
-	dnet_backend_log(c->blog, err ? DNET_LOG_ERROR : DNET_LOG_INFO,
-	                 "EBLOB: %s finished: %s [%d]",
-	                 __func__, strerror(-err), err);
+	DNET_LOG(c->blog, err ? DNET_LOG_ERROR : DNET_LOG_INFO, "EBLOB: {} finished: {} [{}]", __func__, strerror(-err),
+	         err);
 
 	return err;
 }
@@ -1339,9 +1292,8 @@ int blob_send_new(struct eblob_backend_config *c, void *state, struct dnet_cmd *
 	ioremap::elliptics::dnet_server_send_request request;
 	deserialize(data_pointer::from_raw(data, cmd->size), request);
 
-	dnet_backend_log(c->blog, DNET_LOG_INFO,
-	                 "EBLOB: %s started: ids_num: %zd, groups_num: %zd",
-	                 __func__, request.keys.size(), request.groups.size());
+	DNET_LOG_INFO(c->blog, "EBLOB: {} started: ids_num: {}, groups_num: {}", __func__, request.keys.size(),
+	              request.groups.size());
 
 	int err = 0;
 
@@ -1395,9 +1347,8 @@ int blob_send_new(struct eblob_backend_config *c, void *state, struct dnet_cmd *
 		}
 
 		if (err) {
-			dnet_backend_log(c->blog, DNET_LOG_ERROR,
-			                 "%s: EBLOB: blob_send_new: lookup failed: %s",
-			                 dnet_dump_id_str(key.id), dnet_print_error(err));
+			DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob_send_new: lookup failed: {}", dnet_dump_id_str(key.id),
+			               dnet_print_error(err));
 			if ((err = send_fail_reply(err))) {
 				break;
 			}
@@ -1480,8 +1431,7 @@ int blob_send_new(struct eblob_backend_config *c, void *state, struct dnet_cmd *
 
 	monitor.wait_completion();
 
-	dnet_backend_log(c->blog, err ? DNET_LOG_ERROR : DNET_LOG_INFO,
-	                 "EBLOB: %s finished: %s",
-	                 __func__, dnet_print_error(err));
+	DNET_LOG(c->blog, err ? DNET_LOG_ERROR : DNET_LOG_INFO, "EBLOB: {} finished: {}", __func__,
+	         dnet_print_error(err));
 	return err;
 }

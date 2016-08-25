@@ -148,7 +148,7 @@ int main(int argc, char *argv[])
 					logfile = optarg;
 					break;
 				case 'm':
-					log_level = file_logger::parse_level(optarg);
+					log_level = dnet_log_parse_level(optarg);
 					break;
 				case 'I':
 					err = dnet_parse_numeric_id(optarg, raw.id);
@@ -167,8 +167,7 @@ int main(int argc, char *argv[])
 			efinder_usage(argv[0]);
 		}
 
-		file_logger log(logfile, log_level);
-		node n(logger(log, blackhole::log::attributes_t()));
+		node n(make_file_logger(logfile, log_level));
 		finder find(n);
 
 		n.add_remote(remote);

@@ -3,6 +3,8 @@
 #define __STDC_FORMAT_MACROS
 #include <inttypes.h>
 
+#include <blackhole/attribute.hpp>
+
 #include "elliptics/async_result_cast.hpp"
 #include "bindings/cpp/callback_p.h"
 #include "bindings/cpp/node_p.hpp"
@@ -120,6 +122,7 @@ private:
 };
 
 async_lookup_result session::lookup(const key &id) {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	DNET_SESSION_GET_GROUPS(async_lookup_result);
 	transform(id);
 
@@ -177,6 +180,7 @@ public:
 	, m_key(id)
 	, m_session(orig_sess.clean_clone())
 	, m_handler(result)
+	, m_log(orig_sess.get_logger())
 	{
 		m_session.set_checker(orig_sess.get_checker());
 		m_responses.reserve(m_session.get_groups().size());
@@ -214,12 +218,10 @@ private:
 
 		std::string groups, status, jsons, datas, trans;
 		std::tie(groups, status, jsons, datas, trans) = dump_responses();
-		BH_LOG(m_session.get_logger(), DNET_LOG_INFO,
-		       "%s: %s: finished: groups: %s, trans: %s, status: %s, json-size: %s, data-size: %s, "
-		       "total_time: %llu",
-		       dnet_dump_id_str(m_key.id().id), dnet_cmd_string(DNET_CMD_READ_NEW),
-		       groups.c_str(), trans.c_str(), status.c_str(), jsons.c_str(), datas.c_str(),
-		       m_timer.elapsed());
+		DNET_LOG_INFO(m_log, "{}: {}: finished: groups: {}, trans: {}, status: {}, json-size: {}, data-size: "
+		                     "{}, total_time: {}",
+		              dnet_dump_id_str(m_key.id().id), dnet_cmd_string(DNET_CMD_READ_NEW), groups, trans,
+		              status, jsons, datas, m_timer.elapsed());
 	}
 
 	std::tuple<std::string, std::string, std::string, std::string, std::string> dump_responses() const {
@@ -262,6 +264,7 @@ private:
 	session m_session;
 	async_result_handler<read_result_entry> m_handler;
 	std::vector<response> m_responses;
+	std::unique_ptr<dnet_logger> m_log;
 };
 
 async_read_result send_read(const session &orig_sess, const key &id, const dnet_read_request &request,
@@ -271,14 +274,10 @@ async_read_result send_read(const session &orig_sess, const key &id, const dnet_
 	control.set_command(DNET_CMD_READ_NEW);
 	control.set_cflags(orig_sess.get_cflags() | DNET_FLAGS_NEED_ACK);
 
-	BH_LOG(orig_sess.get_logger(), DNET_LOG_INFO,
-	       "%s: %s: started: flags: %s, read-flags: %s, offset: %" PRIu64 ", size: %" PRIu64,
-	       dnet_dump_id(&id.id()),
-	       dnet_cmd_string(control.get_native().cmd),
-	       dnet_flags_dump_ioflags(request.ioflags),
-	       dnet_dump_read_flags(request.read_flags),
-	       request.data_offset,
-	       request.data_size);
+	auto log = orig_sess.get_logger();
+	DNET_LOG_INFO(log, "{}: {}: started: flags: {}, read-flags: {}, offset: {}, size: {}", dnet_dump_id(&id.id()),
+	              dnet_cmd_string(control.get_native().cmd), dnet_flags_dump_ioflags(request.ioflags),
+	              dnet_dump_read_flags(request.read_flags), request.data_offset, request.data_size);
 
 	async_read_result result(orig_sess);
 	auto handler = std::make_shared<read_handler>(orig_sess, result, id);
@@ -287,6 +286,7 @@ async_read_result send_read(const session &orig_sess, const key &id, const dnet_
 }
 
 async_read_result session::read_json(const key &id) {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	DNET_SESSION_GET_GROUPS(async_read_result);
 	transform(id);
 
@@ -303,6 +303,7 @@ async_read_result session::read_json(const key &id) {
 }
 
 async_read_result session::read_data(const key &id, uint64_t offset, uint64_t size) {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	DNET_SESSION_GET_GROUPS(async_read_result);
 	transform(id);
 
@@ -321,6 +322,7 @@ async_read_result session::read_data(const key &id, uint64_t offset, uint64_t si
 }
 
 async_read_result session::read(const key &id, uint64_t offset, uint64_t size) {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	DNET_SESSION_GET_GROUPS(async_read_result);
 	transform(id);
 
@@ -355,28 +357,19 @@ public:
 	, m_key(id)
 	, m_session(orig_sess.clean_clone())
 	, m_handler(result)
+	, m_log(orig_sess.get_logger())
 	{
 		m_session.set_checker(orig_sess.get_checker());
 		m_responses.reserve(m_session.get_groups().size());
 	}
 
 	void start(const transport_control &control, const dnet_write_request &request) {
-		BH_LOG(m_session.get_logger(), DNET_LOG_INFO,
-		       "%s: %s: started: flags: %s, ts: '%s', "
-		       "json: {size: %" PRIu64 ", capacity: %" PRIu64 "}, "
-		       "data: {offset: %" PRIu64 ", size: %" PRIu64 ", "
-		       "capacity: %" PRIu64 ", commit-size: %" PRIu64 "}",
-		       dnet_dump_id(&m_key.id()),
-		       dnet_cmd_string(control.get_native().cmd),
-		       dnet_flags_dump_ioflags(request.ioflags),
-		       dnet_print_time(&request.timestamp),
-		       request.json_size,
-		       request.json_capacity,
-		       request.data_offset,
-		       request.data_size,
-		       request.data_capacity,
-		       request.data_commit_size);
-
+		DNET_LOG_INFO(m_log, "{}: {}: started: flags: {}, ts: '{}', json: {{size: {}, capacity: {}}}, data: "
+		                     "{{offset: {}, size: {}, capacity: {}, commit-size: {}}}",
+		              dnet_dump_id(&m_key.id()), dnet_cmd_string(control.get_native().cmd),
+		              dnet_flags_dump_ioflags(request.ioflags), dnet_print_time(&request.timestamp),
+		              request.json_size, request.json_capacity, request.data_offset, request.data_size,
+		              request.data_capacity, request.data_commit_size);
 		auto rr = send_to_groups(m_session, control);
 		m_handler.set_total(rr.total());
 
@@ -405,12 +398,10 @@ private:
 
 		std::string groups, status, jsons, datas, trans;
 		std::tie(groups, status, jsons, datas, trans) = dump_responses();
-		BH_LOG(m_session.get_logger(), DNET_LOG_INFO,
-		       "%s: %s: finished: groups: %s, trans: %s, status: %s, json-size: %s, data-size: %s, "
-		       "total_time: %llu",
-		       dnet_dump_id_str(m_key.id().id), dnet_cmd_string(DNET_CMD_WRITE_NEW),
-		       groups.c_str(), trans.c_str(), status.c_str(), jsons.c_str(), datas.c_str(),
-		       m_timer.elapsed());
+		DNET_LOG_INFO(m_log, "{}: {}: finished: groups: {}, trans: {}, status: {}, json-size: {}, data-size: "
+		                     "{}, total_time: {}",
+		              dnet_dump_id_str(m_key.id().id), dnet_cmd_string(DNET_CMD_WRITE_NEW), groups, trans,
+		              status, jsons, datas, m_timer.elapsed());
 	}
 
 	std::tuple<std::string, std::string, std::string, std::string, std::string> dump_responses() const {
@@ -453,6 +444,7 @@ private:
 	session m_session;
 	async_result_handler<write_result_entry> m_handler;
 	std::vector<response> m_responses;
+	std::unique_ptr<dnet_logger> m_log;
 };
 
 async_write_result send_write(const session &orig_sess, const key &id, const dnet_write_request &request,
@@ -508,6 +500,7 @@ static dnet_write_request create_write_request(const session &sess)
 async_write_result session::write(const key &id,
                                   const argument_data &json, uint64_t json_capacity,
                                   const argument_data &data, uint64_t data_capacity) {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	transform(id);
 
 	auto on_fail = [this](const error_info & error) {
@@ -565,6 +558,7 @@ async_write_result session::write(const key &id,
 async_lookup_result session::write_prepare(const key &id,
                                            const argument_data &json, uint64_t json_capacity,
                                            const argument_data &data, uint64_t data_offset, uint64_t data_capacity) {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	transform(id);
 
 	auto on_fail = [this](const error_info & error) {
@@ -621,6 +615,7 @@ async_lookup_result session::write_prepare(const key &id,
 async_lookup_result session::write_plain(const key &id,
                                          const argument_data &json,
                                          const argument_data &data, uint64_t data_offset) {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	transform(id);
 
 	try {
@@ -648,6 +643,7 @@ async_lookup_result session::write_plain(const key &id,
 async_lookup_result session::write_commit(const key &id,
                                           const argument_data &json,
                                           const argument_data &data, uint64_t data_offset, uint64_t data_commit_size) {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	transform(id);
 
 	try {
@@ -677,6 +673,7 @@ async_lookup_result session::write_commit(const key &id,
 }
 
 async_lookup_result session::update_json(const key &id, const argument_data &json) {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	transform(id);
 
 	try {
@@ -702,6 +699,7 @@ async_iterator_result session::start_iterator(const address &addr, uint32_t back
                                               uint64_t flags,
                                               const std::vector<dnet_iterator_range> &key_ranges,
                                               const std::tuple<dnet_time, dnet_time> &time_range) {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	if (key_ranges.empty()) {
 		flags &= ~DNET_IFLAGS_KEY_RANGE;
 	} else {
@@ -751,6 +749,7 @@ async_iterator_result session::server_send(const std::vector<std::string> &keys,
 
 async_iterator_result session::server_send(const std::vector<key> &keys, uint64_t flags, uint64_t chunk_size,
                                            const int src_group, const std::vector<int> &dst_groups) {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
 	if (dst_groups.empty()) {
 		async_iterator_result result{*this};
 		async_result_handler<iterator_result_entry> handler{result};

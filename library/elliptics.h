@@ -51,7 +51,6 @@ typedef unsigned short u_short;
 #include "backend.h"
 
 #include "elliptics/packet.h"
-#include "elliptics/logger.hpp"
 #include "elliptics/interface.h"
 
 #ifdef __cplusplus
@@ -67,48 +66,6 @@ struct dnet_node;
 struct dnet_group;
 struct dnet_net_state;
 struct dnet_cmd_stats;
-
-extern __thread uint64_t trace_id;
-
-#define DNET_LOG_BEGIN_ONLY_LOG(log, level) \
-	do { \
-		dnet_logger * const local_dnet_log = log; \
-		dnet_logger_record * const local_dnet_record = dnet_log_open_record(local_dnet_log, level); \
-		if (local_dnet_record) {
-#define DNET_LOG_BEGIN(n, level) \
-	DNET_LOG_BEGIN_ONLY_LOG(n->log, level)
-
-#define DNET_LOG_VPRINT(format, args) \
-			dnet_log_vwrite(local_dnet_log, local_dnet_record, format, args);
-
-#define DNET_LOG_PRINT(format, a...) \
-			dnet_log_write(local_dnet_log, local_dnet_record, format, ##a);
-
-#define DNET_LOG_PRINT_ERR(err, format, a...) \
-			dnet_log_write_err(local_dnet_log, local_dnet_record, err, format": %s [%d]", ##a, strerror(-err), err);
-
-#define DNET_LOG_END() \
-			dnet_log_close_record(local_dnet_record); \
-		} \
-	} while (0)
-
-#define DNET_LOG_SET_TRACE_ID(trace_id, trace_bit) \
-	dnet_log_record_set_request_id(local_dnet_record, (trace_id), (trace_bit))
-
-#define dnet_log(n, level, format, a...) \
-	DNET_LOG_BEGIN(n, level) \
-	DNET_LOG_PRINT(format, ##a) \
-	DNET_LOG_END()
-
-#define dnet_log_only_log(log, level, format, a...) \
-	DNET_LOG_BEGIN_ONLY_LOG(log, level) \
-	DNET_LOG_PRINT(format, ##a) \
-	DNET_LOG_END()
-
-#define dnet_log_err(n, format, a...) \
-	DNET_LOG_BEGIN(n, DNET_LOG_ERROR) \
-	DNET_LOG_PRINT_ERR(-errno, format, ##a) \
-	DNET_LOG_END()
 
 struct dnet_io_req {
 	struct list_head	req_entry;
@@ -280,6 +237,10 @@ struct dnet_net_state *dnet_node_state(struct dnet_node *n);
 void dnet_node_stop_common_resources(struct dnet_node *n);
 /* Free resources of node. Must be called after dnet_node_stop_common_resources() */
 void dnet_node_cleanup_common_resources(struct dnet_node *n);
+
+int dnet_node_reset_log(struct dnet_node *n);
+int dnet_node_get_verbosity(struct dnet_node *n);
+int dnet_node_set_verbosity(struct dnet_node *n, enum dnet_log_level level);
 
 int dnet_search_range(struct dnet_node *n, struct dnet_id *id,
 		struct dnet_raw_id *start, struct dnet_raw_id *next);
@@ -733,11 +694,6 @@ static inline void dnet_counter_inc(struct dnet_node *n, int counter, int err)
 	else
 		n->counters[counter].err++;
 	dnet_lock_unlock(&n->counters_lock);
-
-	dnet_log(n, DNET_LOG_DEBUG, "Incrementing counter: %d, err: %d, value is: %llu %llu.",
-				counter, err,
-				(unsigned long long)n->counters[counter].count,
-				(unsigned long long)n->counters[counter].err);
 }
 
 static inline void dnet_counter_set(struct dnet_node *n, int counter, int err, int64_t val)

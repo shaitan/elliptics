@@ -28,9 +28,10 @@
 
 #include "elliptics.h"
 #include "elliptics/interface.h"
-#include "../monitor/monitor.h"
-#include "../monitor/measure_points.h"
+#include "monitor/monitor.h"
+#include "monitor/measure_points.h"
 #include "request_queue.h"
+#include "library/logger.hpp"
 
 static char *dnet_work_io_mode_string[] = {
 	[DNET_WORK_IO_MODE_BLOCKING] = "BLOCKING",
@@ -408,7 +409,7 @@ static int dnet_process_recv_single(struct dnet_net_state *st)
 	uint64_t size;
 	int err;
 
-	dnet_node_set_trace_id(n->log, st->rcv_cmd.trace_id, st->rcv_cmd.flags & DNET_FLAGS_TRACE_BIT, (ssize_t)-1);
+	dnet_node_set_trace_id(st->rcv_cmd.trace_id, st->rcv_cmd.flags & DNET_FLAGS_TRACE_BIT);
 again:
 	/*
 	 * Reading command first.
@@ -426,8 +427,8 @@ again:
 			err = -EAGAIN;
 			if (errno != EAGAIN && errno != EINTR) {
 				err = -errno;
-				dnet_log_err(n, "%s: failed to receive data, socket: %d/%d",
-						dnet_state_dump_addr(st), st->read_s, st->write_s);
+				DNET_ERROR(n, "%s: failed to receive data, socket: %d/%d", dnet_state_dump_addr(st),
+				           st->read_s, st->write_s);
 				goto out;
 			}
 
@@ -435,14 +436,14 @@ again:
 		}
 
 		if (err == 0) {
-			dnet_log(n, DNET_LOG_ERROR, "%s: peer has disconnected, socket: %d/%d.",
+			dnet_log(n, DNET_LOG_ERROR, "%s: peer has disconnected, socket: %d/%d",
 				dnet_state_dump_addr(st), st->read_s, st->write_s);
 			err = -ECONNRESET;
 			goto out;
 		}
 
 		dnet_node_unset_trace_id();
-		dnet_node_set_trace_id(n->log, st->rcv_cmd.trace_id, st->rcv_cmd.flags & DNET_FLAGS_TRACE_BIT, (ssize_t)-1);
+		dnet_node_set_trace_id(st->rcv_cmd.trace_id, st->rcv_cmd.flags & DNET_FLAGS_TRACE_BIT);
 
 		st->rcv_offset += err;
 	}
@@ -459,7 +460,7 @@ again:
 		tid = c->trans;
 
 		dnet_log(n, DNET_LOG_DEBUG, "%s: %s: received trans: %llu <- %s/%d: "
-				"size: %llu, cflags: %s, status: %d.",
+				"size: %llu, cflags: %s, status: %d",
 				dnet_dump_id(&c->id), dnet_cmd_string(c->cmd), tid,
 				dnet_state_dump_addr(st), c->backend_id,
 				(unsigned long long)c->size, dnet_flags_dump_cflags(c->flags), c->status);
@@ -589,7 +590,7 @@ int dnet_state_accept_process(struct dnet_net_state *orig, struct epoll_event *e
 		}
 
 		/* Some error conditions considered "recoverable" and treated the same way as EAGAIN */
-		dnet_log_err(n, "Failed to accept new client at %s", dnet_state_dump_addr(orig));
+		DNET_ERROR(n, "Failed to accept new client at %s", dnet_state_dump_addr(orig));
 		if (err == -ECONNABORTED || err == -EMFILE || err == -ENOBUFS || err == -ENOMEM) {
 			err = -EAGAIN;
 			goto err_out_exit;
@@ -629,7 +630,7 @@ int dnet_state_accept_process(struct dnet_net_state *orig, struct epoll_event *e
 	// @dnet_net_state() returns state with 2 reference counters
 	dnet_state_put(st);
 
-	dnet_log(n, DNET_LOG_INFO, "Accepted client %s, socket: %d, server address: %s, idx: %d.",
+	dnet_log(n, DNET_LOG_INFO, "Accepted client %s, socket: %d, server address: %s, idx: %d",
 			dnet_addr_string_raw(&addr, client_addr, sizeof(client_addr)), cs,
 			dnet_addr_string_raw(&saddr, server_addr, sizeof(server_addr)), idx);
 
@@ -727,8 +728,8 @@ static int dnet_schedule_network_io(struct dnet_net_state *st, int send)
 	int err, fd;
 
 	if (st->__need_exit) {
-		dnet_log_err(st->n, "%s: scheduling %s event on reset state: need-exit: %d",
-				dnet_state_dump_addr(st), send ? "SEND" : "RECV", st->__need_exit);
+		DNET_ERROR(st->n, "%s: scheduling %s event on reset state: need-exit: %d", dnet_state_dump_addr(st),
+		           send ? "SEND" : "RECV", st->__need_exit);
 		return st->__need_exit;
 	}
 
@@ -760,7 +761,8 @@ static int dnet_schedule_network_io(struct dnet_net_state *st, int send)
 		if (err == -EEXIST) {
 			err = 0;
 		} else {
-			dnet_log_err(st->n, "%s: failed to add %s event, fd: %d", dnet_state_dump_addr(st), send ? "SEND" : "RECV", fd);
+			DNET_ERROR(st->n, "%s: failed to add %s event, fd: %d", dnet_state_dump_addr(st),
+			           send ? "SEND" : "RECV", fd);
 		}
 	} else if (!send && st->accept_s >= 0) {
 		ev.data.ptr = &st->accept_data;
@@ -769,7 +771,8 @@ static int dnet_schedule_network_io(struct dnet_net_state *st, int send)
 		if (err < 0) {
 			err = -errno;
 
-			dnet_log_err(st->n, "%s: failed to add %s event, fd: %d", dnet_state_dump_addr(st), "ACCEPT", st->accept_s);
+			DNET_ERROR(st->n, "%s: failed to add %s event, fd: %d", dnet_state_dump_addr(st), "ACCEPT",
+			           st->accept_s);
 		}
 	}
 
@@ -1048,6 +1051,10 @@ void *dnet_io_process(void *data_)
 
 	make_thread_stat_id(thread_stat_id, sizeof(thread_stat_id), pool);
 
+	if (pool->io) {
+		dnet_node_set_backend_id(pool->io->backend_id);
+	}
+
 	dnet_log(n, DNET_LOG_NOTICE, "started io thread: #%d, nonblocking: %d, backend: %zd",
 		wio->thread_index, nonblocking, pool->io ? (ssize_t)pool->io->backend_id : -1);
 
@@ -1064,7 +1071,7 @@ void *dnet_io_process(void *data_)
 		st = r->st;
 		cmd = r->header;
 
-		dnet_node_set_trace_id(n->log, cmd->trace_id, cmd->flags & DNET_FLAGS_TRACE_BIT, pool->io ? (ssize_t)pool->io->backend_id : (ssize_t)-1);
+		dnet_node_set_trace_id(cmd->trace_id, cmd->flags & DNET_FLAGS_TRACE_BIT);
 
 		dnet_log(n, DNET_LOG_DEBUG, "%s: %s: got IO event: %p: cmd: %s, hsize: %zu, dsize: %zu, mode: %s, backend_id: %zd, queue_time: %ld usecs",
 			dnet_state_dump_addr(st), dnet_dump_id(r->header), r, dnet_cmd_string(cmd->cmd), r->hsize, r->dsize, dnet_work_io_mode_str(pool->mode),
@@ -1086,6 +1093,8 @@ void *dnet_io_process(void *data_)
 
 	dnet_log(n, DNET_LOG_NOTICE, "finished io thread: #%d, nonblocking: %d, backend: %zd",
 		wio->thread_index, pool->mode == DNET_WORK_IO_MODE_NONBLOCKING, pool->io ? (ssize_t)pool->io->backend_id : -1);
+
+	dnet_node_unset_backend_id();
 
 	return NULL;
 }
@@ -1154,7 +1163,7 @@ int dnet_io_init(struct dnet_node *n, struct dnet_config *cfg)
 		nio->epoll_fd = epoll_create(10000);
 		if (nio->epoll_fd < 0) {
 			err = -errno;
-			dnet_log_err(n, "Failed to create epoll fd");
+			DNET_ERROR(n, "Failed to create epoll fd");
 			goto err_out_net_destroy;
 		}
 

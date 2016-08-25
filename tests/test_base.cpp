@@ -17,6 +17,10 @@
 
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <thread>
+#include <chrono>
+
+#include <blackhole/wrapper.hpp>
 
 #ifdef HAVE_COCAINE
 #include <cocaine/framework/manager.hpp>
@@ -77,34 +81,20 @@ void test_wrapper_with_session::operator() () const
 	uint64_t ioflags;
 	std::tie(n, groups, cflags, ioflags) = session_args;
 
-	newapi::session client(n);
+	newapi::session session(n);
+	auto log = session.get_logger();
+	DNET_LOG_INFO(log, "Start test: {}", test_name);
 
-	//XXX: make trace_id to be not random but derived from test case?
-	// (md5 over test_name and session args)
-	uint64_t trace_id = 0;
-	auto buffer = reinterpret_cast<unsigned char *>(&trace_id);
-	for (size_t i = 0; i < sizeof(trace_id); ++i) {
-		buffer[i] = rand();
-	}
-	client.set_trace_id(trace_id);
+	session.set_groups(groups);
+	session.set_cflags(cflags);
+	session.set_ioflags(ioflags);
 
-	/* differentiate in the log clients used to do test actions
-	 * from other kinds of elliptics clients
-	 */
-	client.get_logger().log().add_attribute({"source", {"in-test-client"}});
-
-	BH_LOG(client.get_logger(), DNET_LOG_INFO, "Start test: %s", test_name);
-
-	client.set_groups(groups);
-	client.set_cflags(cflags);
-	client.set_ioflags(ioflags);
-
-	client.set_exceptions_policy(session::no_exceptions);
+	session.set_exceptions_policy(session::no_exceptions);
 
 	// It is safe to pass newapi::session to tests which want to operate on old session.
-	test_body(client);
+	test_body(session);
 
-	BH_LOG(client.get_logger(), DNET_LOG_INFO, "Finish test: %s", test_name);
+	DNET_LOG_INFO(log, "Finish test: {}", test_name);
 }
 
 directory_handler::directory_handler() : m_remove(false)
@@ -358,43 +348,57 @@ struct json_value_visitor : public boost::static_visitor<>
 	}
 };
 
-void server_config::write(const std::string &path)
-{
-	const std::string format = file_logger::format();
-
+void server_config::write(const std::string &path) {
 	rapidjson::MemoryPoolAllocator<> allocator;
+
+	rapidjson::Value sevmap;
+	sevmap.SetArray();
+	sevmap.PushBack("DEBUG", allocator);
+	sevmap.PushBack("NOTICE", allocator);
+	sevmap.PushBack("INFO", allocator);
+	sevmap.PushBack("WARNING", allocator);
+	sevmap.PushBack("ERROR", allocator);
 
 	rapidjson::Value formatter;
 	formatter.SetObject();
 	formatter.AddMember("type", "string", allocator);
-	formatter.AddMember("pattern", format.c_str(), allocator);
+	formatter.AddMember("sevmap", sevmap, allocator);
+	formatter.AddMember("pattern",
+	                    "{timestamp} {trace_id}/{thread}/{process} {severity}: {message}, attrs: [{...}]",
+	                    allocator);
 
-	rapidjson::Value sink;
-	sink.SetObject();
-	sink.AddMember("type", "files", allocator);
-	sink.AddMember("path", log_path.c_str(), allocator);
-	sink.AddMember("autoflush", true, allocator);
+	rapidjson::Value file_sink;
+	file_sink.SetObject();
+	file_sink.AddMember("type", "file", allocator);
+	file_sink.AddMember("path", log_path.c_str(), allocator);
+	file_sink.AddMember("flush", 1, allocator);
 
-	rapidjson::Value rotation;
-	rotation.SetObject();
-	rotation.AddMember("move", 0, allocator);
-	sink.AddMember("rotation", rotation, allocator);
+	rapidjson::Value async_sink;
+	async_sink.SetObject();
+	async_sink.AddMember("type", "asynchronous", allocator);
+	async_sink.AddMember("factor", 10, allocator);
+	async_sink.AddMember("overflow", "wait", allocator);
+	async_sink.AddMember("sink", file_sink, allocator);
 
-	rapidjson::Value frontend;
-	frontend.SetObject();
-	frontend.AddMember("formatter", formatter, allocator);
-	frontend.AddMember("sink", sink, allocator);
+	rapidjson::Value sinks;
+	sinks.SetArray();
+	sinks.PushBack(async_sink, allocator);
 
-	rapidjson::Value frontends;
-	frontends.SetArray();
-	frontends.PushBack(frontend, allocator);
+	rapidjson::Value core_0;
+	core_0.SetObject();
+	core_0.AddMember("formatter", formatter, allocator);
+	core_0.AddMember("sinks", sinks, allocator);
 
-	rapidjson::Value log_level(file_logger::generate_level(DNET_LOG_DEBUG).c_str(), allocator);
+	rapidjson::Value core;
+	core.SetArray();
+	core.PushBack(core_0, allocator);
+
+	rapidjson::Value log_level("debug", allocator);
 
 	rapidjson::Value logger;
 	logger.SetObject();
 	logger.AddMember("level", log_level, allocator);
-	logger.AddMember("frontends", frontends, allocator);
+	logger.AddMember("core", core, allocator);
 
 	rapidjson::Value server;
 	server.SetObject();
@@ -1112,10 +1116,10 @@ static void start_client_node(const nodes_data::ptr &data, const std::vector<std
                               const start_nodes_config &start_config) {
 	if (!data->directory.path().empty()) {
 		const std::string path = data->directory.path() + "/testsuite-client.log";
-		data->logger.reset(new file_logger(path.c_str(), DNET_LOG_DEBUG));
+		data->logger = make_file_logger(path.c_str(), DNET_LOG_DEBUG);
 
 	} else {
-		data->logger.reset(new logger_base);
+		data->logger.reset();
 	}
 
 	dnet_config config;
@@ -1125,7 +1129,8 @@ static void start_client_node(const nodes_data::ptr &data, const std::vector<std
 	config.check_timeout = start_config.client_check_timeout;
 	config.stall_count = start_config.client_stall_count;
 
-	data->node.reset(new node(logger(*data->logger, blackhole::log::attributes_t()), config));
+	std::unique_ptr<blackhole::wrapper_t> logger{new blackhole::wrapper_t(*data->logger, {})};
+	data->node.reset(new node(std::move(logger), config));
 	for (size_t i = 0; i < remotes.size(); ++i) {
 		data->node->add_remote(remotes[i].c_str());
 	}

@@ -113,11 +113,11 @@ data_pointer local_session::read(const dnet_id &id, uint64_t *user_flags, dnet_t
 	struct dnet_io_req *r, *tmp;
 
 	list_for_each_entry_safe(r, tmp, &m_state->send_list, req_entry) {
-		dnet_log(m_state->n, DNET_LOG_DEBUG, "hsize: %zu, dsize: %zu", r->hsize, r->dsize);
+		DNET_LOG_DEBUG(m_state->n, "hsize: {}, dsize: {}", r->hsize, r->dsize);
 
 		dnet_cmd *req_cmd = reinterpret_cast<dnet_cmd *>(r->header ? r->header : r->data);
 
-		dnet_log(m_state->n, DNET_LOG_DEBUG, "entry in list, status: %d", req_cmd->status);
+		DNET_LOG_DEBUG(m_state->n, "entry in list, status: {}", req_cmd->status);
 
 		if (req_cmd->status) {
 			*errp = req_cmd->status;
@@ -131,8 +131,7 @@ data_pointer local_session::read(const dnet_id &id, uint64_t *user_flags, dnet_t
 			if (timestamp)
 				*timestamp = req_io->timestamp;
 
-			dnet_log(m_state->n, DNET_LOG_DEBUG, "entry in list, size: %llu",
-				static_cast<unsigned long long>(req_io->size));
+			DNET_LOG_DEBUG(m_state->n, "entry in list, size: {}", req_io->size);
 
 			data_pointer result;
 
@@ -192,7 +191,7 @@ int local_session::write(const dnet_id &id, const char *data, size_t size, uint6
 	buffer.write(io);
 	buffer.write(data, size);
 
-	dnet_log(m_state->n, DNET_LOG_DEBUG, "going to write size: %zu", size);
+	DNET_LOG_DEBUG(m_state->n, "going to write size: {}", size);
 
 	data_pointer datap = std::move(buffer);
 
@@ -315,14 +314,13 @@ int local_session::update_index_internal(const dnet_id &id, const dnet_raw_id &i
 	timersub(&end, &start, &end);
 	long diff = end.tv_sec * 1000000 + end.tv_usec;
 
-	if (dnet_log_enabled(m_state->n->log, DNET_LOG_INFO)) {
+	{
 		char index_str[2*DNET_ID_SIZE+1];
 
 		dnet_dump_id_len_raw(index.id, 8, index_str);
 
-		dnet_log(m_state->n, DNET_LOG_INFO, "%s: updating internal index: %s, data-size: %zd, action: %s, "
-				"time: %ld usecs",
-				dnet_dump_id(&id), index_str, data.size(), update_index_action_strings[action], diff);
+		DNET_LOG_INFO(m_state->n, "{}: updating internal index: {}, data-size: {}, action: {}, time: {} usecs",
+		              dnet_dump_id(&id), index_str, data.size(), update_index_action_strings[action], diff);
 	}
 
 	return err;

@@ -134,15 +134,15 @@ static void run_on_single_backend(const bpo::variables_map &vm,
 		// since it is packed and there will be alignment issues and
 		// following error:
 		// error: cannot bind packed field ... to int&
-		BH_LOG(log, DNET_LOG_DEBUG,
-				"key: %s, backend: %d, user_flags: %llx, ts: %lld.%09lld, status: %d, size: %lld, "
-				"iterated_keys: %lld/%lld",
+		DNET_LOG_DEBUG(log,
+				"key: {}, backend: {}, user_flags: {:x}, ts: {}.{}, status: {}, size: {}, "
+				"iterated_keys: {}/{}",
 			dnet_dump_id_len_raw(it->reply()->key.id, DNET_ID_SIZE, buffer),
-			(int)it->command()->backend_id,
-			(unsigned long long)it->reply()->user_flags,
-			(unsigned long long)it->reply()->timestamp.tsec, (unsigned long long)it->reply()->timestamp.tnsec,
-			(int)it->reply()->status, (unsigned long long)it->reply()->size,
-			(unsigned long long)it->reply()->iterated_keys, (unsigned long long)it->reply()->total_keys);
+			it->command()->backend_id,
+			it->reply()->user_flags,
+			it->reply()->timestamp.tsec, it->reply()->timestamp.tnsec,
+			it->reply()->status, it->reply()->size,
+			it->reply()->iterated_keys, it->reply()->total_keys);
 #endif
 
 		copied_size += it->reply()->size;
@@ -232,8 +232,7 @@ int main(int argc, char *argv[])
 	}
 
 	try {
-		elliptics::file_logger logger(log_file.c_str(), elliptics::file_logger::parse_level(log_level));
-		elliptics::node node(ioremap::elliptics::logger(logger, blackhole::log::attributes_t()));
+		elliptics::node node(elliptics::make_file_logger(log_file.c_str(), DNET_LOG_INFO));
 		for (auto r = remotes.begin(), rend = remotes.end(); r != rend; ++r) {
 			try {
 				node.add_remote(*r);

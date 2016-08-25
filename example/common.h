@@ -32,27 +32,6 @@ extern "C" {
 struct dnet_node *dnet_parse_config(const char *file, int mon);
 int dnet_parse_groups(char *value, int **groups);
 
-enum dnet_common_embed_types {
-	DNET_FCGI_EMBED_DATA		= 1,
-	DNET_FCGI_EMBED_TIMESTAMP,
-};
-
-struct dnet_common_embed {
-	uint64_t		size;
-	uint32_t		type;
-	uint32_t		flags;
-	uint8_t			data[0];
-};
-
-static inline void dnet_common_convert_embedded(struct dnet_common_embed *e)
-{
-	e->size = dnet_bswap64(e->size);
-	e->type = dnet_bswap32(e->type);
-	e->flags = dnet_bswap32(e->flags);
-}
-
-int dnet_common_prepend_data(struct timespec *ts, uint64_t size, void *buf, int *bufsize);
-
 int dnet_background(void);
 
 #ifdef __cplusplus

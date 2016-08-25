@@ -57,19 +57,10 @@
 
 #include <type_traits>
 
-#define BLACKHOLE_HEADER_ONLY
-#include <blackhole/repository.hpp>
-#include <blackhole/repository/config/parser/rapidjson.hpp>
-#include <blackhole/frontend/syslog.hpp>
-#include <blackhole/frontend/files.hpp>
-#include <blackhole/sink/socket.hpp>
-//#include <blackhole/formatter/json.hpp>
+#include <blackhole/registry.hpp>
+#include <blackhole/config/json.hpp>
 
 #include "common.h"
-
-#ifndef __unused
-#define __unused	__attribute__ ((unused))
-#endif
 
 namespace ioremap { namespace elliptics { namespace config {
 
@@ -94,68 +85,49 @@ extern "C" void dnet_config_data_destroy(dnet_config_data *public_data)
 	delete data;
 }
 
-extern "C" int dnet_node_reset_log(struct dnet_node *n __unused)
-{
-	return 0;
+static blackhole::root_logger_t make_logger(config_data *data) {
+	auto &level = data->logger_level;
+
+	auto log = blackhole::registry::configured()
+		->builder<blackhole::config::json_t>(std::istringstream{data->logger_value})
+		.build("core");
+
+	blackhole::root_logger_t root{std::move(log)};
+	root.filter([&level](const blackhole::record_t &record) {
+		return log_filter(record, level);
+	});
+	return std::move(root);
 }
 
-static blackhole::dynamic_t convert(const kora::config_t &object) {
-	auto json = kora::to_json(object.underlying_object());
-	rapidjson::Document doc;
-	doc.Parse<0>(json.c_str());
-	return blackhole::repository::config::transformer_t<rapidjson::Value>::transform(doc);
-}
-
-static void parse_logger(config_data *data, const kora::config_t &logger)
-{
-	using namespace blackhole;
-
-	// Available logging sinks.
-	typedef boost::mpl::vector<
-	    blackhole::sink::files_t<
-	        blackhole::sink::files::boost_backend_t,
-	        blackhole::sink::rotator_t<
-	            blackhole::sink::files::boost_backend_t,
-	            blackhole::sink::rotation::watcher::move_t
-	        >
-	    >,
-	    blackhole::sink::syslog_t<dnet_log_level>,
-	    blackhole::sink::socket_t<boost::asio::ip::tcp>,
-	    blackhole::sink::socket_t<boost::asio::ip::udp>
-	> sinks_t;
-
-	// Available logging formatters.
-	typedef boost::mpl::vector<
-	    blackhole::formatter::string_t
-//	    blackhole::formatter::json_t
-	> formatters_t;
-
-	auto &repository = blackhole::repository_t::instance();
-	repository.configure<sinks_t, formatters_t>();
-
-	auto frontends = convert(logger)["frontends"];
-
-	log_config_t log_config = repository::config::parser_t<log_config_t>::parse("root", frontends);
-
-	const auto mapper = file_logger::mapping();
-	for(auto it = log_config.frontends.begin(); it != log_config.frontends.end(); ++it) {
-		it->formatter.mapper = mapper;
-	}
-
-	repository.add_config(log_config);
-
-	data->logger_base = repository.root<dnet_log_level>();
-	data->logger_base.add_attribute(keyword::request_id() = 0);
-
-	const auto &level_config = logger["level"];
-	const std::string &level = level_config.to<std::string>();
+static void parse_logger(config_data *data, const kora::config_t &logger) {
+	const auto level = logger.at("level", std::string{"info"});
 	try {
-		data->logger_base.verbosity(file_logger::parse_level(level));
-	} catch (error &exc) {
-		throw config_error() << level_config.path() << " " << exc.what();
+		data->logger_level = dnet_log_parse_level(level.c_str());
+	} catch (std::exception &e) {
+		throw config_error() << "failed to parse log level: " << e.what();
 	}
 
-	data->cfg_state.log = &data->logger;
+	try {
+		data->logger_value = kora::to_json(logger.underlying_object());
+	} catch (std::exception &e) {
+		throw config_error() << "failed to serialize logger's json: " << e.what();
+	}
+
+	try {
+		data->root_logger =
+		        std::unique_ptr<blackhole::root_logger_t>(new blackhole::root_logger_t(make_logger(data)));
+
+		std::unique_ptr<dnet_logger> wrapper{
+		        new blackhole::wrapper_t(*data->root_logger, {{"source", "elliptics"}})};
+
+		std::unique_ptr<dnet_logger> trace_wrapper(new trace_wrapper_t(std::move(wrapper)));
+
+		data->logger.reset(new backend_wrapper_t(std::move(trace_wrapper)));
+
+		data->cfg_state.log = data->logger.get();
+	} catch (std::exception &e) {
+		throw config_error() << "failed to initialize blackhole log: " << e.what();
+	}
 }
 
 struct dnet_addr_wrap {
@@ -251,11 +223,11 @@ static int dnet_set_malloc_options(config_data *data, unsigned long long value)
 
 	err = mallopt(M_MMAP_THRESHOLD, thr);
 	if (err < 0) {
-		dnet_backend_log(data->cfg_state.log, DNET_LOG_ERROR, "Failed to set mmap threshold to %d: %s", thr, strerror(errno));
+		DNET_LOG_ERROR(data->cfg_state.log, "Failed to set mmap threshold to {}: {}", thr, strerror(errno));
 		return err;
 	}
 
-	dnet_backend_log(data->cfg_state.log, DNET_LOG_INFO, "Set mmap threshold to %d.", thr);
+	DNET_LOG_INFO(data->cfg_state.log, "Set mmap threshold to {}", thr);
 	return 0;
 }
 
@@ -297,7 +269,7 @@ void parse_options(config_data *data, const kora::config_t &options)
 		try {
 			data->remotes.emplace_back(*it);
 		} catch (const std::exception &e) {
-			dnet_backend_log(data->cfg_state.log, DNET_LOG_ERROR, "Failed to add address to remotes: %s", e.what());
+			DNET_LOG_ERROR(data->cfg_state.log, "Failed to add address to remotes: {}", e.what());
 		}
 	}
 
@@ -351,9 +323,9 @@ void parse_options(config_data *data, const kora::config_t &options)
 	}
 }
 
-std::shared_ptr<dnet_backend_info> dnet_parse_backend(config_data *data, uint32_t backend_id, const kora::config_t &backend)
-{
-	auto info = std::make_shared<dnet_backend_info>(data->logger, backend_id);
+std::shared_ptr<dnet_backend_info>
+dnet_parse_backend(config_data *data, uint32_t backend_id, const kora::config_t &backend) {
+	auto info = std::make_shared<dnet_backend_info>(*data->logger->inner_logger(), backend_id);
 
 	info->enable_at_start = backend.at<bool>("enable", true);
 	info->read_only_at_start = backend.at<bool>("read_only", false);
@@ -430,25 +402,25 @@ extern "C" struct dnet_node *dnet_parse_config(const char *file, int mon)
 		if (data->remotes.size() != 0) {
 			int err = dnet_add_state(node, reinterpret_cast<const dnet_addr *>(data->remotes.data()), data->remotes.size(), 0);
 			if (err < 0)
-				BH_LOG(*node->log, DNET_LOG_WARNING, "Failed to connect to remote nodes: %d", err);
+				DNET_LOG_WARNING(node->log, "Failed to connect to remote nodes: {}", err);
 		}
 
 		return node;
 
 	} catch (const config_error &exc) {
 		if (data && data->cfg_state.log) {
-			dnet_backend_log(data->cfg_state.log, DNET_LOG_ERROR,
-				"cnf: failed to read config file '%s': %s", file, exc.what());
+			DNET_LOG_ERROR(data->cfg_state.log, "cnf: failed to read config file '{}': {}", file,
+			               exc.what());
 		} else {
-			fprintf(stderr, "cnf: failed to read config file '%s': %s", file, exc.what());
+			fprintf(stderr, "cnf: failed to read config file '%s': %s\n", file, exc.what());
 			fflush(stderr);
 		}
 
 	} catch (const std::exception &exc) {
 		if (data && data->cfg_state.log) {
-			dnet_backend_log(data->cfg_state.log, DNET_LOG_ERROR, "cnf: %s", exc.what());
+			DNET_LOG_ERROR(data->cfg_state.log, "cnf: {}", exc.what());
 		} else {
-			fprintf(stderr, "cnf: %s", exc.what());
+			fprintf(stderr, "cnf: %s\n", exc.what());
 			fflush(stderr);
 		}
 	}
@@ -461,20 +433,70 @@ extern "C" struct dnet_node *dnet_parse_config(const char *file, int mon)
 	return NULL;
 }
 
-extern "C" int dnet_backend_check_log_level(dnet_logger *l, int level)
+extern "C" int dnet_node_reset_log(struct dnet_node *n)
 {
-	return dnet_log_enabled(l, dnet_log_level(level));
+	if (!n || !n->config_data || dnet_need_exit(n)) {
+		return -EINVAL;
+	}
+
+	static_cast<config_data *>(n->config_data)->reset_logger();
+	return 0;
 }
 
-extern "C" void dnet_backend_log_raw(dnet_logger *l, int level, const char *format, ...)
-{
-	va_list args;
+extern "C" int dnet_node_get_verbosity(struct dnet_node *n) {
+	if (!n || !n->config_data || dnet_need_exit(n)) {
+		return -EINVAL;
+	}
 
-	va_start(args, format);
-	DNET_LOG_BEGIN_ONLY_LOG(l, dnet_log_level(level));
-	DNET_LOG_VPRINT(format, args);
-	DNET_LOG_END();
-	va_end(args);
+	return static_cast<config_data *>(n->config_data)->logger_level;
+}
+
+extern "C" int dnet_node_set_verbosity(struct dnet_node *n, enum dnet_log_level level) {
+	if (level < 0 || level > DNET_LOG_ERROR) {
+		return -EINVAL;
+	}
+
+	if (!n || !n->config_data || dnet_need_exit(n)) {
+		return -EINVAL;
+	}
+
+	static_cast<config_data *>(n->config_data)->logger_level = level;
+	n->config_data->backends->set_verbosity((dnet_log_level)level);
+	return 0;
+}
+
+config_data::config_data() {
+	dnet_empty_time(&config_timestamp);
+}
+
+std::shared_ptr<kora::config_parser_t> config_data::parse_config() {
+	struct stat st;
+	dnet_time ts;
+	memset(&st, 0, sizeof(st));
+	if (stat(config_path.c_str(), &st) != 0) {
+		int err = -errno;
+		throw config_error() << "failed to get stat of config file'" << config_path << "': " << strerror(-err);
+	}
+
+	ts.tsec = st.st_mtime;
+	ts.tnsec = 0;
+
+	std::unique_lock<std::mutex> locker(parser_mutex);
+	if (dnet_time_is_empty(&config_timestamp) ||
+	    dnet_time_before(&config_timestamp, &ts)) {
+		config_timestamp = ts;
+		parser = std::make_shared<kora::config_parser_t>();
+		parser->open(config_path);
+		return parser;
+	} else {
+		return parser;
+	}
+}
+
+void config_data::reset_logger() {
+	DNET_LOG_INFO(logger, "resetting logger");
+	*root_logger = make_logger(this);
+	DNET_LOG_INFO(logger, "logger has been reset");
 }
 
 } } } // namespace ioremap::elliptics::config

@@ -35,7 +35,7 @@ struct proc_io_stat {
 	uint64_t cancelled_write_bytes;
 };
 
-static int fill_proc_io_stat(dnet_logger *l, struct proc_io_stat &st) {
+static int fill_proc_io_stat(dnet_node *n, struct proc_io_stat &st) {
 	FILE *f;
 	int err = 0;
 	memset(&st, 0, sizeof(st));
@@ -43,8 +43,7 @@ static int fill_proc_io_stat(dnet_logger *l, struct proc_io_stat &st) {
 	f = fopen("/proc/self/io", "r");
 	if (!f) {
 		err = -errno;
-		dnet_log_only_log(l, DNET_LOG_ERROR, "Failed to open '/proc/self/io': %s [%d].",
-		                 strerror(errno), errno);
+		DNET_LOG_ERROR(n, "Failed to open '/proc/self/io': {} [{}]", strerror(errno), errno);
 		goto err_out_exit;
 	}
 
@@ -75,7 +74,7 @@ struct proc_stat {
 	unsigned long mdata;
 };
 
-static int fill_proc_stat(dnet_logger *l, struct proc_stat &st) {
+static int fill_proc_stat(dnet_node *n, struct proc_stat &st) {
 	int err = 0;
 	FILE *f;
 	memset(&st, 0, sizeof(st));
@@ -83,8 +82,7 @@ static int fill_proc_stat(dnet_logger *l, struct proc_stat &st) {
 	f = fopen("/proc/self/stat", "r");
 	if (!f) {
 		err = -errno;
-		dnet_log_only_log(l, DNET_LOG_ERROR, "Failed to open '/proc/self/stat': %s [%d].",
-		                 strerror(errno), errno);
+		DNET_LOG_ERROR(n, "Failed to open '/proc/self/stat': {} [{}]", strerror(errno), errno);
 		goto err_out_exit;
 	}
 
@@ -96,8 +94,7 @@ static int fill_proc_stat(dnet_logger *l, struct proc_stat &st) {
 	f = fopen("/proc/self/statm", "r");
 	if (!f) {
 		err = -errno;
-		dnet_log_only_log(l, DNET_LOG_ERROR, "Failed to open '/proc/self/statm': %s [%d].",
-		                 strerror(errno), errno);
+		DNET_LOG_ERROR(n, "Failed to open '/proc/self/statm': {} [{}]", strerror(errno), errno);
 		goto err_out_exit;
 	}
 
@@ -121,7 +118,7 @@ struct net_interface_stat {
 	struct net_stat tx;
 };
 
-static int fill_proc_net_stat(dnet_logger *l, std::map<std::string, net_interface_stat> &st)
+static int fill_proc_net_stat(dnet_node *n, std::map<std::string, net_interface_stat> &st)
 {
 	char buf[256] = {'\0'};
 	net_interface_stat net_stat;
@@ -130,15 +127,14 @@ static int fill_proc_net_stat(dnet_logger *l, std::map<std::string, net_interfac
 
 	f = fopen("/proc/net/dev", "r");
 	if (!f) {
-		dnet_log_only_log(l, DNET_LOG_ERROR, "Failed to open '/proc/net/dev': %s [%d].",
-				  strerror(errno), errno);
+		DNET_LOG_ERROR(n, "Failed to open '/proc/net/dev': {} [{}]", strerror(errno), errno);
 		return -errno;
 	}
 
 	// skip first 2 headers
 	for (int i = 0; i < 2; ++i) {
 		if (!fgets(buf, sizeof(buf), f)) {
-			dnet_log_only_log(l, DNET_LOG_ERROR, "could not read header on '/proc/net/dev'");
+			DNET_LOG_ERROR(n, "could not read header on '/proc/net/dev'");
 			err = -ENOENT;
 			goto err_out_exit;
 		}
@@ -150,8 +146,7 @@ static int fill_proc_net_stat(dnet_logger *l, std::map<std::string, net_interfac
 			     &net_stat.tx.bytes, &net_stat.tx.packets, &net_stat.tx.errors);
 		if (err < 0) {
 			if (ferror(f)) {
-				dnet_log_only_log(l, DNET_LOG_ERROR, "fscanf failed on '/proc/net/dev': %s [%d].",
-						  strerror(errno), errno);
+				DNET_LOG_ERROR(n, "fscanf failed on '/proc/net/dev': {} [{}]", strerror(errno), errno);
 				err = -errno;
 				goto err_out_exit;
 			} else {
@@ -210,7 +205,7 @@ static void fill_io(dnet_node *node,
 	int err = 0;
 	proc_io_stat st;
 
-	err = fill_proc_io_stat(node->log, st);
+	err = fill_proc_io_stat(node, st);
 	io_stat.AddMember("error", err, allocator);
 
 	if (!err) {
@@ -235,7 +230,7 @@ static void fill_stat(dnet_node *node,
 	int err = 0;
 	proc_stat st;
 
-	err = fill_proc_stat(node->log, st);
+	err = fill_proc_stat(node, st);
 	stat_stat.AddMember("error", err, allocator);
 
 	if (!err) {
@@ -273,7 +268,7 @@ static void fill_net(dnet_node *node,
 	int err = 0;
 	std::map<std::string, net_interface_stat> st;
 
-	err = fill_proc_net_stat(node->log, st);
+	err = fill_proc_net_stat(node, st);
 	net_stat.AddMember("error", err, allocator);
 
 	if (!err) {

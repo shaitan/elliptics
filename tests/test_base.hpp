@@ -302,7 +302,7 @@ struct nodes_data
 	std::vector<server_node> nodes;
 #endif // NO_SERVER
 
-	std::unique_ptr<logger_base> logger;
+	std::unique_ptr<dnet_logger> logger;
 	std::unique_ptr<ioremap::elliptics::node> node;
 };
 

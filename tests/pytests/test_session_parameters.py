@@ -80,7 +80,6 @@ class TestSession:
         ('cflags', 0),
         ('ioflags', 0),
         ('timestamp', elliptics.Time(2 ** 64 - 1, 2 ** 64 - 1)),
-        ('trace_id', 0),
         ('user_flags', 0)])
     @pytest.mark.usefixtures("servers")
     def test_properties_default(self, simple_node, prop, value):

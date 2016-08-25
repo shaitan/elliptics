@@ -1,22 +1,16 @@
 #ifndef CONFIG_HPP
 #define CONFIG_HPP
-
-#include <elliptics/error.hpp>
-#include <kora/dynamic.hpp>
 #include <kora/config.hpp>
-#include <blackhole/attribute.hpp>
 
-#include <elliptics/session.hpp>
-#include "library/backend.h"
-#include "library/elliptics.h"
+#include <blackhole/root.hpp>
 
-namespace ioremap {
+#include "elliptics/session.hpp"
 
-namespace monitor {
-	struct monitor_config;
-} /* namespace monitor */
 
-namespace elliptics { namespace config {
+#include "library/logger.hpp"
+#include "monitor/monitor.hpp"
+
+namespace ioremap { namespace elliptics { namespace config {
 
 class config_error : public std::exception
 {
@@ -77,14 +71,17 @@ struct config_data : public dnet_config_data {
 
 	std::shared_ptr<kora::config_parser_t> parse_config();
 
+	void reset_logger();
+
 	std::string					config_path;
 	std::mutex					parser_mutex;
 	std::shared_ptr<kora::config_parser_t>		parser;
 	dnet_time					config_timestamp;
 	dnet_backend_info_manager			backends_guard;
 	std::string					logger_value;
-	ioremap::elliptics::logger_base			logger_base;
-	ioremap::elliptics::logger			logger;
+	std::atomic<dnet_log_level>			logger_level;
+	std::unique_ptr<blackhole::root_logger_t>	root_logger;
+	std::unique_ptr<backend_wrapper_t>		logger;
 	std::vector<address>				remotes;
 	std::unique_ptr<cache::cache_config>		cache_config;
 	std::unique_ptr<monitor::monitor_config>	monitor_config;

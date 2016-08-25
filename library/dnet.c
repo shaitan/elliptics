@@ -69,7 +69,7 @@ int dnet_remove_local(struct dnet_backend_io *backend, struct dnet_node *n, stru
 	dnet_convert_io_attr(io);
 
 	err = backend->cb->command_handler(n->st, backend->cb->command_private, cmd, io, &cmd_stats);
-	dnet_log(n, DNET_LOG_NOTICE, "%s: local remove: err: %d.", dnet_dump_id(&cmd->id), err);
+	dnet_log(n, DNET_LOG_NOTICE, "%s: local remove: err: %d", dnet_dump_id(&cmd->id), err);
 
 	return err;
 }
@@ -166,7 +166,7 @@ static int dnet_cmd_status(struct dnet_net_state *orig, struct dnet_cmd *cmd __u
 	dnet_log(n, DNET_LOG_INFO, "%s: status-change: nflags: %s->%s, log_level: %d->%d, "
 			"status_flags: EXIT: %d, RO: %d",
 			dnet_dump_id(&cmd->id), dnet_flags_dump_cfgflags(n->flags), dnet_flags_dump_cfgflags(st->nflags),
-			(int)dnet_log_get_verbosity(n->log), st->log_level,
+			(int)dnet_node_get_verbosity(n), st->log_level,
 			!!(st->status_flags & DNET_STATUS_EXIT), !!(st->status_flags & DNET_STATUS_RO));
 
 	if (st->status_flags != -1) {
@@ -184,11 +184,12 @@ static int dnet_cmd_status(struct dnet_net_state *orig, struct dnet_cmd *cmd __u
 	if (st->nflags != -1)
 		n->flags = st->nflags;
 
-	if (st->log_level != ~0U)
-		dnet_log_set_verbosity(n->log, (enum dnet_log_level)st->log_level);
+	if (st->log_level != ~0U) {
+		dnet_node_set_verbosity(n, st->log_level);
+	}
 
 	st->nflags = n->flags;
-	st->log_level = dnet_log_get_verbosity(n->log);
+	st->log_level = dnet_node_get_verbosity(n);
 	st->status_flags = 0;
 
 	if (n->need_exit)
@@ -242,7 +243,7 @@ int dnet_send_ack(struct dnet_net_state *st, struct dnet_cmd *cmd, int err, int 
 		ack.flags |= DNET_FLAGS_REPLY;
 		ack.status = err;
 
-		dnet_log(n, DNET_LOG_NOTICE, "%s: %s: ack trans: %llu -> %s: cflags: %s, status: %d.",
+		dnet_log(n, DNET_LOG_NOTICE, "%s: %s: ack trans: %llu -> %s: cflags: %s, status: %d",
 				dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), tid,
 				dnet_addr_string(&st->addr), dnet_flags_dump_cflags(ack.flags), err);
 
@@ -1329,7 +1330,7 @@ static int dnet_cas_local(struct dnet_backend_io *backend, struct dnet_node *n, 
 			dnet_log(n, DNET_LOG_ERROR, "%s: cas: checksum mismatch: disk-csum: %s, recv-csum: %s",
 					dnet_dump_id(id), disk_csum, recv_csum);
 			return -EBADFD;
-		} else if (dnet_log_enabled(n->log, DNET_LOG_NOTICE)) {
+		} else {
 			char recv_csum[DNET_ID_SIZE * 2 + 1];
 
 			dnet_dump_id_len_raw(remote_csum, DNET_ID_SIZE, recv_csum);
@@ -2036,7 +2037,7 @@ int dnet_checksum_file(struct dnet_node *n, const char *file, uint64_t offset, u
 
 	if (err < 0) {
 		err = -errno;
-		dnet_log_err(n, "failed to open to be csummed file '%s'", file);
+		DNET_ERROR(n, "failed to open to be csummed file '%s'", file);
 		goto err_out_exit;
 	}
 	fd = err;
@@ -2057,7 +2058,7 @@ int dnet_checksum_fd(struct dnet_node *n, int fd, uint64_t offset, uint64_t size
 		err = fstat(fd, &st);
 		if (err < 0) {
 			err = -errno;
-			dnet_log_err(n, "CSUM: fd: %d", fd);
+			DNET_ERROR(n, "CSUM: fd: %d", fd);
 			goto err_out_exit;
 		}
 

@@ -14,6 +14,7 @@
  */
 
 #include <algorithm>
+#include <thread>
 
 #include <boost/program_options.hpp>
 #define BOOST_TEST_NO_MAIN
