@@ -86,6 +86,11 @@ struct dnet_io_req {
 	struct timeval		time;
 };
 
+#define ELLIPTICS_PROTOCOL_VERSION_0 2
+#define ELLIPTICS_PROTOCOL_VERSION_1 26
+#define ELLIPTICS_PROTOCOL_VERSION_2 0
+#define ELLIPTICS_PROTOCOL_VERSION_3 0
+
 /*
  * Currently executed network state machine:
  * receives and sends command and data.
@@ -950,27 +955,14 @@ struct dnet_iterator_file_private {
 	int				fd;		/* Append mode file descriptor */
 };
 
-#ifndef CONFIG_ELLIPTICS_VERSION_0
-#error "Elliptics version macros is not defined"
-#endif
-#ifndef CONFIG_ELLIPTICS_VERSION_1
-#error "Elliptics version macros is not defined"
-#endif
-#ifndef CONFIG_ELLIPTICS_VERSION_2
-#error "Elliptics version macros is not defined"
-#endif
-#ifndef CONFIG_ELLIPTICS_VERSION_3
-#error "Elliptics version macros is not defined"
-#endif
-
 static inline void dnet_version_encode(struct dnet_id *id)
 {
 	int *ids = (int *)(id->id);
 
-	ids[0] = dnet_bswap32(CONFIG_ELLIPTICS_VERSION_0);
-	ids[1] = dnet_bswap32(CONFIG_ELLIPTICS_VERSION_1);
-	ids[2] = dnet_bswap32(CONFIG_ELLIPTICS_VERSION_2);
-	ids[3] = dnet_bswap32(CONFIG_ELLIPTICS_VERSION_3);
+	ids[0] = dnet_bswap32(ELLIPTICS_PROTOCOL_VERSION_0);
+	ids[1] = dnet_bswap32(ELLIPTICS_PROTOCOL_VERSION_1);
+	ids[2] = dnet_bswap32(ELLIPTICS_PROTOCOL_VERSION_2);
+	ids[3] = dnet_bswap32(ELLIPTICS_PROTOCOL_VERSION_3);
 }
 
 static inline void dnet_version_decode(struct dnet_id *id, int version[4])

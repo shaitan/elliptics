@@ -767,9 +767,9 @@ static void dnet_process_socket(const dnet_connect_state_ptr &state, epoll_event
 
 			DNET_LOG_ERROR(state->node, "{}: reverse lookup command failed: local version: {}.{}.{}.{}, "
 			                            "remote version: {}.{}.{}.{}, error: {} [{}]",
-			               dnet_addr_string(&socket->addr), CONFIG_ELLIPTICS_VERSION_0,
-			               CONFIG_ELLIPTICS_VERSION_1, CONFIG_ELLIPTICS_VERSION_2,
-			               CONFIG_ELLIPTICS_VERSION_3, version[0], version[1], version[2], version[3],
+			               dnet_addr_string(&socket->addr), ELLIPTICS_PROTOCOL_VERSION_0,
+			               ELLIPTICS_PROTOCOL_VERSION_1, ELLIPTICS_PROTOCOL_VERSION_2,
+			               ELLIPTICS_PROTOCOL_VERSION_3, version[0], version[1], version[2], version[3],
 			               strerror(-err), err);
 			dnet_fail_socket(state, socket, err);
 			break;
