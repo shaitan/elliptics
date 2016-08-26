@@ -35,7 +35,7 @@ Architecture: any
 Depends: ${shlibs:Depends},
          ${misc:Depends},
          eblob (>= 0.23.11),
-         elliptics-client (= ${Source-Version}),
+         elliptics-client2.27 (= ${Source-Version}),
          handystats (>= 1.11.0),
          libkora-util1 (= 1.1.0-rc1),
          libcocaine-core3 (>= 0.12.9.0-alpha5), libcocaine-core3 (<< 0.12.10),
@@ -46,20 +46,20 @@ Provides: elliptics-2.10
 Description: Distributed hash table storage
  Elliptics network is a fault tolerant distributed hash table object storage.
 
-Package: elliptics-client
+Package: elliptics-client2.27
 Architecture: any
 Depends: ${shlibs:Depends},
          ${misc:Depends},
          msgpack-python | python-msgpack,
          handystats (>= 1.11.0),
          libblackhole1 (>= 1.1.0-1),
-Replaces: elliptics-2.10
+Replaces: elliptics-client
 Description: Distributed hash table storage (client library)
  Elliptics network is a fault tolerant distributed hash table object storage.
 
 Package: elliptics-dbg
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, elliptics (= ${Source-Version}) | elliptics-client (= ${Source-Version})
+Depends: ${shlibs:Depends}, ${misc:Depends}, elliptics (= ${Source-Version}) | elliptics-client2.27 (= ${Source-Version})
 Replaces: elliptics-dbg-2.10, srw-dbg
 Provides: elliptics-dbg-2.10
 Description: Distributed hash table storage (debug files)
@@ -67,7 +67,7 @@ Description: Distributed hash table storage (debug files)
 
 Package: elliptics-dev
 Architecture: any
-Depends: elliptics-client (= ${Source-Version})
+Depends: elliptics-client2.27 (= ${Source-Version})
 Suggests: eblob (>= 0.23.11),
           libkora-util1 (= 1.1.0-rc1),
           libcocaine-core3 (>= 0.12.9.0-alpha5), libcocaine-core3 (<< 0.12.10),

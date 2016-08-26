@@ -48,6 +48,13 @@ debian/elliptics-client.postrm.debhelper
 debian/elliptics-client.preinst.debhelper
 debian/elliptics-client.prerm.debhelper
 debian/elliptics-client.substvars
+debian/elliptics-client2.27
+debian/elliptics-client2.27.debhelper.log
+debian/elliptics-client2.27.postinst.debhelper
+debian/elliptics-client2.27.postrm.debhelper
+debian/elliptics-client2.27.preinst.debhelper
+debian/elliptics-client2.27.prerm.debhelper
+debian/elliptics-client2.27.substvars
 debian/elliptics-dbg
 debian/elliptics-dbg.debhelper.log
 debian/elliptics-dbg.substvars
