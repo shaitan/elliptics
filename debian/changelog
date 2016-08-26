@@ -1,3 +1,9 @@
+elliptics (2.27.0.0~alpha1) unstable; urgency=medium
+
+  * separate package and protocol versions
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Fri, 26 Aug 2016 17:26:03 +0300
+
 elliptics (2.27.0.0~alpha0) unstable; urgency=medium
 
   * logger: migrate to blackhole v1
