@@ -1,3 +1,10 @@
+elliptics (2.27.0.0~alpha0) unstable; urgency=medium
+
+  * logger: migrate to blackhole v1
+  * debian: temporary rename elliptics-client to elliptics-client2.27
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Fri, 26 Aug 2016 12:11:46 +0300
+
 elliptics (2.26.11.0-11) unstable; urgency=medium
 
   * fix using improper index
