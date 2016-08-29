@@ -1,3 +1,11 @@
+elliptics (2.27.0.0~alpha2) unstable; urgency=medium
+
+  * recovery: fail immediately when some iteration is failed
+  * logger: use local timezone in timestamp specification
+  * logger: update to blackhole v1.2.1
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Mon, 29 Aug 2016 20:06:10 +0300
+
 elliptics (2.27.0.0~alpha1) unstable; urgency=medium
 
   * separate package and protocol versions
