@@ -326,20 +326,20 @@ def main(ctx):
 
     ranges = get_ranges(ctx)
     log.debug("Ranges: {0}".format(ranges))
-    results = None
 
+    results = []
     try:
         ctx.stats.timer('main', 'iterating')
         log.info("Start iterating {0} nodes in the pool".format(len(ranges)))
         iresults = ctx.pool.imap(iterate_node, ((ctx.portable(), addr[0], addr[1], ranges[addr]) for addr in ranges))
-        results = list(iresults)
+        for result in iresults:
+            if result is None:
+                log.error('Some iteration has been failed. Terminating.')
+                ctx.stats.timer('main', 'finished')
+                return False
+            results.append(result)
     except KeyboardInterrupt:
         log.error("Caught Ctrl+C. Terminating.")
-        ctx.stats.timer('main', 'finished')
-        return False
-
-    if any(result is None for result in results):
-        log.error('Some iteration has been failed. Terminating.')
         ctx.stats.timer('main', 'finished')
         return False
 
