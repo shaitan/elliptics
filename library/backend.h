@@ -51,7 +51,7 @@ struct dnet_backend_config_entry
 struct dnet_backend_info
 {
 	dnet_backend_info(dnet_logger &logger, uint32_t backend_id) :
-		log(new blackhole::wrapper_t(logger, {{"source", "eblob"}, {"trace_id", "0000000000000000"}, {"backend_id", backend_id}})),
+		log(new blackhole::wrapper_t(logger, {{"source", "eblob"}, {"backend_id", backend_id}})),
 		backend_id(backend_id), group(0), cache(NULL),
 		enable_at_start(false), read_only_at_start(false),
 		state_mutex(new std::mutex), state(DNET_BACKEND_UNITIALIZED),

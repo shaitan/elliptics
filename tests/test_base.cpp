@@ -364,7 +364,7 @@ void server_config::write(const std::string &path) {
 	formatter.AddMember("type", "string", allocator);
 	formatter.AddMember("sevmap", sevmap, allocator);
 	formatter.AddMember("pattern",
-	                    "{timestamp} {trace_id}/{thread}/{process} {severity}: {message}, attrs: [{...}]",
+	                    "{timestamp:l} {trace_id:{0:default}0>16}/{thread}/{process} {severity}: {message}, attrs: [{...}]",
 	                    allocator);
 
 	rapidjson::Value file_sink;
