@@ -65,7 +65,7 @@ bool log_filter(const blackhole::record_t &record, int level) {
 
 std::unique_ptr<dnet_logger> make_file_logger(const std::string &path, dnet_log_level level) {
 	static const std::string pattern =
-	        "{timestamp} {trace_id:{0:default}0>16}/{thread:x}/{process} {severity}: {message}, attrs: [{...}]";
+	        "{timestamp:l} {trace_id:{0:default}0>16}/{thread:x}/{process} {severity}: {message}, attrs: [{...}]";
 
 	static auto sevmap = [](std::size_t severity, const std::string &spec, blackhole::writer_t &writer) {
 		static const std::array<const char *, 5> mapping = {{"DEBUG", "NOTICE", "INFO", "WARNING", "ERROR"}};

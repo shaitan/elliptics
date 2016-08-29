@@ -5,7 +5,7 @@
 			{
 				"formatter": {
 					"type": "string",
-					"pattern": "{timestamp} {trace_id:{0:default}0>16}/{thread}/{process} {severity}: {message}, attrs: [{...}]",
+					"pattern": "{timestamp:l} {trace_id:{0:default}0>16}/{thread}/{process} {severity}: {message}, attrs: [{...}]",
 					"sevmap": ["DEBUG", "NOTICE", "INFO", "WARNING", "ERROR"]
 				},
 				"sinks": [{
