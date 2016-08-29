@@ -2895,10 +2895,12 @@ async_write_result session::bulk_write(const std::vector<dnet_io_attr> &ios, con
 }
 
 std::unique_ptr<dnet_logger> session::get_logger() const {
+	blackhole::attributes_t attrs;
+	if (get_trace_id()) {
+		attrs.emplace_back("trace_id", to_hex_string(get_trace_id()));
+	}
 	auto logger = get_base_logger(dnet_node_get_logger(get_native_node()));
-	return std::unique_ptr<dnet_logger>(new blackhole::wrapper_t(*logger, {
-		{"trace_id", to_hex_string(get_trace_id())}
-	}));
+	return std::unique_ptr<dnet_logger>(new blackhole::wrapper_t(*logger, std::move(attrs)));
 }
 
 dnet_node *session::get_native_node() const

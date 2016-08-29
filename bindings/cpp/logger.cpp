@@ -65,7 +65,7 @@ bool log_filter(const blackhole::record_t &record, int level) {
 
 std::unique_ptr<dnet_logger> make_file_logger(const std::string &path, dnet_log_level level) {
 	static const std::string pattern =
-	        "{timestamp} {trace_id}/{thread:x}/{process} {severity}: {message}, attrs: [{...}]";
+	        "{timestamp} {trace_id:{0:default}0>16}/{thread:x}/{process} {severity}: {message}, attrs: [{...}]";
 
 	static auto sevmap = [](std::size_t severity, const std::string &spec, blackhole::writer_t &writer) {
 		static const std::array<const char *, 5> mapping = {{"DEBUG", "NOTICE", "INFO", "WARNING", "ERROR"}};
@@ -176,11 +176,15 @@ trace_wrapper_t::trace_wrapper_t(std::unique_ptr<dnet_logger> logger)
 : wrapper_t(std::move(logger)) {}
 
 blackhole::attributes_t trace_wrapper_t::attributes() {
-	return {
-		// should be replaced by plain trace::current().trace_id when blackhole gets mapping
-		// and cocaine start to specify trace_id as uint64_t
-		{"trace_id", to_hex_string(trace::current().trace_id)}
-	};
+	if (trace::current().trace_id) {
+		return {
+			// should be replaced by plain trace::current().trace_id when blackhole gets mapping
+			// and cocaine start to specify trace_id as uint64_t
+			{"trace_id", to_hex_string(trace::current().trace_id)}
+		};
+	}
+
+	return {};
 }
 
 backend_wrapper_t::backend_wrapper_t(std::unique_ptr<dnet_logger> logger)

@@ -53,8 +53,6 @@ using blackhole::attribute_list;
 	}});
 
 namespace ioremap { namespace elliptics {
-static const blackhole::attribute_t default_trace_id{"trace_id", "0000000000000000"};
-
 /*
  * Logger interface implementation.
  */
@@ -64,51 +62,22 @@ public:
 	: blackhole::wrapper_t(*log, {{"source", "srw/cocaine"}}) {}
 
 	virtual void log(blackhole::severity_t severity, const blackhole::message_t &message) {
-		blackhole::attribute_list list;
-		list.emplace_back(default_trace_id);
-
-		blackhole::attribute_pack pack;
-		pack.push_back(list);
-
-		blackhole::wrapper_t::log(convert_severity(severity), message, pack);
+		blackhole::wrapper_t::log(convert_severity(severity), message);
 	}
 
 	virtual void
 	log(blackhole::severity_t severity, const blackhole::message_t &message, blackhole::attribute_pack &pack) {
 		//FIXME: is it possible to detect if trace_id is already set?
 		//XXX: what about tracebit? where to get it?
-		blackhole::attribute_list list;
-		if (!has_trace_id(pack)) {
-			list.emplace_back(default_trace_id);
-			pack.push_back(list);
-		}
-
 		blackhole::wrapper_t::log(convert_severity(severity), message, pack);
 	}
 
 	virtual void
 	log(blackhole::severity_t severity, const blackhole::lazy_message_t &message, blackhole::attribute_pack &pack) {
-		blackhole::attribute_list list;
-		if (!has_trace_id(pack)) {
-			list.emplace_back(default_trace_id);
-			pack.push_back(list);
-		}
-
 		blackhole::wrapper_t::log(convert_severity(severity), message, pack);
 	}
 
 private:
-	static bool has_trace_id(const blackhole::attribute_pack &pack) {
-		for (const auto &attributes: pack) {
-			for (const auto &attribute: attributes.get()) {
-				if (attribute.first == "trace_id") {
-					return true;
-				}
-			}
-		}
-		return false;
-	}
-
 	static dnet_log_level convert_severity(blackhole::severity_t severity) {
 		switch (severity) {
 		case cocaine::logging::debug:
