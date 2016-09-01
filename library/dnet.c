@@ -1829,35 +1829,6 @@ static void dnet_fill_state_addr(void *state, struct dnet_addr *addr)
 	memcpy(addr, &n->addrs[0], sizeof(struct dnet_addr));
 }
 
-int dnet_fd_readlink(int fd, char **datap)
-{
-	char *dst, src[64];
-	int dsize = 4096;
-	int err;
-
-	snprintf(src, sizeof(src), "/proc/self/fd/%d", fd);
-
-	dst = malloc(dsize);
-	if (!dst) {
-		err = -ENOMEM;
-		goto err_out_exit;
-	}
-
-	err = readlink(src, dst, dsize);
-	if (err < 0)
-		goto err_out_free;
-
-	dst[err] = '\0';
-	*datap = dst;
-
-	return err + 1; /* including 0-byte */
-
-err_out_free:
-	free(dst);
-err_out_exit:
-	return err;
-}
-
 int dnet_send_file_info(void *state, struct dnet_cmd *cmd, int fd, uint64_t offset, int64_t size)
 {
 	struct dnet_node *n = dnet_get_node_from_state(state);
