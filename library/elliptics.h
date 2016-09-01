@@ -1018,6 +1018,31 @@ again:
 	return 0;
 }
 
+/**
+ * dnet_write_ll() - interruption-safe wrapper for pwrite(2)
+ */
+static inline int dnet_write_ll(int fd, const char *data, size_t size, off_t offset)
+{
+	int err = 0;
+	ssize_t bytes;
+
+	while (size) {
+again:
+		bytes = pwrite(fd, data, size, offset);
+		if (bytes == -1) {
+			if (errno == -EINTR)
+				goto again;
+			err = -errno;
+			goto err_out_exit;
+		}
+		data += bytes;
+		size -= bytes;
+		offset += bytes;
+	}
+err_out_exit:
+	return err;
+}
+
 /*
  * Watermarks for number of bytes written into the wire
  */
