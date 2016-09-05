@@ -1621,3 +1621,32 @@ int dnet_get_vm_stat(dnet_logger *l __unused, struct dnet_vm_stat *st) {
 	return 0;
 }
 #endif
+
+int dnet_fd_readlink(int fd, char **datap)
+{
+	char *dst, src[64];
+	int dsize = 4096;
+	int err;
+
+	snprintf(src, sizeof(src), "/proc/self/fd/%d", fd);
+
+	dst = malloc(dsize);
+	if (!dst) {
+		err = -ENOMEM;
+		goto err_out_exit;
+	}
+
+	err = readlink(src, dst, dsize);
+	if (err < 0)
+		goto err_out_free;
+
+	dst[err] = '\0';
+	*datap = dst;
+
+	return err + 1; /* including 0-byte */
+
+err_out_free:
+	free(dst);
+err_out_exit:
+	return err;
+}
