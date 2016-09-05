@@ -1,3 +1,10 @@
+elliptics (2.26.11.0-12) unstable; urgency=medium
+
+  * using external sort for iterator result container sorting
+  * recovery: fail immediately when some iteration is failed
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Mon, 05 Sep 2016 12:08:58 +0300
+
 elliptics (2.26.11.0-11) unstable; urgency=medium
 
   * fix using improper index
