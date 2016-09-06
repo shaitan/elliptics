@@ -1162,6 +1162,10 @@ static net_state_list_ptr dnet_check_route_table_victims(struct dnet_node *node,
 {
 	*states_count = 0;
 
+	if (node->flags & DNET_CFG_NO_ROUTE_LIST) {
+		return net_state_list_ptr();
+	}
+
 	const size_t groups_count_limit = 4096;
 	const size_t groups_count_random_limit = 5;
 
