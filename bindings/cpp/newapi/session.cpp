@@ -61,49 +61,6 @@ session &session::operator =(const session &other) {
 	return *this;
 }
 
-dnet_time session::get_timestamp() const
-{
-	struct dnet_time ts;
-	dnet_session_get_timestamp(m_data->session_ptr, &ts);
-	return ts;
-}
-
-void session::reset_timestamp()
-{
-	struct dnet_time empty;
-	dnet_empty_time(&empty);
-	dnet_session_set_timestamp(m_data->session_ptr, &empty);
-}
-
-void session::set_json_timestamp(const dnet_time &ts)
-{
-	dnet_session_set_json_timestamp(m_data->session_ptr, &ts);
-}
-
-dnet_time session::get_json_timestamp() const
-{
-	struct dnet_time ts;
-	dnet_session_get_json_timestamp(m_data->session_ptr, &ts);
-	return ts;
-}
-
-void session::reset_json_timestamp()
-{
-	struct dnet_time empty;
-	dnet_empty_time(&empty);
-	dnet_session_set_json_timestamp(m_data->session_ptr, &empty);
-}
-
-void session::set_cache_lifetime(uint64_t lifetime)
-{
-	dnet_session_set_cache_lifetime(m_data->session_ptr, lifetime);
-}
-
-uint64_t session::get_cache_lifetime() const
-{
-	return dnet_session_get_cache_lifetime(m_data->session_ptr);
-}
-
 class lookup_handler: public multigroup_handler<lookup_handler, lookup_result_entry> {
 public:
 	lookup_handler(const session &s, const async_lookup_result &result,

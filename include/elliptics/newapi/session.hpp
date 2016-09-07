@@ -19,28 +19,6 @@ public:
 	session clean_clone() const;
 	session &operator =(const session &other);
 
-	/*!
-	 * \overload
-	 */
-	dnet_time get_timestamp() const;
-	void reset_timestamp();
-
-	/*!
-	 * Sets json timestamp for given session.
-	 * All write operations will use this json timestamp, instead of data timestamp.
-	 * If set to zero (default), data timestamp will be used.
-	 */
-	void set_json_timestamp(const dnet_time &ts);
-	dnet_time get_json_timestamp() const;
-	void reset_json_timestamp();
-
-	/* Sets cache lifetime in seconds for given session.
-	 * Any write operation to the cache with positive cache \a lifetime value forces discarding
-	 * of a written key from cache after given \a lifetime period.
-	 */
-	void set_cache_lifetime(uint64_t lifetime);
-	uint64_t get_cache_lifetime() const;
-
 	/* Lookup information for key \a id.
 	 */
 	async_lookup_result lookup(const key &id);

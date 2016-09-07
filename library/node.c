@@ -1040,7 +1040,7 @@ void dnet_session_set_cache_lifetime(struct dnet_session *s, uint64_t lifetime)
 	s->cache_lifetime = lifetime;
 }
 
-uint64_t dnet_session_get_cache_lifetime(struct dnet_session *s)
+uint64_t dnet_session_get_cache_lifetime(const struct dnet_session *s)
 {
 	return s->cache_lifetime;
 }
@@ -1098,7 +1098,7 @@ void dnet_session_set_timestamp(struct dnet_session *s, const struct dnet_time *
 	s->ts = *ts;
 }
 
-void dnet_session_get_timestamp(struct dnet_session *s, struct dnet_time *ts)
+void dnet_session_get_timestamp(const struct dnet_session *s, struct dnet_time *ts)
 {
 	*ts = s->ts;
 }

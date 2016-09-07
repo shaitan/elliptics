@@ -693,14 +693,47 @@ void session::set_timestamp(const dnet_time &ts)
 	dnet_session_set_timestamp(m_data->session_ptr, &ts);
 }
 
-void session::set_timestamp(const dnet_time *ts)
+dnet_time session::get_timestamp() const
 {
-	dnet_session_set_timestamp(m_data->session_ptr, ts);
+	struct dnet_time ts;
+	dnet_session_get_timestamp(m_data->session_ptr, &ts);
+	return ts;
 }
 
-void session::get_timestamp(dnet_time *ts)
+void session::reset_timestamp()
 {
-	dnet_session_get_timestamp(m_data->session_ptr, ts);
+	struct dnet_time empty;
+	dnet_empty_time(&empty);
+	dnet_session_set_timestamp(m_data->session_ptr, &empty);
+}
+
+void session::set_json_timestamp(const dnet_time &ts)
+{
+	dnet_session_set_json_timestamp(m_data->session_ptr, &ts);
+}
+
+dnet_time session::get_json_timestamp() const
+{
+	struct dnet_time ts;
+	dnet_session_get_json_timestamp(m_data->session_ptr, &ts);
+	return ts;
+}
+
+void session::reset_json_timestamp()
+{
+	struct dnet_time empty;
+	dnet_empty_time(&empty);
+	dnet_session_set_json_timestamp(m_data->session_ptr, &empty);
+}
+
+void session::set_cache_lifetime(uint64_t lifetime)
+{
+	dnet_session_set_cache_lifetime(m_data->session_ptr, lifetime);
+}
+
+uint64_t session::get_cache_lifetime() const
+{
+	return dnet_session_get_cache_lifetime(m_data->session_ptr);
 }
 
 void session::set_timeout(long timeout)
@@ -947,7 +980,7 @@ async_write_result session::write_data(const dnet_io_control &ctl)
 	memcpy(ctl_copy.io.id, ctl_copy.id.id, DNET_ID_SIZE);
 
 	if (dnet_time_is_empty(&ctl_copy.io.timestamp)) {
-		get_timestamp(&ctl_copy.io.timestamp);
+		ctl_copy.io.timestamp = get_timestamp();
 
 		if (dnet_time_is_empty(&ctl_copy.io.timestamp))
 			dnet_current_time(&ctl_copy.io.timestamp);

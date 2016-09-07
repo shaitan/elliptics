@@ -360,11 +360,24 @@ public:
 	 * If set to zero (default), system time will be used.
 	 */
 	void set_timestamp(const dnet_time &ts);
+	dnet_time get_timestamp() const;
+	void reset_timestamp();
+
 	/*!
-	 * \overload
+	 * Sets json timestamp for given session.
+	 * All write operations will use this json timestamp, instead of data timestamp.
+	 * If set to zero (default), data timestamp will be used.
 	 */
-	void set_timestamp(const dnet_time *ts);
-	void get_timestamp(dnet_time *ts);
+	void set_json_timestamp(const dnet_time &ts);
+	dnet_time get_json_timestamp() const;
+	void reset_json_timestamp();
+
+	/* Sets cache lifetime in seconds for given session.
+	 * Any write operation to the cache with positive cache \a lifetime value forces discarding
+	 * of a written key from cache after given \a lifetime period.
+	 */
+	void set_cache_lifetime(uint64_t lifetime);
+	uint64_t get_cache_lifetime() const;
 
 	/*!
 	 * Gets user flags of the session.

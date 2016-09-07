@@ -79,7 +79,7 @@ class TestSession:
         ('exceptions_policy', elliptics.exceptions_policy.default_exceptions),
         ('cflags', 0),
         ('ioflags', 0),
-        ('timestamp', elliptics.Time(2 ** 64 - 1, 2 ** 64 - 1)),
+        ('timestamp', None),
         ('user_flags', 0)])
     @pytest.mark.usefixtures("servers")
     def test_properties_default(self, simple_node, prop, value):
@@ -106,9 +106,9 @@ class TestSession:
         ('timeout', 'set_timeout', 'get_timeout', (
          28376487,
          2 ** 63 - 1)),
-        ('timestamp', 'set_timestamp', 'get_timestamp', (
+        ('timestamp', None, None, (
          elliptics.Time(0, 0),
-         elliptics.Time(2 ** 64 - 1, 2 ** 64 - 1),
+         None,
          elliptics.Time(238689126897, 1723861827))),
         ('trace_id', None, None, (
          0,
