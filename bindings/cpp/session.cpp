@@ -595,7 +595,7 @@ uint32_t session::get_exceptions_policy() const
 	return m_data->policy;
 }
 
-dnet_id session::get_direct_id()
+dnet_id session::get_direct_id() const
 {
 	if ((get_cflags() & DNET_FLAGS_DIRECT) == 0)
 		throw ioremap::elliptics::error(-EINVAL, "DNET_FLAGS_DIRECT was not set");
@@ -743,7 +743,7 @@ void session::set_timeout(long timeout)
 
 long session::get_timeout(void) const
 {
-	timespec *tm = dnet_session_get_timeout(m_data->session_ptr);
+	auto tm = dnet_session_get_timeout(m_data->session_ptr);
 	return tm->tv_sec;
 }
 
@@ -2246,7 +2246,7 @@ async_read_result session::remove_data_range(const dnet_io_attr &io, int group_i
 	return result;
 }
 
-std::vector<dnet_route_entry> session::get_routes()
+std::vector<dnet_route_entry> session::get_routes() const
 {
 	trace_scope scope{get_trace_id(), get_trace_bit()};
 

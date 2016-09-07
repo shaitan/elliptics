@@ -968,7 +968,7 @@ int dnet_session_set_groups(struct dnet_session *s, const int *groups, int group
 	return 0;
 }
 
-int *dnet_session_get_groups(struct dnet_session *s, int *count)
+int *dnet_session_get_groups(const struct dnet_session *s, int *count)
 {
 	*count = s->group_num;
 	return s->groups;
@@ -979,7 +979,7 @@ void dnet_session_set_trace_id(struct dnet_session *s, trace_id_t trace_id)
 	s->trace_id = trace_id;
 }
 
-trace_id_t dnet_session_get_trace_id(struct dnet_session *s)
+trace_id_t dnet_session_get_trace_id(const struct dnet_session *s)
 {
 	return s->trace_id;
 }
@@ -992,7 +992,7 @@ void dnet_session_set_trace_bit(struct dnet_session *s, int trace)
 		s->cflags &= ~DNET_FLAGS_TRACE_BIT;
 }
 
-int dnet_session_get_trace_bit(struct dnet_session *s)
+int dnet_session_get_trace_bit(const struct dnet_session *s)
 {
 	return !!(s->cflags & DNET_FLAGS_TRACE_BIT);
 }
@@ -1030,7 +1030,7 @@ err_out_exit:
 	return err;
 }
 
-uint32_t dnet_session_get_ioflags(struct dnet_session *s)
+uint32_t dnet_session_get_ioflags(const struct dnet_session *s)
 {
 	return s->ioflags;
 }
@@ -1050,7 +1050,7 @@ void dnet_session_set_cflags(struct dnet_session *s, uint64_t cflags)
 	s->cflags = cflags;
 }
 
-uint64_t dnet_session_get_cflags(struct dnet_session *s)
+uint64_t dnet_session_get_cflags(const struct dnet_session *s)
 {
 	return s->cflags;
 }
@@ -1060,7 +1060,7 @@ void dnet_session_set_user_flags(struct dnet_session *s, uint64_t user_flags)
 	s->user_flags = user_flags;
 }
 
-uint64_t dnet_session_get_user_flags(struct dnet_session *s)
+uint64_t dnet_session_get_user_flags(const struct dnet_session *s)
 {
 	return s->user_flags;
 }
@@ -1070,7 +1070,7 @@ void dnet_session_set_timeout(struct dnet_session *s, long wait_timeout)
 	s->wait_ts.tv_sec = wait_timeout;
 }
 
-struct timespec *dnet_session_get_timeout(struct dnet_session *s)
+const struct timespec *dnet_session_get_timeout(const struct dnet_session *s)
 {
 	return s->wait_ts.tv_sec ? &s->wait_ts : &s->node->wait_ts;
 }
@@ -1088,7 +1088,7 @@ void dnet_set_keepalive(struct dnet_node *n, int idle, int cnt, int interval)
 	n->keep_interval = interval;
 }
 
-struct dnet_node *dnet_session_get_node(struct dnet_session *s)
+struct dnet_node *dnet_session_get_node(const struct dnet_session *s)
 {
 	return s->node;
 }
@@ -1108,12 +1108,12 @@ void dnet_session_set_json_timestamp(struct dnet_session *s, const struct dnet_t
 	s->json_ts = *ts;
 }
 
-void dnet_session_get_json_timestamp(struct dnet_session *s, struct dnet_time *ts)
+void dnet_session_get_json_timestamp(const struct dnet_session *s, struct dnet_time *ts)
 {
 	*ts = s->json_ts;
 }
 
-struct dnet_id *dnet_session_get_direct_id(struct dnet_session *s)
+const struct dnet_id *dnet_session_get_direct_id(const struct dnet_session *s)
 {
 	return &s->direct_id;
 }
@@ -1123,7 +1123,7 @@ void dnet_session_set_direct_id(struct dnet_session *s, const struct dnet_id *id
 	s->direct_id = *id;
 }
 
-const struct dnet_addr *dnet_session_get_direct_addr(struct dnet_session *s)
+const struct dnet_addr *dnet_session_get_direct_addr(const struct dnet_session *s)
 {
 	return &s->direct_addr;
 }
@@ -1133,7 +1133,7 @@ void dnet_session_set_direct_addr(struct dnet_session *s, const struct dnet_addr
 	s->direct_addr = *addr;
 }
 
-uint32_t dnet_session_get_direct_backend(struct dnet_session *s)
+uint32_t dnet_session_get_direct_backend(const struct dnet_session *s)
 {
 	return s->direct_backend;
 }

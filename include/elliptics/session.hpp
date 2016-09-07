@@ -316,7 +316,7 @@ public:
 	/*!
 	 * Get id that this session was stuck to.
 	 */
-	dnet_id get_direct_id();
+	dnet_id get_direct_id() const;
 
 	/*!
 	 * Stick session to particular remote address.
@@ -736,7 +736,7 @@ public:
 	/*!
 	 * Returns the list of network routes.
 	 */
-	std::vector<dnet_route_entry> get_routes();
+	std::vector<dnet_route_entry> get_routes() const;
 
 	/*!
 	 * Starts iterator with given type (@dnet_iterator_types), flags (DNET_IFLAGS_*),

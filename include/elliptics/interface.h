@@ -398,22 +398,22 @@ struct dnet_config
 struct dnet_node *dnet_get_node_from_state(void *state);
 
 int __attribute__((weak)) dnet_session_set_groups(struct dnet_session *s, const int *groups, int group_num);
-int *dnet_session_get_groups(struct dnet_session *s, int *count);
+int *dnet_session_get_groups(const struct dnet_session *s, int *count);
 
 void dnet_session_set_trace_id(struct dnet_session *s, trace_id_t trace_id);
-trace_id_t dnet_session_get_trace_id(struct dnet_session *s);
+trace_id_t dnet_session_get_trace_id(const struct dnet_session *s);
 
 void dnet_session_set_trace_bit(struct dnet_session *s, int trace);
-int dnet_session_get_trace_bit(struct dnet_session *s);
+int dnet_session_get_trace_bit(const struct dnet_session *s);
 
 void dnet_session_set_ioflags(struct dnet_session *s, uint32_t ioflags);
-uint32_t dnet_session_get_ioflags(struct dnet_session *s);
+uint32_t dnet_session_get_ioflags(const struct dnet_session *s);
 
 void dnet_session_set_cache_lifetime(struct dnet_session *s, uint64_t lifetime);
 uint64_t dnet_session_get_cache_lifetime(const struct dnet_session *s);
 
 void dnet_session_set_cflags(struct dnet_session *s, uint64_t cflags);
-uint64_t dnet_session_get_cflags(struct dnet_session *s);
+uint64_t dnet_session_get_cflags(const struct dnet_session *s);
 
 void dnet_session_set_timestamp(struct dnet_session *s, const struct dnet_time *ts);
 void dnet_session_get_timestamp(const struct dnet_session *s, struct dnet_time *ts);
@@ -421,29 +421,29 @@ void dnet_session_get_timestamp(const struct dnet_session *s, struct dnet_time *
 void dnet_session_set_json_timestamp(struct dnet_session *s, const struct dnet_time *ts);
 void dnet_session_get_json_timestamp(const struct dnet_session *s, struct dnet_time *ts);
 
-struct dnet_id *dnet_session_get_direct_id(struct dnet_session *s);
+const struct dnet_id *dnet_session_get_direct_id(const struct dnet_session *s);
 void dnet_session_set_direct_id(struct dnet_session *s, const struct dnet_id *id);
 
-const struct dnet_addr *dnet_session_get_direct_addr(struct dnet_session *s);
+const struct dnet_addr *dnet_session_get_direct_addr(const struct dnet_session *s);
 void dnet_session_set_direct_addr(struct dnet_session *s, const struct dnet_addr *addr);
 
-uint32_t dnet_session_get_direct_backend(struct dnet_session *s);
+uint32_t dnet_session_get_direct_backend(const struct dnet_session *s);
 void dnet_session_set_direct_backend(struct dnet_session *s, uint32_t backend_id);
 
 void dnet_session_set_forward(struct dnet_session *s, const struct dnet_addr *addr);
 const struct dnet_addr *dnet_session_get_forward(const struct dnet_session *s);
 
 void dnet_session_set_user_flags(struct dnet_session *s, uint64_t user_flags);
-uint64_t dnet_session_get_user_flags(struct dnet_session *s);
+uint64_t dnet_session_get_user_flags(const struct dnet_session *s);
 
 void dnet_session_set_timeout(struct dnet_session *s, long wait_timeout);
-struct timespec *dnet_session_get_timeout(struct dnet_session *s);
+const struct timespec *dnet_session_get_timeout(const struct dnet_session *s);
 
 void dnet_set_keepalive(struct dnet_node *n, int idle, int cnt, int interval);
 
 int dnet_session_set_ns(struct dnet_session *s, const char *ns, int nsize);
 
-struct dnet_node *dnet_session_get_node(struct dnet_session *s);
+struct dnet_node *dnet_session_get_node(const struct dnet_session *s);
 
 /*
  * Logging helpers.
