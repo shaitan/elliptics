@@ -34,7 +34,7 @@ namespace ioremap { namespace elliptics {
 std::unique_ptr<dnet_logger> make_file_logger(const std::string &path, dnet_log_level level);
 
 template<class T> inline auto logger_ref(T* const log) -> T& { return *log; }
-template<class T> inline auto logger_ref(std::unique_ptr<T>& log) -> T& { return *log; }
+template<class T> inline auto logger_ref(const std::unique_ptr<T>& log) -> T& { return *log; }
 inline dnet_logger& logger_ref(struct dnet_node *node) { return *dnet_node_get_logger(node); }
 
 template <class T> inline blackhole::logger_facade<dnet_logger> make_facade(T &&log) {
