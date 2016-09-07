@@ -864,6 +864,8 @@ int dnet_process_indexes(struct dnet_backend_io *backend, dnet_net_state *st, dn
 {
 	dnet_indexes_request *request = static_cast<dnet_indexes_request*>(data);
 	int err = -ENOTSUP;
+	DNET_LOG_WARNING(st->n, "Client: {} still uses deprecated \"indexes\" subsystem, please avoid using it",
+	                 dnet_state_dump_addr(st));
 
 	switch (cmd->cmd) {
 		case DNET_CMD_INDEXES_UPDATE: {

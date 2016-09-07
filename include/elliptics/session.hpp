@@ -875,13 +875,14 @@ public:
 	 *
 	 * Returns async_set_indexes_result.
 	 */
-	async_set_indexes_result set_indexes(const key &id, const std::vector<index_entry> &indexes);
+	async_set_indexes_result set_indexes(const key &id, const std::vector<index_entry> &indexes)
+	        __attribute__((deprecated));
 	/*!
 	 * \overload
 	 */
 	async_set_indexes_result set_indexes(const key &id,
 	                                     const std::vector<std::string> &indexes,
-	                                     const std::vector<data_pointer> &data);
+	                                     const std::vector<data_pointer> &data) __attribute__((deprecated));
 	/*!
 	 * \brief Update \a indexes for object \a id.
 	 *
@@ -895,7 +896,7 @@ public:
 	 */
 	async_set_indexes_result update_indexes(const key &id,
 	                                        const std::vector<std::string> &indexes,
-	                                        const std::vector<data_pointer> &data);
+	                                        const std::vector<data_pointer> &data) __attribute__((deprecated));
 	/*!
 	 * \brief Adds object \a id to capped collection \a index.
 	 *
@@ -909,7 +910,8 @@ public:
 	 * Returns async_generic_result.
 	 */
 	async_generic_result
-	add_to_capped_collection(const key &id, const index_entry &index, int limit, bool remove_data);
+	add_to_capped_collection(const key &id, const index_entry &index, int limit, bool remove_data)
+	        __attribute__((deprecated));
 	/*!
 	 * \brief Removes \a id from \a indexes.
 	 *
@@ -917,33 +919,39 @@ public:
 	 *
 	 * Returns async_set_indexes_result.
 	 */
-	async_set_indexes_result remove_indexes(const key &id, const std::vector<dnet_raw_id> &indexes);
+	async_set_indexes_result remove_indexes(const key &id, const std::vector<dnet_raw_id> &indexes)
+	        __attribute__((deprecated));
 	/*!
 	 * \overload
 	 */
-	async_set_indexes_result remove_indexes(const key &id, const std::vector<std::string> &indexes);
+	async_set_indexes_result remove_indexes(const key &id, const std::vector<std::string> &indexes)
+	        __attribute__((deprecated));
 	/*!
 	 * \internal
 	 */
-	async_set_indexes_result update_indexes_internal(const key &id, const std::vector<index_entry> &indexes);
+	async_set_indexes_result update_indexes_internal(const key &id, const std::vector<index_entry> &indexes)
+	        __attribute__((deprecated));
 	/*!
 	 * \internal
 	 */
 	async_set_indexes_result update_indexes_internal(const key &id,
 	                                                 const std::vector<std::string> &indexes,
-	                                                 const std::vector<data_pointer> &data);
+	                                                 const std::vector<data_pointer> &data)
+	        __attribute__((deprecated));
 	/*!
 	 * \internal
 	 */
-	async_set_indexes_result remove_indexes_internal(const key &id, const std::vector<dnet_raw_id> &indexes);
+	async_set_indexes_result remove_indexes_internal(const key &id, const std::vector<dnet_raw_id> &indexes)
+	        __attribute__((deprecated));
 	/*!
 	 * \internal
 	 */
-	async_set_indexes_result remove_indexes_internal(const key &id, const std::vector<std::string> &indexes);
+	async_set_indexes_result remove_indexes_internal(const key &id, const std::vector<std::string> &indexes)
+	        __attribute__((deprecated));
 	/*!
 	 * \internal
 	 */
-	async_generic_result remove_index_internal(const key &id);
+	async_generic_result remove_index_internal(const key &id) __attribute__((deprecated));
 	/*!
 	 * \brief Removes the index \a id.
 	 *
@@ -953,35 +961,35 @@ public:
 	 *
 	 * Returns async_generic_result.
 	 */
-	async_generic_result remove_index(const key &id, bool remove_data);
+	async_generic_result remove_index(const key &id, bool remove_data) __attribute__((deprecated));
 
 	/*!
 	 * \brief Find all objects which contain all indexes from \a indexes.
 	 *
 	 * Returns async_find_indexes_result.
 	 */
-	async_find_indexes_result find_all_indexes(const std::vector<dnet_raw_id> &indexes);
+	async_find_indexes_result find_all_indexes(const std::vector<dnet_raw_id> &indexes) __attribute__((deprecated));
 	/*!
 	 * \overload
 	 */
-	async_find_indexes_result find_all_indexes(const std::vector<std::string> &indexes);
+	async_find_indexes_result find_all_indexes(const std::vector<std::string> &indexes) __attribute__((deprecated));
 	/*!
 	 * \brief Find all objects which contain at least one of indexes from \a indexes.
 	 *
 	 * Returns async_find_indexes_result.
 	 */
-	async_find_indexes_result find_any_indexes(const std::vector<dnet_raw_id> &indexes);
+	async_find_indexes_result find_any_indexes(const std::vector<dnet_raw_id> &indexes) __attribute__((deprecated));
 	/*!
 	 * \overload
 	 */
-	async_find_indexes_result find_any_indexes(const std::vector<std::string> &indexes);
+	async_find_indexes_result find_any_indexes(const std::vector<std::string> &indexes) __attribute__((deprecated));
 
 	/*!
 	 * \brief List all indexes where \a id is added.
 	 *
 	 * Returns async_list_indexes_result.
 	 */
-	async_list_indexes_result list_indexes(const key &id);
+	async_list_indexes_result list_indexes(const key &id) __attribute__((deprecated));
 
 	/*!
 	 * \brief Merge index tables stored at \a id.
@@ -991,7 +999,8 @@ public:
 	 * \attention This is low-level function which merges not \b index \a id, but merges
 	 * data which is stored at key \a id.
 	 */
-	async_write_result merge_indexes(const key &id, const std::vector<int> &from, const std::vector<int> &to);
+	async_write_result merge_indexes(const key &id, const std::vector<int> &from, const std::vector<int> &to)
+	        __attribute__((deprecated));
 
 	/*!
 	 * \brief Recover \a index so it will be consistent in all groups.
@@ -999,18 +1008,18 @@ public:
 	 * This method recover not only list of objects in index but also list
 	 * of indexes of all objects at this indexes.
 	 */
-	async_generic_result recover_index(const key &index);
+	async_generic_result recover_index(const key &index) __attribute__((deprecated));
 
 	/*!
 	 * \brief Retrieves metadata about each index \a index
 	 *
 	 * Returns async_get_index_metadata_result.
 	 */
-	async_get_index_metadata_result get_index_metadata(const dnet_raw_id &index);
+	async_get_index_metadata_result get_index_metadata(const dnet_raw_id &index) __attribute__((deprecated));
 	/*!
 	 * \overload
 	 */
-	async_get_index_metadata_result get_index_metadata(const std::string &index);
+	async_get_index_metadata_result get_index_metadata(const std::string &index) __attribute__((deprecated));
 
 	/*!
 	 * Returns logger object.

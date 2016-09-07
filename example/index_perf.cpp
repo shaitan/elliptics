@@ -1,3 +1,6 @@
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+
 #include <elliptics/session.hpp>
 #include <elliptics/timer.hpp>
 
@@ -91,3 +94,5 @@ int main(int argc, char *argv[])
 	}
 
 }
+
+#pragma GCC diagnostic pop

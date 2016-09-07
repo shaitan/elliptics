@@ -17,15 +17,17 @@
  * along with Elliptics.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+
 #include "elliptics/utils.hpp"
 #include "elliptics/debug.hpp"
-
 #include "session_indexes.hpp"
 #include "callback_p.h"
 #include "functional_p.h"
 #include "node_p.hpp"
 
-#include "../../library/elliptics.h"
+#include "library/elliptics.h"
 
 namespace ioremap { namespace elliptics {
 
@@ -73,6 +75,8 @@ static void on_update_index_finished(async_update_indexes_handler handler, const
 static async_set_indexes_result session_set_indexes(session &orig_sess, const key &request_id,
 		const std::vector<index_entry> &indexes, uint32_t flags, uint64_t limit = 0)
 {
+	auto log = orig_sess.get_logger();
+	DNET_LOG_WARNING(log, "\"Indexes\" subsystem is deprecated, please avoid using it");
 	orig_sess.transform(request_id);
 
 	std::vector<int> groups(1, 0);
@@ -227,7 +231,6 @@ static async_set_indexes_result session_set_indexes(session &orig_sess, const ke
 	result.connect(std::bind(on_update_index_entry, handler, std::placeholders::_1),
 		std::bind(on_update_index_finished, handler, std::placeholders::_1));
 
-	auto log = orig_sess.get_logger();
 	DNET_LOG_INFO(log, "{}: key: {}, indexes: {}", dnet_dump_id(&request_id.id()), request_id.to_string(),
 	              indexes.size());
 
@@ -317,6 +320,8 @@ struct state_container
 
 async_generic_result session::remove_index_internal(const key &original_id)
 {
+	auto log = get_logger();
+	DNET_LOG_WARNING(log, "\"Indexes\" subsystem is deprecated, please avoid using it");
 	transform(original_id);
 
 	dnet_id id = original_id.id();
@@ -941,6 +946,8 @@ static void on_find_indexes_complete(async_result_handler<find_indexes_result_en
 
 async_find_indexes_result session::find_indexes_internal(const std::vector<dnet_raw_id> &indexes, bool intersect)
 {
+	auto log = get_logger();
+	DNET_LOG_WARNING(log, "\"Indexes\" subsystem is deprecated, please avoid using it");
 	async_find_indexes_result result(*this);
 	async_result_handler<find_indexes_result_entry> handler(result);
 
@@ -1018,6 +1025,8 @@ struct check_indexes_handler
 
 async_list_indexes_result session::list_indexes(const key &request_id)
 {
+	auto log = get_logger();
+	DNET_LOG_WARNING(log, "\"Indexes\" subsystem is deprecated, please avoid using it");
 	transform(request_id);
 
 	async_list_indexes_result result(*this);
@@ -1139,6 +1148,8 @@ struct get_index_metadata_callback
  */
 async_get_index_metadata_result session::get_index_metadata(const dnet_raw_id &index)
 {
+	auto log = get_logger();
+	DNET_LOG_WARNING(log, "\"Indexes\" subsystem is deprecated, please avoid using it");
 	session sess = clone();
 	sess.set_exceptions_policy(session::no_exceptions);
 	sess.set_filter(filters::positive);
@@ -1403,6 +1414,8 @@ struct merge_indexes_callback
 
 async_write_result session::merge_indexes(const key &id, const std::vector<int> &from, const std::vector<int> &to)
 {
+	auto log = get_logger();
+	DNET_LOG_WARNING(log, "\"Indexes\" subsystem is deprecated, please avoid using it");
 	transform(id);
 
 	async_write_result result(*this);
@@ -1537,6 +1550,8 @@ struct recover_index_callback : public std::enable_shared_from_this<recover_inde
 
 async_generic_result session::recover_index(const key &index)
 {
+	auto log = get_logger();
+	DNET_LOG_WARNING(log, "\"Indexes\" subsystem is deprecated, please avoid using it");
 	transform(index);
 
 	dnet_node *node = get_native_node();
@@ -1573,3 +1588,5 @@ async_generic_result session::recover_index(const key &index)
 }
 
 } } // ioremap::elliptics
+
+#pragma GCC diagnostic pop

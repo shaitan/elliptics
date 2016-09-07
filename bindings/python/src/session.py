@@ -16,6 +16,7 @@
 from elliptics.core import Session, monitor_stat_categories
 from elliptics.route import RouteList, Address
 from elliptics.log import logged_class
+from elliptics.misc import warn_deprecated
 
 
 @logged_class
@@ -69,9 +70,151 @@ class Session(Session):
         else:
             return super(Session, self).bulk_write(datas)
 
+    def find_all_indexes(self, indexes):
+        """
+        Finds intersection of indexes.
+        Returns elliptics.AsyncResult.
+        -- indexes - iterable object which provides string indexes which ids should be intersected
+
+        try:
+            result = session.find_all_indexes(['index1', 'index2'])
+            id_results = result.get()
+            for id_result in id_result:
+                print 'Find id:', id_result.id
+                for index in id_result.indexes:
+                    print 'index:', index.index
+                    print 'data:', index.data
+        except Exception as e:
+            print 'Find all indexes has been failed:', e
+        """
+        warn_deprecated()
+        return super(Session, self).find_all_indexes(indexes)
+
+    def find_all_indexes_raw(self, indexes):
+        """
+        Finds intersection of indexes. Returns elliptics.AsyncResult.
+        -- indexes - iterable object which provides indexes as elliptics.Id which ids should be intersected
+
+        try:
+            result = session.find_all_indexes_raw([elliptics.Id('index1'), elliptics.Id('index2')])
+            id_results = result.get()
+            for id_result in id_result:
+                print 'Find id:', id_result.id
+                for index in id_result.indexes:
+                    print 'index:', index.index
+                    print 'data:', index.data
+        except Exception as e:
+            print 'Find all indexes has been failed:', e
+        """
+        warn_deprecated()
+        return super(Session, self).find_all_indexes_raw(indexes)
+
+    def find_any_indexes(self, indexes):
+        """
+        Finds keys union from indexes. Returns elliptics.AsyncResult.
+        -- indexes - iterable object which provides indexes as elliptics.Id which ids should be united
+
+        try:
+            result = session.find_any_indexes_raw([elliptics.Id('index1'), elliptics.Id('index2')])
+            id_results = result.get()
+            for id_result in id_result:
+                print 'Find id:', id_result.id
+                for index in id_result.indexes:
+                    print 'index:', index.index
+                    print 'data:', index.data
+        except Exception as e:
+            print 'Find all indexes has been failed:', e
+        """
+        warn_deprecated()
+        return super(Session, self).find_any_indexes(indexes)
+
+    def find_any_indexes_raw(self, indexes):
+        """
+        Finds keys union from indexes. Returns elliptics.AsyncResult.
+        -- indexes - iterable object which provides string indexes which ids should be united
+
+        try:
+            result = session.find_any_indexes(['index1', 'index2'])
+            id_results = result.get()
+            for id_result in id_result:
+                print 'Find id:', id_result.id
+                for index in id_result.indexes:
+                    print 'index:', index.index
+                    print 'data:', index.data
+        except Exception as e:
+            print 'Find all indexes has been failed:', e
+        """
+        warn_deprecated()
+        return super(Session, self).find_any_indexes_raw(indexes)
+
+    def list_indexes(self, id):
+        """
+        Finds all indexes where @id is presented
+        -- id - string or elliptics.Id
+
+        try:
+            result = session.list_indexes('key')
+            indexes = results.get()
+            for index in indexes:
+                print 'Index:', index.index
+                print 'Data:', index.data
+        except Exception as e:
+            print 'List indexes failed:', e
+        """
+        warn_deprecated()
+        return super(Session, self).list_indexes(id)
+
+    def merge_indexes(self, id, from_, to_):
+        """
+        Merges index tables stored at @id.
+        Reads index tables from groups @from, merges them and writes result to @to.
+
+        This is low-level function which merges not index @id, but merges
+        data which is stored at key @id
+        """
+        warn_deprecated()
+        return super(Session, self).merge_indexes(id, from_, to_)
+
+    def recover_index(self, index):
+        """
+        Recover @index consistency in all groups.
+        This method recovers not only list of objects in index but
+        also list of indexes of all objects at this indexes.
+        """
+        warn_deprecated()
+        return super(Session, self).recover_index(index)
+
+    def remove_index(self, id, remove_data):
+        """
+        Removes @id from all @indexes and doesn't change indexes list of @id
+        """
+        warn_deprecated()
+        return super(Session, self).remove_index(id, remove_data)
+
+    def remove_index_internal(self, id):
+        """
+        Removes @id from all indexes which are connected with @id
+        Doesn't change indexes list of @id
+        """
+        warn_deprecated()
+        return super(Session, self).remove_index_internal(id)
+
+    def remove_indexes(self, id, indexes):
+        """
+        Removes @id from all @indexes and remove @indexes from indexes list of @id
+        """
+        warn_deprecated()
+        return super(Session, self).remove_indexes(id, indexes)
+
+    def remove_indexes_internal(self, id, indexes):
+        """
+        Removes @id from all @indexes and doesn't change indexes list of @id
+        """
+        warn_deprecated()
+        return super(Session, self).remove_indexes_internal(id, indexes)
+
     def set_indexes(self, id, indexes, datas=None):
         """
-        set_indexes(id, indexes, datas=None)
         Resets id indexes. The id will be removed from previous indexes.
         Also it updates list of indexes where id is.
         Returns elliptics.AsyncResult.
@@ -91,11 +234,37 @@ class Session(Session):
         except Exception as e:
             print 'Set indexes has been failed:', e
         """
+        warn_deprecated()
         if type(indexes) is dict:
             datas = indexes.values()
             indexes = indexes.keys()
 
         return super(Session, self).set_indexes(id, indexes, datas)
+
+    def set_indexes_raw(self, id, indexes):
+        """
+        Resets id indexes. The id will be removed from previous indexes. Return elliptics.AsyncResult.
+        -- id - string or elliptics.Id
+        -- indexes - iterable object which provides set of elliptics.IndexEntry
+
+        indexes = []
+        indexes.append(elliptics.IndexEntry())
+        indexes[-1].index = elliptics.Id('index1')
+        indexes[-1].data = 'index1_key_data'
+
+        indexes.append(elliptics.IndexEntry())
+        indexes[-1].index = elliptics.Id('index2')
+        indexes[-1].data = 'index2_key_data'
+
+        indexes_result = []
+        try:
+            result = session.set_indexes_raw('key', indexes)
+            indexes_result = result.get()
+        except Exception as e:
+            print 'Set indexes raw has been failed:', e
+        """
+        warn_deprecated()
+        return super(Session, self).set_indexes_raw(id, indexes)
 
     def update_indexes(self, id, indexes, datas=None):
         """
@@ -119,6 +288,7 @@ class Session(Session):
         except Exception as e:
             print 'Update indexes has been failed:', e
         """
+        warn_deprecated()
         if type(indexes) is dict:
             datas = indexes.values()
             indexes = indexes.keys()
@@ -148,11 +318,78 @@ class Session(Session):
         except Exception as e:
             print 'Update indexes internal has been failed:', e
         """
+        warn_deprecated()
         if type(indexes) is dict:
             datas = indexes.values()
             indexes = indexes.keys()
 
         return super(Session, self).update_indexes_internal(id, indexes, datas)
+
+    def update_indexes_internal_raw(self, id, indexes):
+        """
+        Adds id to additional indexes and or updates data for the id in specified indexes.
+        It doesn't update list of indexes where id is.
+        Return elliptics.AsyncResult.
+        -- id - string or elliptics.Id
+        -- indexes - iterable object which provides set of elliptics.IndexEntry
+
+        indexes = []
+        indexes.append(elliptics.IndexEntry())
+        indexes[-1].index = elliptics.Id('index1')
+        indexes[-1].data = 'index1_key_data'
+
+        indexes.append(elliptics.IndexEntry())
+        indexes[-1].index = elliptics.Id('index2')
+        indexes[-1].data = 'index2_key_data'
+
+        indexes_result = []
+        try:
+            result = session.update_indexes_internal_raw('key', indexes)
+            indexes_result = result.get()
+        except Exception as e:
+            print 'Set indexes raw has been failed:', e
+        """
+        warn_deprecated()
+        return super(Session, self).update_indexes_internal_raw(id, indexes)
+
+    def update_indexes_raw(self, id, indexes):
+        """
+        Adds id to additional indexes and or updates data for the id in specified indexes.
+        Also it updates list of indexes where id is.
+        Return elliptics.AsyncResult.
+        -- id - string or elliptics.Id
+        -- indexes - iterable object which provides set of elliptics.IndexEntry
+
+        indexes = []
+        indexes.append(elliptics.IndexEntry())
+        indexes[-1].index = elliptics.Id('index1')
+        indexes[-1].data = 'index1_key_data'
+
+        indexes.append(elliptics.IndexEntry())
+        indexes[-1].index = elliptics.Id('index2')
+        indexes[-1].data = 'index2_key_data'
+
+        indexes_result = []
+        try:
+            result = session.update_indexes_raw('key', indexes)
+            indexes_result = result.get()
+        except Exception as e:
+            print 'Set indexes raw has been failed:', e
+        """
+        warn_deprecated()
+        return super(Session, self).update_indexes_raw(id, indexes)
+
+    def add_to_capped_collection(self, id, index, limit, remove_data):
+        """
+        Adds object @id to capped collection @index.
+        As object is added to capped collection it displaces the oldest object from it in case if
+        the @limit is reached.
+        If @remove_data is true in addition to displacing of the object it's data is also removed from the storage.
+        NOTE: The @limit is satisfied for each shard and not for whole collection.
+        Return elliptics.AsyncResult.
+        """
+        warn_deprecated()
+        return super(Session, self).add_to_capped_collection(id, index, limit, remove_data)
 
     def set_direct_id(self, address, backend_id=None):
         """
