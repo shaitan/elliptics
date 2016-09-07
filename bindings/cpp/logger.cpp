@@ -83,6 +83,7 @@ std::unique_ptr<dnet_logger> make_file_logger(const std::string &path, dnet_log_
 				.mapping(sevmap)
 				.build())
 			.add(blackhole::builder<blackhole::sink::file_t>(path)
+				.flush_every(1)
 				.build())
 			.build()
 	);
