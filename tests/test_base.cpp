@@ -3,6 +3,8 @@
 #include "test_base.hpp"
 #include "../example/common.h"
 
+#include "library/logger.hpp"
+
 #include <boost/filesystem.hpp>
 #include <boost/lexical_cast.hpp>
 #include <boost/version.hpp>

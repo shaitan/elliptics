@@ -15,6 +15,7 @@
  */
 
 #include "library/elliptics.h"
+#include "library/logger.hpp"
 #include "elliptics/session.hpp"
 
 #include <cocaine/framework/manager.hpp>

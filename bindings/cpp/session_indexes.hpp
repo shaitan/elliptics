@@ -22,6 +22,8 @@
 
 #include "elliptics/cppdef.h"
 
+#include "library/logger.hpp"
+
 #include <msgpack.hpp>
 
 #include <iostream>

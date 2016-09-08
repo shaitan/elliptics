@@ -289,8 +289,8 @@ int main(int argc, char *argv[])
 
 		err = dnet_create_addr(&ra, remote_addr, port, family);
 		if (err) {
-			DNET_LOG_ERROR(n.get_native(), "Failed to get address info for {}:{}, family: {}, err: {}: {}",
-			               remote_addr, port, family, err, strerror(-err));
+			fprintf(stderr, "Failed to get address info for %s:%d, family: %d, err: %d: %s", remote_addr,
+			        port, family, err, strerror(-err));
 			return err;
 		}
 

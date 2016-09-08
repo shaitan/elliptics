@@ -5,6 +5,8 @@
 
 #include <blackhole/attribute.hpp>
 
+#include "library/logger.hpp"
+
 namespace ioremap { namespace elliptics {
 
 class file_descriptor

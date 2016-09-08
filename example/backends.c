@@ -36,7 +36,8 @@
 #include "elliptics/packet.h"
 #include "elliptics/interface.h"
 #include "elliptics/backends.h"
-#include "../library/elliptics.h"
+#include "library/elliptics.h"
+#include "library/logger.hpp"
 
 #ifndef __unused
 #define __unused	__attribute__ ((unused))
