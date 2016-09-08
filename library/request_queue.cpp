@@ -2,7 +2,7 @@
 #include "murmurhash.h"
 #include "monitor/measure_points.h"
 #include "example/config.hpp"
-
+#include "logger.hpp"
 
 static size_t dnet_id_hash(const dnet_id &key)
 {

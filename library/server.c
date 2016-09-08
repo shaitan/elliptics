@@ -29,6 +29,8 @@
 #include "elliptics/interface.h"
 #include "monitor/monitor.h"
 
+#include "logger.hpp"
+
 static int dnet_node_check_stack(struct dnet_node *n)
 {
 	size_t stack_size;

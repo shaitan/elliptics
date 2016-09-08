@@ -1,6 +1,7 @@
 #include "route.h"
 #include "elliptics.h"
 #include <elliptics/utils.hpp>
+#include "logger.hpp"
 
 static int dnet_cmd_reverse_lookup(struct dnet_net_state *st, struct dnet_cmd *cmd, void *data __unused)
 {

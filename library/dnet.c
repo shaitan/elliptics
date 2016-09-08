@@ -44,6 +44,8 @@
 
 #include "monitor/measure_points.h"
 
+#include "logger.hpp"
+
 int dnet_remove_local(struct dnet_backend_io *backend, struct dnet_node *n, struct dnet_id *id)
 {
 	const size_t cmd_size = sizeof(struct dnet_cmd) + sizeof(struct dnet_io_attr);

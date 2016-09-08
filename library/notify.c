@@ -31,6 +31,7 @@
 #include <unistd.h>
 
 #include "elliptics.h"
+#include "logger.hpp"
 
 #include "elliptics/packet.h"
 #include "elliptics/interface.h"

@@ -31,6 +31,7 @@
 #include "library/elliptics.h"
 #include "library/backend.h"
 #include "library/request_queue.h"
+#include "library/logger.hpp"
 
 #include "rapidjson/document.h"
 #include "rapidjson/writer.h"

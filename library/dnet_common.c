@@ -41,6 +41,8 @@
 #include "elliptics/packet.h"
 #include "elliptics/interface.h"
 
+#include "logger.hpp"
+
 int dnet_transform_node(struct dnet_node *n, const void *src, uint64_t size, unsigned char *csum, int csize)
 {
 	struct dnet_transform *t = &n->transform;

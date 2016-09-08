@@ -20,7 +20,8 @@
 #include "server.hpp"
 #include "monitor.hpp"
 
-#include "../library/elliptics.h"
+#include "library/elliptics.h"
+#include "library/logger.hpp"
 #include "http_miscs.hpp"
 
 namespace ioremap { namespace monitor {

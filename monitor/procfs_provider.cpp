@@ -23,6 +23,8 @@
 #include "rapidjson/stringbuffer.h"
 #include "elliptics/interface.h"
 
+#include "library/logger.hpp"
+
 namespace ioremap { namespace monitor {
 
 struct proc_io_stat {

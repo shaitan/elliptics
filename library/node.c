@@ -28,6 +28,7 @@
 #include "elliptics.h"
 #include "elliptics/interface.h"
 #include "monitor/monitor.h"
+#include "library/logger.hpp"
 
 static struct dnet_node *dnet_node_alloc(struct dnet_config *cfg)
 {

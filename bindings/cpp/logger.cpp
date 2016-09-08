@@ -3,7 +3,6 @@
 #include <stdarg.h>
 #include <iomanip>
 
-
 #include <blackhole/attribute.hpp>
 #include <blackhole/builder.hpp>
 #include <blackhole/extensions/writer.hpp>
@@ -12,6 +11,7 @@
 #include <blackhole/root.hpp>
 #include <blackhole/sink/file.hpp>
 #include <blackhole/record.hpp>
+#include <blackhole/logger.hpp>
 
 #include "elliptics/session.hpp"
 #include "library/elliptics.h"

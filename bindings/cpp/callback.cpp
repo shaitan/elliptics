@@ -16,6 +16,7 @@
 
 #include "callback_p.h"
 #include "library/elliptics.h"
+#include "library/logger.hpp"
 
 namespace ioremap { namespace elliptics {
 
