@@ -3,7 +3,7 @@ find_package(Boost REQUIRED COMPONENTS iostreams thread regex program_options sy
 set(TEST_LIBRARY_PATH "${CMAKE_CURRENT_BINARY_DIR}:${CMAKE_CURRENT_BINARY_DIR}/../:${CMAKE_CURRENT_BINARY_DIR}/../library:${CMAKE_CURRENT_BINARY_DIR}/../srw:${CMAKE_CURRENT_BINARY_DIR}/../bindings/cpp:${CMAKE_CURRENT_BINARY_DIR}/../monitor")
 set(TEST_LINK_FLAGS "-Wl,-rpath,${TEST_LIBRARY_PATH}")
 set(TEST_PROPERTIES PROPERTIES LINK_FLAGS "${TEST_LINK_FLAGS}" LINKER_LANGUAGE CXX)
-set(TEST_LIBRARIES  test_common elliptics elliptics_client elliptics_cpp ${Boost_LIBRARIES})
+set(TEST_LIBRARIES  test_common elliptics elliptics_client ${Boost_LIBRARIES})
 set(TEST_IOSERV_PATH "${CMAKE_CURRENT_BINARY_DIR}/../example/dnet_ioserv")
 set(TEST_ENV
     TEST_COCAINE_CONFIG="${CMAKE_CURRENT_SOURCE_DIR}/cocaine.conf"
@@ -32,7 +32,7 @@ add_library(test_common STATIC
     test_session.cpp
 )
 set_target_properties(test_common ${TEST_PROPERTIES})
-set(TEST_COMMON_LIBRARIES elliptics elliptics_client elliptics_cpp ${Boost_LIBRARIES})
+set(TEST_COMMON_LIBRARIES elliptics elliptics_client ${Boost_LIBRARIES})
 if(WITH_COCAINE)
     list(APPEND TEST_COMMON_LIBRARIES elliptics_srw ${CocaineNative_LIBRARIES} ${LIBEV_LIBRARIES})
     list(APPEND TEST_LIBRARIES ${CocaineNative_LIBRARIES} ${LIBEV_LIBRARIES})
@@ -244,7 +244,7 @@ if(WITH_COCAINE)
     add_executable(dnet_cpp_srw_test_app srw_test_app.cpp)
     set_target_properties(dnet_cpp_srw_test_app ${TEST_PROPERTIES})
     target_link_libraries(dnet_cpp_srw_test_app
-        elliptics_cpp
+        elliptics_client
         ${Boost_LIBRARIES}
         ${CocaineNative_LIBRARIES}
         #FIXME: should add them properly
@@ -274,7 +274,7 @@ add_custom_target(test_python
     COMMAND mkdir -p ${CMAKE_CURRENT_BINARY_DIR}/pytests/elliptics
     COMMAND mkdir -p ${CMAKE_CURRENT_BINARY_DIR}/pytests/elliptics_recovery
     COMMAND cp ${CMAKE_CURRENT_BINARY_DIR}/../bindings/python/core.so* pytests/elliptics/
-    COMMAND cp ${CMAKE_CURRENT_BINARY_DIR}/../bindings/cpp/libelliptics_cpp.so* pytests/
+    COMMAND cp ${CMAKE_CURRENT_BINARY_DIR}/../bindings/cpp/libelliptics_client.so* pytests/
     COMMAND cp ${CMAKE_CURRENT_BINARY_DIR}/../*/libelliptics*.so* pytests/
     COMMAND cp ${CMAKE_SOURCE_DIR}/bindings/python/src/* pytests/elliptics/
     COMMAND cp -r ${CMAKE_SOURCE_DIR}/recovery/elliptics_recovery/* pytests/elliptics_recovery/

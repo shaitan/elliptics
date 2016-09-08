@@ -18,7 +18,7 @@ set(ELLIPTICS_PYTHON_SRCS
     )
 
 add_library(core_python SHARED ${ELLIPTICS_PYTHON_SRCS})
-target_link_libraries(core_python ${Boost_LIBRARIES} ${PYTHON_LIBRARIES} elliptics_cpp)
+target_link_libraries(core_python ${Boost_LIBRARIES} ${PYTHON_LIBRARIES} elliptics_client)
 set_target_properties(core_python PROPERTIES
     PREFIX ""
     OUTPUT_NAME "core"

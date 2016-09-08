@@ -5,4 +5,4 @@ endif()
 
 find_package(Msgpack REQUIRED)
 
-target_link_libraries(elliptics_indexes ${MSGPACK_LIBRARIES} elliptics_cpp)
+target_link_libraries(elliptics_indexes ${MSGPACK_LIBRARIES} elliptics_client)
