@@ -13,6 +13,9 @@
 * GNU Lesser General Public License for more details.
 */
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+
 #include "elliptics_session.h"
 
 #include <boost/python.hpp>
@@ -2315,3 +2318,5 @@ void init_elliptics_session() {
 }
 
 } } } // namespace ioremap::elliptics::python
+
+#pragma GCC diagnostic pop

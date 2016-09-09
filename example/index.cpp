@@ -14,6 +14,9 @@
  * GNU Lesser General Public License for more details.
  */
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/socket.h>
@@ -218,3 +221,4 @@ int main(int argc, char *argv[])
 	return 0;
 }
 
+#pragma GCC diagnostic pop

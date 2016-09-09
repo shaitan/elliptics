@@ -14,6 +14,9 @@
  * GNU Lesser General Public License for more details.
  */
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+
 #include "test_base.hpp"
 #include <algorithm>
 
@@ -1626,3 +1629,5 @@ int main(int argc, char *argv[])
 
 	return result;
 }
+
+#pragma GCC diagnostic pop
