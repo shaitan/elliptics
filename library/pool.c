@@ -704,8 +704,8 @@ static int dnet_process_send_single(struct dnet_net_state *st)
 			 * another ready state.
 			 */
 			if (st->n->send_limit && ++counter >= st->n->send_limit) {
-				dnet_log(st->n, DNET_LOG_INFO, "Limit on number of packet sent to one state in a row "
-				                               "has been reached: limit: %" PRIu32,
+				dnet_log(st->n, DNET_LOG_NOTICE, "Limit on number of packet sent to one state in a row "
+				                                 "has been reached: limit: %" PRIu32,
 				         st->n->send_limit);
 				break;
 			}
