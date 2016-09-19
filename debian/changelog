@@ -1,3 +1,17 @@
+elliptics (2.27.0.0~alpha3) unstable; urgency=medium
+
+  * recovery: retry only timeouted or broken connection attempts
+  * logger: cleanup elliptics/logger.hpp
+  * merge elliptics_cpp into elliptics_client
+  * logger: add const to logger_ref
+  * logger: set 'flush' to 1 message for file logger
+  * deprecate indexes subsystem
+  * net: do not choose route table check victims
+  * fix session.hpp code style
+  * using external sort for iterator result container sorting
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Mon, 19 Sep 2016 10:46:42 +0300
+
 elliptics (2.27.0.0~alpha2) unstable; urgency=medium
 
   * recovery: fail immediately when some iteration is failed
