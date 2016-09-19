@@ -29,7 +29,7 @@
 #include "backends_stat_provider.hpp"
 #include "procfs_provider.hpp"
 
-#include "../example/config.hpp"
+#include "example/config.hpp"
 
 static unsigned int get_monitor_port(struct dnet_node *n) {
 	const auto monitor = ioremap::monitor::get_monitor_config(n);
@@ -42,8 +42,8 @@ static unsigned int get_monitor_port(struct dnet_node *n) {
 
 namespace ioremap { namespace monitor {
 
-monitor* get_monitor(struct dnet_node *n) {
-	return reinterpret_cast<monitor*>(n->monitor);
+monitor *get_monitor(struct dnet_node *n) {
+	return reinterpret_cast<monitor *>(n->monitor);
 }
 
 monitor_config* get_monitor_config(struct dnet_node *n) {
@@ -51,38 +51,49 @@ monitor_config* get_monitor_config(struct dnet_node *n) {
 	return data.monitor_config.get();
 }
 
-std::unique_ptr<monitor_config> monitor_config::parse(const kora::config_t &monitor)
-{
-	monitor_config cfg;
-	cfg.monitor_port = monitor.at<unsigned int>("port", 0);
+std::unique_ptr<monitor_config> monitor_config::parse(const kora::config_t &monitor) {
+	std::unique_ptr<monitor_config> cfg{new monitor_config()};
 
-	cfg.has_top = monitor.has("top");
-	if (cfg.has_top) {
+	cfg->monitor_port = monitor.at<unsigned int>("port", 0);
+
+	cfg->has_top = monitor.has("top");
+	if (cfg->has_top) {
 		const auto top = monitor["top"];
-		cfg.top_length = top.at<size_t>("top_length", DNET_DEFAULT_MONITOR_TOP_LENGTH);
-		cfg.events_size = top.at<size_t>("events_size", DNET_DEFAULT_MONITOR_TOP_EVENTS_SIZE);
-		cfg.period_in_seconds = top.at<int>("period_in_seconds", DNET_DEFAULT_MONITOR_TOP_PERIOD);
-		cfg.has_top = (cfg.top_length > 0) && (cfg.events_size > 0) && (cfg.period_in_seconds > 0);
+		cfg->top_length = top.at<size_t>("top_length", DNET_DEFAULT_MONITOR_TOP_LENGTH);
+		cfg->events_size = top.at<size_t>("events_size", DNET_DEFAULT_MONITOR_TOP_EVENTS_SIZE);
+		cfg->period_in_seconds = top.at<int>("period_in_seconds", DNET_DEFAULT_MONITOR_TOP_PERIOD);
+		cfg->has_top = (cfg->top_length > 0) && (cfg->events_size > 0) && (cfg->period_in_seconds > 0);
 	}
-	return std::unique_ptr<monitor_config>(new monitor_config(cfg));
+
+	if (monitor.has("handystats")) {
+		cfg->handystats = kora::to_json(monitor.underlying_object());
+	}
+	return std::move(cfg);
 }
 
 monitor::monitor(struct dnet_node *n, struct dnet_config *cfg)
 : m_node(n)
 , m_statistics(*this, cfg)
-, m_server(*this, get_monitor_port(n), cfg->family)
-{
+, m_server(*this, get_monitor_port(n), cfg->family) {
 #if defined(HAVE_HANDYSTATS) && !defined(HANDYSTATS_DISABLE)
+	const auto monitor_config = get_monitor_config(n);
 	if (cfg->handystats_config != nullptr) {
 		//TODO: add parse/configuration errors logging when handystats will allow to get them
 		if (HANDY_CONFIG_FILE(cfg->handystats_config)) {
 			DNET_LOG_INFO(n, "monitor: initializing stats subsystem, config file '{}'",
 			              cfg->handystats_config);
 		} else {
-			DNET_LOG_ERROR(
-			        n,
-			        "monitor: initializing stats subsystem, error parsing config file '{}', using defaults",
-			        cfg->handystats_config);
+			DNET_LOG_ERROR(n, "monitor: initializing stats subsystem, "
+			                  "error parsing config file '{}', using defaults",
+			               cfg->handystats_config);
+		}
+	} else if (!monitor_config->handystats.empty()) {
+		if (HANDY_CONFIG_JSON(monitor_config->handystats.c_str())) {
+			DNET_LOG_INFO(n, "monitor: initializing stats subsystem, "
+			                 "using config[\"monitor\"][\"handystats\"]");
+		} else {
+			DNET_LOG_ERROR(n, "monitor: initializing stats subsystem, "
+			                  "error parsing config[\"monitor\"][\"handystats\"], using defaults");
 		}
 	} else {
 		DNET_LOG_INFO(n, "monitor: initializing stats subsystem, no config file specified, using defaults");
@@ -93,8 +104,7 @@ monitor::monitor(struct dnet_node *n, struct dnet_config *cfg)
 #endif
 }
 
-monitor::~monitor()
-{
+monitor::~monitor() {
 	//TODO: is node still alive here? If so, add shutdown log messages
 	// for both monitoring and handystats
 	stop();
@@ -218,14 +228,16 @@ void dnet_monitor_remove_provider(struct dnet_node *n, const char *name) {
 	ioremap::monitor::remove_provider(n, std::string(name));
 }
 
-void dnet_monitor_stats_update(struct dnet_node *n, const struct dnet_cmd *cmd,
-                               const int err, const int cache,
-                               const uint32_t size, const unsigned long time) {
+void dnet_monitor_stats_update(struct dnet_node *n,
+                               const struct dnet_cmd *cmd,
+                               const int err,
+                               const int cache,
+                               const uint32_t size,
+                               const unsigned long time) {
 	try {
 		auto real_monitor = ioremap::monitor::get_monitor(n);
 		if (real_monitor) {
-			real_monitor->get_statistics().command_counter(cmd->cmd, cmd->trans, err,
-								       cache, size, time);
+			real_monitor->get_statistics().command_counter(cmd->cmd, cmd->trans, err, cache, size, time);
 			auto top_stats = real_monitor->get_statistics().get_top_stats();
 			if (top_stats) {
 				top_stats->update_stats(cmd, size);
@@ -236,8 +248,7 @@ void dnet_monitor_stats_update(struct dnet_node *n, const struct dnet_cmd *cmd,
 	}
 }
 
-int dnet_monitor_process_cmd(struct dnet_net_state *orig, struct dnet_cmd *cmd __unused, void *data)
-{
+int dnet_monitor_process_cmd(struct dnet_net_state *orig, struct dnet_cmd *cmd, void *data) {
 	if (cmd->size != sizeof(dnet_monitor_stat_request)) {
 		DNET_LOG_DEBUG(orig->n, "monitor: {}: {}: process MONITOR_STAT, invalid size: {}",
 		               dnet_state_dump_addr(orig), dnet_dump_id(&cmd->id), cmd->size);
@@ -245,11 +256,11 @@ int dnet_monitor_process_cmd(struct dnet_net_state *orig, struct dnet_cmd *cmd _
 	}
 
 	struct dnet_node *n = orig->n;
-	struct dnet_monitor_stat_request *req = static_cast<struct dnet_monitor_stat_request *>(data);
+	auto req = static_cast<struct dnet_monitor_stat_request *>(data);
 	dnet_convert_monitor_stat_request(req);
 	static const std::string disabled_reply = ioremap::monitor::compress("{\"monitor_status\":\"disabled\"}");
 
-	DNET_LOG_DEBUG(orig->n, "monitor: {}: {}: process MONITOR_STAT, categories: {:x}, monitor: {:p}",
+	DNET_LOG_DEBUG(n, "monitor: {}: {}: process MONITOR_STAT, categories: {:x}, monitor: {:p}",
 	               dnet_state_dump_addr(orig), dnet_dump_id(&cmd->id), req->categories, (void *)n->monitor);
 
 	auto real_monitor = ioremap::monitor::get_monitor(n);
@@ -260,7 +271,8 @@ int dnet_monitor_process_cmd(struct dnet_net_state *orig, struct dnet_cmd *cmd _
 		auto json = real_monitor->get_statistics().report(req->categories);
 		return dnet_send_reply(orig, cmd, &*json.begin(), json.size(), 0);
 	} catch(const std::exception &e) {
-		const std::string rep = ioremap::monitor::compress("{\"monitor_status\":\"failed: " + std::string(e.what()) + "\"}");
+		const std::string rep =
+		        ioremap::monitor::compress("{\"monitor_status\":\"failed: " + std::string(e.what()) + "\"}");
 		DNET_LOG_DEBUG(orig->n, "monitor: failed to generate json: {}", e.what());
 		return dnet_send_reply(orig, cmd, &*rep.begin(), rep.size(), 0);
 	}
