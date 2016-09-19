@@ -36,7 +36,7 @@ static nodes_data::ptr configure_test_setup(const std::string &path)
 	start_nodes_config start_config(results_reporter::get_stream(), std::vector<server_config>({
 		server_config::default_value().apply_options(config_data()
 			("group", 5)
-			("cache_size", 100000)
+			("cache_size", "100K")
 			("cache_shards", 1)
 		)
 	}), path);

@@ -1295,20 +1295,21 @@ static int dnet_blob_set_datasort_dir(struct dnet_config_backend *b,
 	return 0;
 }
 
-static int dnet_blob_set_blob_size(struct dnet_config_backend *b,
-                                   const char *key, const char *value)
-{
+static int dnet_blob_set_blob_size(struct dnet_config_backend *b, const char *key, const char *value) {
 	struct eblob_backend_config *c = b->data;
 	uint64_t val = strtoul(value, NULL, 0);
 
-	if (strchr(value, 'T') || strchr(value, 't'))
-		val *= 1024*1024*1024*1024ULL;
-	else if (strchr(value, 'G') || strchr(value, 'g'))
-		val *= 1024*1024*1024ULL;
-	else if (strchr(value, 'M') || strchr(value, 'm'))
-		val *= 1024*1024;
-	else if (strchr(value, 'K') || strchr(value, 'k'))
-		val *= 1024;
+	if (strchr(value, 'P') || strchr(value, 'p')) {
+		val *= 1ULL << 50;
+	} if (strchr(value, 'T') || strchr(value, 't')) {
+		val *= 1ULL << 40;
+	} else if (strchr(value, 'G') || strchr(value, 'g')) {
+		val *= 1ULL << 30;
+	} else if (strchr(value, 'M') || strchr(value, 'm')) {
+		val *= 1ULL << 20;
+	} else if (strchr(value, 'K') || strchr(value, 'k')) {
+		val *= 1ULL << 10;
+	}
 
 	if (!strcmp(key, "blob_size"))
 		c->data.blob_size = val;
