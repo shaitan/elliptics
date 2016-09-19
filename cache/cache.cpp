@@ -70,15 +70,43 @@ write_request::write_request(unsigned char *id,
 , data(data)
 , json(json) {}
 
-std::unique_ptr<cache_config> cache_config::parse(const kora::config_t &cache)
-{
-	auto size = cache.at("size");
-	if (size.to<size_t>() == 0) {
-		throw elliptics::config::config_error(size.path() + " must be non-zero");
+static size_t parse_size(const std::string &value) {
+	size_t ret = strtoul(value.c_str(), NULL, 0);
+
+	if (strchr(value.c_str(), 'P') || strchr(value.c_str(), 'p')) {
+		ret *= 1ULL << 50;
+	} else if (strchr(value.c_str(), 'T') || strchr(value.c_str(), 't')) {
+		ret *= 1ULL << 40;
+	} else if (strchr(value.c_str(), 'G') || strchr(value.c_str(), 'g')) {
+		ret *= 1ULL << 30;
+	} else if (strchr(value.c_str(), 'M') || strchr(value.c_str(), 'm')) {
+		ret *= 1ULL << 20;
+	} else if (strchr(value.c_str(), 'K') || strchr(value.c_str(), 'k')) {
+		ret *= 1ULL << 10;
 	}
 
+	return ret;
+}
+
+static size_t parse_size(const kora::config_t &value) {
+	size_t ret = 0;
+	if (value.underlying_object().is_uint()) {
+		ret = value.to<size_t>();
+	} else if (value.underlying_object().is_string()) {
+		ret = parse_size(value.to<std::string>());
+	} else {
+		throw elliptics::config::config_error(value.path() + " must be specified");
+	}
+
+	if (ret == 0) {
+		throw elliptics::config::config_error(value.path() + " must be non-zero");
+	}
+	return ret;
+}
+
+std::unique_ptr<cache_config> cache_config::parse(const kora::config_t &cache) {
 	cache_config config;
-	config.size = size.to<size_t>();
+	config.size = parse_size(cache["size"]);
 	config.count = cache.at<size_t>("shards", DNET_DEFAULT_CACHES_NUMBER);
 	config.sync_timeout = cache.at<unsigned>("sync_timeout", DNET_DEFAULT_CACHE_SYNC_TIMEOUT_SEC);
 	config.pages_proportions =

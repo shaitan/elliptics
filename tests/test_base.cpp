@@ -269,7 +269,7 @@ server_config server_config::default_value()
 			("bg_ionice_prio", 0)
 			("server_net_prio", 1)
 			("client_net_prio", 6)
-			("cache_size", 1024 * 1024 * 256)
+			("cache_size", "256M")
 			("caches_number", 16);
 	data.backends.resize(1);
 	data.backends[0]
