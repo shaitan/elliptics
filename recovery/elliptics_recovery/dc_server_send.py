@@ -264,6 +264,7 @@ class ServerSendRecovery(object):
         else:
             if status == -errno.EILSEQ:
                 corrupted_keys.append(key)
+                self.ctx.corrupted_keys.write('{key} {group}\n'.format(key=key, group=group_id))
             next_group_id = self._get_next_group_id(key_infos, group_id)
             self.buckets.on_server_send_fail(key, key_infos, next_group_id)
 
@@ -278,24 +279,25 @@ class ServerSendRecovery(object):
             if not keys:
                 break
 
-            self.remove_session.set_groups(groups)
+            self.remove_session.groups = groups
 
-            results = []
-            for k in keys:
-                result = self.remove_session.remove(k)
-                results.append(result)
+            results = [self.remove_session.remove(key) for key in keys]
 
             timeouted_keys = []
             timeouted_groups = []
-            is_last_attempt = (attempt == self.ctx.attempts - 1)
+            is_last_attempt = attempt == self.ctx.attempts - 1
             for i, r in enumerate(results):
-                status = r.get()[0].status
-                log.info("Removing corrupted key: {0}, status: {1}, last attempt: {2}".format(keys[i], status, is_last_attempt))
-                if status == 0:
-                    self.stats.counter("removed_corrupted_keys", 1)
-                if status == -errno.ETIMEDOUT:
-                    timeouted_keys.append(keys[i])
-                    timeouted_groups.append(keys[i].group_id)
+                statuses = {result.group_id: result.status for result in r}
+                log.info('Removed corrupted key: %s, statuses: %s, last attempt: %s',
+                         keys[i], statuses, is_last_attempt)
+                for group, status in statuses.iteritems():
+                    if status == 0:
+                        self.stats.counter("removed_corrupted_keys", 1)
+                    elif status in (-errno.ETIMEDOUT, -errno.ENXIO):
+                        timeouted_groups.append(group)
+                        # append key to timeouted_keys only once
+                        if timeouted_keys[-1] != keys[i]:
+                            timeouted_keys.append(keys[i])
             keys, groups = timeouted_keys, timeouted_groups
 
     def _process_uncommited_keys(self, key, key_infos):

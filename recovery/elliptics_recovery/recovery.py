@@ -294,6 +294,8 @@ def main(options, args):
         log.error("Cleanup failed: {0}, traceback: {1}"
                   .format(repr(e), traceback.format_exc()))
 
+    ctx.corrupted_keys = open(os.path.join(ctx.tmp_dir, 'corrupted_keys'), 'w')
+
     log.info("Initializing monitor")
     monitor = Monitor(ctx, ctx.monitor_port)
     ctx.stats = monitor.stats
@@ -346,6 +348,7 @@ def main(options, args):
     monitor.shutdown()
     monitor.update()
     monitor.print_stat()
+    ctx.corrupted_keys.close()
     os.chdir(init_dir)
     return rc
 
