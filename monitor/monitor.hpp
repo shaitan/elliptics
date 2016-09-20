@@ -20,27 +20,20 @@
 #ifndef __DNET_MONITOR_MONITOR_HPP
 #define __DNET_MONITOR_MONITOR_HPP
 
-#include "library/elliptics.h"
-
 #include "server.hpp"
 #include "statistics.hpp"
 
 struct dnet_node;
 
-namespace ioremap { namespace elliptics { namespace config {
-class config;
-class config_data;
-}}}
-
 namespace ioremap { namespace monitor {
 
-struct monitor_config
-{
+struct monitor_config {
 	unsigned int	monitor_port;
 	bool		has_top;
 	size_t		top_length;
 	size_t		events_size;
 	int		period_in_seconds;
+	std::string	handystats;
 
 	static std::unique_ptr<monitor_config> parse(const kora::config_t &monitor);
 };
@@ -81,8 +74,8 @@ private:
 	server		m_server;
 };
 
-monitor* get_monitor(struct dnet_node *n);
-monitor_config* get_monitor_config(struct dnet_node *n);
+monitor *get_monitor(struct dnet_node *n);
+monitor_config *get_monitor_config(struct dnet_node *n);
 
 void add_provider(struct dnet_node *n, stat_provider *provider, const std::string &name);
 void remove_provider(struct dnet_node *n, const std::string &name);
