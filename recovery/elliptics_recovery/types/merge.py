@@ -699,12 +699,13 @@ class ServerSendRecovery(object):
     should not contain this keys to proper backend via server-send operation.
     '''
     def __init__(self, ctx, node, group):
-        self.routes = self._prepare_routes(ctx, group)
+        self.group = group
+        self.routes = self._prepare_routes(ctx, self.group)
         self.session = elliptics.Session(node)
         self.session.exceptions_policy = elliptics.exceptions_policy.no_exceptions
         self.session.set_filter(elliptics.filters.all)
         self.session.timeout = 60
-        self.session.groups = [group]
+        self.session.groups = [self.group]
         self.session.trace_id = ctx.trace_id
         self.ctx = ctx
         self.stats_cmd = ctx.stats['commands']
@@ -796,8 +797,14 @@ class ServerSendRecovery(object):
                 self.stats_cmd.counter("remove.{0}".format(status), 1)
 
     def _check_bad_key(self, response):
-        status = response[1]
-        return status == -errno.EBADFD or status == -errno.EILSEQ
+        key, status, address, backend_id = response
+        if status == -errno.EILSEQ:
+            self.ctx.corrupted_keys.write(
+                '{key} {group} {address}/{backend_id}\n'.format(key=key,
+                                                                group=self.group,
+                                                                address=address,
+                                                                backend_id=backend_id))
+        return status in (-errno.EBADFD, -errno.EILSEQ)
 
     def _get_unrecovered_keys(self, responses):
         '''
