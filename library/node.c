@@ -248,6 +248,19 @@ static struct dnet_idc *dnet_idc_search_backend_nolock(struct dnet_net_state *st
 	return NULL;
 }
 
+int dnet_group_id_search_by_backend(struct dnet_net_state *st, int backend_id)
+{
+	int group_id = -1;
+
+	pthread_rwlock_rdlock(&st->idc_lock);
+	struct dnet_idc *idc = dnet_idc_search_backend_nolock(st, backend_id);
+	if (idc && idc->group)
+		group_id = idc->group->group_id;
+	pthread_rwlock_unlock(&st->idc_lock);
+
+	return group_id;
+}
+
 int dnet_idc_insert_nolock(struct dnet_net_state *st, struct dnet_idc *idc_new)
 {
 	struct rb_root *root = &st->idc_root;
