@@ -1,3 +1,9 @@
+elliptics (2.26.11.0-13) unstable; urgency=medium
+
+  * server-send: check that moving keys to itself doesn't permitted
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Mon, 26 Sep 2016 23:19:59 +0300
+
 elliptics (2.26.11.0-12) unstable; urgency=medium
 
   * using external sort for iterator result container sorting
