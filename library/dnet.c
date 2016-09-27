@@ -664,6 +664,36 @@ static int dnet_server_send_sync(struct dnet_server_send_ctl *ctl)
 }
 
 /*
+ * This function initializes \a groups array using groups from \a send.
+ * Server-send should not write keys to itself: if a group contains source backend
+ * and write requests will be addressed to the same backend in this group,
+ * then the group will be skipped during initialization of \a groups.
+ * Returns number of initialized elements in \a groups.
+ */
+static int dnet_filter_invalid_groups(int *groups, const struct dnet_server_send_ctl *send, struct dnet_node *n, struct dnet_id *id)
+{
+	int num_groups = 0;
+	int i, backend_id;
+	const int group_id = dnet_group_id_search_by_backend(n->st, send->backend_id);
+	for (i = 0; i < send->group_num; ++i) {
+		// check that source and destination backends are not the same
+		if (group_id >= 0 && send->groups[i] == group_id) {
+			id->group_id = group_id;
+			struct dnet_net_state *st = dnet_state_get_first_with_backend(n, id, &backend_id);
+			dnet_state_put(st);
+			if (st == n->st && backend_id == send->backend_id) {
+				dnet_log(n, DNET_LOG_ERROR, "%s: Skip sending key to the group: source and destination backends are the same: "
+						 "backend_id: %d, group_id: %d",
+						 dnet_dump_id(&send->cmd.id), backend_id, group_id);
+				continue;
+			}
+		}
+		groups[num_groups++] = send->groups[i];
+	}
+	return num_groups;
+}
+
+/*
  * Helper function which sends given data as WRITE command to remote groups
  */
 int dnet_server_send_write(struct dnet_server_send_ctl *send,
@@ -675,7 +705,8 @@ int dnet_server_send_write(struct dnet_server_send_ctl *send,
 	struct dnet_io_control ctl;
 	struct dnet_session *s;
 	struct dnet_iterator_server_send_write_private *wp;
-	int err;
+	int *groups, num_groups;
+	int err = 0;
 
 	dnet_server_send_get(send);
 
@@ -757,12 +788,27 @@ int dnet_server_send_write(struct dnet_server_send_ctl *send,
 	if (dnet_session_get_timeout(s)->tv_sec < 60)
 		dnet_session_set_timeout(s, 60);
 
-	err = dnet_session_set_groups(s, send->groups, send->group_num);
-	if (err) {
-		dnet_log(n, DNET_LOG_ERROR, "%s: Interrupting iterator because failed to set %d groups",
+	groups = malloc(send->group_num * sizeof(int));
+	if (!groups) {
+		dnet_log(n, DNET_LOG_ERROR, "%s: Interrupting iterator because failed to allocate groups array: num groups: %d",
 				dnet_dump_id(&send->cmd.id), send->group_num);
 		err = -ENOMEM;
 		goto err_out_session_destroy;
+	}
+
+	num_groups = dnet_filter_invalid_groups(groups, send, n, &ctl.id);
+	if (!num_groups) {
+		dnet_log(n, DNET_LOG_ERROR, "%s: %s: Failed to send key because no valid group available",
+				dnet_dump_id(&send->cmd.id), dnet_dump_id_str(re->key.id));
+		goto err_out_free_groups;
+	}
+
+	err = dnet_session_set_groups(s, groups, num_groups);
+	if (err) {
+		dnet_log(n, DNET_LOG_ERROR, "%s: Interrupting iterator because failed to set %d groups",
+				dnet_dump_id(&send->cmd.id), num_groups);
+		err = -ENOMEM;
+		goto err_out_free_groups;
 	}
 
 	atomic_add(&send->bytes_pending, re->size);
@@ -786,8 +832,12 @@ int dnet_server_send_write(struct dnet_server_send_ctl *send,
 	dnet_trans_create_send_all(s, &ctl);
 	dnet_session_destroy(s);
 
+	free(groups);
+
 	return err;
 
+err_out_free_groups:
+	free(groups);
 err_out_session_destroy:
 	dnet_session_destroy(s);
 err_out_free:
