@@ -241,48 +241,6 @@ void next_impl(bp::api::object &value, const bp::api::object &next)
 	value = next();
 }
 
-void iterator_container_append_rr(iterator_result_container &container,
-		dnet_iterator_response &response)
-{
-	container.append(&response);
-}
-
-void iterator_container_append(iterator_result_container &container,
-		iterator_result_entry &result)
-{
-	container.append(result);
-}
-
-void iterator_container_sort(iterator_result_container &container)
-{
-	container.sort();
-}
-
-uint64_t iterator_container_get_count(const iterator_result_container &container)
-{
-	return container.m_count;
-}
-
-dnet_iterator_response iterator_container_getitem(const iterator_result_container &container,
-                                                  uint64_t n)
-{
-	if (n >= container.m_count) {
-		PyErr_SetString(PyExc_IndexError, "Index out of range");
-		bp::throw_error_already_set();
-	}
-	return container[n];
-}
-
-void iterator_container_diff(iterator_result_container &left,
-                             iterator_result_container &right,
-                             iterator_result_container &diff)
-{
-	left.diff(right, diff);
-}
-
-void iterator_container_merge(const bp::list& /*results*/, bp::dict& /*splitted_dict*/)
-{}
-
 std::string get_cmd_string(int cmd) {
 	return std::string(dnet_cmd_string(cmd));
 }
@@ -520,20 +478,6 @@ BOOST_PYTHON_MODULE(core)
 		.value("change", node_status_flags_change)
 		.value("exit", node_status_flags_exit)
 		.value("ro", node_status_flags_ro)
-	;
-
-	bp::class_<iterator_result_container>("IteratorResultContainer",
-			bp::init<int>(bp::args("fd")))
-		.add_property("fd", &iterator_result_container::m_fd)
-		.def(bp::init<int, bool, uint64_t>(bp::args("fd", "sorted", "write_position")))
-		.def("append", iterator_container_append)
-		.def("append_rr", iterator_container_append_rr)
-		.def("sort", iterator_container_sort)
-		.def("diff", iterator_container_diff)
-		.def("__len__", iterator_container_get_count)
-		.def("__getitem__", iterator_container_getitem)
-		.def("merge", &iterator_container_merge)
-		.staticmethod("merge")
 	;
 
 	init_elliptics_id();

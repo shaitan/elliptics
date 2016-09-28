@@ -209,30 +209,6 @@ class iterator_result_entry : public callback_result_entry
 		uint64_t id() const;
 };
 
-// Container for iterator results
-class iterator_result_container
-{
-	public:
-		iterator_result_container(int fd, bool sorted = false, uint64_t write_position = 0)
-			: m_fd(fd), m_sorted(sorted), m_write_position(write_position) {
-				m_count = m_write_position / sizeof(dnet_iterator_response);
-			}
-		// Appends one result to container
-		void append(const iterator_result_entry &result);
-		void append(const dnet_iterator_response *response);
-		// Sorts container
-		void sort();
-		//! Puts difference between \a this and \a other into \a diff
-		void diff(const iterator_result_container &other,
-				iterator_result_container &result) const;
-		dnet_iterator_response operator [](size_t n) const;
-
-		int m_fd;
-		bool m_sorted;
-		uint64_t m_count;
-		uint64_t m_write_position;
-};
-
 class backend_status_result_entry : public callback_result_entry
 {
 	public:

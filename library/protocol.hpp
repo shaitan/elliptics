@@ -114,6 +114,8 @@ struct dnet_iterator_response {
 	dnet_time data_timestamp;
 	uint64_t data_size;
 	uint64_t read_data_size;
+	uint64_t data_offset;
+	uint64_t blob_id;
 };
 
 struct dnet_server_send_request {

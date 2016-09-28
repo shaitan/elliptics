@@ -246,7 +246,7 @@ inline msgpack::packer<Stream> &operator <<(msgpack::packer<Stream> &o, const dn
 }
 
 inline dnet_iterator_range &operator >>(msgpack::object o, dnet_iterator_range &v) {
-	if (o.type != msgpack::type::ARRAY || o.via.array.size == 2)
+	if (o.type != msgpack::type::ARRAY || o.via.array.size != 2)
 		throw msgpack::type_error();
 
 	object *p = o.via.array.ptr;
@@ -321,13 +321,21 @@ inline ioremap::elliptics::dnet_iterator_response &operator >>(msgpack::object o
 	p[12].convert(&v.data_size);
 	p[13].convert(&v.read_data_size);
 
+	if (o.via.array.size > 15) {
+		p[14].convert(&v.data_offset);
+		p[15].convert(&v.blob_id);
+	} else {
+		v.data_offset = 0;
+		v.blob_id = 0;
+	}
+
 	return v;
 }
 
 template <typename Stream>
 inline msgpack::packer<Stream> &operator <<(msgpack::packer<Stream> &o,
                                             const ioremap::elliptics::dnet_iterator_response &v) {
-	o.pack_array(14);
+	o.pack_array(16);
 	o.pack(v.iterator_id);
 	o.pack(v.key);
 	o.pack(v.status);
@@ -342,6 +350,8 @@ inline msgpack::packer<Stream> &operator <<(msgpack::packer<Stream> &o,
 	o.pack(v.data_timestamp);
 	o.pack(v.data_size);
 	o.pack(v.read_data_size);
+	o.pack(v.data_offset);
+	o.pack(v.blob_id);
 
 	return o;
 }
