@@ -1331,7 +1331,7 @@ int dnet_send_request(struct dnet_net_state *st, struct dnet_io_req *r)
 	if (1) {
 		struct dnet_cmd *cmd = r->header ? r->header : r->data;
 		dnet_node_set_trace_id(st->n->log, cmd->trace_id, cmd->flags & DNET_FLAGS_TRACE_BIT, (ssize_t)-1);
-		dnet_log(st->n, st->send_offset == 0 ? DNET_LOG_INFO : DNET_LOG_DEBUG,
+		dnet_log(st->n, st->send_offset == 0 ? DNET_LOG_NOTICE : DNET_LOG_DEBUG,
 			"%s: %s: sending trans: %lld -> %s/%d: size: %llu, cflags: %s, start-sent: %zd/%zd",
 			dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), (unsigned long long)cmd->trans,
 			dnet_addr_string(&st->addr), cmd->backend_id,
@@ -1374,7 +1374,11 @@ err_out_exit:
 
 	if (1) {
 		struct dnet_cmd *cmd = r->header ? r->header : r->data;
-		dnet_log(st->n, st->send_offset == total_size ? DNET_LOG_INFO : DNET_LOG_DEBUG,
+		enum dnet_log_level level = DNET_LOG_DEBUG;
+		if (st->send_offset == total_size) {
+			level = !(cmd->flags & DNET_FLAGS_MORE) ? DNET_LOG_INFO : DNET_LOG_NOTICE;
+		}
+		dnet_log(st->n, level,
 			"%s: %s: sending trans: %lld -> %s/%d: size: %llu, cflags: %s, finish-sent: %zd/%zd",
 			dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), (unsigned long long)cmd->trans,
 			dnet_addr_string(&st->addr), cmd->backend_id,
