@@ -426,7 +426,9 @@ def lookup_keys(ctx):
                                              result.record_info.data_timestamp,
                                              result.record_info.data_size,
                                              result.record_info.user_flags,
-                                             result.record_info.record_flags))
+                                             result.record_info.record_flags,
+                                             result.record_info.data_offset,
+                                             0)) # blob_id
                 else:
                     log.debug("Failed to lookup key: {0} in group: {1}: {2}"
                               .format(id, ctx.groups[i], status))

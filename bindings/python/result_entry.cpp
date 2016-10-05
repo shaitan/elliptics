@@ -388,12 +388,48 @@ dnet_record_info iterator_result_get_record_info(const newapi::iterator_result_e
 	return result.record_info();
 }
 
+uint64_t iterator_result_get_blob_id(const newapi::iterator_result_entry &result) {
+	return result.blob_id();
+}
+
 std::string iterator_result_get_json(const newapi::iterator_result_entry &result) {
 	return result.json().to_string();
 }
 
 std::string iterator_result_get_data(const newapi::iterator_result_entry &result) {
 	return result.data().to_string();
+}
+
+void iterator_container_append(newapi::iterator_result_container &container, newapi::iterator_result_entry &result) {
+	container.append(result);
+}
+
+void iterator_container_sort(newapi::iterator_result_container &container) {
+	container.sort();
+}
+
+uint64_t iterator_container_get_count(const newapi::iterator_result_container &container) {
+	return container.m_count;
+}
+
+iterator_container_item iterator_container_getitem(const newapi::iterator_result_container &container, uint64_t n) {
+	if (n >= container.m_count) {
+		PyErr_SetString(PyExc_IndexError, "Index out of range");
+		bp::throw_error_already_set();
+	}
+	return container[n];
+}
+
+elliptics_id iterator_container_item_key(const newapi::iterator_container_item &item) {
+	return elliptics_id(item.key);
+}
+
+elliptics_time iterator_container_item_json_timestamp(const newapi::iterator_container_item &item) {
+	return elliptics_time(item.json_timestamp);
+}
+
+elliptics_time iterator_container_item_data_timestamp(const newapi::iterator_container_item &item) {
+	return elliptics_time(item.data_timestamp);
 }
 
 } /* unnamed namespace */
@@ -626,12 +662,63 @@ void init_result_entry() {
 		              "elliptics.Id of iterated key.")
 		.add_property("record_info", newapi::iterator_result_get_record_info,
 		              "Information about iterated key.")
+		.add_property("blob_id", newapi::iterator_result_get_blob_id,
+			      "Information about key belonging to a specific blob")
 		.add_property("json", newapi::iterator_result_get_json,
 		              "Json of iterated key if appropriate flag was set otherwise it is empty string.")
 		.add_property("data", newapi::iterator_result_get_data,
 		              "Data of iterated key if appropriate flag was set otherwise it is empty string.")
 	;
 
+	bp::class_<newapi::iterator_container_item>("IteratorContainerItem",
+		"Result of iteration which contains information about one iterated key.",
+		bp::no_init)
+		.add_property("key", newapi::iterator_container_item_key,
+			      "elliptics.Id of iterated key")
+		.add_property("status", &newapi::iterator_container_item::status,
+			      "Status of iterated key:\n"
+			      "0 - common key\n"
+			      "1 - keepalive response")
+		.add_property("record_flags", &newapi::iterator_container_item::record_flags,
+			      "Backend's flags of the record")
+		.add_property("user_flags", &newapi::iterator_container_item::user_flags,
+			      "Custom user-defined flags of iterated key")
+		.add_property("json_timestamp", newapi::iterator_container_item_json_timestamp,
+			      "Timestamp of json last modification.")
+		.add_property("json_size", &newapi::iterator_container_item::json_size,
+			      "Whole size of the record's json.")
+		.add_property("json_capacity", &newapi::iterator_container_item::json_capacity,
+			      "Size of reserved place for json in the record.")
+		.add_property("data_timestamp", newapi::iterator_container_item_data_timestamp,
+			      "Timestamp of data last modification.")
+		.add_property("data_size", &newapi::iterator_container_item::data_size,
+			      "Whole size of the record's data.")
+		.add_property("data_offset", &newapi::iterator_container_item::data_offset,
+			      "Offset where data starts in file where the record is stored.")
+		.add_property("blob_id", &newapi::iterator_container_item::blob_id,
+			      "Integer identifier of a key's blob.")
+	;
+
+	bp::class_<newapi::iterator_result_container>("IteratorResultContainer",
+			bp::init<int>(bp::args("fd")))
+		.def(bp::init<int, bool, uint64_t>(bp::args("fd", "sorted", "write_position"),
+			"__init__(self, fd, sorted, write_position)\n"
+		         "    Initializes iterator result container using existing file descriptor"))
+		.def("append", newapi::iterator_container_append,
+		     (bp::arg("iterator_result_entry")),
+		     "append(iterator_result_entry)\n"
+		     "    Appends iterator_result_entry of type elliptics.core.newapi.IteratorResultEntry to the end of the container file")
+		.def("sort", newapi::iterator_container_sort,
+		     "sort()\n"
+		     "    Sorts items of the container file by (key, data_timestamp, json_timestamp, data_size) tuple")
+		.def("__len__", newapi::iterator_container_get_count,
+		     "x.__len__() <==> len(x)\n"
+		     "    Returns the number of items in the container file")
+		.def("__getitem__", newapi::iterator_container_getitem,
+		     (bp::arg("n")),
+		     "x.__getitem__(n) <==> x[n]\n"
+		     "    Returns n-th item of the container file of type elliptics.core.newapi.IteratorContainerItem")
+	;
 }
 
 } } } // namespace ioremap::elliptics::python

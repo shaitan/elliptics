@@ -293,13 +293,15 @@ class RemoveDirect(DirectOperation):
 
 
 class KeyInfo(object):
-    def __init__(self, address, group_id, timestamp, size, user_flags, flags):
+    def __init__(self, address, group_id, timestamp, size, user_flags, flags, data_offset, blob_id):
         self.address = address
         self.group_id = group_id
         self.timestamp = timestamp
         self.size = size
         self.user_flags = user_flags
         self.flags = flags
+        self.data_offset = data_offset
+        self.blob_id = blob_id
 
     def dump(self):
         return (
@@ -308,7 +310,9 @@ class KeyInfo(object):
             (self.timestamp.tsec, self.timestamp.tnsec),
             self.size,
             self.user_flags,
-            self.flags)
+            self.flags,
+            self.data_offset,
+            self.blob_id)
 
     @classmethod
     def load(cls, data):
@@ -317,7 +321,9 @@ class KeyInfo(object):
                    elliptics.Time(data[2][0], data[2][1]),
                    data[3],
                    data[4],
-                   data[5])
+                   data[5],
+                   data[6],
+                   data[7])
 
 
 def dump_key_data(key_data, file):

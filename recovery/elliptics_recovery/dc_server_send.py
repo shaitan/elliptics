@@ -1,7 +1,9 @@
 import logging
 import os
+import sys
 import errno
 import time
+import heapq
 from itertools import groupby
 
 from sets import Set
@@ -78,6 +80,79 @@ class BucketKeys(object):
         self.bucket_file = bucket_file
         self.group_id = group_id
 
+    def sort_by_physical_order(self):
+        chunk_files = []
+        try:
+            log.info("Sort bucket: phase 1: sort chunks: group_id: {0}, bucket: {1}"
+                     .format(self.group_id, self.bucket_file.name))
+            max_chunks_size = 500 * 1024 * 1024 # 500 Mb
+
+            chunk = []
+            chunk_size = 0
+
+            self.bucket_file.seek(0)
+            for key_data in load_key_data_from_file(self.bucket_file):
+                chunk_size += sys.getsizeof(key_data) + sys.getsizeof(key_data[0]) + sys.getsizeof(key_data[1]) + \
+                              sum(sys.getsizeof(info) for info in key_data[1])
+                chunk.append((self._get_physical_position(key_data), key_data))
+                if chunk_size > max_chunks_size:
+                    chunk_size = 0
+                    self._sort_chunk(chunk, chunk_files)
+            if chunk:
+                self._sort_chunk(chunk, chunk_files)
+
+            log.info("Sort bucket: phase 2: merge chunks: group_id: {0}, bucket: {1}"
+                     .format(self.group_id, self.bucket_file.name))
+            class MergeDataWrapper(object):
+                def __init__(self, gen, outer):
+                    self.gen = gen
+                    self.outer = outer
+                    self.next()
+
+                def __cmp__(self, other):
+                    return cmp(self.physical_position, other.physical_position)
+
+                def next(self):
+                    try:
+                        self.key_data = self.gen.next()
+                        self.physical_position = self.outer._get_physical_position(self.key_data)
+                    except StopIteration:
+                        return False
+                    return True
+
+            heap = []
+            for chunk in chunk_files:
+                chunk.seek(0)
+                heapq.heappush(heap, MergeDataWrapper(load_key_data_from_file(chunk), self))
+
+            self.bucket_file.seek(0)
+            self.bucket_file.truncate()
+            while len(heap):
+                wrapper = heapq.heappop(heap)
+                dump_key_data(wrapper.key_data, self.bucket_file)
+                if wrapper.next():
+                    heapq.heappush(heap, wrapper)
+        finally:
+            for f in chunk_files:
+                os.unlink(f.name)
+
+    def _get_physical_position(self, key_data):
+        for key_info in key_data[1]:
+            if key_info.group_id == self.group_id:
+                return (key_info.blob_id, key_info.data_offset)
+
+    def _sort_chunk(self, chunk, chunk_files):
+        filename = "{}.{}".format(self.bucket_file.name, len(chunk_files))
+        chunk_file = open(filename, 'wb+')
+        chunk_files.append(chunk_file)
+
+        chunk.sort(key=lambda k: k[0])
+
+        for _, key_data in chunk:
+            dump_key_data(key_data, chunk_file)
+
+        del chunk[:]
+
     def get_keys(self, max_keys_num):
         '''
         Yields bunch of keys from the bucket file.
@@ -138,7 +213,7 @@ class ServerSendRecovery(object):
             bucket = self.buckets.get_next_bucket()
             if bucket is None:
                 break
-            #bucket.external_sort_by_physical_order()
+            bucket.sort_by_physical_order()
             group_id = bucket.get_group_id()
             progress = False
             for keys in bucket.get_keys(self.ctx.batch_size):

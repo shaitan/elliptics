@@ -49,8 +49,46 @@ public:
 
 	dnet_raw_id key() const;
 	dnet_record_info record_info() const;
+	uint64_t blob_id() const;
 	data_pointer json() const;
 	data_pointer data() const;
+};
+
+struct iterator_container_item {
+	dnet_raw_id key;
+	int status;
+
+	uint64_t record_flags;
+	uint64_t user_flags;
+
+	dnet_time json_timestamp;
+	uint64_t json_size;
+	uint64_t json_capacity;
+
+	dnet_time data_timestamp;
+	uint64_t data_size;
+	uint64_t data_offset;
+	uint64_t blob_id;
+};
+
+// Container for iterator results
+class iterator_result_container
+{
+public:
+	iterator_result_container(int fd, bool sorted = false, uint64_t write_position = 0)
+	: m_fd(fd), m_sorted(sorted), m_write_position(write_position) {
+		m_count = m_write_position / sizeof(iterator_container_item);
+	}
+	// Appends one result to container
+	void append(const iterator_result_entry &result);
+	// Sorts container
+	void sort();
+	iterator_container_item operator [](size_t n) const;
+
+	int m_fd;
+	bool m_sorted;
+	uint64_t m_count;
+	uint64_t m_write_position;
 };
 
 typedef lookup_result_entry write_result_entry;

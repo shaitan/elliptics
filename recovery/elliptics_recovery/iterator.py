@@ -83,28 +83,9 @@ class IteratorResult(object):
     def append(self, record):
         self.container.append(record)
 
-    def append_rr(self, record):
-        self.container.append_rr(record)
-
     def sort(self):
         """Sorts results"""
         self.container.sort()
-
-    def diff(self, other):
-        """
-        Computes diff between two sorted results. Returns container that consists of difference.
-        """
-        import hashlib
-        filename = 'diff_{0}.{1}-{2}.{3}'.format(hashlib.sha256(str(self.address)).hexdigest(), self.backend_id,
-                                                 hashlib.sha256(str(other.address)).hexdigest(), other.backend_id)
-        diff_container = IteratorResult.from_filename(filename,
-                                                      address=other.address,
-                                                      backend_id=other.backend_id,
-                                                      group_id=other.group_id,
-                                                      tmp_dir=self.tmp_dir
-                                                      )
-        self.container.diff(other.container, diff_container.container)
-        return diff_container
 
     @classmethod
     def merge(cls, results, tmp_dir):
@@ -214,7 +195,7 @@ class IteratorResult(object):
     @classmethod
     def from_info(cls, fd, is_sorted, position, **kwargs):
         result = cls(**kwargs)
-        result.container = elliptics.IteratorResultContainer(fd, is_sorted, position)
+        result.container = elliptics.core.newapi.IteratorResultContainer(fd, is_sorted, position)
         return result
 
     @classmethod
@@ -223,7 +204,7 @@ class IteratorResult(object):
         Creates iterator result from fd
         """
         result = cls(**kwargs)
-        result.container = elliptics.IteratorResultContainer(fd)
+        result.container = elliptics.core.newapi.IteratorResultContainer(fd)
         return result
 
 
@@ -234,7 +215,7 @@ class Iterator(object):
     """
 
     def __init__(self, node, group, separately=False, trace_id=0):
-        self.session = elliptics.Session(node)
+        self.session = elliptics.newapi.Session(node)
         self.session.groups = [group]
         self.session.trace_id = trace_id
         self.separately = separately
@@ -300,6 +281,8 @@ class Iterator(object):
 
             ranges = [IdRange.elliptics_range(start, stop) for start, stop in key_ranges]
             records = self._start_iterator(eid,
+                                           address,
+                                           backend_id,
                                            ranges,
                                            flags,
                                            timestamp_range)
@@ -314,15 +297,13 @@ class Iterator(object):
             for num, record in enumerate(records):
                 end = time.time()
                 # TODO: Here we can add throttling
-                if record.status != 0:
-                    raise RuntimeError("Iteration status check failed: {0}".format(record.status))
 
-                if record.response.status and stats_cmd is not None:
-                    stats_cmd.counter("iterate.{0}".format(record.response.status), 1)
+                if record.status and stats_cmd is not None:
+                    stats_cmd.counter("iterate.{0}".format(record.status), 1)
 
-                iterated_keys = record.response.iterated_keys
-                total_keys = record.response.total_keys
-                if record.response.status == 0:
+                iterated_keys = record.iterated_keys
+                total_keys = record.total_keys
+                if record.status == 0:
                     positive_responses += 1
                 else:
                     negative_responses += 1
@@ -345,20 +326,19 @@ class Iterator(object):
                            .format(address, backend_id, repr(e), traceback.format_exc()))
             yield None
 
-    def _start_iterator(self, eid, ranges, flags, timestamp_range):
-        return self.session.start_iterator(eid,
-                                           ranges,
-                                           elliptics.iterator_types.network,
-                                           flags,
-                                           timestamp_range[0],
-                                           timestamp_range[1])
+    def _start_iterator(self, eid, address, backend_id, ranges, flags, timestamp_range):
+        return self.session.start_iterator(address=address,
+                                           backend_id=backend_id,
+                                           flags=flags,
+                                           key_ranges=ranges,
+                                           time_range=timestamp_range)
 
     def _on_key_response(self, results, record, address, backend_id):
-        if record.response.status == 0:
+        if record.status == 0:
             self._save_record(results, record)
 
     def _save_record(self, results, record):
-        results[self._get_key_range_id(record.response.key)].append(record)
+        results[self._get_key_range_id(record.key)].append(record)
 
     def iterate_with_stats(self, eid, timestamp_range,
                            key_ranges, tmp_dir, address, group_id, backend_id, batch_size,
@@ -409,14 +389,14 @@ class MergeRecoveryIterator(Iterator):
     def __init__(self, *args,  **kwargs):
         super(MergeRecoveryIterator, self).__init__(*args, **kwargs)
 
-    def _start_iterator(self, eid, ranges, flags, timestamp_range):
+    def _start_iterator(self, eid, address, backend_id, ranges, flags, timestamp_range):
         flags |= elliptics.iterator_flags.move
         return self.session.start_copy_iterator(eid, ranges, [eid.group_id], flags, timestamp_range[0], timestamp_range[1])
 
     def _on_key_response(self, results, record, address, backend_id):
-        if record.response.status != 0:
+        if record.status != 0:
             self.log.error("Key recovery on node: {0}/{1} failed: {2}, key: {3}"
-                           .format(address, backend_id, record.response.status, record.response.key))
+                           .format(address, backend_id, record.status, record.key))
             self._save_record(results, record)
 
     def _update_stats(self, stats, it):
@@ -446,10 +426,10 @@ class MergeData(object):
         cmp_res = cmp(self.value.key, other.value.key)
 
         if cmp_res == 0:
-            cmp_res = cmp(other.value.timestamp, self.value.timestamp)
+            cmp_res = cmp(other.value.data_timestamp, self.value.data_timestamp)
 
         if cmp_res == 0:
-            cmp_res = cmp(self.value.size, other.value.size)
+            cmp_res = cmp(self.value.data_size, other.value.data_size)
 
         if cmp_res == 0:
             cmp_res = cmp(other.value.user_flags, self.value.user_flags)
@@ -474,7 +454,7 @@ class MergeData(object):
 
         try:
             while self.value.key == self.next_value.key:
-                if self.value.timestamp < self.next_value.timestamp:
+                if self.value.data_timestamp < self.next_value.data_timestamp:
                     self.value = self.next_value
                 self.next_value = next(self.iter)
         except StopIteration:
@@ -489,7 +469,9 @@ class MergeData(object):
     def key_info(self):
         return KeyInfo(self.address,
                        self.group_id,
-                       self.value.timestamp,
-                       self.value.size,
+                       self.value.data_timestamp,
+                       self.value.data_size,
                        self.value.user_flags,
-                       self.value.record_flags)
+                       self.value.record_flags,
+                       self.value.data_offset,
+                       self.value.blob_id)
