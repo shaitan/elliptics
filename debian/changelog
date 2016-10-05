@@ -1,3 +1,16 @@
+elliptics (2.27.0.0~alpha4) unstable; urgency=medium
+
+  * recovery: dc: sort bucket items by physical order before server send
+  * blob_id & data_offset returned via a new protocol, used in a modified IteratorResultContainer
+  * recovery: merge: removed obsolete Recovery code; used server-send, copy-iter everywhere
+  * server-send: check that moving keys to itself doesn't permitted
+  * recovery: dump corrupted keys into {tmp_dir}/corrupted_keys file
+  * config: allow to put handystats config inside monitor object
+  * cache: allow to set cache size in kilo-, mega- and etc. bytes
+  * logs: decreas number of logs printed on info level
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Wed, 05 Oct 2016 16:22:16 +0300
+
 elliptics (2.27.0.0~alpha3) unstable; urgency=medium
 
   * recovery: retry only timeouted or broken connection attempts
