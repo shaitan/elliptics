@@ -329,7 +329,7 @@ class Iterator(object):
     def _start_iterator(self, eid, address, backend_id, ranges, flags, timestamp_range):
         return self.session.start_iterator(address=address,
                                            backend_id=backend_id,
-                                           flags=elliptics.iterator_flags.default,
+                                           flags=flags,
                                            key_ranges=ranges,
                                            time_range=timestamp_range)
 

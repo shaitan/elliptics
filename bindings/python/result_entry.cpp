@@ -670,7 +670,7 @@ void init_result_entry() {
 		              "Data of iterated key if appropriate flag was set otherwise it is empty string.")
 	;
 
-	bp::class_<newapi::iterator_container_item>("IteratorContainerItem"
+	bp::class_<newapi::iterator_container_item>("IteratorContainerItem",
 		"Result of iteration which contains information about one iterated key.",
 		bp::no_init)
 		.add_property("key", newapi::iterator_container_item_key,
@@ -684,33 +684,40 @@ void init_result_entry() {
 		.add_property("user_flags", &newapi::iterator_container_item::user_flags,
 			      "Custom user-defined flags of iterated key")
 		.add_property("json_timestamp", newapi::iterator_container_item_json_timestamp,
-			      "")
+			      "Timestamp of json last modification.")
 		.add_property("json_size", &newapi::iterator_container_item::json_size,
-			      "")
+			      "Whole size of the record's json.")
 		.add_property("json_capacity", &newapi::iterator_container_item::json_capacity,
-			      "")
-		.add_property("read_json_size", &newapi::iterator_container_item::read_json_size,
-			      "")
+			      "Size of reserved place for json in the record.")
 		.add_property("data_timestamp", newapi::iterator_container_item_data_timestamp,
-			      "")
+			      "Timestamp of data last modification.")
 		.add_property("data_size", &newapi::iterator_container_item::data_size,
-			      "")
-		.add_property("read_data_size", &newapi::iterator_container_item::read_data_size,
-			      "")
+			      "Whole size of the record's data.")
 		.add_property("data_offset", &newapi::iterator_container_item::data_offset,
-			      "")
+			      "Offset where data starts in file where the record is stored.")
 		.add_property("blob_id", &newapi::iterator_container_item::blob_id,
-			      "")
+			      "Integer identifier of a key's blob.")
 	;
 
 	bp::class_<newapi::iterator_result_container>("IteratorResultContainer",
 			bp::init<int>(bp::args("fd")))
-		.add_property("fd", &newapi::iterator_result_container::m_fd)
-		.def(bp::init<int, bool, uint64_t>(bp::args("fd", "sorted", "write_position")))
-		.def("append", newapi::iterator_container_append)
-		.def("sort", newapi::iterator_container_sort)
-		.def("__len__", newapi::iterator_container_get_count)
-		.def("__getitem__", newapi::iterator_container_getitem)
+		.def(bp::init<int, bool, uint64_t>(bp::args("fd", "sorted", "write_position"),
+			"__init__(self, fd, sorted, write_position)\n"
+		         "    Initializes iterator result container using existing file descriptor"))
+		.def("append", newapi::iterator_container_append,
+		     (bp::arg("iterator_result_entry")),
+		     "append(iterator_result_entry)\n"
+		     "    Appends iterator_result_entry of type elliptics.core.newapi.IteratorResultEntry to the end of the container file")
+		.def("sort", newapi::iterator_container_sort,
+		     "sort()\n"
+		     "    Sorts items of the container file by (key, data_timestamp, json_timestamp, data_size) tuple")
+		.def("__len__", newapi::iterator_container_get_count,
+		     "x.__len__() <==> len(x)\n"
+		     "    Returns the number of items in the container file")
+		.def("__getitem__", newapi::iterator_container_getitem,
+		     (bp::arg("n")),
+		     "x.__getitem__(n) <==> x[n]\n"
+		     "    Returns n-th item of the container file of type elliptics.core.newapi.IteratorContainerItem")
 	;
 }
 

@@ -64,11 +64,9 @@ struct iterator_container_item {
 	dnet_time json_timestamp;
 	uint64_t json_size;
 	uint64_t json_capacity;
-	uint64_t read_json_size;
 
 	dnet_time data_timestamp;
 	uint64_t data_size;
-	uint64_t read_data_size;
 	uint64_t data_offset;
 	uint64_t blob_id;
 };

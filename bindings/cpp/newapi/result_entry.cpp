@@ -184,7 +184,7 @@ data_pointer iterator_result_entry::data() const {
 //
 
 static const size_t MAX_ITERATOR_RESULT_CHUNK_SIZE = 500 * 1024 * 1024; // 500 Mb
-static const size_t MAX_ITERATOR_RESULT_ITEMS_IN_CHUNK = MAX_ITERATOR_RESULT_CHUNK_SIZE / sizeof(struct dnet_iterator_response);
+static const size_t MAX_ITERATOR_RESULT_ITEMS_IN_CHUNK = MAX_ITERATOR_RESULT_CHUNK_SIZE / sizeof(struct iterator_container_item);
 
 static inline bool compare_iterator_container_items(const struct iterator_container_item &lhs, const struct iterator_container_item &rhs)
 {
@@ -299,10 +299,8 @@ void iterator_result_container::append(const iterator_result_entry &result)
 	item.json_timestamp = dnet_response.json_timestamp;
 	item.json_size = dnet_response.json_size;
 	item.json_capacity = dnet_response.json_capacity;
-	item.read_json_size = dnet_response.read_json_size;
 	item.data_timestamp = dnet_response.data_timestamp;
 	item.data_size = dnet_response.data_size;
-	item.read_data_size = dnet_response.read_data_size;
 	item.data_offset = dnet_response.data_offset;
 	item.blob_id = dnet_response.blob_id;
 
@@ -313,10 +311,10 @@ void iterator_result_container::append(const iterator_result_entry &result)
 	m_count++;
 }
 
-//* Sort container by (key, timestamp) tuple
+//* Sort container by (key, data_timestamp, json_timestamp, data_size) tuple
 void iterator_result_container::sort()
 {
-	if (m_sorted == true)
+	if (m_sorted)
 		return;
 
 	if (m_write_position % sizeof(iterator_container_item) != 0)
