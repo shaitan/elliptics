@@ -252,7 +252,6 @@ void parse_options(config_data *data, const kora::config_t &options)
 	data->cfg_state.server_prio = options.at("server_net_prio", 0);
 	data->cfg_state.client_prio = options.at("client_net_prio", 0);
 	data->cfg_state.indexes_shard_count = options.at("indexes_shard_count", 0);
-	data->daemon_mode = options.at("daemon", false);
 	data->parallel_start = options.at("parallel", true);
 	snprintf(data->cfg_state.cookie, DNET_AUTH_COOKIE_SIZE, "%s", options.at<std::string>("auth_cookie").c_str());
 
@@ -384,12 +383,16 @@ extern "C" struct dnet_node *dnet_parse_config(const char *file, int mon)
 		const auto options = root["options"];
 		const auto backends = root["backends"];
 
+		data->daemon_mode = options.at("daemon", false);
+		if (data->daemon_mode && !mon)
+			dnet_background();
+
 		parse_logger(data, logger);
 		parse_options(data, options);
 		parse_backends(data, backends);
 
 		if (data->daemon_mode && !mon)
-			dnet_background();
+			dnet_redirect_std_stream_to_dev_null();
 
 		if (!data->cfg_addr_num)
 			throw config_error("no local address specified, exiting");
