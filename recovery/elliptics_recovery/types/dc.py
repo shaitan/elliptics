@@ -251,25 +251,31 @@ def final_merge(ctx, results):
 
 def dump_key(ctx, key, key_infos, newest_key_group):
     if key_infos[0].group_id != newest_key_group:
-        index = [k.group_id for k in key_infos].index(newest_key_group)
-        tmp = list(key_infos)
-        tmp[0], tmp[index] = tmp[index], tmp[0]
-        key_infos = tuple(tmp)
+        for i, info in enumerate(key_infos):
+            if info.group_id == newest_key_group:
+                tmp = list(key_infos)
+                tmp[0], tmp[i] = tmp[i], tmp[0]
+                key_infos = tuple(tmp)
+                break
+
+    key_info = key_infos[0]
+    if key_info.timestamp < ctx.prepare_timeout:
+        is_all_uncommitted = True
+        same_ts = lambda lhs, rhs: lhs.timestamp == rhs.timestamp
+        for info in key_infos:
+            if not (info.flags & elliptics.record_flags.uncommitted and same_ts(info, key_info)):
+                is_all_uncommitted = False
+                break
+    else:
+        is_all_uncommitted = False
 
     key_data = (key, key_infos)
-    key_info = key_infos[0]
-    is_chunked = key_info.size > ctx.chunk_size
-    same_ts = lambda lhs, rhs: lhs.timestamp == rhs.timestamp
-    same_uncommitted = [info for info in key_infos
-                        if info.flags & elliptics.record_flags.uncommitted and same_ts(info, key_info)]
-    is_all_uncommitted = same_uncommitted == key_infos and key_info.timestamp < ctx.prepare_timeout
-
-    log.debug("Dumping key: {0}, group: {1}".format(key_data[0], newest_key_group))
-    if ctx.no_server_send or is_chunked or is_all_uncommitted:
+    log.debug("Dumping key: {0}, group: {1}".format(key, newest_key_group))
+    if ctx.no_server_send or is_all_uncommitted:
         dump_key_data(key_data, ctx.rest_file)
     else:
         if newest_key_group not in ctx.bucket_files:
-            filename = os.path.join(ctx.tmp_dir, 'bucket_%d' % (newest_key_group))
+            filename = os.path.join(ctx.tmp_dir, 'bucket_{}'.format(newest_key_group))
             ctx.bucket_files[newest_key_group] = open(filename, 'wb+')
         dump_key_data(key_data, ctx.bucket_files[newest_key_group])
 

@@ -22,6 +22,7 @@ import hashlib
 import errno
 import traceback
 import struct
+import msgpack
 import elliptics
 import time
 
@@ -327,13 +328,10 @@ class KeyInfo(object):
 
 
 def dump_key_data(key_data, file):
-    import msgpack
-    dump_data = (key_data[0].id, tuple(ki.dump() for ki in key_data[1]))
-    msgpack.pack(dump_data, file)
+    msgpack.pack((key_data[0].id, tuple(ki.dump() for ki in key_data[1])), file)
 
 
 def load_key_data_from_file(keys_file):
-    import msgpack
     unpacker = msgpack.Unpacker(keys_file)
     for data in unpacker:
         yield (elliptics.Id(data[0], 0), tuple(KeyInfo.load(d) for d in data[1]))
