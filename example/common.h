@@ -33,6 +33,7 @@ struct dnet_node *dnet_parse_config(const char *file, int mon);
 int dnet_parse_groups(char *value, int **groups);
 
 int dnet_background(void);
+int dnet_redirect_std_stream_to_dev_null(void);
 
 #ifdef __cplusplus
 }

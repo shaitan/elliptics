@@ -99,7 +99,6 @@ int dnet_parse_groups(char *value, int **groupsp)
 int dnet_background(void)
 {
 	pid_t pid;
-	int fd;
 
 	pid = fork();
 	if (pid == -1) {
@@ -113,6 +112,12 @@ int dnet_background(void)
 	}
 
 	setsid();
+
+	return 0;
+}
+
+int dnet_redirect_std_stream_to_dev_null(void) {
+	int fd;
 
 	close(0);
 	close(1);
