@@ -322,6 +322,8 @@ class Iterator(object):
             else:
                 yield results[0]
         except Exception as e:
+            if len(e.args) and isinstance(e.args[0], elliptics.core.ErrorInfo):
+                stats_cmd.counter("iterate.{0}".format(e.args[0].code), 1)
             self.log.error("Iteration on node: {0}/{1} failed: {2}, traceback: {3}"
                            .format(address, backend_id, repr(e), traceback.format_exc()))
             yield None
