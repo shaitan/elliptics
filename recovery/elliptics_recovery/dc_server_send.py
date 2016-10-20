@@ -341,7 +341,10 @@ class ServerSendRecovery(object):
                 corrupted_keys.append(key)
                 self.ctx.corrupted_keys.write('{key} {group}\n'.format(key=key, group=group_id))
             next_group_id = self._get_next_group_id(key_infos, group_id)
-            self.buckets.on_server_send_fail(key, key_infos, next_group_id)
+            if next_group_id < 0:
+                self.result = False
+            else:
+                self.buckets.on_server_send_fail(key, key_infos, next_group_id)
 
     def _remove_corrupted_keys(self, keys, groups):
         '''

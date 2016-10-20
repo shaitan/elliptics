@@ -19,6 +19,7 @@ import threading
 import os
 import traceback
 import errno
+from functools import partial
 
 from elliptics_recovery.utils.misc import elliptics_create_node, RecoverStat, validate_index
 from elliptics_recovery.utils.misc import INDEX_MAGIC_NUMBER_LENGTH, load_key_data, WindowedRecovery
@@ -237,8 +238,36 @@ class KeyRecover(object):
                 log.exception("Failed to remove key: {0} from groups: {1}".format(self.key, self.remove_session.groups))
                 self.stop(False)
 
+    def remove_corrupted(self, remove_handler):
+        if self.ctx.safe or self.ctx.dry_run:
+            if self.ctx.safe:
+                log.info("Safe mode is turned on. Skip removing key: {0}".format(repr(self.key)))
+            else:
+                log.info("Dry-run mode is turned on. Skip removing key: {0}.".format(repr(self.key)))
+            return False
+        else:
+            try:
+                log.info("Removing key: {0} from groups: {1}".format(self.key, self.remove_session.groups))
+                remove_result = self.remove_session.remove(self.key)
+                remove_result.connect(remove_handler)
+            except:
+                log.exception("Failed to remove key: {0} from groups: {1}".format(self.key, self.remove_session.groups))
+                return False
+        return True
+
     def onread(self, results, error):
         try:
+            corrupted_groups = [r.group_id for r in results if r.status == -errno.EILSEQ]
+            if corrupted_groups:
+                self.remove_session.groups = corrupted_groups
+                handler = partial(self.on_remove_corrupted,
+                                  filter(lambda r: r.status != -errno.EILSEQ, results),
+                                  error)
+                self.attempt = 0
+                if self.remove_corrupted(handler):
+                    self.stats.read_failed += len(corrupted_groups)
+                    return
+
             if error.code:
                 log.error("Failed to read key: {0} from groups: {1}: {2}".format(self.key, self.same_groups, error))
                 self.stats_cmd.counter('read.{0}'.format(error.code), 1)
@@ -379,6 +408,39 @@ class KeyRecover(object):
         except:
             log.exception("Failed to handle remove result key: {0} from groups: {1}"
                           .format(self.key, self.remove_session.groups))
+
+    def on_remove_corrupted(self, read_results, read_error, results, error):
+        try:
+            if error.code:
+                self.stats_cmd.counter('remove.{0}'.format(error.code), 1)
+                self.stats.remove_failed += 1
+                failed_groups = [r.group_id for r in results if r.status != 0]
+                log.error("Failed to remove key: {0}: from groups: {1}: {2}"
+                          .format(self.key, failed_groups, error))
+                if self.attempt < self.ctx.attempts:
+                    self.remove_session.groups = failed_groups
+                    old_timeout = self.remove_session.timeout
+                    self.remove_session.timeout *= 2
+                    self.attempt += 1
+                    log.info("Retry to remove key: {0} attempts: {1}/{2} "
+                             "increased timeout: {3}/{4}"
+                             .format(repr(self.key),
+                                     self.attempt, self.ctx.attempts,
+                                     self.remove_session.timeout,
+                                     old_timeout))
+                    self.stats.remove_retries += 1
+
+                    handler = partial(self.on_remove_corrupted, read_results, read_error)
+                    if self.remove_corrupted(handler):
+                        return
+            else:
+                self.stats.remove += len(results)
+        except:
+            log.exception("Failed to handle remove result key: {0} from groups: {1}"
+                          .format(self.key, self.remove_session.groups))
+
+        self.attempt = 0
+        self.onread(read_results, read_error)
 
     def wait(self):
         if not self.complete.is_set():

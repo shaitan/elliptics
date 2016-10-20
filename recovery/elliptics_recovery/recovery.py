@@ -417,7 +417,7 @@ def run(args=None):
                       'Records that exceeded this timeout will be removed. [default: %default]')
     parser.add_option('-T', '--trace-id', action='store', dest="trace_id", default='0',
                       help='Marks all recovery commands by trace_id at both recovery and server logs. This option accepts hex strings. [default: %default]')
-    parser.add_option('-U', '--no-server-send', action="store", dest="no_server_send", default=False,
+    parser.add_option('-U', '--no-server-send', action="store_true", dest="no_server_send", default=False,
                       help='Do not use server-send for recovery. Disabling recovery via server-send useful if there is no network connection between groups')
     parser.add_option('--user-flags', action='append', dest='user_flags_set', default=[],
                       help='Recover key if at least one replica has user_flags from specified user_flags_set')
