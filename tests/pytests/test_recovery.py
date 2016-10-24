@@ -753,14 +753,14 @@ class TestRecovery:
         session = make_session(node=simple_node,
                                test_name='TestRecovery.test_teardown',
                                test_namespace=self.namespace)
-        addresses = session.routes.addresses_with_backends()
-        disable_backends(session, addresses)
+        addresses_with_backends = session.routes.addresses_with_backends()
+        disable_backends(session, addresses_with_backends)
         remove_all_blobs(session)
-        enable_backends(session, addresses)
+        enable_backends(session, addresses_with_backends)
 
         # wait for route-list updates
         counter = 0
-        while session.routes.addresses_with_backends() != addresses:
+        while set(session.routes.addresses_with_backends()) != set(addresses_with_backends):
             assert counter <= 5  # 5 seconds should be enough to receive and handle all route-list updates
             time.sleep(0.5)
             counter += 0.5
