@@ -86,30 +86,19 @@ void app_context::log(int severity, const blackhole::lazy_message_t &message, bl
 #define LOG_ERROR(logger, ...) \
 	blackhole::logger_facade<app_context>(logger).log(cocaine::logging::error, __VA_ARGS__)
 
-const cocaine::hpack::header_t &find_header(const std::vector<cocaine::hpack::header_t> &headers,
-                                            const std::string &name) {
-	auto found = std::find_if(headers.begin(), headers.end(), [&name](const cocaine::hpack::header_t &h) {
-		return name == std::string(h.get_name().blob, h.get_name().size);
-	});
-	if (found != headers.end()) {
-		return (*found);
-	} else {
-		throw std::invalid_argument(name + " header not found");
+elliptics::exec_context get_exec_context(const cocaine::hpack::header_storage_t &headers)
+{
+	const auto h = cocaine::hpack::header::find_first(headers, "sph");
+	if(!h) {
+		throw std::invalid_argument("sph header not found");
 	}
+	return elliptics::exec_context::from_raw(h->value().c_str(), h->value().size());
 }
 
-//XXX: cocaine must provide simpler way to deal with headers
-elliptics::exec_context get_exec_context(const std::vector<cocaine::hpack::header_t> &headers)
+uint64_t get_trace_id(const cocaine::hpack::header_storage_t &headers)
 {
-	const auto &h = find_header(headers, "sph");
-	return elliptics::exec_context::from_raw(h.get_value().blob, h.get_value().size);
-}
-
-uint64_t get_trace_id(const std::vector<cocaine::hpack::header_t> &headers)
-{
-	const auto &h = find_header(headers, "trace_id");
-	assert(h.get_value().size == sizeof(uint64_t));
-	return *reinterpret_cast<const uint64_t*>(h.get_value().blob);
+	const auto &h = cocaine::hpack::header::convert_first<uint64_t>(headers, "trace_id");
+	return h ? *h : 0;
 }
 
 struct debug_log_scope
@@ -126,13 +115,13 @@ struct debug_log_scope
 	}
 };
 
-void list_headers(app_context &logger, const char *func_name, const std::vector<cocaine::hpack::header_t> &headers)
+void list_headers(app_context &logger, const char *func_name, const cocaine::hpack::header_storage_t &headers)
 {
 	std::stringstream stream;
 	for (const auto &header : headers) {
 		stream << " ";
-		stream.write(header.get_name().blob, header.get_name().size);
-		stream << "(" << header.get_value().size << ")";
+		stream.write(header.name().c_str(), header.name().size());
+		stream << "(" << header.value().size() << ")";
 	}
 	LOG_DEBUG(logger, "{}: headers ({}): {}", func_name, headers.size(), stream.str());
 }
@@ -141,14 +130,14 @@ void app_context::init_elliptics_client(worker::sender tx, worker::receiver rx)
 {
 	debug_log_scope scope(*this, __func__);
 
-	const uint64_t trace_id = get_trace_id(rx.invocation_headers().get_headers());
+	const uint64_t trace_id = get_trace_id(rx.invocation_headers());
 	LOG_DEBUG(*this, "{}: TRACE {:#x}", __func__, trace_id);
 
-	list_headers(*this, __func__, rx.invocation_headers().get_headers());
+	list_headers(*this, __func__, rx.invocation_headers());
 
 	elliptics::exec_context context;
 	try {
-		context = get_exec_context(rx.invocation_headers().get_headers());
+		context = get_exec_context(rx.invocation_headers());
 
 	} catch(const std::exception &e) {
 		tx.error(-EINVAL, e.what()).get();
@@ -192,14 +181,14 @@ void app_context::echo_via_elliptics(worker::sender tx, worker::receiver rx)
 		return;
 	}
 
-	const uint64_t trace_id = get_trace_id(rx.invocation_headers().get_headers());
+	const uint64_t trace_id = get_trace_id(rx.invocation_headers());
 	LOG_DEBUG(*this, "{}: TRACE {:x}", __func__, trace_id);
 
-	list_headers(*this, __func__, rx.invocation_headers().get_headers());
+	list_headers(*this, __func__, rx.invocation_headers());
 
 	elliptics::exec_context context;
 	try {
-		context = get_exec_context(rx.invocation_headers().get_headers());
+		context = get_exec_context(rx.invocation_headers());
 
 	} catch(const std::exception &e) {
 		tx.error(-EINVAL, e.what()).get();
@@ -224,10 +213,10 @@ void app_context::echo_via_cocaine(worker::sender tx, worker::receiver rx)
 {
 	debug_log_scope scope(*this, __func__);
 
-	const uint64_t trace_id = get_trace_id(rx.invocation_headers().get_headers());
+	const uint64_t trace_id = get_trace_id(rx.invocation_headers());
 	LOG_DEBUG(*this, "{}: TRACE {:x}", __func__, trace_id);
 
-	list_headers(*this, __func__, rx.invocation_headers().get_headers());
+	list_headers(*this, __func__, rx.invocation_headers());
 
 	const std::string input(std::move(rx.recv().get().get()));
 
@@ -284,14 +273,14 @@ void app_context::chain_via_elliptics(worker::sender tx, worker::receiver rx, co
 		return;
 	}
 
-	const uint64_t trace_id = get_trace_id(rx.invocation_headers().get_headers());
+	const uint64_t trace_id = get_trace_id(rx.invocation_headers());
 	LOG_DEBUG(*this, "{}: TRACE {:x}", __func, trace_id);
 
-	list_headers(*this, __func.c_str(), rx.invocation_headers().get_headers());
+	list_headers(*this, __func.c_str(), rx.invocation_headers());
 
 	elliptics::exec_context context;
 	try {
-		context = get_exec_context(rx.invocation_headers().get_headers());
+		context = get_exec_context(rx.invocation_headers());
 
 	} catch(const std::exception &e) {
 		tx.error(-EINVAL, e.what()).get();

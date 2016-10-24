@@ -33,6 +33,7 @@
 #include <cocaine/rpc/actor.hpp>
 #include <cocaine/service/node.hpp>
 #include <cocaine/service/node/overseer.hpp>
+#include <cocaine/trace/trace.hpp>
 
 #include <blackhole/scope/holder.hpp>
 
@@ -435,16 +436,6 @@ struct srw {
 		std::shared_ptr<cocaine::api::stream_t> m_back_stream;
 	};
 
-	struct headers
-	{
-		struct sph
-		{
-			static constexpr cocaine::hpack::header::data_t name() {
-				return cocaine::hpack::header::create_data("sph");
-			}
-		};
-	};
-
 	srw(struct dnet_node *n, const std::string &config);
 
 	void register_job(int job_id, const std::shared_ptr<exec_session> &exec_session);
@@ -820,12 +811,10 @@ int srw::process(struct dnet_net_state *st, struct dnet_cmd *cmd, const void *da
 			try {
 				namespace h = cocaine::hpack;
 
-				const auto headers = h::header_storage_t({
-					h::header_t::create<headers::sph>(h::header::create_data(
-						exec_clean_copy.native_data().data<char>(),
-						exec_clean_copy.native_data().size()
-					))
-				});
+				auto nd = exec_clean_copy.native_data();
+				std::string sph_data(nd.data<char>(), nd.size());
+				h::header_t sph_header("sph", std::move(sph_data));
+				h::header_storage_t headers({std::move(sph_header)});
 
 				//FIXME: get rid of this copy from data_pointer to a std::string
 				const std::string chunk = exec.data().to_string();
@@ -842,11 +831,11 @@ int srw::process(struct dnet_net_state *st, struct dnet_cmd *cmd, const void *da
 					boost::none
 				);
 
-				send_stream->write(h::header_storage_t(), chunk);
+				send_stream->write({}, chunk);
 
 				// Request stream should be closed after all data was sent to prevent resource
 				// leakage.
-				send_stream->close(h::header_storage_t());
+				send_stream->close({});
 
 				DNET_LOG_INFO(m_log, "{}: srw: enqueued, src_key {}, job {}, payload size {}, block {}",
 				              signature, src_key, job_id, exec.data().size(), reply_expected);
