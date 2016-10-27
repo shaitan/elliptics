@@ -112,6 +112,7 @@ class KeyRecover(object):
         self.write_session = elliptics.newapi.Session(node)
         self.write_session.trace_id = ctx.trace_id
         self.write_session.set_checker(elliptics.checkers.all)
+        self.write_session.ioflags |= elliptics.io_flags.cas_timestamp
 
         self.remove_session = elliptics.Session(node)
         self.remove_session.trace_id = ctx.trace_id
