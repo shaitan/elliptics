@@ -104,7 +104,7 @@ def write_data(scope, session, keys, datas):
         r.wait()
 
 
-def check_keys_absence(scope, session, keys):
+def check_keys_absence_after_merge(scope, session, keys):
     '''
     Checks that merge recovery removes moved @keys from the source backend.
     '''
@@ -125,6 +125,23 @@ def check_keys_absence(scope, session, keys):
         assert r.get()[0].status == -errno.ENOENT
 
 
+def check_keys_absence_in_all_groups(scope, session, keys):
+    '''
+    Checks that @keys are absent in all groups.
+    '''
+    session = session.clone()
+    session.exceptions_policy = elliptics.core.exceptions_policy.no_exceptions
+    session.set_filter(elliptics.filters.all_final)
+
+    async_results = []
+    for k in keys:
+        async_results.append(session.lookup(k))
+
+    for async in async_results:
+        for r in async:
+            assert r.status == -errno.ENOENT
+
+
 def check_data(scope, session, keys, datas, timestamp):
     '''
     Reads @keys from the session. Reads all keys async at once and waits/checks results at the end.
@@ -139,8 +156,20 @@ def check_data(scope, session, keys, datas, timestamp):
     assert all(x.user_flags == session.user_flags for x in results)
 
 
+def corrupt_key(session, key):
+    res = session.lookup(key).get()[0]
+
+    with open(res.filepath, 'r+b') as f:
+        f.seek(res.offset, 0)
+        tmp = '123' + f.read()[3:]
+        f.seek(res.offset, 0)
+        f.write(tmp)
+        f.flush()
+
+
 def recovery(one_node, remotes, backend_id, address, groups,
-             rtype, log_file, tmp_dir, dump_file=None, no_meta=False, user_flags_set=()):
+             rtype, log_file, tmp_dir, no_server_send=False, dump_file=None, no_meta=False,
+             user_flags_set=(), expected_ret_code=0):
     '''
     Imports dnet_recovery tools and executes merge recovery. Checks result of merge.
     '''
@@ -177,10 +206,12 @@ def recovery(one_node, remotes, backend_id, address, groups,
         args += ['merge']
     elif rtype == RECOVERY.DC:
         args += ['dc']
+    if no_server_send:
+        args += ['--no-server-send']
     for user_flags in user_flags_set:
         args += ['--user-flags', user_flags]
 
-    assert run(args) == 0
+    assert run(args) == expected_ret_code
 
     cleanup_logger()
 
@@ -196,6 +227,13 @@ def scope():
     return Scope()
 
 
+@pytest.fixture(scope="class", params=[('use_server_send', False), ('no_server_send', True)],
+                ids=['use_server_send', 'no_server_send'])
+def use_server_send(request):
+    return request.param
+
+
+@pytest.mark.usefixtures("use_server_send")
 @pytest.mark.incremental
 class TestRecovery:
     '''
@@ -240,6 +278,7 @@ class TestRecovery:
     # this timestamp will be used for writing data to the third group
     timestamp2 = elliptics.Time(timestamp.tsec + 3600, timestamp.tnsec)
     corrupted_key = 'corrupted_test.key'
+    corrupted_key2 = 'corrupted_test.key2'
     corrupted_data = 'corrupted_test.data'
     # timestamp of corrupted_key from first group
     corrupted_timestamp = elliptics.Time.now()
@@ -318,7 +357,7 @@ class TestRecovery:
         check_backend_status(r.get(), backend, state=1)
         wait_backends_in_route(session, ((address, backend),))
 
-    def test_merge_two_backends(self, servers, simple_node):
+    def test_merge_two_backends(self, servers, simple_node, use_server_send):
         '''
         Runs dnet_recovery merge with --one-node=scope.test_address and --backend-id==scope.test_backend.
         Checks self.keys availability after recovering.
@@ -335,11 +374,12 @@ class TestRecovery:
                  rtype=RECOVERY.MERGE,
                  no_meta=True,
                  log_file='merge_2_backends.log',
-                 tmp_dir='merge_2_backends')
+                 tmp_dir='merge_2_backends_{}'.format(use_server_send[0]),
+                 no_server_send=use_server_send[1])
 
         session.groups = (scope.test_group,)
         check_data(scope, session, self.keys, self.datas, self.timestamp)
-        check_keys_absence(scope, session, self.keys)
+        check_keys_absence_after_merge(scope, session, self.keys)
 
     @pytest.mark.usefixtures("servers")
     def test_enable_another_one_backend(self, simple_node):
@@ -356,7 +396,7 @@ class TestRecovery:
         wait_backends_in_route(session, ((address, backend),))
 
     @pytest.mark.usefixtures("servers")
-    def test_merge_from_dump_3_backends(self, servers, simple_node):
+    def test_merge_from_dump_3_backends(self, servers, simple_node, use_server_send):
         '''
         Writes all keys to dump file: 'merge.dump.file'.
         Runs dnet_recovery merge without --one-node and without --backend-id and with -f merge.dump.file.
@@ -378,12 +418,13 @@ class TestRecovery:
                  groups=(scope.test_group,),
                  rtype=RECOVERY.MERGE,
                  log_file='merge_from_dump_3_backends.log',
-                 tmp_dir='merge_from_dump_3_backends',
-                 dump_file=dump_filename)
+                 tmp_dir='merge_from_dump_3_backends_{}'.format(use_server_send[0]),
+                 dump_file=dump_filename,
+                 no_server_send=use_server_send[1])
 
         session.groups = (scope.test_group,)
         check_data(scope, session, self.keys, self.datas, self.timestamp)
-        check_keys_absence(scope, session, self.keys)
+        check_keys_absence_after_merge(scope, session, self.keys)
 
     @pytest.mark.usefixtures("servers")
     def test_enable_all_group_backends(self, simple_node):
@@ -395,7 +436,7 @@ class TestRecovery:
                                test_namespace=self.namespace)
         enable_group(scope, session, scope.test_group)
 
-    def test_merge_one_group(self, servers, simple_node):
+    def test_merge_one_group(self, servers, simple_node, use_server_send):
         '''
         Runs dnet_recovery merge without --one-node and without --backend-id.
         Checks self.keys availability after recovering.
@@ -411,11 +452,12 @@ class TestRecovery:
                  groups=(scope.test_group,),
                  rtype=RECOVERY.MERGE,
                  log_file='merge_one_group.log',
-                 tmp_dir='merge_one_group')
+                 tmp_dir='merge_one_group_{}'.format(use_server_send[0]),
+                 no_server_send=use_server_send[1])
 
         session.groups = (scope.test_group,)
         check_data(scope, session, self.keys, self.datas, self.timestamp)
-        check_keys_absence(scope, session, self.keys)
+        check_keys_absence_after_merge(scope, session, self.keys)
 
     @pytest.mark.usefixtures("servers")
     def test_enable_second_group_one_backend(self, simple_node):
@@ -433,7 +475,7 @@ class TestRecovery:
         check_backend_status(r.get(), backend, state=1)
         wait_backends_in_route(session, ((address, backend), ))
 
-    def test_dc_one_backend_and_one_group(self, servers, simple_node):
+    def test_dc_one_backend_and_one_group(self, servers, simple_node, use_server_send):
         '''
         Runs dnet_recovery dc with --one-node=scope.test_address2,
         --backend-id=scope.test_backend2 and against both groups.
@@ -450,8 +492,9 @@ class TestRecovery:
                  groups=(scope.test_group, scope.test_group2,),
                  rtype=RECOVERY.DC,
                  log_file='dc_one_backend.log',
-                 tmp_dir='dc_one_backend',
-                 no_meta=True)
+                 tmp_dir='dc_one_backend_{}'.format(use_server_send[0]),
+                 no_meta=True,
+                 no_server_send=use_server_send[1])
 
         session.groups = (scope.test_group2,)
         check_data(scope, session, self.keys, self.datas, self.timestamp)
@@ -466,7 +509,7 @@ class TestRecovery:
                                test_namespace=self.namespace)
         enable_group(scope, session, scope.test_group2)
 
-    def test_dc_from_dump_two_groups(self, servers, simple_node):
+    def test_dc_from_dump_two_groups(self, servers, simple_node, use_server_send):
         '''
         Runs dnet_recovery dc without --one-node and
         without --backend-id against both groups and with -f merge.dump.file.
@@ -488,8 +531,9 @@ class TestRecovery:
                  groups=(scope.test_group, scope.test_group2,),
                  rtype=RECOVERY.DC,
                  log_file='dc_from_dump_two_groups.log',
-                 tmp_dir='dc_from_dump_two_groups',
-                 dump_file=dump_filename)
+                 tmp_dir='dc_from_dump_two_groups_{}'.format(use_server_send[0]),
+                 dump_file=dump_filename,
+                 no_server_send=use_server_send[1])
 
         session.groups = (scope.test_group,)
         check_data(scope, session, self.keys, self.datas, self.timestamp)
@@ -521,7 +565,7 @@ class TestRecovery:
         write_data(scope, session, self.keys, self.datas2)
         check_data(scope, session, self.keys, self.datas2, self.timestamp2)
 
-    def test_dc_three_groups(self, servers, simple_node):
+    def test_dc_three_groups(self, servers, simple_node, use_server_send):
         '''
         Run dc recovery without --one-node and without --backend-id against all three groups.
         Checks that all three groups contain data from third group.
@@ -537,7 +581,8 @@ class TestRecovery:
                  groups=(scope.test_group, scope.test_group2, scope.test_group3),
                  rtype=RECOVERY.DC,
                  log_file='dc_three_groups.log',
-                 tmp_dir='dc_three_groups')
+                 tmp_dir='dc_three_groups_{}'.format(use_server_send[0]),
+                 no_server_send=use_server_send[1])
 
         for group in (scope.test_group, scope.test_group2, scope.test_group3):
             session.groups = [group]
@@ -570,16 +615,9 @@ class TestRecovery:
         write_data(scope, session, [self.corrupted_key], [self.corrupted_data + '.3'])
         check_data(scope, session, [self.corrupted_key], [self.corrupted_data + '.3'], timestamp3)
 
-        res = session.lookup(self.corrupted_key).get()[0]
+        corrupt_key(session, self.corrupted_key)
 
-        with open(res.filepath, 'r+b') as f:
-            f.seek(res.offset, 0)
-            tmp = '123' + f.read()[3:]
-            f.seek(res.offset, 0)
-            f.write(tmp)
-            f.flush()
-
-    def test_dc_corrupted_data(self, servers, simple_node):
+    def test_dc_corrupted_data(self, servers, simple_node, use_server_send):
         '''
         Runs dc recovery and checks that second version of data is recovered to all groups.
         This test checks that dc recovery correctly handles corrupted key on his way:
@@ -597,11 +635,50 @@ class TestRecovery:
                  groups=(scope.test_group, scope.test_group2, scope.test_group3),
                  rtype=RECOVERY.DC,
                  log_file='dc_corrupted_data.log',
-                 tmp_dir='dc_corrupted_data')
+                 tmp_dir='dc_corrupted_data_{}'.format(use_server_send[0]),
+                 no_server_send=use_server_send[1])
 
         for group in (scope.test_group, scope.test_group2, scope.test_group3):
             session.groups = [group]
             check_data(scope, session, [self.corrupted_key], [self.corrupted_data + '.2'], self.corrupted_timestamp2)
+
+    @pytest.mark.usefixtures("servers")
+    def test_write_and_corrupt_data_in_single_group(self, simple_node):
+        '''
+        Writes one key to a single group and corrupts it.
+        '''
+        session = make_session(node=simple_node,
+                               test_name='TestRecovery.test_write_and_corrupt_data_in_single_group',
+                               test_namespace=self.namespace)
+
+        session.groups = [scope.test_group]
+        session.timestamp = self.corrupted_timestamp
+        write_data(scope, session, [self.corrupted_key2], [self.corrupted_data + '.1'])
+        check_data(scope, session, [self.corrupted_key2], [self.corrupted_data + '.1'], self.corrupted_timestamp)
+
+        corrupt_key(session, self.corrupted_key2)
+
+    def test_dc_corrupted_data_in_single_group(self, servers, simple_node, use_server_send):
+        '''
+        Runs dc recovery and checks that recovery failed, while corrupted key must be removed.
+        '''
+        session = make_session(node=simple_node,
+                               test_name='TestRecovery.test_dc_corrupted_data_in_single_group',
+                               test_namespace=self.namespace)
+
+        recovery(one_node=False,
+                 remotes=map(elliptics.Address.from_host_port_family, servers.remotes),
+                 backend_id=None,
+                 address=scope.test_address2,
+                 groups=(scope.test_group, scope.test_group2, scope.test_group3),
+                 rtype=RECOVERY.DC,
+                 log_file='dc_corrupted_data_in_single_group.log',
+                 tmp_dir='dc_corrupted_data_in_single_group_{}'.format(use_server_send[0]),
+                 no_server_send=use_server_send[1],
+                 expected_ret_code=1)
+
+        session.groups = [scope.test_group]
+        check_keys_absence_in_all_groups(scope, session, [self.corrupted_key2])
 
     @pytest.mark.usefixtures("servers")
     def test_defragmentation(self, simple_node):
@@ -663,6 +740,29 @@ class TestRecovery:
                                test_name='TestRecovery.test_checks_all_enabled',
                                test_namespace=self.namespace)
         assert set(scope.init_routes.addresses()) == set(session.routes.addresses())
+
+    @pytest.mark.usefixtures("servers")
+    def test_teardown(self, simple_node):
+        """Cleanup backends.
+
+        * disable all backends
+        * remove all blobs
+        * enable all backends on all nodes
+        """
+        session = make_session(node=simple_node,
+                               test_name='TestRecovery.test_teardown',
+                               test_namespace=self.namespace)
+        addresses_with_backends = session.routes.addresses_with_backends()
+        disable_backends(session, addresses_with_backends)
+        remove_all_blobs(session)
+        enable_backends(session, addresses_with_backends)
+
+        # wait for route-list updates
+        counter = 0
+        while set(session.routes.addresses_with_backends()) != set(addresses_with_backends):
+            assert counter <= 5  # 5 seconds should be enough to receive and handle all route-list updates
+            time.sleep(0.5)
+            counter += 0.5
 
 
 def remove_files(pattern):
@@ -745,6 +845,7 @@ def make_test_data(timestamps, dest_count):
     return list(product(variants, repeat=dest_count))
 
 
+@pytest.mark.usefixtures("use_server_send")
 @pytest.mark.incremental
 class TestMerge:
     '''
@@ -894,7 +995,7 @@ class TestMerge:
         self.cleanup_backends(tuple((self.scope.address, b) for b in self.scope.backends))
         self.prepare_test_data()
 
-    def test_recovery(self, servers, simple_node):
+    def test_recovery(self, servers, simple_node, use_server_send):
         '''
         Runs recovery and checks recovery result
         '''
@@ -906,7 +1007,8 @@ class TestMerge:
                  rtype=RECOVERY.MERGE,
                  no_meta=False,
                  log_file='merge_with_uncommitted_keys.log',
-                 tmp_dir='merge_with_uncommitted_keys')
+                 tmp_dir='merge_with_uncommitted_keys_{}'.format(use_server_send[0]),
+                 no_server_send=use_server_send[1])
 
     @pytest.mark.usefixtures("servers")
     def test_check(self, simple_node):
@@ -940,6 +1042,7 @@ class TestMerge:
         self.cleanup_backends(scope.routes.addresses_with_backends())
 
 
+@pytest.mark.usefixtures("use_server_send")
 @pytest.mark.incremental
 class TestDC:
     '''
@@ -1062,7 +1165,7 @@ class TestDC:
         self.prepare_test_data()
 
     @pytest.mark.usefixtures("servers")
-    def test_recovery(self, simple_node):
+    def test_recovery(self, simple_node, use_server_send):
         '''
         Runs recovery and checks recovery result
         '''
@@ -1073,7 +1176,8 @@ class TestDC:
                  groups=scope.groups,
                  rtype=RECOVERY.DC,
                  log_file='dc_with_uncommitted_keys.log',
-                 tmp_dir='dc_with_uncommitted_keys')
+                 tmp_dir='dc_with_uncommitted_keys_{}'.format(use_server_send[0]),
+                 no_server_send=use_server_send[1])
 
     @pytest.mark.usefixtures("servers")
     def test_check(self, simple_node):
@@ -1120,6 +1224,7 @@ class TestDC:
         self.cleanup_backends()
 
 
+@pytest.mark.usefixtures("use_server_send")
 @pytest.mark.incremental
 class TestRecoveryUserFlags:
     '''
@@ -1214,7 +1319,7 @@ class TestRecoveryUserFlags:
         self.prepare_test_data()
 
     @pytest.mark.usefixtures("servers")
-    def test_recovery(self, simple_node):
+    def test_recovery(self, simple_node, use_server_send):
         '''
         Runs recovery with filtration of keys by specifying user_flags_set and checks that:
         1. test_key shouldn't be recovered
@@ -1228,8 +1333,9 @@ class TestRecoveryUserFlags:
                  groups=scope.groups,
                  rtype=RECOVERY.DC,
                  log_file='dc_recovery_user_flags.log',
-                 tmp_dir='dc_recovery_user_flags',
-                 user_flags_set=self.user_flags_set)
+                 tmp_dir='dc_recovery_user_flags_{}'.format(use_server_send[0]),
+                 user_flags_set=self.user_flags_set,
+                 no_server_send=use_server_send[1])
 
         session = scope.session.clone()
         session.exceptions_policy = elliptics.core.exceptions_policy.no_exceptions

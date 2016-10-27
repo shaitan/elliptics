@@ -304,7 +304,29 @@ void iterator_result_container::append(const iterator_result_entry &result)
 	item.data_offset = dnet_response.data_offset;
 	item.blob_id = dnet_response.blob_id;
 
-	int err = dnet_write_ll(m_fd, reinterpret_cast<char *>(&item), sizeof(item), m_write_position);
+	append_item(item);
+}
+
+void iterator_result_container::append_old(const ioremap::elliptics::iterator_result_entry &result)
+{
+	if (m_sorted)
+		throw_error(-EROFS, "can't append to already sorted container");
+
+	iterator_container_item item;
+	auto reply = result.reply();
+	item.key = reply->key;
+	item.status = reply->status;
+	item.record_flags = reply->flags;
+	item.user_flags = reply->user_flags;
+	item.data_timestamp = reply->timestamp;
+	item.data_size = reply->size;
+
+	append_item(item);
+}
+
+void iterator_result_container::append_item(const iterator_container_item &item)
+{
+	int err = dnet_write_ll(m_fd, reinterpret_cast<const char *>(&item), sizeof(item), m_write_position);
 	if (err != 0)
 		throw_error(err, "dnet_write_ll failed");
 	m_write_position += sizeof(item);

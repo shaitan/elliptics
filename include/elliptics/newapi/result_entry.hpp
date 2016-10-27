@@ -81,10 +81,15 @@ public:
 	}
 	// Appends one result to container
 	void append(const iterator_result_entry &result);
+	void append_old(const ioremap::elliptics::iterator_result_entry &result);
 	// Sorts container
 	void sort();
 	iterator_container_item operator [](size_t n) const;
 
+private:
+	void append_item(const iterator_container_item &item);
+
+public:
 	int m_fd;
 	bool m_sorted;
 	uint64_t m_count;

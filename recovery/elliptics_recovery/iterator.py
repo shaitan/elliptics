@@ -83,6 +83,9 @@ class IteratorResult(object):
     def append(self, record):
         self.container.append(record)
 
+    def append_old(self, record):
+        self.container.append_old(record)
+
     def sort(self):
         """Sorts results"""
         self.container.sort()
@@ -298,12 +301,14 @@ class Iterator(object):
                 end = time.time()
                 # TODO: Here we can add throttling
 
-                if record.status and stats_cmd is not None:
-                    stats_cmd.counter("iterate.{0}".format(record.status), 1)
+                self._check_record(record)
 
-                iterated_keys = record.iterated_keys
-                total_keys = record.total_keys
-                if record.status == 0:
+                status, iterated_keys, total_keys = self._get_record_attrs(record)
+
+                if status and stats_cmd is not None:
+                    stats_cmd.counter("iterate.{0}".format(status), 1)
+
+                if status == 0:
                     positive_responses += 1
                 else:
                     negative_responses += 1
@@ -338,6 +343,12 @@ class Iterator(object):
     def _on_key_response(self, results, record, address, backend_id):
         if record.status == 0:
             self._save_record(results, record)
+
+    def _check_record(self, record):
+        pass
+
+    def _get_record_attrs(self, record):
+        return record.status, record.iterated_keys, record.total_keys
 
     def _save_record(self, results, record):
         results[self._get_key_range_id(record.key)].append(record)
@@ -396,10 +407,20 @@ class MergeRecoveryIterator(Iterator):
         return self.session.start_copy_iterator(eid, ranges, [eid.group_id], flags, timestamp_range[0], timestamp_range[1])
 
     def _on_key_response(self, results, record, address, backend_id):
-        if record.status != 0:
+        if record.response.status != 0:
             self.log.error("Key recovery on node: {0}/{1} failed: {2}, key: {3}"
-                           .format(address, backend_id, record.status, record.key))
+                           .format(address, backend_id, record.response.status, record.response.key))
             self._save_record(results, record)
+
+    def _check_record(self, record):
+        if record.status != 0:
+            raise RuntimeError("Iteration status check failed: {0}".format(record.status))
+
+    def _get_record_attrs(self, record):
+        return record.response.status, record.response.iterated_keys, record.response.total_keys
+
+    def _save_record(self, results, record):
+        results[self._get_key_range_id(record.response.key)].append_old(record)
 
     def _update_stats(self, stats, it):
         iterated_keys, total_keys, positive_responses, negative_responses, start, end = it

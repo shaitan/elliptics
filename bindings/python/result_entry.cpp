@@ -404,6 +404,10 @@ void iterator_container_append(newapi::iterator_result_container &container, new
 	container.append(result);
 }
 
+void iterator_container_append_old(newapi::iterator_result_container &container, ioremap::elliptics::iterator_result_entry &result) {
+	container.append_old(result);
+}
+
 void iterator_container_sort(newapi::iterator_result_container &container) {
 	container.sort();
 }
@@ -708,6 +712,10 @@ void init_result_entry() {
 		     (bp::arg("iterator_result_entry")),
 		     "append(iterator_result_entry)\n"
 		     "    Appends iterator_result_entry of type elliptics.core.newapi.IteratorResultEntry to the end of the container file")
+		.def("append_old", newapi::iterator_container_append_old,
+		     (bp::arg("iterator_result_entry")),
+		     "append_old(iterator_result_entry)\n"
+		     "    Appends iterator_result_entry of type elliptics.core.IteratorResultEntry to the end of the container file")
 		.def("sort", newapi::iterator_container_sort,
 		     "sort()\n"
 		     "    Sorts items of the container file by (key, data_timestamp, json_timestamp, data_size) tuple")
