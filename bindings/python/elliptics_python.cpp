@@ -156,29 +156,35 @@ private:
 };
 
 class elliptics_node_python : public node, public bp::wrapper<node> {
-	public:
-		elliptics_node_python(elliptics_file_logger &logger)
-			: node(logger.get_logger()) {}
+public:
+	elliptics_node_python(elliptics_file_logger &logger)
+	: node(logger.get_logger()) {}
 
-		elliptics_node_python(elliptics_file_logger &logger, dnet_config &cfg)
-			: node(logger.get_logger(), cfg) {}
+	elliptics_node_python(elliptics_file_logger &logger, dnet_config &cfg)
+	: node(logger.get_logger(), cfg) {}
 
-		elliptics_node_python(const node &n) : node(n) {}
+	elliptics_node_python(const node &n) : node(n) {}
 
-		void add_remotes(const bp::api::object &remotes) {
-			auto remotes_len = bp::len(remotes);
-			std::vector<address> std_remotes;
-			std_remotes.reserve(remotes_len);
+	~elliptics_node_python() {
+		py_allow_threads_scoped pythr;
+		m_data.reset();
+	}
 
-			for (bp::stl_input_iterator<bp::tuple> it(remotes), end; it != end; ++it) {
-				bp::extract<std::string> get_host((*it)[0]);
-				bp::extract<int> get_port((*it)[1]);
-				bp::extract<int> get_family((*it)[2]);
-				std_remotes.emplace_back(get_host(), get_port(), get_family());
-			}
+	void add_remotes(const bp::api::object &remotes) {
+		auto remotes_len = bp::len(remotes);
+		std::vector<address> std_remotes;
+		std_remotes.reserve(remotes_len);
 
-			add_remote(std_remotes);
+		for (bp::stl_input_iterator<bp::tuple> it(remotes), end; it != end; ++it) {
+			bp::extract<std::string> get_host((*it)[0]);
+			bp::extract<int> get_port((*it)[1]);
+			bp::extract<int> get_family((*it)[2]);
+			std_remotes.emplace_back(get_host(), get_port(), get_family());
 		}
+
+		py_allow_threads_scoped pythr;
+		add_remote(std_remotes);
+	}
 };
 
 

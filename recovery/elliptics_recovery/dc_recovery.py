@@ -19,6 +19,7 @@ import threading
 import os
 import traceback
 import errno
+import weakref
 from functools import partial
 
 from elliptics_recovery.utils.misc import elliptics_create_node, RecoverStat, validate_index
@@ -30,6 +31,65 @@ from elliptics import Address
 from elliptics.log import formatter, convert_elliptics_log_level
 
 log = logging.getLogger()
+
+
+class KeyRemover(object):
+    def __init__(self, key, remove_session, groups, ctx, stats, callback):
+        self.key = key
+        self.session = remove_session.clone()
+        self.session.groups = groups
+        self.ctx = ctx
+        self.stats = stats
+        self.stats_cmd = ctx.stats['commands']
+        self.callback = callback
+        self.attempt = 0
+
+    def remove(self):
+        if self.ctx.safe or self.ctx.dry_run:
+            if self.ctx.safe:
+                log.info("Safe mode is turned on. Skip removing key: {0}".format(repr(self.key)))
+            else:
+                log.info("Dry-run mode is turned on. Skip removing key: {0}.".format(repr(self.key)))
+            self.callback()
+        else:
+            try:
+                log.info("Removing key: {0} from group: {1}".format(self.key, self.session.groups))
+                remove_result = self.session.remove(self.key)
+                remove_result.connect(self.on_remove_corrupted)
+            except:
+                log.exception("Failed to remove key: {0} from groups: {1}".format(self.key, self.session.groups))
+                self.callback()
+
+    def on_remove_corrupted(self, results, error):
+        try:
+            if error.code:
+                self.stats_cmd.counter('remove.{0}'.format(error.code), 1)
+                self.stats.remove_failed += 1
+                failed_groups = [r.group_id for r in results if r.status != 0]
+                log.error("Failed to remove key: {0}: from groups: {1}: {2}"
+                          .format(self.key, failed_groups, error))
+                if self.attempt < self.ctx.attempts:
+                    self.remove_session.groups = failed_groups
+                    old_timeout = self.remove_session.timeout
+                    self.remove_session.timeout *= 2
+                    self.attempt += 1
+                    log.info("Retry to remove key: {0} attempts: {1}/{2} "
+                             "increased timeout: {3}/{4}"
+                             .format(repr(self.key),
+                                     self.attempt, self.ctx.attempts,
+                                     self.remove_session.timeout,
+                                     old_timeout))
+                    self.stats.remove_retries += 1
+
+                    self.remove()
+                    return
+            else:
+                self.stats.remove += len(results)
+        except:
+            log.exception("Failed to handle remove result key: {0} from groups: {1}"
+                          .format(self.key, self.remove_session.groups))
+
+        self.callback()
 
 
 class KeyRecover(object):
@@ -59,6 +119,8 @@ class KeyRecover(object):
 
         self.result = False
         self.attempt = 0
+        self.pending_operations = 1
+        self.pending_operations_lock = threading.Lock()
 
         log.debug("Recovering key: {0} from nonempty groups: {1} and missed groups: {2}"
                   .format(repr(self.key), [k.group_id for k in self.key_infos], self.missed_groups))
@@ -126,6 +188,17 @@ class KeyRecover(object):
     def stop(self, result):
         self.result = result
         log.debug("Finished recovering key: {0} with result: {1}".format(self.key, self.result))
+        self.on_complete()
+
+    def on_complete(self):
+        with self.pending_operations_lock:
+            self.pending_operations -= 1
+            if self.pending_operations:
+                return
+
+        # Remove all sessions to release links to elliptics node. Main thread must hold last reference to
+        # elliptics node after recovery completion. Otherwise, node may be destroyed in i/o thread.
+        del self.read_session, self.write_session, self.remove_session
         self.complete.set()
         self.callback(self.result, self.stats)
 
@@ -238,35 +311,13 @@ class KeyRecover(object):
                 log.exception("Failed to remove key: {0} from groups: {1}".format(self.key, self.remove_session.groups))
                 self.stop(False)
 
-    def remove_corrupted(self, remove_handler):
-        if self.ctx.safe or self.ctx.dry_run:
-            if self.ctx.safe:
-                log.info("Safe mode is turned on. Skip removing key: {0}".format(repr(self.key)))
-            else:
-                log.info("Dry-run mode is turned on. Skip removing key: {0}.".format(repr(self.key)))
-            return False
-        else:
-            try:
-                log.info("Removing key: {0} from groups: {1}".format(self.key, self.remove_session.groups))
-                remove_result = self.remove_session.remove(self.key)
-                remove_result.connect(remove_handler)
-            except:
-                log.exception("Failed to remove key: {0} from groups: {1}".format(self.key, self.remove_session.groups))
-                return False
-        return True
-
     def onread(self, results, error):
         try:
             corrupted_groups = [r.group_id for r in results if r.status == -errno.EILSEQ]
             if corrupted_groups:
-                self.remove_session.groups = corrupted_groups
-                handler = partial(self.on_remove_corrupted,
-                                  filter(lambda r: r.status != -errno.EILSEQ, results),
-                                  error)
-                self.attempt = 0
-                if self.remove_corrupted(handler):
-                    self.stats.read_failed += len(corrupted_groups)
-                    return
+                with self.pending_operations_lock:
+                    self.pending_operations += 1
+                KeyRemover(self.key, self.remove_session, corrupted_groups, self.ctx, self.stats, self.on_complete).remove()
 
             if error.code:
                 log.error("Failed to read key: {0} from groups: {1}: {2}".format(self.key, self.same_groups, error))
@@ -399,48 +450,17 @@ class KeyRecover(object):
                                      old_timeout))
                     self.stats.remove_retries += 1
                     self.remove()
-                else:
-                    self.stop(False)
+                    return
             else:
                 self.stats.removed_uncommitted_keys += len(self.remove_session.groups)
                 self.stats.remove += len(results)
                 self.stop(True)
+                return
         except:
             log.exception("Failed to handle remove result key: {0} from groups: {1}"
                           .format(self.key, self.remove_session.groups))
 
-    def on_remove_corrupted(self, read_results, read_error, results, error):
-        try:
-            if error.code:
-                self.stats_cmd.counter('remove.{0}'.format(error.code), 1)
-                self.stats.remove_failed += 1
-                failed_groups = [r.group_id for r in results if r.status != 0]
-                log.error("Failed to remove key: {0}: from groups: {1}: {2}"
-                          .format(self.key, failed_groups, error))
-                if self.attempt < self.ctx.attempts:
-                    self.remove_session.groups = failed_groups
-                    old_timeout = self.remove_session.timeout
-                    self.remove_session.timeout *= 2
-                    self.attempt += 1
-                    log.info("Retry to remove key: {0} attempts: {1}/{2} "
-                             "increased timeout: {3}/{4}"
-                             .format(repr(self.key),
-                                     self.attempt, self.ctx.attempts,
-                                     self.remove_session.timeout,
-                                     old_timeout))
-                    self.stats.remove_retries += 1
-
-                    handler = partial(self.on_remove_corrupted, read_results, read_error)
-                    if self.remove_corrupted(handler):
-                        return
-            else:
-                self.stats.remove += len(results)
-        except:
-            log.exception("Failed to handle remove result key: {0} from groups: {1}"
-                          .format(self.key, self.remove_session.groups))
-
-        self.attempt = 0
-        self.onread(read_results, read_error)
+        self.stop(False)
 
     def wait(self):
         if not self.complete.is_set():
@@ -476,7 +496,7 @@ def iterate_key(filepath, groups):
 class WindowedDC(WindowedRecovery):
     def __init__(self, ctx, node):
         super(WindowedDC, self).__init__(ctx, ctx.stats['recover'])
-        self.node = node
+        self.node_ref = weakref.ref(node)
         ctx.rest_file.flush()
         self.keys = iterate_key(self.ctx.rest_file.name, self.ctx.groups)
 
@@ -486,7 +506,7 @@ class WindowedDC(WindowedRecovery):
             with self.lock:
                 key = next(self.keys)
                 self.recovers_in_progress += 1
-            KeyRecover(self.ctx, *key, node=self.node, callback=self.callback)
+            KeyRecover(self.ctx, *key, node=self.node_ref(), callback=self.callback)
             return True
         except StopIteration:
             last = False
