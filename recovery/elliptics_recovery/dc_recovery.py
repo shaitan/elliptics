@@ -359,6 +359,7 @@ class KeyRecover(object):
             if self.recovered_size == 0:
                 self.write_session.user_flags = results[-1].record_info.user_flags
                 self.write_session.timestamp = results[-1].record_info.data_timestamp
+                self.write_session.json_timestamp = results[-1].record_info.json_timestamp
                 self.read_session.ioflags |= elliptics.io_flags.nocsum
                 self.read_session.groups = [results[-1].group_id]
                 self.key_flags = results[-1].record_info.record_flags
