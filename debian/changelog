@@ -1,3 +1,9 @@
+elliptics (2.26.11.0-15) unstable; urgency=medium
+
+  * Fix incorrect comparison which leads to crash
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Fri, 28 Oct 2016 10:32:05 +0300
+
 elliptics (2.26.11.0-14) unstable; urgency=medium
 
   * logs: decreas number of logs printed on info level
