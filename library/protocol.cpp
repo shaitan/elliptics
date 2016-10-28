@@ -246,7 +246,7 @@ inline msgpack::packer<Stream> &operator <<(msgpack::packer<Stream> &o, const dn
 }
 
 inline dnet_iterator_range &operator >>(msgpack::object o, dnet_iterator_range &v) {
-	if (o.type != msgpack::type::ARRAY || o.via.array.size == 2)
+	if (o.type != msgpack::type::ARRAY || o.via.array.size != 2)
 		throw msgpack::type_error();
 
 	object *p = o.via.array.ptr;
