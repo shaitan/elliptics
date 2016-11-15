@@ -460,6 +460,7 @@ struct dnet_backend_io
 	struct dnet_backend_callbacks	*cb;
 	void				*cache;
 	void				*command_stats;
+	uint64_t			queue_timeout;
 };
 
 int dnet_backend_command_stats_init(struct dnet_backend_io *backend_io);

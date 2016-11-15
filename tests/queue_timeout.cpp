@@ -29,6 +29,9 @@ namespace tests {
 constexpr int group = 1;
 constexpr int backend_id = 1;
 
+constexpr int group_with_overridden_queue_timeout = 2;
+constexpr int backend_with_overridden_queue_timeout = 2;
+
 static nodes_data::ptr configure_test_setup(const std::string &path) {
 	std::vector<server_config> servers {
 		[] () {
@@ -40,10 +43,19 @@ static nodes_data::ptr configure_test_setup(const std::string &path) {
 				("caches_number", 1)
 				("queue_timeout", "1")
 			;
+
+			ret.backends.resize(2, ret.backends.front());
+
 			ret.backends[0]
 				("backend_id", backend_id)
 				("enable", true)
 				("group", group)
+			;
+			ret.backends[1]
+				("backend_id", backend_with_overridden_queue_timeout)
+				("enable", true)
+				("group", group_with_overridden_queue_timeout)
+				("queue_timeout", "2")
 			;
 			return ret;
 		} ()
@@ -103,10 +115,82 @@ static void test_queue_timeout(session &s, const nodes_data *setup) {
 	}
 }
 
+/* Idea is the same as @test_queue_timeout but it uses backend with overridden to 2 seconds queue timeout.
+ * It consists of 2 parts:
+ * * first part checks that overridden queue timeout is really overridden and
+     is greater than 1 second (global queue timeout)
+ * * second part checks that overridden queue timeout is about ~2 seconds.
+ */
+static void test_overridden_queue_timeout(session &s, const nodes_data *setup) {
+	// check that test have only one node
+	BOOST_REQUIRE(setup->nodes.size() == 1);
+
+	// test key and data
+	std::string key = "overridden queue timeout test key";
+	std::string data = "overridden queue timeout test data";
+
+	// write test key/data
+	ELLIPTICS_REQUIRE(async_write, s.write_data(key, data, 0));
+
+	const auto &node = setup->nodes.front();
+
+	// First part.
+	{
+		// sets 1,5 seconds delay to the backend with overridden queue timeout on the only node
+		s.set_delay(node.remote(), backend_with_overridden_queue_timeout, 1500).get();
+
+		// sets 5 seconds timeout - it should fit at least 2 x backend delay because
+		// the second command shouldn't be dropped due to queue timeout and its handling time
+		// should be around 3 seconds (2 x backend delay).
+		s.set_timeout(5);
+		// first read command. It will hold the only io thread on 2,5 seconds backend delay.
+		auto async = s.read_data(key, 0, 0);
+		// second read command. It will be in io queue while the only io thread will sleep on backend delay.
+		auto async2 = s.read_data(key, 0, 0);
+		{
+			// first read command should be succeeded
+			ELLIPTICS_COMPARE_REQUIRE(res, std::move(async), data);
+		} {
+			// second read command should be succeeded since queue timeout is overridden to 2 seconds
+			ELLIPTICS_COMPARE_REQUIRE(res, std::move(async2), data);
+		}
+	}
+
+	// Second part.
+	{
+		// sets 2,5 seconds delay to the backend with overridden queue timeout
+		s.set_delay(node.remote(), backend_with_overridden_queue_timeout, 2500).get();
+
+		// sets 6 seconds timeout - it should fit at least 2 x backend delay because
+		// if the second command won't be dropped due to queue timeout its handling time
+		// should be around 5 seconds (2 x backend delay).
+		s.set_timeout(6);
+
+		// first read command. It will hold the only io thread on 2,5 seconds backend delay.
+		auto async = s.read_data(key, 0, 0);
+		// second read command. It will be in io queue while the only io thread will sleep on backend delay.
+		auto async_timeouted = s.read_data(key, 0, 0);
+		{
+			// first read command should be succeeded
+			ELLIPTICS_COMPARE_REQUIRE(res, std::move(async), data);
+		} {
+			// second read command should be failed with timeout error due to queue timeout
+			ELLIPTICS_REQUIRE_ERROR(res, std::move(async_timeouted), -ETIMEDOUT);
+		} {
+			// there should be no aftereffect, so next read request should be succeeded
+			ELLIPTICS_COMPARE_REQUIRE(res, s.read_data(key, 0, 0), data);
+		}
+	}
+
+}
+
 static bool register_tests(const nodes_data *setup) {
 	auto n = setup->node->get_native();
 
 	ELLIPTICS_TEST_CASE(test_queue_timeout, use_session(n, { group }, 0, 0), setup);
+	ELLIPTICS_TEST_CASE(test_overridden_queue_timeout,
+	                    use_session(n, {group_with_overridden_queue_timeout}, 0, 0),
+	                    setup);
 
 	return true;
 }

@@ -55,7 +55,8 @@ struct dnet_backend_info
 		backend_id(backend_id), group(0), cache(NULL),
 		enable_at_start(false), read_only_at_start(false),
 		state_mutex(new std::mutex), state(DNET_BACKEND_UNITIALIZED),
-		io_thread_num(0), nonblocking_io_thread_num(0)
+		io_thread_num(0), nonblocking_io_thread_num(0),
+		queue_timeout(0)
 	{
 		dnet_empty_time(&last_start);
 		last_start_err = 0;
@@ -84,7 +85,9 @@ struct dnet_backend_info
 		data(std::move(other.data)),
 		cache_config(std::move(other.cache_config)),
 		io_thread_num(other.io_thread_num),
-		nonblocking_io_thread_num(other.nonblocking_io_thread_num)
+		nonblocking_io_thread_num(other.nonblocking_io_thread_num),
+		queue_timeout(other.queue_timeout),
+		initial_config(std::move(other.initial_config))
 	{
 	}
 
@@ -108,6 +111,8 @@ struct dnet_backend_info
 		cache_config = std::move(other.cache_config);
 		io_thread_num = other.io_thread_num;
 		nonblocking_io_thread_num = other.nonblocking_io_thread_num;
+		queue_timeout = other.queue_timeout;
+		initial_config = other.initial_config;
 
 		return *this;
 	}
@@ -135,6 +140,7 @@ struct dnet_backend_info
 	std::unique_ptr<ioremap::cache::cache_config> cache_config;
 	int io_thread_num;
 	int nonblocking_io_thread_num;
+	uint64_t queue_timeout;
 	std::string initial_config;
 };
 

@@ -90,6 +90,11 @@ struct config_data : public dnet_config_data {
 
 std::shared_ptr<dnet_backend_info> dnet_parse_backend(config_data *data, uint32_t backend_id, const kora::config_t &backend);
 
+/*
+ * Parse and return value of "queue_timeout" field of @options.
+ */
+uint64_t parse_queue_timeout(const kora::config_t &options);
+
 } } } // namespace ioremap::elliptics::config
 
 #endif // CONFIG_HPP

@@ -360,9 +360,19 @@ size_t dnet_get_pool_queue_size(struct dnet_work_pool *pool) {
 	return queue->size();
 }
 
-void *dnet_request_queue_create(dnet_node *n, int has_backend) {
-	const auto data = static_cast<const ioremap::elliptics::config::config_data *>(n->config_data);
-	return new(std::nothrow) dnet_request_queue(has_backend != 0, data ? data->queue_timeout : 0);
+void *dnet_request_queue_create(dnet_node *n, const struct dnet_backend_io *backend) {
+	const auto queue_timeout = [&backend, &n]() -> uint64_t {
+		if (backend != nullptr) {
+			return backend->queue_timeout;
+		}
+
+		using namespace ioremap::elliptics::config;
+		const auto data = static_cast<const config_data *>(n->config_data);
+		return data ? data->queue_timeout : 0;
+
+	}();
+
+	return new(std::nothrow) dnet_request_queue(backend != nullptr, queue_timeout);
 }
 
 void dnet_request_queue_destroy(void *queue)

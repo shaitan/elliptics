@@ -116,7 +116,7 @@ private:
 extern "C" {
 #endif // __cplusplus
 
-void *dnet_request_queue_create(struct dnet_node *n, int has_backend);
+void *dnet_request_queue_create(struct dnet_node *n, const struct dnet_backend_io *backend);
 void dnet_request_queue_destroy(void *queue);
 
 void dnet_push_request(struct dnet_work_pool *pool, struct dnet_io_req *req);
