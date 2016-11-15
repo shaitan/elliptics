@@ -281,6 +281,7 @@ static int dnet_backend_init(struct dnet_node *node, size_t backend_id)
 	backend_io = dnet_get_backend_io(node->io, backend_id);
 	backend_io->need_exit = 0;
 	backend_io->read_only = backend->read_only_at_start;
+	backend_io->queue_timeout = backend->queue_timeout;
 
 	for (auto it = backend->options.begin(); it != backend->options.end(); ++it) {
 		const dnet_backend_config_entry &entry = *it;
@@ -935,6 +936,13 @@ void dnet_backend_info::parse(ioremap::elliptics::config::config_data *data,
 
 	io_thread_num = backend.at("io_thread_num", data->cfg_state.io_thread_num);
 	nonblocking_io_thread_num = backend.at("nonblocking_io_thread_num", data->cfg_state.nonblocking_io_thread_num);
+
+	// use backend's queue_timeout if it's specified otherwise use global one.
+	if (backend.has("queue_timeout")) {
+		queue_timeout = ioremap::elliptics::config::parse_queue_timeout(backend);
+	} else {
+		queue_timeout = data->queue_timeout;
+	}
 
 	for (int i = 0; i < config.num; ++i) {
 		dnet_config_entry &entry = config.ent[i];

@@ -231,6 +231,41 @@ static int dnet_set_malloc_options(config_data *data, unsigned long long value)
 	return 0;
 }
 
+uint64_t parse_queue_timeout(const kora::config_t &options) {
+	if (!options.has("queue_timeout")) {
+		return 0;
+	}
+
+	const auto timeout = options.at<std::string>("queue_timeout");
+	const uint64_t queue_timeout = strtoul(timeout.c_str(), NULL, 0);
+
+	const auto scale = [&timeout] () {
+		constexpr uint64_t microsecond = 1;
+		constexpr uint64_t millisecond = 1000 * microsecond;
+		constexpr uint64_t second = 1000 * millisecond;
+		constexpr uint64_t minute = 60 * second;
+		constexpr uint64_t hour = 60 * minute;
+		constexpr uint64_t day = 24 * hour;
+		constexpr uint64_t week = 7 * day;
+
+		auto check = [&timeout] (const std::string &name) {
+			return timeout.find(name) != std::string::npos;
+		};
+
+		if (check("us")) return microsecond;
+		if (check("ms")) return millisecond;
+		if (check("s")) return second;
+		if (check("m")) return minute;
+		if (check("h")) return hour;
+		if (check("d")) return day;
+		if (check("w")) return week;
+
+		return second;
+	} ();
+
+	return queue_timeout * scale;
+}
+
 void parse_options(config_data *data, const kora::config_t &options)
 {
 	if (options.has("mallopt_mmap_threshold")) {
@@ -288,38 +323,7 @@ void parse_options(config_data *data, const kora::config_t &options)
 		data->cache_config = ioremap::cache::cache_config::parse(cache);
 	}
 
-	if (options.has("queue_timeout")) {
-		auto timeout = options.at<std::string>("queue_timeout");
-		data->queue_timeout = strtoul(timeout.c_str(), NULL, 0);
-
-		const auto scale = [&timeout] () {
-			constexpr uint64_t microsecond = 1;
-			constexpr uint64_t millisecond = 1000 * microsecond;
-			constexpr uint64_t second = 1000 * millisecond;
-			constexpr uint64_t minute = 60 * second;
-			constexpr uint64_t hour = 60 * minute;
-			constexpr uint64_t day = 24 * hour;
-			constexpr uint64_t week = 7 * day;
-
-			auto check = [&timeout] (const std::string &name) {
-				return timeout.find(name) != std::string::npos;
-			};
-
-			if (check("us")) return microsecond;
-			if (check("ms")) return millisecond;
-			if (check("s")) return second;
-			if (check("m")) return minute;
-			if (check("h")) return hour;
-			if (check("d")) return day;
-			if (check("w")) return week;
-
-			return second;
-		} ();
-
-		data->queue_timeout *= scale;
-	} else {
-		data->queue_timeout = 0;
-	}
+	data->queue_timeout = parse_queue_timeout(options);
 }
 
 std::shared_ptr<dnet_backend_info>
