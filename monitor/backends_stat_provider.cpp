@@ -50,7 +50,9 @@ static void fill_backend_backend(rapidjson::Value &stat_value,
 		if (json_stat && size) {
 			rapidjson::Document backend_value(&allocator);
 			backend_value.Parse<0>(json_stat);
-			backend_value["config"].AddMember("group", config_backend->group, allocator);
+			auto &config_value = backend_value["config"];
+			config_value.AddMember("group", config_backend->group, allocator);
+			config_value.AddMember("queue_timeout", config_backend->queue_timeout, allocator);
 
 			rapidjson::Document initial_config(&allocator);
 			initial_config.Parse<0>(config_backend->initial_config.c_str());
