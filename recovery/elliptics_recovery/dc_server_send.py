@@ -334,17 +334,19 @@ class ServerSendRecovery(object):
         '''
         log.error("Failed to server-send key: {0}, group_id: {1}, error: {2}".format(key, group_id, status))
 
-        if status in (-errno.ETIMEDOUT, -errno.ENXIO):
+        if status == -errno.ENXIO:
+            self.buckets.on_server_send_fail(key, key_infos, -1)
+        elif status == -errno.ETIMEDOUT:
             timeouted_keys.append(key)
         else:
             if status == -errno.EILSEQ:
                 corrupted_keys.append(key)
                 self.ctx.corrupted_keys.write('{key} {group}\n'.format(key=key, group=group_id))
             next_group_id = self._get_next_group_id(key_infos, group_id)
-            if next_group_id < 0:
-                self.result = False
-            else:
+            if next_group_id >= 0:
                 self.buckets.on_server_send_fail(key, key_infos, next_group_id)
+            else:
+                self.result = False
 
     def _remove_corrupted_keys(self, keys, groups):
         '''

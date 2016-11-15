@@ -15,24 +15,21 @@
 
 import pytest
 import elliptics
-from server import Servers
+from server import Servers, make_servers
 
-@pytest.fixture(scope="module")
+@pytest.yield_fixture(scope="module")
 def servers(request):
     groups = [int(g) for g in request.config.option.groups.split(',')]
 
-    servers = Servers(groups=groups,
-                      without_cocaine=True,
-                      nodes_count=2,
-                      backends_count=1,
-                      isolated=True,
-                      path='special_servers')
+    _servers = Servers(without_cocaine=True,
+                       servers=make_servers(groups, nodes_count=2, backends_count=1),
+                       isolated=True,
+                       path='special_servers')
 
-    def fin():
-        servers.stop()
-    request.addfinalizer(fin)
+    yield _servers
 
-    return servers
+    _servers.stop()
+
 
 class TestSpecificCases:
     '''
