@@ -395,7 +395,7 @@ class KeyRecover(object):
                 self.stats.write_failed += 1
                 log.error("Failed to write key: {0}: to groups: {1}: {2}"
                           .format(self.key, self.write_session.groups, error))
-                if self.attempt < self.ctx.attempts and error.code in (-errno.ETIMEDOUT, -error.ENXIO):
+                if self.attempt < self.ctx.attempts and error.code in (-errno.ETIMEDOUT, -errno.ENXIO):
                     old_timeout = self.write_session.timeout
                     self.write_session.timeout *= 2
                     self.attempt += 1

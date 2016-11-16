@@ -21,12 +21,28 @@ import shutil
 sys.path.insert(0, "")  # for running from cmake
 
 
+def make_backends(backends_count, group_id):
+    '''
+    Returns configuration of a single group that has @backends_count backends.
+    '''
+    return [{'group': group_id, 'records_in_blob': 100}] * backends_count
+
+
+def make_servers(groups, nodes_count, backends_count):
+    '''
+    Returns configuration of testing cluster: given arguments specify cluster with @nodes_count elliptics nodes,
+    where every node will serve multiple @groups and each group has @backends_count backends.
+    '''
+    backends = []
+    for g in groups:
+        backends.extend(make_backends(backends_count, g))
+    return [{'backends': backends}] * nodes_count
+
+
 class Servers:
     def __init__(self,
-                 groups=[1],
                  without_cocaine=False,
-                 nodes_count=2,
-                 backends_count=2,
+                 servers=make_servers([1], 2, 2),
                  isolated=False,
                  path='servers'):
         import json
@@ -36,7 +52,7 @@ class Servers:
             shutil.rmtree(self.path)
         os.mkdir(self.path)
 
-        config = dict()
+        config = {}
         config['srw'] = not without_cocaine
         config['fork'] = True
         config['monitor'] = True
@@ -45,13 +61,6 @@ class Servers:
         config['top_period'] = 5 * 60
         config['top_length'] = 50
         config['top_events_size'] = 1000 * 100
-        servers = []
-        for node in xrange(nodes_count):
-            backends = []
-            for g in groups:
-                for i in xrange(backends_count):
-                    backends.append({'group': g, 'records_in_blob': 100})
-            servers.append({'backends': backends})
         config['servers'] = servers
         js = json.dumps(config)
 
@@ -75,7 +84,11 @@ class Servers:
         self.config_params = config
         self.remotes = [str(x['remote']) for x in self.config['servers']]
         self.monitors = [str(x['monitor']) for x in self.config['servers']]
-        self.groups = groups
+        groups = set()
+        for server in servers:
+            for backend in server['backends']:
+                groups.add(backend['group'])
+        self.groups = list(groups)
 
     def stop(self):
         if self.p and self.p.poll() is None:

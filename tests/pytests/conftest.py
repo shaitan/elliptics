@@ -21,7 +21,7 @@ import pytest
 
 import elliptics
 
-from server import Servers
+from server import Servers, make_servers
 
 
 def pytest_addoption(parser):
@@ -124,10 +124,9 @@ def servers(request):
     '''
     groups = [int(g) for g in request.config.option.groups.split(',')]
 
-    _servers = Servers(groups=groups,
-                       without_cocaine=request.config.option.without_cocaine,
-                       nodes_count=int(request.config.option.nodes_count),
-                       backends_count=int(request.config.option.backends_count))
+    _servers = Servers(without_cocaine=request.config.option.without_cocaine,
+                       servers=make_servers(groups, int(request.config.option.nodes_count),
+                                            int(request.config.option.backends_count)))
 
     request.config.option.remotes = _servers.remotes
     request.config.option.monitors = _servers.monitors
@@ -162,3 +161,14 @@ def simple_node(request):
     simple_node = elliptics.Node(elliptics.Logger("client.log", elliptics.log_level.debug))
     simple_node.add_remotes(request.config.option.remotes)
     return simple_node
+
+
+@pytest.fixture(scope="class", autouse=True)
+def scope():
+    '''
+    Scope fixture for sharing info between test cases.
+    '''
+    class Scope():
+        def __repr__(self):
+            return '{0}'.format(vars(self))
+    return Scope()

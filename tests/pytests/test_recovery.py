@@ -21,7 +21,7 @@ import errno
 import time
 sys.path.insert(0, "")  # for running from cmake
 import pytest
-from conftest import make_session
+from conftest import make_session, scope
 import elliptics
 import elliptics_recovery.types.dc
 import elliptics_recovery.types.merge
@@ -214,17 +214,6 @@ def recovery(one_node, remotes, backend_id, address, groups,
     assert run(args) == expected_ret_code
 
     cleanup_logger()
-
-
-@pytest.fixture(scope="class", autouse=True)
-def scope():
-    '''
-    Scope fixture for sharing info between test cases.
-    '''
-    class Scope():
-        def __repr__(self):
-            return '{0}'.format(vars(self))
-    return Scope()
 
 
 @pytest.fixture(scope="class", params=[('use_server_send', False), ('no_server_send', True)],
@@ -753,16 +742,7 @@ class TestRecovery:
                                test_name='TestRecovery.test_teardown',
                                test_namespace=self.namespace)
         addresses_with_backends = session.routes.addresses_with_backends()
-        disable_backends(session, addresses_with_backends)
-        remove_all_blobs(session)
-        enable_backends(session, addresses_with_backends)
-
-        # wait for route-list updates
-        counter = 0
-        while set(session.routes.addresses_with_backends()) != set(addresses_with_backends):
-            assert counter <= 5  # 5 seconds should be enough to receive and handle all route-list updates
-            time.sleep(0.5)
-            counter += 0.5
+        cleanup_backends(session, addresses_with_backends, addresses_with_backends)
 
 
 def remove_files(pattern):
@@ -811,6 +791,19 @@ def enable_backends(session, addresses_with_backends):
 
     for r, backend in res:
         check_backend_status(r.get(), backend, state=1)
+
+
+def cleanup_backends(session, backends_to_disable, backends_to_enable):
+    disable_backends(session, backends_to_disable)
+    remove_all_blobs(session)
+    enable_backends(session, backends_to_enable)
+
+    # wait for route-list updates
+    counter = 0
+    while set(session.routes.addresses_with_backends()) != set(backends_to_enable):
+        assert counter <= 5  # 5 seconds should be enough to receive and handle all route-list updates
+        time.sleep(0.5)
+        counter += 0.5
 
 
 class KeyShifter:
@@ -952,16 +945,8 @@ class TestMerge:
         * remove their blobs
         * enable backends from @backends_to_enable.
         """
-        disable_backends(scope.session, scope.session.routes.addresses_with_backends())
-        remove_all_blobs(scope.session)
-        enable_backends(scope.session, backends_to_enable)
-
-        # wait for route-list updates
-        counter = 0
-        while set(backends_to_enable) != set(scope.session.routes.addresses_with_backends()):
-            assert counter <= 5  # 5 seconds should be enough to receive and handle all route-list updates
-            time.sleep(0.5)
-            counter += 0.5
+        cleanup_backends(scope.session, scope.session.routes.addresses_with_backends(),
+                         backends_to_enable)
 
     @pytest.mark.usefixtures("servers")
     def test_setup(self, simple_node):
@@ -1112,16 +1097,8 @@ class TestDC:
         * remove all blobs
         * enable all backends on all nodes
         """
-        disable_backends(scope.session, scope.session.routes.addresses_with_backends())
-        remove_all_blobs(scope.session)
-        enable_backends(scope.session, scope.routes.addresses_with_backends())
-
-        # wait for route-list updates
-        counter = 0
-        while scope.routes.addresses_with_backends() != scope.session.routes.addresses_with_backends():
-            assert counter <= 5  # 5 seconds should be enough to receive and handle all route-list updates
-            time.sleep(0.5)
-            counter += 0.5
+        cleanup_backends(scope.session, scope.session.routes.addresses_with_backends(),
+                         scope.routes.addresses_with_backends())
 
     def prepare_test_data(self):
         '''
@@ -1287,17 +1264,8 @@ class TestRecoveryUserFlags:
         * remove all blobs
         * enable all backends on all nodes
         """
-        disable_backends(scope.session, scope.session.routes.addresses_with_backends())
-        remove_all_blobs(scope.session)
-        enable_backends(scope.session, scope.routes.addresses_with_backends())
-
-        # wait for route-list updates
-        counter = 0
-        while scope.routes.addresses_with_backends() != scope.session.routes.addresses_with_backends():
-            assert counter <= 5  # 5 seconds should be enough to receive and handle all route-list updates
-            time.sleep(0.5)
-            counter += 0.5
-
+        cleanup_backends(scope.session, scope.session.routes.addresses_with_backends(),
+                         scope.routes.addresses_with_backends())
 
     @pytest.mark.usefixtures("servers")
     def test_setup(self, simple_node):
