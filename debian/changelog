@@ -1,3 +1,16 @@
+elliptics (2.27.0.1) unstable; urgency=medium
+
+  * recovery: use --data-flow-rate parameters in adjustment of timeout for server-send
+  * recovery: use old dc recovery only on ENXIO errors
+  * Add test for overridden in backend queue timeout
+  * Add queue_timeout to backends' config in monitor
+  * Allow to specify queue_timeout for a backend
+  * recovery: use cas_timestamp on write
+  * dc recovery: set correct json_timestamp on write
+  * recovery: enforce node destruction in main thread to ensure that all io-threads are completed before node destruction
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Wed, 16 Nov 2016 14:58:22 +0300
+
 elliptics (2.27.0.0~rc1) unstable; urgency=medium
 
   * Update to blackhole v1.3.0-1
