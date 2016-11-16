@@ -114,6 +114,12 @@ def main(options, args):
         ctx.dump_file = None
 
     try:
+        ctx.data_flow_rate = int(options.data_flow_rate) * 1024 * 1024
+    except Exception as e:
+        raise ValueError("Can't parse data_flow_rate: '{0}': {1}"
+                         .format(options.data_flow_rate), repr(e))
+
+    try:
         ctx.chunk_size = int(options.chunk_size)
     except Exception as e:
         raise ValueError("Can't parse chunk_size: '{0}': {1}, traceback: {2}"
@@ -421,4 +427,6 @@ def run(args=None):
                       help='Do not use server-send for recovery. Disabling recovery via server-send useful if there is no network connection between groups')
     parser.add_option('--user-flags', action='append', dest='user_flags_set', default=[],
                       help='Recover key if at least one replica has user_flags from specified user_flags_set')
+    parser.add_option('--data-flow-rate', action='store', dest='data_flow_rate', default=10,
+                      help='Expected execution speed for an I/O operation: server-send/read/write/etc. [default: %default] Mb')
     return main(*parser.parse_args(args))

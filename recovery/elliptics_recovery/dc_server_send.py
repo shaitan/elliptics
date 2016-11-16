@@ -139,7 +139,7 @@ class BucketKeys(object):
     def _get_physical_position(self, key_data):
         for key_info in key_data[1]:
             if key_info.group_id == self.group_id:
-                return (key_info.blob_id, key_info.data_offset)
+                return key_info.blob_id, key_info.data_offset
 
     def _sort_chunk(self, chunk, chunk_files):
         filename = "{}.{}".format(self.bucket_file.name, len(chunk_files))
@@ -227,7 +227,7 @@ class ServerSendRecovery(object):
         Recovers bunch of newest @keys from replica with appropriate @group_id to other replicas via server-send.
         '''
         log.info("Server-send bucket: source group_id: {0}, num keys: {1}".format(group_id, len(keys)))
-        keys_bunch = {} # remote_groups -> [list of newest keys]
+        keys_bunch = {} # (tuple of remote groups) -> [list of newest keys]
         for key, key_infos in keys:
             unprocessed_key_infos = self._get_unprocessed_key_infos(key_infos, group_id)
 
@@ -239,17 +239,20 @@ class ServerSendRecovery(object):
             index = frozenset(dest_groups)
             if index not in keys_bunch:
                 keys_bunch[index] = []
-            keys_bunch[index].append((key, key_infos))
+            keys_bunch[index].append((key, key_infos, unprocessed_key_infos[0].size))
 
         for b in keys_bunch.iteritems():
             remote_groups = b[0]
             newest_keys = []
             key_infos_map = {}
-            for key, key_infos in b[1]:
+            batch_size = 0
+            for key, key_infos, key_size in b[1]:
                 log.debug("Prepare server-send key: {0}, group_id: {1}".format(key, key.group_id))
                 newest_keys.append(key)
                 key_infos_map[str(key)] = key_infos
+                batch_size += key_size
 
+            self.session.timeout = max(60, batch_size / self.ctx.data_flow_rate)
             timeouted_keys = None
             for i in range(self.ctx.attempts):
                 if newest_keys:
