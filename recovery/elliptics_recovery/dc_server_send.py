@@ -260,10 +260,7 @@ class ServerSendRecovery(object):
                     if i > 0:
                         self.ctx.stats.counter('retry_recover_keys', len(timeouted_keys))
                     log.info("Server-send: group_id: {0}, remote_groups: {1}, num_keys: {2}".format(group_id, remote_groups, len(newest_keys)))
-                    try:
-                        iterator = self.session.server_send(newest_keys, 0, self.ctx.chunk_size, group_id, remote_groups)
-                    except Exception as e:
-                        log.error("Failed to server_send traceback: %s", traceback.format_exc())
+                    iterator = self.session.server_send(newest_keys, 0, self.ctx.chunk_size, group_id, remote_groups)
                     timeouted_keys, corrupted_keys = self._check_server_send_results(iterator, key_infos_map, group_id)
                     newest_keys = timeouted_keys
                     if corrupted_keys:
@@ -283,7 +280,7 @@ class ServerSendRecovery(object):
         timeouted_keys = []
         corrupted_keys = []
         succeeded_keys = Set()
-        index = -1
+        index = 0
         for index, result in enumerate(iterator, 1):
             status = result.status
             self._update_stats(start_time, index, recovers_in_progress, status)
@@ -297,9 +294,10 @@ class ServerSendRecovery(object):
                 succeeded_keys.add(str(key))
                 log.debug("Recovered key: %s, status %d", result.key, status)
 
-        if index < len(key_infos_map):
-            log.error("Server-send operation failed: group_id: %d, received results: %d, expected: %d",
-                      group_id, index, len(key_infos_map))
+        if index < recovers_in_progress:
+            log.error("Server-send operation failed: group_id: %d, received results: %d, expected: %d, error: %s",
+                      group_id, index, recovers_in_progress, iterator.error())
+            self._update_stats(start_time, index, recovers_in_progress, iterator.error().code)
             timeouted_keys = [elliptics.Id(k) for k in key_infos_map.iterkeys() if k not in succeeded_keys]
 
         return timeouted_keys, corrupted_keys
