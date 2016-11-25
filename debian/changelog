@@ -1,3 +1,10 @@
+elliptics (2.27.0.2) unstable; urgency=medium
+
+  * network: bugfix: no io-thread awake full_wait condvar, while net thread waits for it
+  * dc recovery: update status on server_send error
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Fri, 25 Nov 2016 18:15:07 +0300
+
 elliptics (2.27.0.1) unstable; urgency=medium
 
   * recovery: use --data-flow-rate parameters in adjustment of timeout for server-send
