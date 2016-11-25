@@ -986,7 +986,7 @@ static void *dnet_io_process_network(void *data_)
 		}
 
 		// wait condition variable if no data has been sent and io pool queues are still full
-		if (tmp == 0 && dnet_check_io(n->io) == 0) {
+		if (tmp == 0 && !dnet_check_io(n->io)) {
 			gettimeofday(&curr_tv, NULL);
 			// print log only if previous log was written more then 1 seconds ago
 			if ((curr_tv.tv_sec - prev_tv.tv_sec) > 1) {
@@ -996,7 +996,7 @@ static void *dnet_io_process_network(void *data_)
 			// wait condition variable - io queues has a free slot or some socket has something to send
 			pthread_mutex_lock(&n->io->full_lock);
 			n->io->blocked = 1;
-			while (!n->need_exit) {
+			while (!n->need_exit && !dnet_check_io(n->io)) {
 				gettimeofday(&curr_tv, NULL);
 				ts.tv_sec = curr_tv.tv_sec + 1;
 				ts.tv_nsec = curr_tv.tv_usec * 1000;
