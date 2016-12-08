@@ -68,7 +68,7 @@ std::unique_ptr<monitor_config> monitor_config::parse(const kora::config_t &moni
 	if (monitor.has("handystats")) {
 		cfg->handystats = kora::to_json(monitor.underlying_object());
 	}
-	return std::move(cfg);
+	return cfg;
 }
 
 monitor::monitor(struct dnet_node *n, struct dnet_config *cfg)

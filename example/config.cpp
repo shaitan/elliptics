@@ -96,7 +96,7 @@ static blackhole::root_logger_t make_logger(config_data *data) {
 	root.filter([&level](const blackhole::record_t &record) {
 		return log_filter(record, level);
 	});
-	return std::move(root);
+	return root;
 }
 
 static void parse_logger(config_data *data, const kora::config_t &logger) {

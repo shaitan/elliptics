@@ -293,7 +293,7 @@ void app_context::chain_via_elliptics(worker::sender tx, worker::receiver rx, co
 
 	{
 		auto client = reply_client->clone();
-		client.set_trace_id((trace_id && ~0xffff) | step);
+		client.set_trace_id((trace_id & ~0xffff) | step);
 
 		dnet_id next_id = {{0}, 0, 0};
 		client.transform(next_event, next_id);

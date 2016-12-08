@@ -438,7 +438,7 @@ ssize_t dnet_send_data(struct dnet_net_state *st, void *header, uint64_t hsize, 
 
 static ssize_t dnet_send_fd_nolock(struct dnet_net_state *st, int fd, uint64_t offset, uint64_t dsize)
 {
-	ssize_t err;
+	ssize_t err = 0;
 
 	while (dsize) {
 		err = dnet_sendfile(st, fd, &offset, dsize);
