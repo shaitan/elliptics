@@ -26,7 +26,7 @@ static const char data_prefix[] = "new_api_server_send_test data prefix ";
 }
 
 tests::nodes_data::ptr configure_test_setup(const std::string &path) {
-	constexpr auto server_config = [] (const tests::config_data &c) {
+	auto server_config = [] (const tests::config_data &c) {
 		return tests::server_config::default_value().apply_options(c);
 	};
 

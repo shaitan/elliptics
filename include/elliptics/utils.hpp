@@ -23,12 +23,7 @@
 #include <cstdlib>
 #include <type_traits>
 #include <vector>
-
-#if __GNUC__ == 4 && __GNUC_MINOR__ < 5
-#  include <cstdatomic>
-#else
-#  include <atomic>
-#endif
+#include <atomic>
 
 #include <elliptics/error.hpp>
 #include <elliptics/interface.h>

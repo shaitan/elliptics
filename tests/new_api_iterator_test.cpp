@@ -19,7 +19,7 @@ namespace tests {
 namespace bu = boost::unit_test;
 
 nodes_data::ptr configure_test_setup(const std::string &path) {
-	constexpr auto server_config = [] (const tests::config_data &c) {
+	auto server_config = [] (const tests::config_data &c) {
 		return tests::server_config::default_value().apply_options(c);
 	};
 

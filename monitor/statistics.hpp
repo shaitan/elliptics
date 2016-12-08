@@ -20,11 +20,7 @@
 #ifndef __DNET_MONITOR_STATISTICS_HPP
 #define __DNET_MONITOR_STATISTICS_HPP
 
-#if __GNUC__ == 4 && __GNUC_MINOR__ < 5
-#  include <cstdatomic>
-#else
-#  include <atomic>
-#endif
+#include <atomic>
 #include <mutex>
 #include <sstream>
 #include <thread>
