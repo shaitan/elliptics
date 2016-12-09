@@ -253,6 +253,130 @@ tests::nodes_data::ptr configure_test_setup(const std::string &path) {
 // 	}
 // }
 
+struct TestKey {
+	TestKey(const std::string &id_prefix, const std::string &data_prefix, size_t key_id)
+	: id(id_prefix + std::to_string(key_id))
+	, data(data_prefix + std::to_string(key_id))
+	, json("{\"key\": \"new_api_server_send_test::TestKey\"}")
+	, data_capacity(0)
+	, json_capacity(0)
+	, user_flags(100500) {
+	}
+
+	std::string id;
+	std::string data;
+	std::string json;
+	uint64_t data_capacity;
+	uint64_t json_capacity;
+	uint64_t user_flags;
+};
+
+std::vector<TestKey> generate_keys(const std::string &id_prefix, const std::string &data_prefix, size_t num) {
+	std::vector<TestKey> keys;
+	keys.reserve(num);
+	for (size_t i = 0; i < num; ++i) {
+		keys.emplace_back(id_prefix, data_prefix, i);
+	}
+	return keys;
+}
+
+void test_insert_keys(const ioremap::elliptics::newapi::session &session, const std::vector<TestKey> &keys,
+		      const std::vector<int> &groups) {
+	std::vector<ioremap::elliptics::newapi::async_write_result> results;
+
+	auto s = session.clone();
+	s.set_trace_id(rand());
+	s.set_groups(groups);
+	for (const auto &k : keys) {
+		s.set_user_flags(k.user_flags);
+		results.emplace_back(s.write(k.id,
+					     k.json, k.json_capacity,
+					     k.data, k.data_capacity));
+	}
+
+	for (size_t i = 0; i < keys.size(); ++i) {
+		size_t count = 0;
+		for (const auto &r : results[i]) {
+			BOOST_REQUIRE_EQUAL(r.status(), 0);
+			++count;
+		}
+		BOOST_REQUIRE_EQUAL(count, groups.size());
+	}
+}
+
+void test_read_keys(const ioremap::elliptics::newapi::session &session, const std::vector<TestKey> &keys,
+		    const std::vector<int> &groups) {
+	for (int group_id : groups) {
+		std::vector<ioremap::elliptics::newapi::async_read_result> results;
+
+		auto s = session.clone();
+		s.set_trace_id(rand());
+		s.set_groups({group_id});
+		for (const auto &k : keys) {
+			results.emplace_back(s.read(k.id, 0, 0));
+		}
+
+		for (size_t i = 0; i < keys.size(); ++i) {
+			auto &async = results[i];
+			BOOST_REQUIRE_EQUAL(async.get().size(), 1);
+
+			auto result = async.get()[0];
+			BOOST_REQUIRE_EQUAL(result.status(), 0);
+			BOOST_REQUIRE_EQUAL(result.json().to_string(), keys[i].json);
+			BOOST_REQUIRE_EQUAL(result.data().to_string(), keys[i].data);
+
+			auto info = result.record_info();
+			BOOST_REQUIRE_EQUAL(info.user_flags, keys[i].user_flags);
+		}
+	}
+}
+
+void test_read_keys_error(const ioremap::elliptics::newapi::session &session, const std::vector<TestKey> &keys,
+			  const std::vector<int> &groups, int expected_error) {
+	for (int group_id : groups) {
+		std::vector<ioremap::elliptics::newapi::async_read_result> results;
+
+		auto s = session.clone();
+		s.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
+		s.set_filter(ioremap::elliptics::filters::all_with_ack);
+		s.set_trace_id(rand());
+		s.set_groups({group_id});
+		for (const auto &k : keys) {
+			results.emplace_back(s.read(k.id, 0, 0));
+		}
+
+		for (size_t i = 0; i < keys.size(); ++i) {
+			auto &async = results[i];
+			BOOST_REQUIRE_EQUAL(async.get().size(), 1);
+			BOOST_REQUIRE_EQUAL(async.get()[0].status(), expected_error);
+		}
+	}
+}
+
+void test_chunked_server_send(const ioremap::elliptics::newapi::session &session, const std::vector<TestKey> &keys,
+			      int src_group, const std::vector<int> &dst_groups, size_t chunk_size) {
+	auto s = session.clone();
+	s.set_trace_id(rand());
+	s.set_groups({src_group});
+
+	std::vector<std::string> key_ids;
+	key_ids.reserve(keys.size());
+	for (const auto &k : keys) {
+		key_ids.push_back(k.id);
+	}
+
+	auto async = s.server_send(key_ids, 0 /*flags*/,
+				   chunk_size,
+				   src_group, dst_groups);
+
+	size_t counter = 0;
+	for (const auto &result : async) {
+		BOOST_REQUIRE_EQUAL(result.status(), 0);
+		++counter;
+	}
+	BOOST_REQUIRE_EQUAL(keys.size(), counter);
+}
+
 void test_simple_server_send(const ioremap::elliptics::newapi::session &session/*, const test_dataset &testset*/) {
 	static const std::string key = "new_api_server_send_test::test_simple_server_send key";
 	static const std::string json = "{\"key\": \"new_api_server_send_test::test_simple_server_send key\"}";
@@ -338,6 +462,31 @@ bool register_tests(const nodes_data *setup) {
 
 	// test_dataset testset{session, 2};
 	ELLIPTICS_TEST_CASE(test_simple_server_send, use_session(n)/*, testset*/);
+
+	/* Writes many keys to a single group, then checks that they have been successfully written
+	   to the single group only.
+	   Calls server send to copy by chunks keys to other groups.
+	   Checks that all keys are written to all groups.
+	 */
+	size_t num_keys = 100;
+
+	size_t data_size = 64 * 1024; // 64 Kb
+	size_t chunk_size = 1021; // prime number
+	std::string id_prefix("newapi server send id");
+	std::string data_prefix(data_size, 'd');
+	auto keys = generate_keys(id_prefix, data_prefix, num_keys);
+
+	ELLIPTICS_TEST_CASE(test_insert_keys, use_session(n), keys, std::vector<int>({constants::src_group}));
+	ELLIPTICS_TEST_CASE(test_read_keys, use_session(n), keys, std::vector<int>({constants::src_group}));
+	ELLIPTICS_TEST_CASE(test_read_keys_error, use_session(n), keys, constants::dst_groups, -ENOENT);
+
+	ELLIPTICS_TEST_CASE(test_chunked_server_send, use_session(n), keys,
+			    constants::src_group, constants::dst_groups, chunk_size);
+
+	std::vector<int> all_groups = constants::dst_groups;
+	all_groups.emplace_back(constants::src_group);
+
+	ELLIPTICS_TEST_CASE(test_read_keys, use_session(n), keys, all_groups);
 
 	return true;
 }
