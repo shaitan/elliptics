@@ -2856,7 +2856,7 @@ async_write_result session::bulk_write(const std::vector<dnet_io_attr> &ios, con
 		set_exceptions_policy(no_exceptions);
 
 		for(size_t i = 0; i < ios.size(); ++i) {
-			results.emplace_back(std::move(write_data(ios[i], data[i])));
+			results.emplace_back(write_data(ios[i], data[i]));
 		}
 	}
 
@@ -2877,7 +2877,7 @@ async_remove_result session::bulk_remove(const std::vector<key> &keys)
 		set_exceptions_policy(no_exceptions);
 
 		for(size_t i = 0; i < keys.size(); ++i) {
-			results.emplace_back(std::move(remove(keys[i])));
+			results.emplace_back(remove(keys[i]));
 		}
 	}
 

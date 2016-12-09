@@ -8,11 +8,7 @@
 #include <unordered_map>
 #include <condition_variable>
 #include <mutex>
-#if __GNUC__ == 4 && __GNUC_MINOR__ < 5
-#  include <cstdatomic>
-#else
-#  include <atomic>
-#endif
+#include <atomic>
 
 
 struct dnet_locks_entry

@@ -259,7 +259,7 @@ static std::vector<dnet_raw_id> session_convert_indexes(session &sess, const std
 		sess.transform(indexes[i], raw_indexes[i]);
 	}
 
-	return std::move(raw_indexes);
+	return raw_indexes;
 }
 
 // Update \a indexes for \a request_id

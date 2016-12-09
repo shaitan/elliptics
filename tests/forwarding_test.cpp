@@ -10,7 +10,7 @@ namespace tests {
 namespace bu = boost::unit_test;
 
 nodes_data::ptr configure_test_setup(const std::string &path) {
-	constexpr auto server_config = [](const config_data &c) {
+	auto server_config = [](const config_data &c) {
 		auto server = server_config::default_value();
 		server.options("wait_timeout", 3);
 		return server.apply_options(c);

@@ -437,7 +437,6 @@ int dnet_trans_alloc_send(struct dnet_session *s, struct dnet_trans_control *ctl
 	}
 
 	if (!st) {
-		err = -ENXIO;
 		dnet_log(n, DNET_LOG_ERROR, "%s: direct: %d, direct-addr: %s, forward: %d: trans_send: could not find network state for address",
 			dnet_dump_id(&ctl->id),
 			!!(dnet_session_get_cflags(s) & DNET_FLAGS_DIRECT), dnet_addr_string(&s->direct_addr),

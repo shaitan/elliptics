@@ -22,12 +22,7 @@
 
 #include <functional>
 #include "callback_p.h"
-
-#if __GNUC__ == 4 && __GNUC_MINOR__ < 5
-#  include <cstdatomic>
-#else
-#  include <atomic>
-#endif
+#include <atomic>
 
 namespace ioremap { namespace elliptics {
 

@@ -107,7 +107,7 @@ dnet_io_req *dnet_request_queue::pop_request(dnet_work_io *wio, const char *thre
 
 	FORMATTED(HANDY_COUNTER_INCREMENT, ("pool.%s.queue.dropped", thread_stat_id), 1);
 	{
-		ioremap::elliptics::trace_scope trace_scope{cmd->trace_id, cmd->flags & DNET_FLAGS_TRACE_BIT};
+		ioremap::elliptics::trace_scope trace_scope{cmd->trace_id, static_cast<bool>(cmd->flags & DNET_FLAGS_TRACE_BIT)};
 		ioremap::elliptics::backend_scope backend_scope{wio->pool->io ? (int)wio->pool->io->backend_id : -1};
 
 		DNET_LOG_ERROR(wio->pool->n, "{}: {}: client: {}: drop request: trans: {}, cflags: {}, "

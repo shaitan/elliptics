@@ -1067,7 +1067,7 @@ static int dnet_iterator_check_ts_range(struct dnet_net_state *st, struct dnet_c
 		struct dnet_time empty_time = {0, 0};
 		/* Unset DNET_IFLAGS_TS_RANGE if both times are empty */
 		if (memcmp(&empty_time, &ireq->time_begin, sizeof(struct dnet_time)) == 0
-				&& memcmp(&empty_time, &ireq->time_end, sizeof(struct dnet_time) == 0)) {
+		    && memcmp(&empty_time, &ireq->time_end, sizeof(struct dnet_time)) == 0) {
 			dnet_log(st->n, DNET_LOG_NOTICE, "%s: both times are zero: cmd: %u",
 				dnet_dump_id(&cmd->id), cmd->cmd);
 			ireq->flags &= ~DNET_IFLAGS_TS_RANGE;

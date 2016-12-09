@@ -290,23 +290,19 @@ static bool dnet_recv_nolock(const dnet_connect_state_ptr &state, dnet_addr_sock
 {
 	ssize_t err = recv(socket->s, socket->io_data, socket->io_size, 0);
 	if (err < 0) {
-		err = -EAGAIN;
 		if (errno != EAGAIN && errno != EINTR) {
 			err = -errno;
 			DNET_LOG_ERROR(state->node, "{}: failed to receive data, socket: {}",
 			               dnet_addr_string(&socket->addr), socket->s);
 			dnet_fail_socket(state, socket, err);
-			return false;
 		}
-
 		return false;
 	}
 
 	if (err == 0) {
 		DNET_LOG_ERROR(state->node, "{}: peer has disconnected, socket: {}", dnet_addr_string(&socket->addr),
 		               socket->s);
-		err = -ECONNRESET;
-		dnet_fail_socket(state, socket, err);
+		dnet_fail_socket(state, socket, -ECONNRESET);
 		return false;
 	}
 
