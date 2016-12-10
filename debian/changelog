@@ -1,3 +1,13 @@
+elliptics (2.27.0.3) unstable; urgency=medium
+
+  * tests: added chunked server-send test to new api tests
+  * recovery: added test that reproduces bug with incorrect chunked server_send
+  * recovery: fixed bug with incorrect chunked server_send
+  * fix some issues found by clang static analyzer
+  * fix compilation errors on clang
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Sat, 10 Dec 2016 15:54:10 +0300
+
 elliptics (2.27.0.2) unstable; urgency=medium
 
   * network: bugfix: no io-thread awake full_wait condvar, while net thread waits for it
