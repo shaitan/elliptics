@@ -169,7 +169,7 @@ def corrupt_key(session, key):
 
 def recovery(one_node, remotes, backend_id, address, groups,
              rtype, log_file, tmp_dir, no_server_send=False, dump_file=None, no_meta=False,
-             user_flags_set=(), expected_ret_code=0):
+             user_flags_set=(), expected_ret_code=0, chunk_size=1024):
     '''
     Imports dnet_recovery tools and executes merge recovery. Checks result of merge.
     '''
@@ -185,7 +185,7 @@ def recovery(one_node, remotes, backend_id, address, groups,
 
     args = ['-D', tmp_dir,
             '-l', os.path.join(tmp_dir, 'recovery.log'),
-            '-c', 1024,
+            '-c', chunk_size,
             '-L', elliptics.log_level.debug,
             '-g', ','.join(map(str, groups)),
             '-b', 100,
@@ -668,6 +668,37 @@ class TestRecovery:
 
         session.groups = [scope.test_group]
         check_keys_absence_in_all_groups(scope, session, [self.corrupted_key2])
+
+    def test_chunked_recovery(self, servers, simple_node, use_server_send):
+        '''
+        Writes multiple keys to a single group.
+        Runs dc recovery with specific chunk_size to enforce chunked recovery to other 2 groups.
+        '''
+        keys = map('large_key_{}'.format, range(self.count))
+        datas = [str(i) * 32 for i in xrange(self.count)]
+
+        session = make_session(node=simple_node,
+                               test_name='TestRecovery.test_chunked_recovery',
+                               test_namespace=self.namespace)
+        session.groups = [scope.test_group]
+        session.timestamp = self.timestamp
+        write_data(scope, session, keys, datas)
+        check_data(scope, session, keys, datas, self.timestamp)
+
+        recovery(one_node=False,
+                 remotes=map(elliptics.Address.from_host_port_family, servers.remotes),
+                 backend_id=None,
+                 address=scope.test_address2,
+                 groups=(scope.test_group, scope.test_group2, scope.test_group3),
+                 rtype=RECOVERY.DC,
+                 log_file='dc_chunked.log',
+                 tmp_dir='dc_chunked_{}'.format(use_server_send[0]),
+                 no_server_send=use_server_send[1],
+                 chunk_size=13)
+
+        for group in (scope.test_group, scope.test_group2, scope.test_group3):
+            session.groups = [group]
+            check_data(scope, session, keys, datas, self.timestamp)
 
     @pytest.mark.usefixtures("servers")
     def test_defragmentation(self, simple_node):
