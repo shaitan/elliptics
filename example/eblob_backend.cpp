@@ -965,7 +965,7 @@ static iterator_callback make_iterator_server_send_callback(eblob_backend_config
 			while (data_offset < info->data_size && !st->__need_exit) {
 				const uint64_t remaining_size = info->data_size - data_offset;
 				const uint64_t data_size = std::min(remaining_size, request.chunk_size);
-				int err = dnet_read_ll(info->fd, data.data<char>(), data_size, data_offset);
+				int err = dnet_read_ll(info->fd, data.data<char>(), data_size, info->data_offset + data_offset);
 				if (err) {
 					DNET_LOG_ERROR(c->blog, "EBLOB: server_send: {}: failed to read data: {}",
 					               dnet_dump_id_str(info->key.id), dnet_print_error(err));
