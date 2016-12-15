@@ -869,6 +869,12 @@ public:
 		);
 	}
 
+	python_remove_result remove(const bp::api::object &id) {
+		return create_result(
+			newapi::session{*this}.remove(transform(id).id())
+		);
+	}
+
 	python_read_result read_json(const bp::api::object &id) {
 		return create_result(
 			newapi::session{*this}.read_json(transform(id).id())
@@ -2180,6 +2186,16 @@ void init_elliptics_session() {
 		     "            result.path,\n"
 		     "            result.record_info.data_offset,\n\n")
 
+		.def("remove", &newapi::elliptics_session::remove,
+		     bp::args("key"),
+		    "remove(key)\n"
+		    "    Remove @key.\n"
+		    "    Return elliptics.AsyncResult.\n\n"
+		    "    async = session.remove('key')\n"
+		    "    for result in async:\n"
+		    "        print 'group: {}, status: {}'.format(result.group_id,\n"
+		    "                                             result.status)")
+
 		.def("read_json", &newapi::elliptics_session::read_json,
 		     bp::args("key"),
 		     "read_json(key)\n"
@@ -2223,7 +2239,7 @@ void init_elliptics_session() {
 		     "    for result in async:\n"
 		     "        print 'group: {}, status: {}, path: {}'.format(result.group_id,\n"
 		     "                                                       result.status, \n"
-		     "                                                       result.path")
+		     "                                                       result.path)")
 
 		.def("write_prepare", &newapi::elliptics_session::write_prepare,
 		     bp::args("key", "json", "json_capacity", "data", "data_offset", "data_capacity"),
@@ -2239,7 +2255,7 @@ void init_elliptics_session() {
 		     "    for result in async:\n"
 		     "        print 'group: {}, status: {}, path: {}'.format(result.group_id,\n"
 		     "                                                       result.status, \n"
-		     "                                                       result.path")
+		     "                                                       result.path)")
 
 		.def("write_plain", &newapi::elliptics_session::write_plain,
 		     bp::args("key", "json", "data", "data_offset"),
@@ -2251,7 +2267,7 @@ void init_elliptics_session() {
 		     "    for result in async:\n"
 		     "        print 'group: {}, status: {}, path: {}'.format(result.group_id,\n"
 		     "                                                       result.status, \n"
-		     "                                                       result.path")
+		     "                                                       result.path)")
 
 		.def("write_commit", &newapi::elliptics_session::write_commit,
 		      bp::args("key", "json", "data", "data_offset", "data_commit_size"),
@@ -2265,7 +2281,7 @@ void init_elliptics_session() {
 		     "    for result in async:\n"
 		     "        print 'group: {}, status: {}, path: {}'.format(result.group_id,\n"
 		     "                                                       result.status, \n"
-		     "                                                       result.path")
+		     "                                                       result.path)")
 
 		.def("update_json", &newapi::elliptics_session::update_json,
 		     bp::args("key", "json"),

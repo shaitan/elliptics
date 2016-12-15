@@ -208,6 +208,26 @@ inline msgpack::packer<Stream> &operator <<(msgpack::packer<Stream> &o, const dn
 	return o;
 }
 
+inline dnet_remove_request &operator >>(msgpack::object o, dnet_remove_request &v) {
+	if (o.type != msgpack::type::ARRAY || o.via.array.size < 2)
+		throw msgpack::type_error();
+
+	object *p = o.via.array.ptr;
+	p[0].convert(&v.ioflags);
+	p[1].convert(&v.timestamp);
+
+	return v;
+}
+
+template <typename Stream>
+inline msgpack::packer<Stream> &operator <<(msgpack::packer<Stream> &o, const dnet_remove_request &v) {
+	o.pack_array(2);
+	o.pack(v.ioflags);
+	o.pack(v.timestamp);
+
+	return o;
+}
+
 inline dnet_json_header &operator >>(msgpack::object o, dnet_json_header &v) {
 	if (o.type != msgpack::type::ARRAY || o.via.array.size < 3)
 		throw msgpack::type_error();
@@ -455,6 +475,8 @@ DEFINE_HEADER(dnet_read_response);
 DEFINE_HEADER(dnet_write_request);
 
 DEFINE_HEADER(dnet_lookup_response);
+
+DEFINE_HEADER(dnet_remove_request);
 
 DEFINE_HEADER(dnet_iterator_request);
 DEFINE_HEADER(dnet_iterator_response);

@@ -38,7 +38,7 @@
 #include "rapidjson/stringbuffer.h"
 
 static int dnet_get_filename(int fd, std::string &filename) {
-	char *name = NULL;
+	char *name = nullptr;
 	if (const int err = dnet_fd_readlink(fd, &name) < 0)
 		return err;
 
@@ -196,6 +196,79 @@ int blob_file_info_new(eblob_backend_config *c, void *state, dnet_cmd *cmd) {
 	              dnet_dump_id(&cmd->id), wc.data_fd, jhdr.size, wc.size);
 
 	return 0;
+}
+
+int blob_del_new(eblob_backend_config *c, dnet_cmd *cmd, void *data) {
+	using namespace ioremap::elliptics;
+	eblob_backend *b = c->eblob;
+
+	const auto request = [&data, &cmd] () {
+		dnet_remove_request request;
+		deserialize(data_pointer::from_raw(data, cmd->size), request);
+		return request;
+	} ();
+
+	eblob_key key;
+	memcpy(key.id, cmd->id.id, EBLOB_ID_SIZE);
+
+	auto print_error = [&] (int err) -> int {
+		if (err) {
+			DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-del-new: failed: {} [{}]", dnet_dump_id(&cmd->id),
+				       strerror(-err), err);
+		}
+		return err;
+	};
+
+	auto remove_key = [&] () -> int {
+		return print_error(eblob_remove(b, &key));
+	};
+
+	if (request.ioflags & DNET_IO_FLAGS_CAS_TIMESTAMP) {
+		eblob_write_control wc;
+		int err = eblob_read_return(b, &key, EBLOB_READ_NOCSUM, &wc);
+		if (!err) {
+			if (wc.flags & BLOB_DISK_CTL_EXTHDR) {
+				auto verify_checksum = [&, wc] (uint64_t offset, uint64_t size) mutable {
+					wc.offset = offset;
+					wc.size = size;
+					return eblob_verify_checksum(b, &key, &wc);
+				};
+
+				dnet_ext_list_hdr ehdr;
+				err = verify_checksum(0, sizeof(ehdr));
+				if (!err) {
+					err = dnet_ext_hdr_read(&ehdr, wc.data_fd, wc.data_offset);
+					if (!err) {
+						if (dnet_time_cmp(&ehdr.timestamp, &request.timestamp) > 0) {
+							const std::string request_ts = dnet_print_time(&request.timestamp);
+							const std::string disk_ts = dnet_print_time(&ehdr.timestamp);
+
+							DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-del-new: REMOVE_NEW: cas: disk data "
+								       "timestamp is higher than request timestamp: "
+								       "disk-ts: {}, request-ts: {}",
+								       dnet_dump_id(&cmd->id), disk_ts, request_ts);
+							return -EBADFD;
+						} else {
+							return remove_key();
+						}
+					} else {
+						return print_error(err);
+					}
+				} else {
+					DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-del-new: REMOVE_NEW: failed to verify checksum for "
+						       "exthdr: fd: {}, offset: {}, size: {}: {} [{}]",
+						       dnet_dump_id(&cmd->id), wc.data_fd, wc.offset, wc.size, strerror(-err), err);
+					return remove_key();
+				}
+			} else {
+				return remove_key();
+			}
+		} else {
+			return print_error(err);
+		}
+	}
+
+	return remove_key();
 }
 
 int blob_read_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *data,

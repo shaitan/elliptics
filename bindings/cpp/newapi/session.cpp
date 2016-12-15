@@ -140,6 +140,25 @@ async_lookup_result session::lookup(const key &id) {
 	return result;
 }
 
+async_remove_result session::remove(const key &id) {
+	trace_scope scope{get_trace_id(), get_trace_bit()};
+	transform(id);
+
+	dnet_remove_request request;
+	request.ioflags = get_ioflags();
+	request.timestamp = get_timestamp();
+
+	auto packet = serialize(request);
+
+	transport_control control;
+	control.set_key(id.id());
+	control.set_command(DNET_CMD_DEL_NEW);
+	control.set_cflags(get_cflags() | DNET_FLAGS_NEED_ACK);
+	control.set_data(packet.data(), packet.size());
+
+	return send_to_groups(*this, control);
+}
+
 /* TODO: refactor read_handler/write_handler because they have a lot in common */
 class read_handler : public std::enable_shared_from_this<read_handler> {
 private:

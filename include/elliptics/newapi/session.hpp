@@ -45,6 +45,10 @@ public:
 	 */
 	async_lookup_result lookup(const key &id);
 
+	/* Removes all the entries of key \a id at server nodes.
+	 */
+	async_remove_result remove(const key &id);
+
 	/* Read json of key \a id.
 	 */
 	async_read_result read_json(const key &id);

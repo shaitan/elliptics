@@ -20,6 +20,7 @@
 
 #include "slru_cache.hpp"
 #include "library/request_queue.h"
+#include "library/protocol.hpp"
 
 #include "monitor/measure_points.h"
 
@@ -276,10 +277,12 @@ read_response_t slru_cache_t::read(const unsigned char *id, uint64_t ioflags) {
 	return read_response_t{err, cache_item()};
 }
 
-int slru_cache_t::remove(const unsigned char *id, uint64_t ioflags) {
+int slru_cache_t::remove(const dnet_cmd *cmd, ioremap::elliptics::dnet_remove_request &request) {
 	TIMER_SCOPE("remove");
 
-	const bool cache_only = (ioflags & DNET_IO_FLAGS_CACHE_ONLY);
+	auto id = reinterpret_cast<const unsigned char *>(cmd->id.id);
+
+	const bool cache_only = (request.ioflags & DNET_IO_FLAGS_CACHE_ONLY);
 	bool remove_from_disk = !cache_only;
 	int err = -ENOENT;
 
@@ -292,6 +295,21 @@ int slru_cache_t::remove(const unsigned char *id, uint64_t ioflags) {
 	TIMER_STOP("remove.find");
 
 	if (it) {
+		if ((cmd->cmd == DNET_CMD_DEL_NEW) && (request.ioflags & DNET_IO_FLAGS_CAS_TIMESTAMP)) {
+			auto cache_ts = it->timestamp();
+
+			// cache timestamp is greater than timestamp of the data to be removed
+			// do not allow it
+			if (dnet_time_cmp(&cache_ts, &request.timestamp) > 0) {
+				const std::string cache_ts_string = dnet_print_time(&cache_ts);
+				const std::string request_ts_string = dnet_print_time(&request.timestamp);
+				DNET_LOG_ERROR(m_node, "{}: cas: cache data timestamp is larger than data to be "
+				                       "removed timestamp: cache-ts: '{}', data-ts: '{}'",
+				               dnet_dump_id(&cmd->id), cache_ts_string, request_ts_string);
+				return -EBADFD;
+			}
+		}
+
 		// If cache_only is not set the data also should be remove from the disk
 		// If data is marked and cache_only is not set - data must not be synced to the disk
 		remove_from_disk |= it->remove_from_disk();
@@ -314,14 +332,28 @@ int slru_cache_t::remove(const unsigned char *id, uint64_t ioflags) {
 	guard.unlock();
 
 	if (remove_from_disk) {
+		int local_err;
 		struct dnet_id raw;
 		memset(&raw, 0, sizeof(struct dnet_id));
 
 		dnet_setup_id(&raw, 0, (unsigned char *)id);
 
-		TIMER_SCOPE("remove.local");
+		if (cmd->cmd == DNET_CMD_DEL_NEW) {
+			if (it) {
+				request.ioflags &= ~DNET_IO_FLAGS_CAS_TIMESTAMP;
+			}
+			const auto packet = ioremap::elliptics::serialize(request);
 
-		int local_err = dnet_remove_local(m_backend, m_node, &raw);
+			TIMER_SCOPE("remove.local");
+
+			local_err = dnet_remove_local_new(m_backend, m_node, &raw,
+							  packet.data(), packet.size());
+		} else {
+			TIMER_SCOPE("remove.local");
+
+			local_err = dnet_remove_local(m_backend, m_node, &raw);
+		}
+
 		if (local_err != -ENOENT)
 			err = local_err;
 	}
