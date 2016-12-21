@@ -1089,14 +1089,19 @@ class TestDC:
         Estimates result for the case
         '''
         timestamps = [c.timestamp for c in case if c]
-        if len(timestamps) < 1:
+        if not timestamps:
             return [None] * len(case)
+
+        get_ts = lambda c: c.timestamp if c and c.action == elliptics.Session.write_data else None
+
+        if any(c.action == elliptics.Session.write_prepare for c in case if c and c.timestamp != self.old_ts):
+            return map(get_ts, case)
+
         max_ts = max(timestamps)
         if all(c.action == elliptics.Session.write_prepare for c in case if c and c.timestamp == max_ts):
             if max_ts == self.old_ts:
                 return [None] * len(case)
             else:
-                get_ts = lambda c: c.timestamp if c and c.action == elliptics.Session.write_data else None
                 return map(get_ts, case)
         else:
             return [max_ts] * len(case)
@@ -1192,11 +1197,6 @@ class TestDC:
         '''
         Checks that all keys from test_data are in correct state - have correct timestamp and availability.
         '''
-        sessions = []
-        for g in scope.groups:
-            sessions.append(scope.session.clone())
-            sessions[-1].groups = [g]
-
         results = []
         for i, case in enumerate(scope.test_data):
             key = scope.keyshifter.get(i)
