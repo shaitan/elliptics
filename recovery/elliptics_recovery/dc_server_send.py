@@ -201,6 +201,8 @@ class ServerSendRecovery(object):
 
         self.remove_session = self.session.clone()
         self.remove_session.set_filter(elliptics.filters.all_final)
+        self.remove_session.ioflags |= elliptics.io_flags.cas_timestamp
+        self.remove_session.timestamp = ctx.prepare_timeout
 
         self.result = True
 
@@ -321,6 +323,7 @@ class ServerSendRecovery(object):
                     self.buckets.on_server_send_fail(key, key_infos, next_meta.group_id)
                     continue
             num_failed_keys += 1
+            log.error("Key: {0} is not recovered".format(key))
 
         if num_failed_keys > 0:
             self.result = False
@@ -347,6 +350,7 @@ class ServerSendRecovery(object):
             if next_group_id >= 0:
                 self.buckets.on_server_send_fail(key, key_infos, next_group_id)
             else:
+                log.error("Key: {0} is not recovered".format(key))
                 self.result = False
 
     def _remove_corrupted_keys(self, keys, groups):
@@ -408,7 +412,7 @@ class ServerSendRecovery(object):
             same_infos = [info for info in same_infos if info not in same_uncommitted]
             incomplete_groups = [info.group_id for info in same_uncommitted]
             same_groups = [info.group_id for info in same_infos]
-            log.info('Key: {0} has uncommitted replicas in groups: {1} and completed replicas in groups: {2}.'
+            log.info('Key: {0} has uncommitted replicas in groups: {1} and completed replicas in groups: {2}. '
                      'The key will be recovered at groups with uncommitted replicas too.'
                      .format(key, incomplete_groups, same_groups))
 
