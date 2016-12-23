@@ -1303,14 +1303,13 @@ void test_write_to_readonly_backend(const ioremap::elliptics::newapi::session &s
 	}
 }
 
-void test_remove(const ioremap::elliptics::newapi::session &session, const record &record, int expected_status) {
+void test_remove(const ioremap::elliptics::newapi::session &session, const dnet_time &sess_timestamp,
+		 const record &record, int expected_status) {
 	auto s = session.clone();
 	s.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
 	s.set_filter(ioremap::elliptics::filters::all_with_ack);
 	s.set_groups(groups);
-
-	s.set_timestamp(record.timestamp);
-	s.set_json_timestamp(record.json_timestamp);
+	s.set_timestamp(sess_timestamp);
 
 	auto async = s.remove(record.key);
 
@@ -1444,21 +1443,22 @@ bool register_tests(const nodes_data *setup) {
 
 		// Test key remove with and without CAS timestamp
 		record.key = {in_cache ? "cache_remove_key" : "remove_key"};
-		for (int flags : {DNET_IO_FLAGS_CAS_TIMESTAMP, 0}) {
+		for (uint32_t flags : {DNET_IO_FLAGS_CAS_TIMESTAMP, 0}) {
 			dnet_current_time(&record.timestamp);
 			ELLIPTICS_TEST_CASE(test_write, use_session(n, {}, 0, ioflags), record);
 
 			// if test uses CAS timestamp, then key removal with older session timestamp
 			// must return -EBADFD
-			record.timestamp.tsec -= 1;
+			auto sess_timestamp = record.timestamp;
+			sess_timestamp.tsec -= 1;
 			int expected_status = (flags == 0) ? 0 : -EBADFD;
 			ELLIPTICS_TEST_CASE(test_remove, use_session(n, {}, 0, ioflags | flags),
-					    record, expected_status);
+					    sess_timestamp, record, expected_status);
 
-			record.timestamp.tsec += 1;
+			sess_timestamp = record.timestamp;
 			expected_status = (flags == 0) ? -ENOENT : 0;
 			ELLIPTICS_TEST_CASE(test_remove, use_session(n, {}, 0, ioflags | flags),
-					    record, expected_status);
+					    sess_timestamp, record, expected_status);
 
 			if (!in_cache) {
 				ELLIPTICS_TEST_CASE(test_remove_corrupted, use_session(n, {}, 0, ioflags | flags));

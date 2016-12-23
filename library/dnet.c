@@ -49,22 +49,20 @@
 int dnet_remove_local_new(struct dnet_backend_io *backend, struct dnet_node *n, struct dnet_id *id,
 			  void *packet, size_t packet_size)
 {
-	const size_t cmd_size = sizeof(struct dnet_cmd) + packet_size;
 	int err;
-	char buffer[cmd_size];
-	struct dnet_cmd *cmd = (struct dnet_cmd *)buffer;
+	struct dnet_cmd cmd;
 	struct dnet_cmd_stats cmd_stats;
 
-	memset(buffer, 0, cmd_size);
-	memset(&cmd_stats, 0, sizeof(cmd_stats));
+	memset(&cmd, 0, sizeof(struct dnet_cmd));
+	memset(&cmd_stats, 0, sizeof(struct dnet_cmd_stats));
 
-	cmd->id = *id;
-	cmd->size = cmd_size - sizeof(struct dnet_cmd);
-	cmd->flags = DNET_FLAGS_NOLOCK;
-	cmd->cmd = DNET_CMD_DEL_NEW;
+	cmd.id = *id;
+	cmd.size = packet_size;
+	cmd.flags = DNET_FLAGS_NOLOCK;
+	cmd.cmd = DNET_CMD_DEL_NEW;
 
-	err = backend->cb->command_handler(n->st, backend->cb->command_private, cmd, packet, &cmd_stats);
-	dnet_log(n, DNET_LOG_NOTICE, "%s: local remove_new: err: %d", dnet_dump_id(&cmd->id), err);
+	err = backend->cb->command_handler(n->st, backend->cb->command_private, &cmd, packet, &cmd_stats);
+	dnet_log(n, DNET_LOG_NOTICE, "%s: local remove_new: err: %d", dnet_dump_id(&cmd.id), err);
 
 	return err;
 }

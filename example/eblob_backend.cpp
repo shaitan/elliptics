@@ -198,6 +198,58 @@ int blob_file_info_new(eblob_backend_config *c, void *state, dnet_cmd *cmd) {
 	return 0;
 }
 
+static int blob_del_new_cas(eblob_backend_config *c, eblob_backend *b, const dnet_cmd *cmd, eblob_key &key,
+			    const ioremap::elliptics::dnet_remove_request &request) {
+	eblob_write_control wc;
+	int err = eblob_read_return(b, &key, EBLOB_READ_NOCSUM, &wc);
+	if (err) {
+		DNET_LOG_ERROR(c->blog, "{}: EBLOB: {}: failed: {} [{}]", dnet_dump_id(&cmd->id),
+			       __func__, strerror(-err), err);
+		return err;
+	}
+
+	if (!(wc.flags & BLOB_DISK_CTL_EXTHDR)) {
+		DNET_LOG_INFO(c->blog, "{}: EBLOB: {}: REMOVE_NEW: key doesn't have exthdr",
+			      dnet_dump_id(&cmd->id), __func__);
+		return 0;
+	}
+
+	auto verify_checksum = [&, wc] (uint64_t offset, uint64_t size) mutable {
+		wc.offset = offset;
+		wc.size = size;
+		return eblob_verify_checksum(b, &key, &wc);
+	};
+
+	dnet_ext_list_hdr ehdr;
+	err = verify_checksum(0, sizeof(ehdr));
+	if (err) {
+		DNET_LOG_ERROR(c->blog, "{}: EBLOB: {}: REMOVE_NEW: failed to verify checksum for "
+			       "exthdr: fd: {}, offset: {}, size: {}: {} [{}]",
+			       dnet_dump_id(&cmd->id), __func__, wc.data_fd, wc.offset, wc.size, strerror(-err), err);
+		return 0;
+	}
+
+	err = dnet_ext_hdr_read(&ehdr, wc.data_fd, wc.data_offset);
+	if (err) {
+		DNET_LOG_ERROR(c->blog, "{}: EBLOB: {}: REMOVE_NEW: exthdr read failed: {} [{}]",
+			       dnet_dump_id(&cmd->id), __func__, strerror(-err), err);
+		return err;
+	}
+
+	if (dnet_time_cmp(&ehdr.timestamp, &request.timestamp) > 0) {
+		const std::string request_ts = dnet_print_time(&request.timestamp);
+		const std::string disk_ts = dnet_print_time(&ehdr.timestamp);
+
+		DNET_LOG_ERROR(c->blog, "{}: EBLOB: {}: REMOVE_NEW: failed cas: "
+			       "data timestamp is greater than request timestamp: "
+			       "disk-ts: {}, request-ts: {}",
+			       dnet_dump_id(&cmd->id), __func__, disk_ts, request_ts);
+		return -EBADFD;
+	}
+
+	return 0;
+}
+
 int blob_del_new(eblob_backend_config *c, dnet_cmd *cmd, void *data) {
 	using namespace ioremap::elliptics;
 	eblob_backend *b = c->eblob;
@@ -208,67 +260,25 @@ int blob_del_new(eblob_backend_config *c, dnet_cmd *cmd, void *data) {
 		return request;
 	} ();
 
+	DNET_LOG_INFO(c->blog, "{}: EBLOB: {}: REMOVE_NEW: start: ioflags: {}",
+		      dnet_dump_id(&cmd->id), __func__, dnet_flags_dump_ioflags(request.ioflags));
+
 	eblob_key key;
 	memcpy(key.id, cmd->id.id, EBLOB_ID_SIZE);
 
-	auto print_error = [&] (int err) -> int {
-		if (err) {
-			DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-del-new: failed: {} [{}]", dnet_dump_id(&cmd->id),
-				       strerror(-err), err);
-		}
-		return err;
-	};
-
-	auto remove_key = [&] () -> int {
-		return print_error(eblob_remove(b, &key));
-	};
-
+	int err;
 	if (request.ioflags & DNET_IO_FLAGS_CAS_TIMESTAMP) {
-		eblob_write_control wc;
-		int err = eblob_read_return(b, &key, EBLOB_READ_NOCSUM, &wc);
-		if (!err) {
-			if (wc.flags & BLOB_DISK_CTL_EXTHDR) {
-				auto verify_checksum = [&, wc] (uint64_t offset, uint64_t size) mutable {
-					wc.offset = offset;
-					wc.size = size;
-					return eblob_verify_checksum(b, &key, &wc);
-				};
-
-				dnet_ext_list_hdr ehdr;
-				err = verify_checksum(0, sizeof(ehdr));
-				if (!err) {
-					err = dnet_ext_hdr_read(&ehdr, wc.data_fd, wc.data_offset);
-					if (!err) {
-						if (dnet_time_cmp(&ehdr.timestamp, &request.timestamp) > 0) {
-							const std::string request_ts = dnet_print_time(&request.timestamp);
-							const std::string disk_ts = dnet_print_time(&ehdr.timestamp);
-
-							DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-del-new: REMOVE_NEW: cas: disk data "
-								       "timestamp is higher than request timestamp: "
-								       "disk-ts: {}, request-ts: {}",
-								       dnet_dump_id(&cmd->id), disk_ts, request_ts);
-							return -EBADFD;
-						} else {
-							return remove_key();
-						}
-					} else {
-						return print_error(err);
-					}
-				} else {
-					DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-del-new: REMOVE_NEW: failed to verify checksum for "
-						       "exthdr: fd: {}, offset: {}, size: {}: {} [{}]",
-						       dnet_dump_id(&cmd->id), wc.data_fd, wc.offset, wc.size, strerror(-err), err);
-					return remove_key();
-				}
-			} else {
-				return remove_key();
-			}
-		} else {
-			return print_error(err);
-		}
+		err = blob_del_new_cas(c, b, cmd, key, request);
+		if (err)
+			return err;
 	}
 
-	return remove_key();
+	err = eblob_remove(b, &key);
+
+	DNET_LOG(c->blog, err ? DNET_LOG_ERROR : DNET_LOG_INFO, "{}: EBLOB: {} finished: {}",
+		 dnet_dump_id(&cmd->id), __func__, dnet_print_error(err));
+
+	return err;
 }
 
 int blob_read_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *data,
@@ -495,8 +505,8 @@ int blob_write_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *da
 				const std::string request_ts = dnet_print_time(&request.timestamp);
 				const std::string disk_ts = dnet_print_time(&disk_ehdr.timestamp);
 
-				DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-write-new: WRITE_NEW: cas: disk data "
-				                        "timestamp is higher than data to be written timestamp: "
+				DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-write-new: WRITE_NEW: failed cas: "
+				                        "data timestamp is greater than data to be written timestamp: "
 				                        "disk-ts: {}, data-ts: {}",
 				               dnet_dump_id(&cmd->id), disk_ts, request_ts);
 
@@ -507,8 +517,8 @@ int blob_write_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *da
 				const std::string request_ts = dnet_print_time(&request.json_timestamp);
 				const std::string disk_ts = dnet_print_time(&disk_jhdr.timestamp);
 
-				DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-write-new: WRITE_NEW: cas: disk json "
-				                        "timestamp is higher than json to be written timestamp: "
+				DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-write-new: WRITE_NEW: failed cas: "
+				                        "json timestamp is greater than json to be written timestamp: "
 				                        "disk-ts: {}, json-ts: {}",
 				               dnet_dump_id(&cmd->id), disk_ts, request_ts);
 

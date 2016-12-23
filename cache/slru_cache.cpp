@@ -303,8 +303,9 @@ int slru_cache_t::remove(const dnet_cmd *cmd, ioremap::elliptics::dnet_remove_re
 			if (dnet_time_cmp(&cache_ts, &request.timestamp) > 0) {
 				const std::string cache_ts_string = dnet_print_time(&cache_ts);
 				const std::string request_ts_string = dnet_print_time(&request.timestamp);
-				DNET_LOG_ERROR(m_node, "{}: cas: cache data timestamp is larger than data to be "
-				                       "removed timestamp: cache-ts: '{}', data-ts: '{}'",
+				DNET_LOG_ERROR(m_node, "{}: CACHE: REMOVE_NEW: failed cas: "
+					       "cache data timestamp is greater than request timestamp: "
+					       "data-ts: {}, request-ts: {}",
 				               dnet_dump_id(&cmd->id), cache_ts_string, request_ts_string);
 				return -EBADFD;
 			}
@@ -450,7 +451,7 @@ int slru_cache_t::check_cas(const data_t* it, const dnet_cmd *cmd, const write_r
 			if (dnet_time_cmp(&cache_ts, &request.timestamp) > 0) {
 				const std::string cache_ts_string = dnet_print_time(&cache_ts);
 				const std::string request_ts_string = dnet_print_time(&request.timestamp);
-				DNET_LOG_ERROR(m_node, "{}: cas: cache data timestamp is larger than data to be "
+				DNET_LOG_ERROR(m_node, "{}: cas: cache data timestamp is greater than data to be "
 				                       "written timestamp: cache-ts: '{}', data-ts: '{}'",
 				               dnet_dump_id(&cmd->id), cache_ts_string, request_ts_string);
 				return -EBADFD;
@@ -463,7 +464,7 @@ int slru_cache_t::check_cas(const data_t* it, const dnet_cmd *cmd, const write_r
 			if (dnet_time_cmp(&cache_ts, &request.json_timestamp) > 0) {
 				const std::string cache_ts_string = dnet_print_time(&cache_ts);
 				const std::string request_ts_string = dnet_print_time(&request.json_timestamp);
-				DNET_LOG_ERROR(m_node, "{}: cas: cache json timestamp is larger than data to be "
+				DNET_LOG_ERROR(m_node, "{}: cas: cache json timestamp is greater than data to be "
 				                       "written timestamp: cache-ts: '{}', data-ts: '{}'",
 				               dnet_dump_id(&cmd->id), cache_ts_string, request_ts_string);
 				return -EBADFD;
