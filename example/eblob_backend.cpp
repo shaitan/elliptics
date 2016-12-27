@@ -488,6 +488,9 @@ int blob_write_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *da
 		if (!record_exists)
 			return;
 
+		if (!(wc.flags & BLOB_DISK_CTL_EXTHDR))
+			return;
+
 		if (dnet_ext_hdr_read(&ehdr, wc.data_fd, wc.data_offset))
 			return;
 
