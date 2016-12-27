@@ -46,6 +46,27 @@
 
 #include "logger.hpp"
 
+int dnet_remove_local_new(struct dnet_backend_io *backend, struct dnet_node *n, struct dnet_id *id,
+			  void *packet, size_t packet_size)
+{
+	int err;
+	struct dnet_cmd cmd;
+	struct dnet_cmd_stats cmd_stats;
+
+	memset(&cmd, 0, sizeof(struct dnet_cmd));
+	memset(&cmd_stats, 0, sizeof(struct dnet_cmd_stats));
+
+	cmd.id = *id;
+	cmd.size = packet_size;
+	cmd.flags = DNET_FLAGS_NOLOCK;
+	cmd.cmd = DNET_CMD_DEL_NEW;
+
+	err = backend->cb->command_handler(n->st, backend->cb->command_private, &cmd, packet, &cmd_stats);
+	dnet_log(n, DNET_LOG_NOTICE, "%s: local remove_new: err: %d", dnet_dump_id(&cmd.id), err);
+
+	return err;
+}
+
 int dnet_remove_local(struct dnet_backend_io *backend, struct dnet_node *n, struct dnet_id *id)
 {
 	const size_t cmd_size = sizeof(struct dnet_cmd) + sizeof(struct dnet_io_attr);
@@ -1644,12 +1665,13 @@ static int dnet_process_cmd_with_backend_raw(struct dnet_backend_io *backend, st
 				}
 			}
 
-			if ((n->ro || backend->read_only) && (cmd->cmd == DNET_CMD_WRITE_NEW)) {
+			if ((n->ro || backend->read_only) && ((cmd->cmd == DNET_CMD_DEL_NEW) || (cmd->cmd == DNET_CMD_WRITE_NEW))) {
 				err = -EROFS;
 				break;
 			}
 
-			if ((cmd->cmd == DNET_CMD_WRITE_NEW) || (cmd->cmd == DNET_CMD_READ_NEW)) {
+			if ((cmd->cmd == DNET_CMD_WRITE_NEW) || (cmd->cmd == DNET_CMD_READ_NEW) ||
+			    (cmd->cmd == DNET_CMD_DEL_NEW)) {
 				err = dnet_cmd_cache_io_new(backend, st, cmd, data, cmd_stats);
 
 				if (err != -ENOTSUP) {

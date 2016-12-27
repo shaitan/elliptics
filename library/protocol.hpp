@@ -80,6 +80,11 @@ struct dnet_lookup_response {
 	uint64_t data_size;
 };
 
+struct dnet_remove_request {
+	uint64_t ioflags;
+	dnet_time timestamp;
+};
+
 struct dnet_iterator_request {
 	dnet_iterator_request();
 	dnet_iterator_request(uint32_t type, uint64_t flags,

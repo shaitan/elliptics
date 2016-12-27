@@ -878,6 +878,11 @@ int dnet_process_indexes(struct dnet_backend_io *backend, struct dnet_net_state 
 
 int dnet_ids_update(struct dnet_node *n, int update_local, const char *file, struct dnet_addr *cfg_addrs, size_t backend_id);
 
+int __attribute__((weak)) dnet_remove_local_new(struct dnet_backend_io *backend,
+						struct dnet_node *n,
+						struct dnet_id *id,
+						void *packet,
+						size_t packet_size);
 int __attribute__((weak)) dnet_remove_local(struct dnet_backend_io *backend, struct dnet_node *n, struct dnet_id *id);
 
 /*

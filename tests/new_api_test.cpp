@@ -1303,6 +1303,48 @@ void test_write_to_readonly_backend(const ioremap::elliptics::newapi::session &s
 	}
 }
 
+void test_remove(const ioremap::elliptics::newapi::session &session, const dnet_time &sess_timestamp,
+		 const record &record, int expected_status) {
+	auto s = session.clone();
+	s.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
+	s.set_filter(ioremap::elliptics::filters::all_with_ack);
+	s.set_groups(groups);
+	s.set_timestamp(sess_timestamp);
+
+	auto async = s.remove(record.key);
+
+	size_t count = 0;
+	for (const auto &result: async) {
+		BOOST_REQUIRE_EQUAL(result.status(), expected_status);
+		++count;
+	}
+	BOOST_REQUIRE_EQUAL(count, groups.size());
+}
+
+void test_remove_corrupted(const ioremap::elliptics::newapi::session &session) {
+	static const auto group = groups[0];
+
+	auto s = session.clone();
+	s.set_groups({group});
+	s.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
+	s.set_filter(ioremap::elliptics::filters::all_with_ack);
+
+	static const std::string key{"test_remove_corrupted key"};
+	static const std::string data{"remove_corrupted data"};
+	static const std::string json{R"json(
+	{
+		"key": "remove_corrupted json key"
+	}
+	)json"};
+	write_and_corrupt_json(s, key, json, 0, data, 0);
+
+	auto async = s.remove(key);
+	BOOST_REQUIRE_EQUAL(async.get().size(), 1);
+
+	auto result = async.get()[0];
+	BOOST_REQUIRE_EQUAL(result.status(), 0);
+}
+
 bool register_tests(const nodes_data *setup) {
 	record record{
 		std::string{"key"},
@@ -1313,7 +1355,7 @@ bool register_tests(const nodes_data *setup) {
 		512,
 		std::string{"key data"},
 		1024,
-	        false
+		false
 	};
 	uint32_t ioflags = 0;
 
@@ -1398,6 +1440,30 @@ bool register_tests(const nodes_data *setup) {
 		ELLIPTICS_TEST_CASE(test_write_cas, use_session(n, {}, 0, ioflags));
 
 		ELLIPTICS_TEST_CASE(test_write_to_readonly_backend, use_session(n, {}, 0, ioflags), setup);
+
+		// Test key remove with and without CAS timestamp
+		record.key = {in_cache ? "cache_remove_key" : "remove_key"};
+		for (uint32_t flags : {DNET_IO_FLAGS_CAS_TIMESTAMP, 0}) {
+			dnet_current_time(&record.timestamp);
+			ELLIPTICS_TEST_CASE(test_write, use_session(n, {}, 0, ioflags), record);
+
+			// if test uses CAS timestamp, then key removal with older session timestamp
+			// must return -EBADFD
+			auto sess_timestamp = record.timestamp;
+			sess_timestamp.tsec -= 1;
+			int expected_status = (flags == 0) ? 0 : -EBADFD;
+			ELLIPTICS_TEST_CASE(test_remove, use_session(n, {}, 0, ioflags | flags),
+					    sess_timestamp, record, expected_status);
+
+			sess_timestamp = record.timestamp;
+			expected_status = (flags == 0) ? -ENOENT : 0;
+			ELLIPTICS_TEST_CASE(test_remove, use_session(n, {}, 0, ioflags | flags),
+					    sess_timestamp, record, expected_status);
+
+			if (!in_cache) {
+				ELLIPTICS_TEST_CASE(test_remove_corrupted, use_session(n, {}, 0, ioflags | flags));
+			}
+		}
 	};
 
 	run_tests(false);
@@ -1420,7 +1486,7 @@ record record{
 	std::string{"{\"key\":\"test_write_with_all_with_ack_filter::key\"}"},
 	100,
 	std::string{"test_write_with_all_with_ack_filter::data"},
-        100,
+	100,
 	false};
 
 void test_write(ioremap::elliptics::newapi::session &s) {

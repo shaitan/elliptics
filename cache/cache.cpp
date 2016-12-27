@@ -145,8 +145,8 @@ read_response_t cache_manager::read(const unsigned char *id, uint64_t ioflags) {
 	return m_caches[idx(id)]->read(id, ioflags);
 }
 
-int cache_manager::remove(const unsigned char *id, uint64_t ioflags) {
-	return m_caches[idx(id)]->remove(id, ioflags);
+int cache_manager::remove(const dnet_cmd *cmd, ioremap::elliptics::dnet_remove_request &request) {
+	return m_caches[idx(cmd->id.id)]->remove(cmd, request);
 }
 
 read_response_t cache_manager::lookup(const unsigned char *id) {
@@ -559,6 +559,41 @@ static int dnet_cmd_cache_io_lookup_new(struct cache_manager *cache,
 	return dnet_send_reply(st, cmd, response.data(), response.size(), 0);
 }
 
+static int dnet_cmd_cache_io_remove(struct cache_manager *cache,
+				    struct dnet_cmd *cmd,
+				    struct dnet_io_attr *io,
+				    struct dnet_cmd_stats *cmd_stats) {
+	ioremap::elliptics::dnet_remove_request request{io->flags, {0, 0}};
+	const int err = cache->remove(cmd, request);
+	if (!err) {
+		cmd_stats->handled_in_cache = 1;
+	}
+	return err;
+}
+
+static int dnet_cmd_cache_io_remove_new(struct cache_manager *cache,
+                                        struct dnet_cmd *cmd,
+                                        void *data,
+                                        struct dnet_cmd_stats *cmd_stats) {
+	using namespace ioremap::elliptics;
+
+	auto request = [&data, &cmd] () {
+		dnet_remove_request request;
+		deserialize(data_pointer::from_raw(data, cmd->size), request);
+		return request;
+	} ();
+
+	if (request.ioflags & DNET_IO_FLAGS_NOCACHE) {
+		return -ENOTSUP;
+	}
+
+	const int err = cache->remove(cmd, request);
+	if (!err) {
+		cmd_stats->handled_in_cache = 1;
+	}
+	return err;
+}
+
 int dnet_cmd_cache_io(struct dnet_backend_io *backend,
                       struct dnet_net_state *st,
                       struct dnet_cmd *cmd,
@@ -588,10 +623,7 @@ int dnet_cmd_cache_io(struct dnet_backend_io *backend,
 			err = dnet_cmd_cache_io_read(cache, st, cmd, io, cmd_stats);
 			break;
 		case DNET_CMD_DEL:
-			err = cache->remove(cmd->id.id, io->flags);
-			if (!err) {
-				cmd_stats->handled_in_cache = 1;
-			}
+			err = dnet_cmd_cache_io_remove(cache, cmd, io, cmd_stats);
 			break;
 		}
 	} catch (const std::exception &e) {
@@ -630,6 +662,9 @@ int dnet_cmd_cache_io_new(struct dnet_backend_io *backend,
 			break;
 		case DNET_CMD_LOOKUP_NEW:
 			err = dnet_cmd_cache_io_lookup_new(cache, st, cmd, cmd_stats);
+			break;
+		case DNET_CMD_DEL_NEW:
+			err = dnet_cmd_cache_io_remove_new(cache, cmd, data, cmd_stats);
 			break;
 		}
 	} catch (const std::exception &e) {

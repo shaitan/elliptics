@@ -55,6 +55,7 @@ struct eblob_backend_config {
 int dnet_blob_config_to_json(struct dnet_config_backend *b, char **json_stat, size_t *size);
 
 int blob_file_info_new(struct eblob_backend_config *c, void *state, struct dnet_cmd *cmd);
+int blob_del_new(struct eblob_backend_config *c, struct dnet_cmd *cmd, void *data);
 int blob_read_new(struct eblob_backend_config *c, void *state, struct dnet_cmd *cmd, void *data,
                   struct dnet_cmd_stats *cmd_stats);
 int blob_write_new(struct eblob_backend_config *c, void *state, struct dnet_cmd *cmd, void *data,

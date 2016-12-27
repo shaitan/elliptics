@@ -45,6 +45,13 @@ public:
 	 */
 	async_lookup_result lookup(const key &id);
 
+	/* Removal behaviour depends on the value of a session ioflags.
+	 * If DNET_IO_FLAGS_CAS_TIMESTAMP is set then session timestamp is compared with the key's
+	 * timestamp. If session timestamp is greater or equal, then the key is removed.
+	 * Corrupted replicas will be removed anyway.
+	 */
+	async_remove_result remove(const key &id);
+
 	/* Read json of key \a id.
 	 */
 	async_read_result read_json(const key &id);
