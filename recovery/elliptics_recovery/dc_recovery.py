@@ -146,35 +146,6 @@ class KeyRecover(object):
         same_ts = lambda lhs, rhs: lhs.timestamp == rhs.timestamp
         same_infos = [info for info in self.key_infos if same_ts(info, self.key_infos[0])]
 
-        same_uncommitted = [info for info in same_infos if info.flags & elliptics.record_flags.uncommitted]
-        if same_uncommitted == same_infos:
-            # if all such keys have exceeded prepare timeout - remove all replicas
-            # else skip recovering because the key is under writing and can be committed in nearest future.
-            same_groups = [info.group_id for info in same_infos]
-            if same_infos[0].timestamp < self.ctx.prepare_timeout:
-                self.remove_session.groups = [info.group_id for info in self.key_infos]
-                log.info('Key: {0} replicas with newest timestamp: {1} from groups: {2} are uncommitted. '
-                         'Prepare timeout: {3} was exceeded. Remove all replicas from groups: {4}'
-                         .format(self.key, same_infos[0].timestamp, same_groups, self.ctx.prepare_timeout,
-                                 self.remove_session.groups))
-                self.remove()
-            else:
-                log.info('Key: {0} replicas with newest timestamp: {1} from groups: {2} are uncommitted. '
-                         'Prepare timeout: {3} was not exceeded. The key is written now. Skip it.'
-                         .format(self.key, same_infos[0].timestamp, same_groups, self.ctx.prepare_timeout))
-                self.stats.skipped += 1
-                self.stop(True)
-            return
-        elif same_uncommitted != []:
-            # removed incomplete replicas meta from same_infos
-            # they will be corresponding as different and will be overwritten
-            same_infos = [info for info in same_infos if info not in same_uncommitted]
-            incomplete_groups = [info.group_id for info in same_uncommitted]
-            same_groups = [info.group_id for info in same_infos]
-            log.info('Key: {0} has uncommitted replicas in groups: {1} and completed replicas in groups: {2}. '
-                     'The key will be recovered at groups with uncommitted replicas too.'
-                     .format(self.key, incomplete_groups, same_groups))
-
         same_meta = lambda lhs, rhs: (lhs.timestamp, lhs.size, lhs.user_flags) == (rhs.timestamp, rhs.size, rhs.user_flags)
         same_infos = [info for info in self.key_infos if same_meta(info, same_infos[0])]
         self.key_flags = same_infos[0].flags
@@ -307,20 +278,6 @@ class KeyRecover(object):
                       self.key, repr(e), traceback.format_exc())
             self.stop(False)
 
-    def remove(self):
-        if self.ctx.safe or self.ctx.dry_run:
-            if self.ctx.safe:
-                log.info("Safe mode is turned on. Skip removing key: {0}".format(repr(self.key)))
-            else:
-                log.info("Dry-run mode is turned on. Skip removing key: {0}.".format(repr(self.key)))
-            self.stop(True)
-        else:
-            try:
-                KeyRemover(self.key, self.remove_session, self.remove_session.groups, self.ctx, self.stats, self.on_remove_uncommitted).remove()
-            except:
-                log.exception("Failed to remove key: {0} from groups: {1}".format(self.key, self.remove_session.groups))
-                self.stop(False)
-
     def onread(self, results, error):
         try:
             corrupted_groups = [r.group_id for r in results if r.status == -errno.EILSEQ]
@@ -437,14 +394,6 @@ class KeyRecover(object):
             log.error("Failed to handle write result key: {0}: {1}, traceback: {2}"
                       .format(self.key, repr(e), traceback.format_exc()))
             self.stop(False)
-
-    def on_remove_uncommitted(self, results):
-        result = True
-        for status in results.itervalues():
-            if status not in (0, -errno.ENOENT, -errno.EBADFD):
-                result = False
-                break
-        self.stop(result)
 
     def on_remove_corrupted(self, results):
         self.on_complete()
