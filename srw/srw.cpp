@@ -25,6 +25,7 @@
 #include "elliptics.h"
 
 #include <cocaine/context.hpp>
+#include <cocaine/context/quote.hpp>
 #include <cocaine/hpack/header.hpp>
 #include <cocaine/api/stream.hpp>
 #include <cocaine/logging.hpp>
@@ -379,15 +380,14 @@ private:
 /*
  * Utility methods for use by srw class.
  */
-boost::optional<const cocaine::service::node_t &> lookup_node_service(const cocaine::context_t &ctx) {
+std::shared_ptr<const cocaine::service::node_t> lookup_node_service(const cocaine::context_t &ctx) {
 	//XXX: can we detect node service name automatically?
 	if (const auto actor = ctx.locate("node")) {
-		const auto &prototype = actor.get().prototype();
-		const auto &object = dynamic_cast<const cocaine::service::node_t&>(prototype);
-		return boost::optional<const cocaine::service::node_t&>(object);
+		const auto &dispatch = actor.get().prototype;
+		return std::dynamic_pointer_cast<const cocaine::service::node_t>(dispatch);
 	}
 
-	return boost::none;
+	return nullptr;
 }
 
 std::string make_log_signature(struct dnet_net_state *st, struct dnet_cmd *cmd, const exec_context &exec) {
@@ -628,7 +628,7 @@ int srw::process(struct dnet_net_state *st, struct dnet_cmd *cmd, const void *da
 		if (auto node = lookup_node_service(*m_ctx)) {
 			try {
 				if (event == "info") {
-					auto doc = node.get().info(app,
+					auto doc = node->info(app,
 						cocaine::io::node::info::flags_t(
 							cocaine::io::node::info::overseer_report
 							| cocaine::io::node::info::expand_manifest
@@ -738,7 +738,7 @@ int srw::process(struct dnet_net_state *st, struct dnet_cmd *cmd, const void *da
 
 			std::shared_ptr<cocaine::service::node::overseer_t> app_overseer;
 			try {
-				app_overseer = node.get().overseer(app);
+				app_overseer = node->overseer(app);
 
 			} catch (const cocaine::error_t &e) {
 				// exception text must be "app '{name}' is not running"
