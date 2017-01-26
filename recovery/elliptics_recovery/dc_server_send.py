@@ -363,11 +363,10 @@ class ServerSendRecovery(object):
             results = [self.remove_session.remove(key) for key in keys]
 
             timeouted_keys = []
-            is_last_attempt = attempt == self.ctx.attempts - 1
             for i, r in enumerate(results):
                 status = r.get()[0].status
-                log.info('Removed corrupted key: %s, status: %s, last attempt: %s',
-                         keys[i], status, is_last_attempt)
+                log.info('Removed corrupted key: %s, status: %s, attempts: %s/%s',
+                         keys[i], status, attempt, self.ctx.attempts)
                 if status == 0:
                     self.stats.counter("removed_corrupted_keys", 1)
                 elif status in (-errno.ETIMEDOUT, -errno.ENXIO):

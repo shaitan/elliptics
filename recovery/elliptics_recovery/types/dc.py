@@ -121,7 +121,7 @@ def skip_key_data(ctx, key_data):
     if ctx.user_flags_set and all(info.user_flags not in ctx.user_flags_set for info in key_data[1]):
         return True
 
-    committed = lambda info: not (info.flags & elliptics.record_flags.uncommitted)
+    committed = lambda info: not info.flags & elliptics.record_flags.uncommitted
     count = sum(map(committed, key_data[1]))
     if count < len(ctx.groups):
         return False
@@ -180,9 +180,9 @@ class MergedKeys(object):
         self.dump_keys = dump_keys
         self.newest_key_stats = defaultdict(int)
 
-    def on_key_data(self, key_data, f, uf, df):
+    def on_key_data(self, key_data, merged_file, uncommitted_file, dump_file):
         if self.dump_keys:
-            df.write('{0}\n'.format(key_data[0]))
+            dump_file.write('{0}\n'.format(key_data[0]))
 
         key_infos = key_data[1]
 
@@ -200,9 +200,9 @@ class MergedKeys(object):
                 return
 
         if has_uncommitted:
-            dump_key_data(key_data, uf)
+            dump_key_data(key_data, uncommitted_file)
         else:
-            dump_key_data(key_data, f)
+            dump_key_data(key_data, merged_file)
             newest_key_group = key_infos[0].group_id
             self.newest_key_stats[newest_key_group] += 1
 
@@ -218,10 +218,11 @@ def merge_results(arg):
                              ctx.prepare_timeout, ctx.safe, ctx.dump_keys)
 
     counter = 0
-    with open(filename, 'w') as f, open(uncommitted_filename, 'w') as uf, open(dump_filename, 'w') as df:
+    with open(filename, 'w') as merged_file, open(uncommitted_filename, 'w') as uncommitted_file, \
+         open(dump_filename, 'w') as dump_file:
         for key_data in merged_results(ctx, results):
             counter += 1
-            merged_keys.on_key_data(key_data, f, uf, df)
+            merged_keys.on_key_data(key_data, merged_file, uncommitted_file, dump_file)
 
     ctx.stats.counter("total_keys", counter)
     return merged_keys
@@ -265,12 +266,17 @@ def get_ranges(ctx):
 
 
 def process_uncommitted(ctx, results):
+    '''
+    Removes uncommitted keys. If a key has any committed replicas, then this key is
+    appended to the file containing committed keys.
+    If an uncommitted key's replica hasn't exceeded prepare timeout, then skip recovering of the key,
+    because the key is under writing and can be committed in the nearest future.
+    '''
     if ctx.dry_run or ctx.safe:
         return
 
-    elog = elliptics.Logger(ctx.log_file, int(ctx.log_level))
-    node = elliptics_create_node(address=ctx.address,
-                                 elog=elog,
+    node = elliptics.create_node(log_file=ctx.log_file,
+                                 log_level=int(ctx.log_level),
                                  wait_timeout=ctx.wait_timeout,
                                  flags=elliptics.config_flags.no_route_list,
                                  net_thread_num=1,
@@ -283,6 +289,9 @@ def process_uncommitted(ctx, results):
     session.ioflags |= elliptics.io_flags.cas_timestamp
     session.timestamp = ctx.prepare_timeout
 
+    stats = ctx.stats['recover']
+    stats_cmd = ctx.stats['commands']
+
     for r in results:
         with open(r.filename, 'ab') as f:
             for _, batch in groupby(enumerate(load_key_data(r.uncommitted_filename)),
@@ -292,41 +301,60 @@ def process_uncommitted(ctx, results):
                 for key, key_infos in batch:
                     for info in key_infos:
                         if info.flags & elliptics.record_flags.uncommitted:
-                            tasks.append((key, info.group_id))
+                            tasks.append((key, info.group_id, info.size))
 
                 statuses = {} # (key, group_id) -> status
                 for attempt in range(ctx.attempts):
                     if not tasks:
                         break
 
+                    if attempt > 0:
+                        stats.counter('remove_retries', len(tasks))
+
+                    batch_sizes = defaultdict(int) # group_id -> batch_size
+                    for _, group_id, key_size in tasks:
+                        batch_sizes[group_id] += key_size
+
+                    timeouts = {group_id: max(60, batch_size / ctx.data_flow_rate)
+                                for group_id, batch_size in batch_sizes.iteritems()}
+
                     responses = []
-                    for key, group_id in tasks:
+                    for key, group_id, _ in tasks:
                         session.groups = [group_id]
+                        session.timeout = timeouts[group_id]
                         responses.append(session.remove(key))
 
                     failed_tasks = []
-                    is_last_attempt = attempt == ctx.attempts - 1
                     for i, r in enumerate(responses):
-                        key, group_id = tasks[i]
+                        key, group_id, _ = tasks[i]
                         status = r.get()[0].status
-                        log.info('Removed uncommitted key: %s, group: %s, status: %s, last attempt: %s',
-                                 key, group_id, status, is_last_attempt)
+                        log.info('Removed uncommitted key: %s, group: %s, status: %s, attempts: %s/%s',
+                                 key, group_id, status, attempt, ctx.attempts)
                         statuses[(key, group_id)] = status
-                        if status in (-errno.ETIMEDOUT, -errno.ENXIO):
+
+                        if status == 0:
+                            stats.counter('removed_uncommitted_keys', 1)
+                        else:
+                            stats_cmd.counter('remove.{0}'.format(status), 1)
+
+                        if status not in (0, -errno.ENOENT, -errno.EBADFD):
                             failed_tasks.append(tasks[i])
                     tasks = failed_tasks
 
                 for key, key_infos in batch:
+                    # Filter uncommitted replicas, then append a key to the 'merged' file for recovery.
+                    # If an uncommitted replica hasn't exceeded prepare timeout,
+                    # then removal status is EBADFD and this key must be skipped.
                     infos = []
                     for info in key_infos:
                         if info.flags & elliptics.record_flags.uncommitted:
                             status = statuses[(key, info.group_id)]
                             if status == -errno.EBADFD:
+                                stats.counter('skipped_uncommitted_keys', 1)
                                 infos = None
                                 break
-                            elif status not in (-errno.ETIMEDOUT, -errno.ENXIO):
-                                continue
-                        infos.append(info)
+                        else:
+                            infos.append(info)
 
                     if infos:
                         dump_key_data((key, infos), f)
@@ -413,7 +441,7 @@ def fill_buckets(ctx, results):
                     break
 
 
-def cleanup(ctx, results):
+def cleanup(results):
     for r in results:
         os.remove(r.filename)
         os.remove(r.uncommitted_filename)
@@ -432,7 +460,7 @@ def process_merged_keys(ctx, results):
     log.info("Filling buckets")
     fill_buckets(ctx, results)
 
-    cleanup(ctx, results)
+    cleanup(results)
 
 
 def main(ctx):
@@ -522,7 +550,8 @@ def lookup_keys(ctx):
     merged_keys = MergedKeys(filename, uncommitted_filename, None,
                              ctx.prepare_timeout, ctx.safe, False)
 
-    with open(ctx.dump_file, 'r') as dump_f, open(filename, 'w') as f, open(uncommitted_filename, 'w') as uf:
+    with open(ctx.dump_file, 'r') as dump_f, open(filename, 'w') as merged_file, \
+         open(uncommitted_filename, 'w') as uncommitted_file:
         for str_id in dump_f:
             id = elliptics.Id(str_id)
             lookups = []
@@ -553,7 +582,7 @@ def lookup_keys(ctx):
                 key_infos.sort(key=lambda x: (x.timestamp, x.size, x.user_flags), reverse=True)
                 key_data = (id, key_infos)
                 if not skip_key_data(ctx, key_data):
-                    merged_keys.on_key_data(key_data, f, uf, None)
+                    merged_keys.on_key_data(key_data, merged_file, uncommitted_file, None)
                 stats.counter("lookups", len(key_infos))
             else:
                 log.error("Key: {0} is missing in all specified groups: {1}. It won't be recovered."

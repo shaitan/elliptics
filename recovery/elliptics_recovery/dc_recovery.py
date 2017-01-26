@@ -20,7 +20,6 @@ import os
 import traceback
 import errno
 import weakref
-from functools import partial
 
 from elliptics_recovery.utils.misc import elliptics_create_node, RecoverStat, validate_index
 from elliptics_recovery.utils.misc import INDEX_MAGIC_NUMBER_LENGTH, load_key_data, WindowedRecovery
@@ -34,15 +33,15 @@ log = logging.getLogger()
 
 
 class KeyRemover(object):
-    def __init__(self, key, remove_session, groups, ctx, stats, callback):
+    def __init__(self, key, key_size, remove_session, groups, ctx, stats, callback):
         self.key = key
         self.session = remove_session.clone()
         self.session.groups = groups
+        self.session.timeout = max(60, key_size / ctx.data_flow_rate)
         self.ctx = ctx
         self.stats = stats
         self.stats_cmd = ctx.stats['commands']
         self.callback = callback
-        self.results = {group_id: None for group_id in groups}
         self.attempt = 0
 
     def remove(self):
@@ -55,25 +54,25 @@ class KeyRemover(object):
             try:
                 log.info("Removing key: {0} from group: {1}".format(self.key, self.session.groups))
                 remove_result = self.session.remove(self.key)
-                remove_result.connect(self.on_remove_corrupted)
+                remove_result.connect(self.on_remove)
                 return
             except:
                 log.exception("Failed to remove key: {0} from groups: {1}".format(self.key, self.session.groups))
 
         self.on_complete()
 
-    def on_remove_corrupted(self, results, error):
+    def on_remove(self, results, error):
         try:
             for r in results:
-                self.results[r.group_id] = r.status
+                if r.status:
+                    self.stats_cmd.counter('remove.{0}'.format(r.status), 1)
 
             if error.code:
-                self.stats_cmd.counter('remove.{0}'.format(error.code), 1)
                 self.stats.remove_failed += 1
-                failed_groups = [r.group_id for r in results if r.status != 0]
+                failed_groups = [r.group_id for r in results if r.status not in (0, -errno.ENOENT, -errno.EBADFD)]
                 log.error("Failed to remove key: {0}: from groups: {1}: {2}"
                           .format(self.key, failed_groups, error))
-                if error.code not in (-errno.ENOENT, -errno.EBADFD) and self.attempt < self.ctx.attempts:
+                if failed_groups and self.attempt < self.ctx.attempts:
                     self.session.groups = failed_groups
                     old_timeout = self.session.timeout
                     self.session.timeout *= 2
@@ -98,7 +97,7 @@ class KeyRemover(object):
 
     def on_complete(self):
         del self.session
-        self.callback(self.results)
+        self.callback()
 
 
 class KeyRecover(object):
@@ -143,11 +142,8 @@ class KeyRecover(object):
         self.chunked = self.total_size > self.ctx.chunk_size
         self.recovered_size = 0
 
-        same_ts = lambda lhs, rhs: lhs.timestamp == rhs.timestamp
-        same_infos = [info for info in self.key_infos if same_ts(info, self.key_infos[0])]
-
         same_meta = lambda lhs, rhs: (lhs.timestamp, lhs.size, lhs.user_flags) == (rhs.timestamp, rhs.size, rhs.user_flags)
-        same_infos = [info for info in self.key_infos if same_meta(info, same_infos[0])]
+        same_infos = [info for info in self.key_infos if same_meta(info, self.key_infos[0])]
         self.key_flags = same_infos[0].flags
 
         self.same_groups = [info.group_id for info in same_infos]
@@ -284,7 +280,8 @@ class KeyRecover(object):
             if corrupted_groups:
                 with self.pending_operations_lock:
                     self.pending_operations += 1
-                KeyRemover(self.key, self.remove_session, corrupted_groups, self.ctx, self.stats, self.on_remove_corrupted).remove()
+                KeyRemover(self.key, self.total_size, self.remove_session, corrupted_groups,
+                           self.ctx, self.stats, self.on_complete).remove()
 
             if error.code:
                 log.error("Failed to read key: {0} from groups: {1}: {2}".format(self.key, self.same_groups, error))
@@ -394,9 +391,6 @@ class KeyRecover(object):
             log.error("Failed to handle write result key: {0}: {1}, traceback: {2}"
                       .format(self.key, repr(e), traceback.format_exc()))
             self.stop(False)
-
-    def on_remove_corrupted(self, results):
-        self.on_complete()
 
     def wait(self):
         if not self.complete.is_set():
