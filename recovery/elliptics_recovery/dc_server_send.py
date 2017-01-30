@@ -6,8 +6,6 @@ import time
 import heapq
 from itertools import groupby
 
-from sets import Set
-
 from elliptics_recovery.utils.misc import dump_key_data, load_key_data_from_file
 
 import elliptics
@@ -201,6 +199,8 @@ class ServerSendRecovery(object):
 
         self.remove_session = self.session.clone()
         self.remove_session.set_filter(elliptics.filters.all_final)
+        self.remove_session.ioflags |= elliptics.io_flags.cas_timestamp
+        self.remove_session.timestamp = ctx.prepare_timeout
 
         self.result = True
 
@@ -231,10 +231,6 @@ class ServerSendRecovery(object):
         for key, key_infos in keys:
             unprocessed_key_infos = self._get_unprocessed_key_infos(key_infos, group_id)
 
-            is_first_attempt = len(unprocessed_key_infos) == len(key_infos)
-            if is_first_attempt and self._process_uncommited_keys(key, key_infos):
-                continue
-
             dest_groups = self._get_dest_groups(unprocessed_key_infos)
             index = frozenset(dest_groups)
             if index not in keys_bunch:
@@ -264,7 +260,7 @@ class ServerSendRecovery(object):
                     timeouted_keys, corrupted_keys = self._check_server_send_results(iterator, key_infos_map, group_id)
                     newest_keys = timeouted_keys
                     if corrupted_keys:
-                        self._remove_corrupted_keys(corrupted_keys, [group_id])
+                        self._remove_corrupted_keys(corrupted_keys, group_id)
 
             if timeouted_keys:
                 self._on_server_send_timeout(timeouted_keys, key_infos_map, group_id)
@@ -279,7 +275,7 @@ class ServerSendRecovery(object):
 
         timeouted_keys = []
         corrupted_keys = []
-        succeeded_keys = Set()
+        succeeded_keys = set()
         index = 0
         for index, result in enumerate(iterator, 1):
             status = result.status
@@ -321,6 +317,7 @@ class ServerSendRecovery(object):
                     self.buckets.on_server_send_fail(key, key_infos, next_meta.group_id)
                     continue
             num_failed_keys += 1
+            log.error("Key: {0} is not recovered".format(key))
 
         if num_failed_keys > 0:
             self.result = False
@@ -347,78 +344,34 @@ class ServerSendRecovery(object):
             if next_group_id >= 0:
                 self.buckets.on_server_send_fail(key, key_infos, next_group_id)
             else:
+                log.error("Key: {0} is not recovered".format(key))
                 self.result = False
 
-    def _remove_corrupted_keys(self, keys, groups):
+    def _remove_corrupted_keys(self, keys, group_id):
         '''
         Removes invalid keys with invalid checksum.
         '''
         if self.ctx.safe:
             return
 
+        self.remove_session.groups = [group_id]
+
         for attempt in range(self.ctx.attempts):
             if not keys:
                 break
 
-            self.remove_session.groups = groups
-
             results = [self.remove_session.remove(key) for key in keys]
 
             timeouted_keys = []
-            timeouted_groups = []
-            is_last_attempt = attempt == self.ctx.attempts - 1
             for i, r in enumerate(results):
-                statuses = {result.group_id: result.status for result in r}
-                log.info('Removed corrupted key: %s, statuses: %s, last attempt: %s',
-                         keys[i], statuses, is_last_attempt)
-                for group, status in statuses.iteritems():
-                    if status == 0:
-                        self.stats.counter("removed_corrupted_keys", 1)
-                    elif status in (-errno.ETIMEDOUT, -errno.ENXIO):
-                        timeouted_groups.append(group)
-                        # append key to timeouted_keys only once
-                        if timeouted_keys[-1] != keys[i]:
-                            timeouted_keys.append(keys[i])
-            keys, groups = timeouted_keys, timeouted_groups
-
-    def _process_uncommited_keys(self, key, key_infos):
-        same_ts = lambda lhs, rhs: lhs.timestamp == rhs.timestamp
-        same_infos = [info for info in key_infos if same_ts(info, key_infos[0])]
-
-        same_uncommitted = [info for info in same_infos if info.flags & elliptics.record_flags.uncommitted]
-        has_uncommitted = len(same_uncommitted) > 0
-        if same_uncommitted == same_infos:
-            # if all such keys have exceeded prepare timeout - remove all replicas
-            # else skip recovering because the key is under writing and can be committed in nearest future.
-            same_groups = [info.group_id for info in same_infos]
-            if same_infos[0].timestamp < self.ctx.prepare_timeout:
-                groups = [info.group_id for info in key_infos]
-                log.info('Key: {0} replicas with newest timestamp: {1} from groups: {2} are uncommitted. '
-                         'Prepare timeout: {3} was exceeded. Remove all replicas from groups: {4}'
-                         .format(key, same_infos[0].timestamp, same_groups, self.ctx.prepare_timeout, groups))
-                self._remove_corrupted_keys([key], groups)
-            else:
-                log.info('Key: {0} replicas with newest timestamp: {1} from groups: {2} are uncommitted. '
-                         'Prepare timeout: {3} was not exceeded. The key is written now. Skip it.'
-                         .format(key, same_infos[0].timestamp, same_groups, self.ctx.prepare_timeout))
-            return True
-        elif has_uncommitted:
-            # removed incomplete replicas meta from same_infos
-            # they will be corresponding as different and will be overwritten
-            same_infos = [info for info in same_infos if info not in same_uncommitted]
-            incomplete_groups = [info.group_id for info in same_uncommitted]
-            same_groups = [info.group_id for info in same_infos]
-            log.info('Key: {0} has uncommitted replicas in groups: {1} and completed replicas in groups: {2}.'
-                     'The key will be recovered at groups with uncommitted replicas too.'
-                     .format(key, incomplete_groups, same_groups))
-
-            committed_infos = [info for info in key_infos if info not in same_uncommitted]
-            if committed_infos:
-                key_infos = same_uncommitted + committed_infos
-                next_group_id = committed_infos[0].group_id
-                self.buckets.on_server_send_fail(key, key_infos, next_group_id)
-
-        return has_uncommitted
+                status = r.get()[0].status
+                log.info('Removed corrupted key: %s, status: %s, attempts: %s/%s',
+                         keys[i], status, attempt, self.ctx.attempts)
+                if status == 0:
+                    self.stats.counter("removed_corrupted_keys", 1)
+                elif status in (-errno.ETIMEDOUT, -errno.ENXIO):
+                    timeouted_keys.append(keys[i])
+            keys = timeouted_keys
 
     def _get_dest_groups(self, key_infos):
         '''
