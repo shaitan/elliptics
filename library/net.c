@@ -289,6 +289,9 @@ static int dnet_io_req_queue(struct dnet_net_state *st, struct dnet_io_req *orig
 			goto err_out_exit;
 		}
 
+		gettimeofday(&st->rcv_start_tv, NULL);
+		st->rcv_finish_tv = st->rcv_start_tv;
+
 		r->st = dnet_state_get(st);
 		dnet_schedule_io(st->n, r);
 

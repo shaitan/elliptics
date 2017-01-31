@@ -622,6 +622,25 @@ struct dnet_addr *dnet_state_addr(struct dnet_net_state *st)
 	return &st->addr;
 }
 
+const char *dnet_state_dump_recv_time(struct dnet_net_state *st) {
+	char start_str[64], finish_str[64];
+	struct tm start_tm, finish_tm;
+
+	localtime_r((time_t *)&st->rcv_start_tv.tv_sec, &start_tm);
+	strftime(start_str, sizeof(start_str), "%F %R:%S", &start_tm);
+
+	localtime_r((time_t *)&st->rcv_finish_tv.tv_sec, &finish_tm);
+	strftime(finish_str, sizeof(finish_str), "%F %R:%S", &finish_tm);
+
+	long recv_time = DIFF(st->rcv_start_tv, st->rcv_finish_tv);
+
+	static __thread char __recv_time[256];
+	snprintf(__recv_time, sizeof(__recv_time), "recv-start: %s.%06ld, recv-finish: %s.%06ld, recv-time: %ld usecs",
+	         start_str, st->rcv_start_tv.tv_usec, finish_str, st->rcv_finish_tv.tv_usec, recv_time);
+
+	return __recv_time;
+}
+
 int dnet_version_compare(struct dnet_net_state *st, int *version)
 {
 	size_t i;
