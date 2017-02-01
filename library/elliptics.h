@@ -156,6 +156,8 @@ struct dnet_net_state
 	uint64_t		rcv_offset;
 	uint64_t		rcv_end;
 	unsigned int		rcv_flags;
+	struct timeval		rcv_start_tv;
+	struct timeval		rcv_finish_tv;
 	void			*rcv_data;
 
 	int			epoll_fd;

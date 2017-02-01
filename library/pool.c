@@ -297,19 +297,23 @@ void dnet_schedule_io(struct dnet_node *n, struct dnet_io_req *r)
 	char thread_stat_id[255];
 
 	if (cmd->size > 0) {
-		dnet_log(r->st->n, DNET_LOG_DEBUG, "%s: %s: RECV cmd: %s: cmd-size: %llu, nonblocking: %d",
-			dnet_state_dump_addr(r->st), dnet_dump_id(r->header), dnet_cmd_string(cmd->cmd),
-			(unsigned long long)cmd->size, nonblocking);
+		dnet_log(r->st->n, DNET_LOG_INFO, "%s: %s: RECV cmd: %s, cmd-size: %" PRIu64
+		                                  ", nonblocking: %d, cflags: %s, trans: %" PRIu64 ", %s",
+		         dnet_state_dump_addr(r->st), dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), cmd->size,
+		         nonblocking, dnet_flags_dump_cflags(cmd->flags), cmd->trans, dnet_state_dump_recv_time(r->st));
 	} else if ((cmd->size == 0) && !(cmd->flags & DNET_FLAGS_MORE) && (cmd->flags & DNET_FLAGS_REPLY)) {
-		dnet_log(r->st->n, DNET_LOG_DEBUG, "%s: %s: RECV ACK: %s: nonblocking: %d",
-			dnet_state_dump_addr(r->st), dnet_dump_id(r->header), dnet_cmd_string(cmd->cmd), nonblocking);
+		dnet_log(r->st->n, DNET_LOG_INFO,
+		         "%s: %s: RECV ACK cmd: %s, nonblocking: %d, cflags: %s, trans: %" PRIu64 ", %s",
+		         dnet_state_dump_addr(r->st), dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), nonblocking,
+		         dnet_flags_dump_cflags(cmd->flags), cmd->trans, dnet_state_dump_recv_time(r->st));
 	} else {
-		unsigned long long tid = cmd->trans;
 		int reply = !!(cmd->flags & DNET_FLAGS_REPLY);
 
-		dnet_log(r->st->n, DNET_LOG_DEBUG, "%s: %s: RECV: %s: nonblocking: %d, cmd-size: %llu, cflags: %s, trans: %lld, reply: %d",
-			dnet_state_dump_addr(r->st), dnet_dump_id(r->header), dnet_cmd_string(cmd->cmd), nonblocking,
-			(unsigned long long)cmd->size, dnet_flags_dump_cflags(cmd->flags), tid, reply);
+		dnet_log(r->st->n, DNET_LOG_INFO, "%s: %s: RECV cmd: %s, cmd-size: %" PRIu64
+		                                  ", nonblocking: %d, cflags: %s, trans: %" PRIu64 ", reply: %d, %s",
+		         dnet_state_dump_addr(r->st), dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), cmd->size,
+		         nonblocking, dnet_flags_dump_cflags(cmd->flags), cmd->trans, reply,
+		         dnet_state_dump_recv_time(r->st));
 	}
 
 	dnet_update_trans_timestamp_network(r);
@@ -444,6 +448,10 @@ again:
 		dnet_node_unset_trace_id();
 		dnet_node_set_trace_id(st->rcv_cmd.trace_id, st->rcv_cmd.flags & DNET_FLAGS_TRACE_BIT);
 
+		if ((st->rcv_flags & DNET_IO_CMD) && (st->rcv_offset == 0)) {
+			gettimeofday(&st->rcv_start_tv, NULL);
+		}
+
 		st->rcv_offset += err;
 	}
 
@@ -493,6 +501,7 @@ again:
 
 	r = st->rcv_data;
 	st->rcv_data = NULL;
+	gettimeofday(&st->rcv_finish_tv, NULL);
 
 	dnet_schedule_command(st);
 
