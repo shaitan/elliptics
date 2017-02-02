@@ -1,3 +1,19 @@
+elliptics (2.27.0.4) unstable; urgency=medium
+
+  * monitor: refactor http server and add final log
+  * logs: move RECV log to info level and add timings
+  * Update srw to cocaine 0.12.11
+  * recovery: refactoring after latest changes
+  * recovery: removed unnecessary code, that removes uncommitted keys from dc and server-send recoveries
+  * recovery: use common process_merged_keys() in both dump and non-dump recoveries
+  * recovery: remove expired uncommitted keys
+  * recovery: use CAS with data timestamp for remove operations
+  * newapi: remove CAS with data timestamp fixes
+  * Fix timestamp cas for records without ext header
+  * newapi: remove CAS with data timestamp
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Thu, 02 Feb 2017 11:09:52 +0300
+
 elliptics (2.27.0.3) unstable; urgency=medium
 
   * tests: added chunked server-send test to new api tests
