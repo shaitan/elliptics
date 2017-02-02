@@ -23,12 +23,10 @@
 #include <thread>
 
 #include <boost/asio.hpp>
-#include <boost/array.hpp>
 
 namespace ioremap { namespace monitor {
 
 class monitor;
-class handler;
 
 /*!
  * Server class which is responsible for:
@@ -38,11 +36,11 @@ class handler;
  */
 class server {
 public:
-
+	server(const server &) = delete;
 	/*!
 	 * Constructor: initializes server for @mon to listen @port
 	 */
-	server(monitor &mon, unsigned int port, int family);
+	server(monitor &mon, unsigned short port, int family);
 
 	/*!
 	 * Destructor: stops server and freeing all data
@@ -56,42 +54,25 @@ public:
 
 private:
 	/*!
-	 * Disabling default copy constructor
-	 */
-	server(const server&);
-
-	/*!
-	 * Starts listening monitor port
-	 */
-	void listen();
-
-	/*!
-	 * Asynchronously accepts incoming connecitons
+	 * Asynchronously accepts incoming connections
 	 */
 	void async_accept();
 
 	/*!
-	 * Callback which will be called on new accepted incoming connection
-	 */
-	void handle_accept(std::shared_ptr<handler> h,
-	                   const boost::system::error_code &err);
-
-	/*!
 	 * Monitor that creates server
 	 */
-	monitor							&m_monitor;
+	monitor &m_monitor;
 	/*!
 	 * boost::asio kitchen for asynchronous work with sockets
 	 */
-	boost::asio::io_service			m_io_service;
-	boost::asio::ip::tcp::acceptor	m_acceptor;
+	boost::asio::io_service m_io_service;
+	boost::asio::ip::tcp::acceptor m_acceptor;
 
 	/*!
 	 * Thread for executing boost::asio
 	 */
-	std::thread						m_listen;
+	std::thread m_listen;
 };
-
 }} /* namespace ioremap::monitor */
 
 #endif /* __DNET_MONITOR_SERVER_HPP */
