@@ -171,9 +171,6 @@ void handler::async_write() {
 		               m_remote);
 
 		const auto full_url = [this]() {
-			const auto endpoint = m_socket.local_endpoint();
-			const auto address = endpoint.address();
-
 			std::ostringstream stream;
 			stream << "http://" << to_string(m_socket.local_endpoint(), true) << m_url;
 			return stream.str();
