@@ -125,8 +125,6 @@ int main(int argc, char *argv[])
 	memset(&node_status, 0, sizeof(struct dnet_node_status));
 	memset(&cfg, 0, sizeof(struct dnet_config));
 
-	cfg.indexes_shard_count = 10;
-
 	node_status.nflags = -1;
 	node_status.status_flags = -1;
 	node_status.log_level = ~0U;

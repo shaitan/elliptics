@@ -141,11 +141,6 @@ set_target_properties(dnet_cpp_stats_test ${TEST_PROPERTIES})
 target_link_libraries(dnet_cpp_stats_test ${TEST_LIBRARIES})
 add_test_target(test_stats dnet_cpp_stats_test DEPENDS ${TESTS_DEPS})
 
-add_executable(dnet_cpp_capped_test capped_test.cpp)
-set_target_properties(dnet_cpp_capped_test ${TEST_PROPERTIES})
-target_link_libraries(dnet_cpp_capped_test ${TEST_LIBRARIES})
-add_test_target(test_capped dnet_cpp_capped_test DEPENDS ${TESTS_DEPS})
-
 add_executable(dnet_backends_test backends_test.cpp)
 set_target_properties(dnet_backends_test ${TEST_PROPERTIES})
 target_link_libraries(dnet_backends_test ${TEST_LIBRARIES} kora-util)
@@ -209,7 +204,6 @@ set(TESTS_LIST
     dnet_cpp_api_test
     dnet_cpp_cache_test
     dnet_cpp_stats_test
-    dnet_cpp_capped_test
     dnet_backends_test
     dnet_weights_test
     dnet_reconnect_test

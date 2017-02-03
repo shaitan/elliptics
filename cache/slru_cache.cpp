@@ -19,6 +19,9 @@
 #endif
 
 #include "slru_cache.hpp"
+
+#include <deque>
+
 #include "library/request_queue.h"
 #include "library/protocol.hpp"
 

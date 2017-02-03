@@ -202,8 +202,6 @@ void init_async_results() {
 	                 monitor_stat_result_entry,
 	                 iterator_result_entry,
 	                 exec_result_entry,
-	                 find_indexes_result_entry,
-	                 index_entry,
 	                 backend_status_result_entry,
 	                 newapi::lookup_result_entry,
 	                 newapi::read_result_entry,

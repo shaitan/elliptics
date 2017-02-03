@@ -17,14 +17,14 @@
 Misc. routines
 """
 
-import logging as log
-import hashlib
 import errno
-import traceback
-import struct
+import hashlib
+import logging as log
 import msgpack
-import elliptics
 import time
+import traceback
+
+import elliptics
 
 
 def logged_class(klass):
@@ -45,15 +45,6 @@ def mk_container_name(address, backend_id, prefix="iterator_"):
     Makes filename for iterators' results
     """
     return "{0}{1}.{2}".format(prefix, hashlib.sha256(str(address)).hexdigest(), backend_id)
-
-INDEX_MAGIC_NUMBER = struct.pack('Q', 6747391680278904871)
-INDEX_MAGIC_NUMBER_LENGTH = len(INDEX_MAGIC_NUMBER)
-
-
-def validate_index(result):
-    if result.size < INDEX_MAGIC_NUMBER_LENGTH:
-        return False
-    return result.data[:8] == INDEX_MAGIC_NUMBER
 
 
 def elliptics_create_node(address=None, elog=None, wait_timeout=3600, check_timeout=60, flags=0, io_thread_num=1,

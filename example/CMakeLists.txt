@@ -16,14 +16,8 @@ set_target_properties(dnet_ioserv
 add_executable(dnet_find find.cpp)
 target_link_libraries(dnet_find ${ECOMMON_LIBRARIES} elliptics_client)
 
-add_executable(dnet_index_perf index_perf.cpp)
-target_link_libraries(dnet_index_perf ${ECOMMON_LIBRARIES} elliptics_client boost_program_options)
-
 add_executable(dnet_ioclient ioclient.cpp)
 target_link_libraries(dnet_ioclient ${ECOMMON_LIBRARIES} elliptics_client)
-
-add_executable(dnet_index index.cpp)
-target_link_libraries(dnet_index ${ECOMMON_LIBRARIES} elliptics_client)
 
 add_executable(dnet_notify notify.cpp)
 target_link_libraries(dnet_notify ${ECOMMON_LIBRARIES} elliptics_client)
@@ -41,7 +35,6 @@ install(TARGETS
         dnet_ioserv
         dnet_find
         dnet_ioclient
-        dnet_index
         dnet_notify
         dnet_ids
         dnet_iterate

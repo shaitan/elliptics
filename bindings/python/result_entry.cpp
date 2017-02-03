@@ -31,26 +31,6 @@ namespace bp = boost::python;
 
 namespace ioremap { namespace elliptics { namespace python {
 
-elliptics_id index_entry_get_index(index_entry &result)
-{
-	return elliptics_id(result.index);
-}
-
-void index_entry_set_index(index_entry &result, const elliptics_id &id)
-{
-	memcpy(result.index.id, id.id().id, DNET_ID_SIZE);
-}
-
-std::string index_entry_get_data(index_entry &result)
-{
-	return result.data.to_string();
-}
-
-void index_entry_set_data(index_entry &result, const std::string& data)
-{
-	result.data = data_pointer::copy(data);
-}
-
 dnet_iterator_response iterator_result_response(iterator_result_entry result)
 {
 	return *result.reply();
@@ -195,16 +175,6 @@ int exec_context_get_src_key(exec_context &context)
 exec_context exec_result_get_context(exec_result_entry &result)
 {
 	return result.context();
-}
-
-elliptics_id find_indexes_result_get_id(find_indexes_result_entry &result)
-{
-	return elliptics_id(result.id);
-}
-
-bp::list find_indexes_result_get_indexes(find_indexes_result_entry &result)
-{
-	return convert_to_list(result.indexes);
 }
 
 bool callback_result_is_valid(callback_result_entry &result)
@@ -457,17 +427,6 @@ void init_result_entry() {
 		.add_property("trans", callback_entry_trans)
 	;
 
-	bp::class_<index_entry>("IndexEntry")
-		.add_property("index",
-		              index_entry_get_index,
-		              index_entry_set_index,
-		              "index as elliptics.Id")
-		.add_property("data",
-		              index_entry_get_data,
-		              index_entry_set_data,
-		              "data associated with the index")
-	;
-
 	bp::class_<iterator_result_entry, bp::bases<callback_result_entry> >("IteratorResultEntry")
 		.add_property("id", &iterator_result_entry::id,
 		              "Iterator integer ID. Which can be used for pausing, continuing and canceling iterator")
@@ -548,13 +507,6 @@ void init_result_entry() {
 
 	bp::class_<exec_result_entry, bp::bases<callback_result_entry> >("ExecResultEntry")
 		.add_property("context", exec_result_get_context)
-	;
-
-	bp::class_<find_indexes_result_entry>("FindIndexesResultEntry")
-		.add_property("id", find_indexes_result_get_id,
-		              "elliptics.Id of id which has been found")
-		.add_property("indexes", find_indexes_result_get_indexes,
-		              "list of elliptics.IndexEntry which associated with the id")
 	;
 
 	bp::class_<monitor_stat_result_entry, bp::bases<callback_result_entry> >("MonitorStatResultEntry")

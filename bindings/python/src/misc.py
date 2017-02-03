@@ -13,11 +13,11 @@
 # GNU General Public License for more details.
 # =============================================================================
 
-from elliptics.core import *
-from elliptics.route import Address
-from elliptics.node import Node
 from elliptics import log_level
 from elliptics import record_flags
+from elliptics.core import *
+from elliptics.node import Node
+from elliptics.route import Address
 
 import warnings
 
@@ -89,11 +89,3 @@ def create_node(elog=None, log_file='/dev/stderr', log_level=log_level.error,
 
 del storage_address
 del wrap_address
-
-
-# TODO: make a decorator, but python v3.4 doesn't natively support preserving function signatures
-def warn_deprecated():
-    """Warn about using deprecated "indexes" subsystem."""
-    warnings.warn(message='"Indexes" subsystem is deprecated, please avoid using it',
-                  category=PendingDeprecationWarning,
-                  stacklevel=2)
