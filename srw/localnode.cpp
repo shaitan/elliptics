@@ -59,6 +59,8 @@ std::vector<int> find_local_groups(dnet_node *node)
 {
 	std::vector<int> result;
 
+	pthread_mutex_lock(&node->state_lock);
+
 	for (rb_node *i = rb_first(&node->group_root); i != nullptr; i = rb_next(i)) {
 		const dnet_group *group = rb_entry(i, dnet_group, group_entry);
 		// take local groups only
@@ -66,6 +68,8 @@ std::vector<int> find_local_groups(dnet_node *node)
 			result.push_back(group->group_id);
 		}
 	}
+
+	pthread_mutex_unlock(&node->state_lock);
 
 	return result;
 }
