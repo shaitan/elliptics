@@ -68,9 +68,9 @@ enum dnet_commands {
 	DNET_CMD_BULK_READ,			/* Read a number of ids at one time */
 	DNET_CMD_DEFRAG_DEPRECATED,		/* Start defragmentation process if backend supports it. Deprecated and forbidden */
 	DNET_CMD_ITERATOR,			/* Start/stop/pause/status for server-side iterator */
-	DNET_CMD_INDEXES_UPDATE,		/* Update secondary indexes for id */
-	DNET_CMD_INDEXES_INTERNAL,		/* Update identificators table for certain secondary index. Internal usage only */
-	DNET_CMD_INDEXES_FIND,			/* Find all objects by indexes */
+	DNET_CMD_INDEXES_UPDATE_DEPRECATED,	/* Update secondary indexes for id */
+	DNET_CMD_INDEXES_INTERNAL_DEPRECATED,	/* Update identificators table for certain secondary index. Internal usage only */
+	DNET_CMD_INDEXES_FIND_DEPRECATED,	/* Find all objects by indexes */
 	DNET_CMD_MONITOR_STAT,			/* Gather monitor json statistics */
 	DNET_CMD_UPDATE_IDS,			/* Update buckets' information */
 	DNET_CMD_BACKEND_CONTROL,		/* Special command to start or stop backends */
@@ -609,141 +609,6 @@ static inline const char *dnet_flags_dump_ioflags(uint64_t flags)
 	return buffer;
 }
 
-/*
- * DNET_INDEXES_FLAGS_INTERSECT
- *
- * Return only objects which have all of the indexes.
- *
- * This flag is for DNET_CMD_INDEXES_FIND request only.
- */
-#define DNET_INDEXES_FLAGS_INTERSECT		(1<<0)
-
-/*
- * DNET_INDEXES_FLAGS_UNITE
- *
- * Return all objects which have at least one of the indexes.
- *
- * This flag is for DNET_CMD_INDEXES_FIND request only.
- */
-#define DNET_INDEXES_FLAGS_UNITE		(1<<1)
-
-/*
- * DNET_INDEXES_FLAGS_UPDATE_ONLY
- *
- * Not replace list of the indexes by new one. Add indexes which
- * don't exist and add not present one.
- *
- * This flag is for DNET_CMD_INDEXES_UPDATE request only.
- */
-#define DNET_INDEXES_FLAGS_UPDATE_ONLY		(1<<2)
-
-/*
- * DNET_INDEXES_FLAGS_MORE
- *
- * Used for bulk find requests. If this flag is set this request is
- * not the last. Next request is placed right after it in this cmd.
- *
- * This flag is for DNET_CMD_INDEXES_FIND request only.
- */
-#define DNET_INDEXES_FLAGS_MORE			(1<<3)
-
-/*
- * DNET_INDEXES_FLAGS_REMOVE_ONLY
- *
- * Remove all requested indexes from the object list.
- *
- * This flag is for DNET_CMD_INDEXES_UPDATE request only.
- */
-#define DNET_INDEXES_FLAGS_REMOVE_ONLY		(1<<4)
-
-static inline const char *dnet_flags_dump_indexes(uint64_t flags)
-{
-	static __thread char buffer[256];
-	static struct flag_info infos[] = {
-		{ DNET_INDEXES_FLAGS_INTERSECT, "intersect" },
-		{ DNET_INDEXES_FLAGS_UNITE, "unite" },
-		{ DNET_INDEXES_FLAGS_UPDATE_ONLY, "update_only" },
-		{ DNET_INDEXES_FLAGS_MORE, "more" },
-		{ DNET_INDEXES_FLAGS_REMOVE_ONLY, "remove_only" },
-	};
-
-	dnet_flags_dump_raw(buffer, sizeof(buffer), flags, infos, sizeof(infos) / sizeof(infos[0]));
-
-	return buffer;
-}
-
-
-/*
- * DNET_INDEXES_FLAGS_INTERNAL_INSERT
- *
- * Add object to the index's list.
- *
- * This flag is for DNET_CMD_INDEXES_INTERNAL request only.
- */
-#define DNET_INDEXES_FLAGS_INTERNAL_INSERT	(1<<0)
-
-/*
- * DNET_INDEXES_FLAGS_INTERNAL_REMOVE
- *
- * Remove object from the index's list.
- *
- * This flag is for DNET_CMD_INDEXES_INTERNAL request only.
- */
-#define DNET_INDEXES_FLAGS_INTERNAL_REMOVE	(1<<1)
-
-/*
- * DNET_INDEXES_FLAGS_INTERNAL_REMOVE_ALL
- *
- * Remove index from the storage.
- *
- * This flag is for DNET_CMD_INDEXES_INTERNAL request only.
- */
-#define DNET_INDEXES_FLAGS_INTERNAL_REMOVE_ALL	(1<<2)
-
-/*
- * DNET_INDEXES_FLAGS_INTERNAL_REMOVE_FROM_OBJECTS
- *
- * Send requests to remove index from object's list in storages.
- * Use it in addition to DNET_INDEXES_FLAGS_INTERNAL_REMOVE_ALL.
- *
- * This flag is for DNET_CMD_INDEXES_INTERNAL request only.
- */
-#define DNET_INDEXES_FLAGS_INTERNAL_REMOVE_FROM_OBJECTS	(1<<3)
-
-/*
- * DNET_INDEXES_FLAGS_INTERNAL_REMOVE_FROM_STORAGE
- *
- * Also remove object from disk.
- * Use it in addition to DNET_INDEXES_FLAGS_INTERNAL_REMOVE_ALL
- *
- * This flag is for DNET_CMD_INDEXES_INTERNAL request only.
- */
-#define DNET_INDEXES_FLAGS_INTERNAL_REMOVE_FROM_STORAGE	(1<<4)
-/*
- * This index is capped collection, so it may need to remove some
- * object from it.
- *
- * This flag is for DNET_CMD_INDEXES_INTERNAL request only.
- */
-#define DNET_INDEXES_FLAGS_INTERNAL_CAPPED_COLLECTION	(1<<5)
-
-static inline const char *dnet_flags_dump_indexes_internal(uint64_t flags)
-{
-	static __thread char buffer[256];
-	static struct flag_info infos[] = {
-		{ DNET_INDEXES_FLAGS_INTERNAL_INSERT, "insert" },
-		{ DNET_INDEXES_FLAGS_INTERNAL_REMOVE, "remove" },
-		{ DNET_INDEXES_FLAGS_INTERNAL_REMOVE_ALL, "remove_all" },
-		{ DNET_INDEXES_FLAGS_INTERNAL_REMOVE_FROM_OBJECTS, "remove_from_objects" },
-		{ DNET_INDEXES_FLAGS_INTERNAL_REMOVE_FROM_STORAGE, "remove_from_storage" },
-		{ DNET_INDEXES_FLAGS_INTERNAL_CAPPED_COLLECTION, "capped_collection" },
-	};
-
-	dnet_flags_dump_raw(buffer, sizeof(buffer), flags, infos, sizeof(infos) / sizeof(infos[0]));
-
-	return buffer;
-}
-
 
 struct dnet_time {
 	uint64_t		tsec, tnsec;
@@ -1210,55 +1075,6 @@ static inline void dnet_convert_iterator_response(struct dnet_iterator_response 
 	r->flags = dnet_bswap64(r->flags);
 	dnet_convert_time(&r->timestamp);
 }
-
-/*
- * Indexes request entry
- */
-struct dnet_indexes_request_entry
-{
-	struct dnet_raw_id		id;		/* Index ID */
-	uint64_t			flags;		/* Index flags */
-	uint32_t			limit;		/* Capped collection limit */
-	uint32_t			shard_id;
-	uint32_t			shard_count;
-	uint64_t			reserved[4];
-	uint64_t			size;		/* Data size */
-	char				data[0];	/* Index-specific data */
-} __attribute__ ((packed));
-
-/*
- * Indexes request
- */
-struct dnet_indexes_request
-{
-	struct dnet_id			id;		/* Index ID with properly set group_id */
-	uint32_t			flags;
-	uint32_t			shard_id;
-	uint32_t			shard_count;
-	uint64_t			reserved[5];
-	uint64_t			entries_count;	/* Count of indexes */
-	struct dnet_indexes_request_entry	entries[0];	/* List of indexes to set */
-} __attribute__ ((packed));
-
-/*
- * Indexes reply entry
- */
-struct dnet_indexes_reply_entry
-{
-	struct dnet_raw_id		id;		/* Index ID */
-	int				status;		/* Index change status */
-	uint64_t			reserved[2];
-} __attribute__ ((packed));
-
-/*
- * Indexes reply
- */
-struct dnet_indexes_reply
-{
-	uint64_t			reserved[5];
-	uint64_t			entries_count;	/* Count of results */
-	struct dnet_indexes_reply_entry	entries[0];	/* List of entries update results */
-} __attribute__ ((packed));
 
 /*
  * Defragmentation control structure

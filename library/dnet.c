@@ -1538,11 +1538,6 @@ static int dnet_process_cmd_with_backend_raw(struct dnet_backend_io *backend, st
 		case DNET_CMD_ITERATOR:
 			err = dnet_cmd_iterator(backend, st, cmd, data);
 			break;
-		case DNET_CMD_INDEXES_UPDATE:
-		case DNET_CMD_INDEXES_INTERNAL:
-		case DNET_CMD_INDEXES_FIND:
-			err = dnet_process_indexes(backend, st, cmd, data);
-			break;
 		case DNET_CMD_NOTIFY:
 			if (!(cmd->flags & DNET_ATTR_DROP_NOTIFICATION)) {
 				err = dnet_notify_add(st, cmd);

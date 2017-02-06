@@ -32,12 +32,6 @@ inline std::ostream &operator <<(std::ostream &out, const dnet_raw_id &v)
 	return out;
 }
 
-inline std::ostream &operator <<(std::ostream &out, const ioremap::elliptics::index_entry &v)
-{
-	out << "(id: " << v.index << ", data-size: " << v.data.size() << ")";
-	return out;
-}
-
 inline std::ostream &operator <<(std::ostream &out, const ioremap::elliptics::data_pointer &v)
 {
 	out << v.to_string();
@@ -74,12 +68,6 @@ template <typename K, typename V>
 inline std::ostream &operator <<(std::ostream &out, const std::pair<K, V> &v)
 {
 	out << "p{" << v.first << "," << v.second << "}";
-	return out;
-}
-
-inline std::ostream &operator <<(std::ostream &out, const ioremap::elliptics::find_indexes_result_entry &v)
-{
-	out << "re{" << v.id << "," << v.indexes << "}";
 	return out;
 }
 

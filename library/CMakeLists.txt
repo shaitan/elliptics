@@ -27,7 +27,6 @@ target_link_libraries(elliptics
     ${EBLOB_LIBRARIES}
     elliptics_common
     elliptics_cache
-    elliptics_indexes
     elliptics_ids
     elliptics_monitor
     elliptics_client

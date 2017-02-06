@@ -770,7 +770,6 @@ struct dnet_node *dnet_node_create(struct dnet_config *cfg)
 	n->bg_ionice_prio = cfg->bg_ionice_prio;
 	n->removal_delay = cfg->removal_delay;
 	n->flags = cfg->flags;
-	n->indexes_shard_count = cfg->indexes_shard_count;
 	n->send_limit = cfg->send_limit;
 
 	if (!n->log) {
@@ -796,11 +795,6 @@ struct dnet_node *dnet_node_create(struct dnet_config *cfg)
 
 	n->client_prio = cfg->client_prio;
 	n->server_prio = cfg->server_prio;
-
-	if (!n->indexes_shard_count) {
-		n->indexes_shard_count = DNET_DEFAULT_INDEXES_SHARD_COUNT;
-		DNET_NOTICE(n, "Using default indexes shard count (%d shards)", n->indexes_shard_count);
-	}
 
 	err = dnet_crypto_init(n);
 	if (err)

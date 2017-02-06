@@ -134,7 +134,6 @@ set(ELLIPTICS_LIBRARIES
 # Build parts
 add_subdirectory(srw)
 add_subdirectory(cache)
-add_subdirectory(indexes)
 add_subdirectory(library)
 add_subdirectory(bindings)
 add_subdirectory(monitor)

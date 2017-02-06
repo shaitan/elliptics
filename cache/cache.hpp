@@ -24,11 +24,12 @@
 #include <cstdio>
 #include <limits>
 #include <atomic>
+#include <iostream>
 
 #include <boost/intrusive/list.hpp>
 
 #include "library/elliptics.h"
-#include "indexes/local_session.h"
+#include "library/logger.hpp"  //TODO: remove from header file, required only by elliptics_unique_lock
 
 #include "elliptics/packet.h"
 #include "elliptics/interface.h"
@@ -37,6 +38,7 @@
 #include "monitor/rapidjson/writer.h"
 #include "monitor/rapidjson/stringbuffer.h"
 
+#include "local_session.h"  //TODO: remove from header file, used only for elliptics_timer
 #include "treap.hpp"
 
 namespace ioremap { namespace elliptics {
@@ -408,12 +410,6 @@ public:
 	int remove(const dnet_cmd *cmd, ioremap::elliptics::dnet_remove_request &request);
 
 	read_response_t lookup(const unsigned char *id);
-
-	int indexes_find(dnet_cmd *cmd, dnet_indexes_request *request);
-
-	int indexes_update(dnet_cmd *cmd, dnet_indexes_request *request);
-
-	int indexes_internal(dnet_cmd *cmd, dnet_indexes_request *request);
 
 	void clear();
 

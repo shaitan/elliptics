@@ -3,7 +3,6 @@ usr/bin/dnet_iterate_move
 usr/bin/dnet_iterate
 usr/bin/dnet_find
 usr/bin/dnet_ioclient
-usr/bin/dnet_index
 usr/bin/dnet_notify
 usr/bin/dnet_ids
 usr/bin/dnet_balancer

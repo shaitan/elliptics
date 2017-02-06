@@ -18,16 +18,9 @@
  */
 
 #include "local_session.h"
-#include <map>
+#include "library/logger.hpp"
 
 using namespace ioremap::elliptics;
-
-/* matches above enum, please update synchronously */
-static const char *update_index_action_strings[] = {
-	"empty",
-	"insert",
-	"remove",
-};
 
 #undef list_entry
 #define list_entry(ptr, type, member) ({			\
@@ -261,67 +254,6 @@ int local_session::remove(const dnet_id &id)
 	int err = dnet_process_cmd_raw(m_backend, m_state, &cmd, &io, 0, 0);
 
 	clear_queue(&err);
-
-	return err;
-}
-
-int local_session::update_index_internal(const dnet_id &id, const dnet_raw_id &index, const data_pointer &data,
-	uint32_t action, uint32_t shard_id, uint32_t shard_count)
-{
-	struct timeval start, end;
-
-	gettimeofday(&start, NULL);
-
-	data_buffer buffer(sizeof(dnet_indexes_request) + sizeof(dnet_indexes_request_entry) + data.size());
-
-	dnet_indexes_request request;
-	dnet_indexes_request_entry entry;
-	memset(&request, 0, sizeof(request));
-	memset(&entry, 0, sizeof(entry));
-
-	request.id = id;
-	request.entries_count = 1;
-	request.shard_id = shard_id;
-	request.shard_count = shard_count;
-
-	buffer.write(request);
-
-	entry.id = index;
-	entry.size = data.size();
-	entry.flags |= action;
-	entry.shard_id = shard_id;
-	entry.shard_count = shard_count;
-
-	buffer.write(entry);
-	if (data.size() > 0) {
-		buffer.write(data.data(), data.size());
-	}
-
-	data_pointer datap = std::move(buffer);
-
-	dnet_cmd cmd;
-	memset(&cmd, 0, sizeof(cmd));
-	memcpy(cmd.id.id, index.id, sizeof(cmd.id.id));
-
-	cmd.cmd = DNET_CMD_INDEXES_INTERNAL;
-	cmd.size = datap.size();
-
-	int err = dnet_process_cmd_raw(m_backend, m_state, &cmd, datap.data(), 0, 0);
-
-	clear_queue(&err);
-
-	gettimeofday(&end, NULL);
-	timersub(&end, &start, &end);
-	long diff = end.tv_sec * 1000000 + end.tv_usec;
-
-	{
-		char index_str[2*DNET_ID_SIZE+1];
-
-		dnet_dump_id_len_raw(index.id, 8, index_str);
-
-		DNET_LOG_INFO(m_state->n, "{}: updating internal index: {}, data-size: {}, action: {}, time: {} usecs",
-		              dnet_dump_id(&id), index_str, data.size(), update_index_action_strings[action], diff);
-	}
 
 	return err;
 }

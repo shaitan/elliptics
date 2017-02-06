@@ -122,7 +122,7 @@ struct dnet_net_state
 	// To store state either at node::empty_state_list (List of all client nodes, used for statistics)
 	// or at node::dht_state_list (List of all server nodes)
 	struct list_head	node_entry;
-	// To store at node::storage_state_list (List of all network-active states, used for unsheduling process)
+	// To store at node::storage_state_list (List of all network-active states, used for unscheduling process)
 	struct list_head	storage_state_entry;
 	// Mapping backend_id -> struct dnet_idc
 	struct rb_root		idc_root;
@@ -587,7 +587,7 @@ struct dnet_node
 	 * Periodic route request thread asks for route table random X groups
 	 * plus all this addresses.
 	 *
-	 * It is needed to speed up large (severl thousands of nodes) cluster
+	 * It is needed to speed up large (several thousands of nodes) cluster
 	 * convergence - usually in such big clusters 'remote' server config option
 	 * contains the same nodes for simplicity. Thus the same nodes will always
 	 * be the first who receive information about new nodes and thus the first
@@ -610,8 +610,6 @@ struct dnet_node
 	char			cookie[DNET_AUTH_COOKIE_SIZE];
 
 	void			*srw;
-	void			*indexes;
-	int			indexes_shard_count;
 
 	int			server_prio;
 	int			client_prio;
@@ -874,10 +872,6 @@ int dnet_cmd_cache_lookup(struct dnet_backend_io *backend,
                           struct dnet_cmd *cmd,
                           struct dnet_cmd_stats *cmd_stats);
 
-int dnet_indexes_init(struct dnet_node *, struct dnet_config *);
-void dnet_indexes_cleanup(struct dnet_node *);
-int dnet_process_indexes(struct dnet_backend_io *backend, struct dnet_net_state *st, struct dnet_cmd *cmd, void *data);
-
 int dnet_ids_update(struct dnet_node *n, int update_local, const char *file, struct dnet_addr *cfg_addrs, size_t backend_id);
 
 int __attribute__((weak)) dnet_remove_local_new(struct dnet_backend_io *backend,
@@ -982,20 +976,6 @@ static inline void dnet_version_decode(struct dnet_id *id, int version[4])
 
 	for (i = 0; i < 4; ++i)
 		version[i] = dnet_bswap32(ids[i]);
-}
-
-static inline void dnet_indexes_shard_count_encode(struct dnet_id *id, int count)
-{
-	int *data = (int *)(id->id);
-
-	data[5] = dnet_bswap32(count);
-}
-
-static inline void dnet_indexes_shard_count_decode(struct dnet_id *id, int *count)
-{
-	int *data = (int *)(id->id);
-
-	*count = dnet_bswap32(data[5]);
 }
 
 static inline int dnet_empty_addr(struct dnet_addr *addr)

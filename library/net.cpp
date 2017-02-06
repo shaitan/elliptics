@@ -720,7 +720,6 @@ static void dnet_process_socket(const dnet_connect_state_ptr &state, epoll_event
 		cmd->cmd = DNET_CMD_REVERSE_LOOKUP;
 
 		dnet_version_encode(&cmd->id);
-		dnet_indexes_shard_count_encode(&cmd->id, state->node->indexes_shard_count);
 		dnet_convert_cmd(cmd);
 
 		socket->state = send_reverse;
@@ -745,7 +744,6 @@ static void dnet_process_socket(const dnet_connect_state_ptr &state, epoll_event
 			break;
 
 		int (&version)[4] = socket->version;
-		int indexes_shard_count = 0;
 		int err;
 		dnet_net_state dummy_state;
 
@@ -757,7 +755,6 @@ static void dnet_process_socket(const dnet_connect_state_ptr &state, epoll_event
 
 		dnet_convert_cmd(cmd);
 		dnet_version_decode(&cmd->id, version);
-		dnet_indexes_shard_count_decode(&cmd->id, &indexes_shard_count);
 
 		if (cmd->status != 0) {
 			err = cmd->status;
@@ -776,19 +773,6 @@ static void dnet_process_socket(const dnet_connect_state_ptr &state, epoll_event
 		if (err) {
 			dnet_fail_socket(state, socket, err);
 			break;
-		}
-
-		DNET_LOG_NOTICE(state->node,
-		                "{}: received indexes shard count: local: {}, remote: {}, using server one",
-		                dnet_addr_string(&socket->addr), state->node->indexes_shard_count, indexes_shard_count);
-
-		if (indexes_shard_count != state->node->indexes_shard_count && indexes_shard_count != 0) {
-			DNET_LOG_INFO(state->node, "{}: local and remote indexes shard count are different: local: {}, "
-			                           "remote: {}, using remote ({}) one",
-			              dnet_addr_string(&socket->addr), state->node->indexes_shard_count,
-			              indexes_shard_count, indexes_shard_count);
-
-			state->node->indexes_shard_count = indexes_shard_count;
 		}
 
 		socket->buffer.reset(new(std::nothrow) char[cmd->size]);

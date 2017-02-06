@@ -374,8 +374,7 @@ struct dnet_config
 	int			server_prio;
 	int			client_prio;
 
-	/* Number of shards to store indexes data */
-	int			indexes_shard_count;
+	int			reserved_for_future_use_3;
 
 	/* Config values for srw backend */
 	struct srw_init_ctl	srw;
@@ -780,25 +779,6 @@ int dnet_digest_auth_transform(const void *src, uint64_t size, const void *key, 
  * Writes most of @csum_size bytes to @csum.
  */
 int dnet_digest_auth_transform_raw(const void *src, uint64_t size, const void *key, uint64_t key_size, void *csum, int csum_size);
-
-/*
- * Transform object id to id where to store object's secondary indexes table
- */
-void dnet_indexes_transform_object_id(struct dnet_node *node, const struct dnet_id *src, struct dnet_id *id);
-/*
- * Transform index id to id where to store secondary index's objects table.
- * _prepare method makes initial transformation generic for every shard.
- * _id_raw method makes shard-specific changes.
- */
-void dnet_indexes_transform_index_prepare(struct dnet_node *node, const struct dnet_raw_id *src, struct dnet_raw_id *id);
-void dnet_indexes_transform_index_id_raw(struct dnet_node *node, struct dnet_raw_id *id, int shard_id);
-/*
- * Transform index id to id where to store secondary index's objects table.
- * It's equal to iterative calls of _prepare and _id_raw method.
- */
-void dnet_indexes_transform_index_id(struct dnet_node *node, const struct dnet_raw_id *src, struct dnet_raw_id *id, int shard_id);
-int dnet_indexes_get_shard_id(struct dnet_node *node, const struct dnet_raw_id *object_id);
-int dnet_node_get_indexes_shard_count(struct dnet_node *node);
 
 int dnet_lookup_addr(struct dnet_session *s, const void *remote, int len, const struct dnet_id *id, int group_id,
 		struct dnet_addr *addr, int *backend);

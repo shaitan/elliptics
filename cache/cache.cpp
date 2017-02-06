@@ -153,24 +153,6 @@ read_response_t cache_manager::lookup(const unsigned char *id) {
 	return m_caches[idx(id)]->lookup(id);
 }
 
-int cache_manager::indexes_find(dnet_cmd *cmd, dnet_indexes_request *request) {
-	(void) cmd;
-	(void) request;
-	return -ENOTSUP;
-}
-
-int cache_manager::indexes_update(dnet_cmd *cmd, dnet_indexes_request *request) {
-	(void) cmd;
-	(void) request;
-	return -ENOTSUP;
-}
-
-int cache_manager::indexes_internal(dnet_cmd *cmd, dnet_indexes_request *request) {
-	(void) cmd;
-	(void) request;
-	return -ENOTSUP;
-}
-
 void cache_manager::clear() {
 	for (size_t i = 0; i < m_caches.size(); ++i) {
 		m_caches[i]->clear();

@@ -226,35 +226,6 @@ class backend_status_result_entry : public callback_result_entry
 typedef lookup_result_entry write_result_entry;
 typedef callback_result_entry remove_result_entry;
 
-struct index_entry
-{
-	index_entry()
-	{}
-
-	index_entry(const dnet_raw_id &index, const data_pointer &data) : index(index), data(data)
-	{}
-
-	dnet_raw_id index;
-	data_pointer data;
-};
-
-struct find_indexes_result_entry
-{
-	dnet_raw_id id;
-	std::vector<index_entry> indexes;
-};
-
-/*!
- * \brief Holds index metadata
- * In case when msgpack with index metadata is incorrect field is_valid will set to false
- */
-struct get_index_metadata_result_entry
-{
-	size_t index_size;
-	int shard_id;
-	bool is_valid;
-};
-
 typedef async_result<callback_result_entry> async_generic_result;
 typedef std::vector<callback_result_entry> sync_generic_result;
 
@@ -288,18 +259,6 @@ typedef std::vector<exec_result_entry> sync_push_result;
 typedef async_result<exec_result_entry> async_reply_result;
 typedef std::vector<exec_result_entry> sync_reply_result;
 
-typedef async_result<callback_result_entry> async_update_indexes_result;
-typedef std::vector<callback_result_entry> sync_update_indexes_result;
-typedef async_result<callback_result_entry> async_set_indexes_result;
-typedef std::vector<callback_result_entry> sync_set_indexes_result;
-typedef async_result<find_indexes_result_entry> async_find_indexes_result;
-typedef std::vector<find_indexes_result_entry> sync_find_indexes_result;
-typedef async_result<index_entry> async_list_indexes_result;
-typedef std::vector<index_entry> sync_list_indexes_result;
-
-typedef async_result<get_index_metadata_result_entry> async_get_index_metadata_result;
-typedef std::vector<get_index_metadata_result_entry> sync_get_index_metadata_result;
-
 static inline bool operator <(const dnet_raw_id &a, const dnet_raw_id &b)
 {
 	return memcmp(a.id, b.id, sizeof(a.id)) < 0;
@@ -310,68 +269,19 @@ static inline bool operator ==(const dnet_raw_id &a, const dnet_raw_id &b)
 	return memcmp(a.id, b.id, sizeof(a.id)) == 0;
 }
 
-static inline bool operator ==(const dnet_raw_id &a, const ioremap::elliptics::index_entry &b)
-{
-	return memcmp(a.id, b.index.id, sizeof(a.id)) == 0;
-}
-
-static inline bool operator ==(const ioremap::elliptics::index_entry &a, const dnet_raw_id &b)
-{
-	return memcmp(b.id, a.index.id, sizeof(b.id)) == 0;
-}
-
 static inline bool operator ==(const ioremap::elliptics::data_pointer &a, const ioremap::elliptics::data_pointer &b)
 {
 	return a.size() == b.size() && memcmp(a.data(), b.data(), a.size()) == 0;
 }
 
-static inline bool operator ==(const ioremap::elliptics::index_entry &a, const ioremap::elliptics::index_entry &b)
-{
-	return a.data.size() == b.data.size()
-		&& memcmp(b.index.id, a.index.id, sizeof(b.index.id)) == 0
-		&& memcmp(a.data.data(), b.data.data(), a.data.size()) == 0;
-}
-
 enum { skip_data = 0, compare_data = 1 };
 
 template <int CompareData = compare_data>
-struct dnet_raw_id_less_than
-{
-	inline bool operator() (const dnet_raw_id &a, const dnet_raw_id &b) const
-	{
+struct dnet_raw_id_less_than {
+	inline bool operator()(const dnet_raw_id &a, const dnet_raw_id &b) const {
 		return memcmp(a.id, b.id, sizeof(a.id)) < 0;
 	}
-	inline bool operator() (const index_entry &a, const dnet_raw_id &b) const
-	{
-		return operator() (a.index, b);
-	}
-	inline bool operator() (const dnet_raw_id &a, const index_entry &b) const
-	{
-		return operator() (a, b.index);
-	}
-	inline bool operator() (const index_entry &a, const index_entry &b) const
-	{
-		ssize_t cmp = memcmp(a.index.id, b.index.id, sizeof(b.index.id));
-		if (CompareData && cmp == 0) {
-			cmp = a.data.size() - b.data.size();
-			if (cmp == 0) {
-				cmp = memcmp(a.data.data(), b.data.data(), a.data.size());
-			}
-		}
-		return cmp < 0;
-	}
-	inline bool operator() (const index_entry &a, const find_indexes_result_entry &b) const
-	{
-		return operator() (a.index, b.id);
-	}
-	inline bool operator() (const find_indexes_result_entry &a, const index_entry &b) const
-	{
-		return operator() (a.id, b.index);
-	}
 };
-
-typedef std::map<dnet_raw_id, std::string, dnet_raw_id_less_than<>> id_to_name_map_t;
-typedef std::map<std::string, dnet_raw_id> name_to_id_map_t;
 
 }} /* namespace ioremap::elliptics */
 
