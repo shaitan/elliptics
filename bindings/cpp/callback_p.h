@@ -31,10 +31,6 @@
 
 #include "elliptics/async_result_cast.hpp"
 
-extern "C" {
-#include "foreign/cmp/cmp.h"
-}
-
 namespace ioremap { namespace elliptics {
 
 class session_scope
