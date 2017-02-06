@@ -134,49 +134,6 @@ uint64_t lookup_result_get_record_flags(const lookup_result_entry &result) {
 	return result.file_info()->record_flags;
 }
 
-/*
- * exec_context member access methods
- */
-
-std::string exec_context_get_event(exec_context &context)
-{
-	return context.event();
-}
-
-std::string exec_context_get_data(exec_context &context)
-{
-	return context.data().to_string();
-}
-
-//TODO: flags()
-
-std::string exec_context_get_address(exec_context &context)
-{
-	return dnet_addr_string(context.address());
-}
-
-elliptics_id exec_context_get_src_id(exec_context &context)
-{
-	const dnet_raw_id *raw = context.src_id();
-	return elliptics_id(*raw);
-}
-
-int exec_context_get_src_key(exec_context &context)
-{
-	return context.src_key();
-}
-
-//TODO: think about exposing native_data(), is_final(), is_reply(), is_null()
-
-/*
- * exec_result_entry member access methods
- */
-
-exec_context exec_result_get_context(exec_result_entry &result)
-{
-	return result.context();
-}
-
 bool callback_result_is_valid(callback_result_entry &result)
 {
 	return result.is_valid();
@@ -495,18 +452,6 @@ void init_result_entry() {
 		              "path to object in the backend")
 		.add_property("record_flags", lookup_result_get_record_flags,
 		              "combination of elliptics.record_floags.*")
-	;
-
-	bp::class_<exec_context>("ExecContext")
-		.add_property("event", exec_context_get_event)
-		.add_property("data", exec_context_get_data)
-		.add_property("src_key", exec_context_get_src_key)
-		.add_property("src_id", exec_context_get_src_id)
-		.add_property("address", exec_context_get_address)
-	;
-
-	bp::class_<exec_result_entry, bp::bases<callback_result_entry> >("ExecResultEntry")
-		.add_property("context", exec_result_get_context)
 	;
 
 	bp::class_<monitor_stat_result_entry, bp::bases<callback_result_entry> >("MonitorStatResultEntry")

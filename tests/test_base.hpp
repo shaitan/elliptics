@@ -214,7 +214,6 @@ protected:
 class server_config
 {
 public:
-	static server_config default_srw_value();
 	static server_config default_value();
 
 	void write(const std::string &path);
@@ -230,7 +229,7 @@ class server_node
 public:
 	server_node();
 	server_node(const std::string &path, const server_config &config, const address &remote, int monitor_port,
-	            int locator_port, bool fork);
+	            bool fork);
 	server_node(server_node &&other);
 
 	server_node &operator =(server_node &&other);
@@ -252,7 +251,6 @@ public:
 
 	address remote() const;
 	int monitor_port() const;
-	int locator_port() const;
 	pid_t pid() const;
 	dnet_node *get_native() const;
 
@@ -262,7 +260,6 @@ private:
 	server_config m_config;
 	address m_remote;
 	int m_monitor_port;
-	int m_locator_port;
 	bool m_fork;
 	bool m_kill_sent;
 	mutable pid_t m_pid;
@@ -314,7 +311,6 @@ struct start_nodes_config {
 	std::string path;
 	bool fork;
 	bool monitor;
-	bool srw;
 	bool isolated;
 	int client_node_flags;
 	int client_wait_timeout;

@@ -13,9 +13,6 @@
  * GNU Lesser General Public License for more details.
  */
 
-#ifdef HAVE_COCAINE
-# include "srw_test_base.hpp"
-#endif
 #include "test_base.hpp"
 
 #include <signal.h>
@@ -235,27 +232,23 @@ static int fill_config(tests::config_data &config, std::vector<tests::config_dat
  * Example:
  * \code{.json}
  * {
- * 	"srw": true,
  * 	"path": "/tmp/elliptics-test",
  * 	"servers": [
  * 		{
  * 			"group": 1,
- * 			"srw_config": "/tmp/srw.conf"
  * 		}
  * 	]
  * }
  * \endcode
  *
  * Possible options are:
- * \li If \c srw is set to true elliptics will be started with Cocaine runtime.
  * \li All logs and blobs' data is written to \c path.
  * \li \c server is a list of key-value maps of servers configurations. Each entry \
  *	 contains options which must overwrite default values in configuration file.
  */
 static int run_servers(const rapidjson::Value &doc)
 {
-	bool srw, fork, monitor, isolated;
-	read_option(doc, "srw", false, srw);
+	bool fork, monitor, isolated;
 	read_option(doc, "fork", false, fork);
 	read_option(doc, "monitor", true, monitor);
 	read_option(doc, "isolated", false, isolated);
@@ -284,12 +277,6 @@ static int run_servers(const rapidjson::Value &doc)
 		return 1;
 	}
 
-#ifndef HAVE_COCAINE
-	if (srw) {
-		test::log << "There is no srw support" << test::endl;
-		return 1;
-	}
-#endif
 
 	if (!doc.HasMember("servers")) {
 		test::log << "Field \"servers\" is missed" << test::endl;
@@ -303,8 +290,7 @@ static int run_servers(const rapidjson::Value &doc)
 	}
 
 	std::vector<tests::server_config> configs;
-	configs.resize(servers.Size(),
-	               srw ? tests::server_config::default_srw_value() : tests::server_config::default_value());
+	configs.resize(servers.Size(), tests::server_config::default_value());
 
 	std::set<int> unique_groups;
 
@@ -343,7 +329,6 @@ static int run_servers(const rapidjson::Value &doc)
 				std::string(path.GetString(), path.GetStringLength()));
 		start_config.fork = fork;
 		start_config.monitor = monitor;
-		start_config.srw = srw;
 		start_config.isolated = isolated;
 
 		setup = tests::start_nodes(start_config);
@@ -354,39 +339,6 @@ static int run_servers(const rapidjson::Value &doc)
 	}
 
 	sleep(2);
-#ifdef HAVE_COCAINE
-	if (srw) {
-		const std::vector<int> groups(unique_groups.begin(), unique_groups.end());
-		for (size_t i = 0; i < setup->nodes.size(); ++i) {
-			try {
-				tests::upload_application(setup->nodes[i].locator_port(), tests::application_name(),
-				                          setup->directory.path() + "/cocaine/spool");
-			} catch (std::exception &exc) {
-				test::log << "Can not upload application: " << exc.what() << test::endl;
-				return 1;
-			}
-
-			try {
-				tests::start_application(setup->nodes[i].locator_port(), tests::application_name());
-
-			} catch (std::exception &exc) {
-				test::log << "Can not start application on node #" << i << ": " << exc.what()
-				          << test::endl;
-				return 1;
-			}
-		}
-		sleep(2);
-		try {
-			session sess(*setup->node);
-			sess.set_groups(groups);
-			tests::init_application_impl(sess, tests::application_name(), setup.get());
-
-		} catch (std::exception &exc) {
-			test::log << "Can not init application: " << exc.what() << test::endl;
-			return 1;
-		}
-	}
-#endif // HAVE_COCAINE
 
 	for (size_t i = 0; i < setup->nodes.size(); ++i) {
 		tests::server_node &node = setup->nodes.at(i);
@@ -413,10 +365,6 @@ static int run_servers(const rapidjson::Value &doc)
 			rapidjson::Value monitor_port;
 			monitor_port.SetInt(node.monitor_port());
 			server.AddMember("monitor", monitor_port, info.GetAllocator());
-
-			rapidjson::Value locator_port;
-			locator_port.SetInt(node.locator_port());
-			server.AddMember("locator_port", locator_port, info.GetAllocator());
 
 			servers.PushBack(server, info.GetAllocator());
 		}

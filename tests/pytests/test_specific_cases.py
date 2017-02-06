@@ -13,16 +13,17 @@
 # GNU General Public License for more details.
 # =============================================================================
 
-import pytest
 import elliptics
-from server import Servers, make_servers
+import pytest
+
+from server import Servers
+from server import make_servers
 
 @pytest.yield_fixture(scope="module")
 def servers(request):
     groups = [int(g) for g in request.config.option.groups.split(',')]
 
-    _servers = Servers(without_cocaine=True,
-                       servers=make_servers(groups, nodes_count=2, backends_count=1),
+    _servers = Servers(servers=make_servers(groups, nodes_count=2, backends_count=1),
                        isolated=True,
                        path='special_servers')
 

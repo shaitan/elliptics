@@ -52,8 +52,6 @@ static void dnet_usage(char *p)
 			" -R file              - read given file from the network into the local storage\n"
 			" -I id                - transaction id (used to read data)\n"
 			" -g groups            - group IDs to connect\n"
-			" -c cmd-event         - execute event on a remote node\n"
-			" -k src-key           - use this src_key with exec\n"
 			" -L file              - lookup a storage which hosts given file\n"
 			" -l log               - log file. Default: disabled\n"
 			" -w timeout           - wait timeout in seconds used to wait for content sync.\n"
@@ -104,7 +102,7 @@ int main(int argc, char *argv[])
 	int port = -1;
 	int family = -1;
 	int remote_flags = 0;
-	const char *logfile = "/dev/stderr", *readf = NULL, *writef = NULL, *cmd = NULL, *lookup = NULL;
+	const char *logfile = "/dev/stderr", *readf = NULL, *writef = NULL, *lookup = NULL;
 	const char *read_data = NULL;
 	char *removef = NULL;
 	unsigned char trans_id[DNET_ID_SIZE], *id = NULL;
@@ -117,7 +115,6 @@ int main(int argc, char *argv[])
 	char *ns = NULL;
 	int nsize = 0;
 	std::string as_is_key;
-	int exec_src_key = -1;
 	int backend_id = -1;
 	char *backend_status_str = NULL;
 	uint32_t delay = 0;
@@ -198,12 +195,6 @@ int main(int argc, char *argv[])
 				break;
 			case 'l':
 				logfile = optarg;
-				break;
-			case 'c':
-				cmd = optarg;
-				break;
-			case 'k':
-				exec_src_key = atoi(optarg);
 				break;
 			case 'I':
 				err = dnet_parse_numeric_id(optarg, trans_id);
@@ -394,57 +385,6 @@ int main(int argc, char *argv[])
 
 		if (removef)
 			s.remove(create_id(id, removef)).wait();
-
-		if (cmd) {
-			session exec_session = s.clone();
-			exec_session.set_filter(filters::all_with_ack);
-			exec_session.set_cflags(cflags | DNET_FLAGS_NOLOCK);
-
-			dnet_id did_tmp, *did = NULL;
-			std::string event, data;
-
-			memset(&did_tmp, 0, sizeof(struct dnet_id));
-
-			if (const char *tmp = strchr(cmd, ' ')) {
-				event.assign(cmd, tmp);
-				data.assign(tmp + 1);
-			} else {
-				event.assign(cmd);
-			}
-
-			if (id || data.size()) {
-				did = &did_tmp;
-
-				if (id) {
-					dnet_setup_id(did, 0, id);
-				} else {
-					exec_session.transform(data, did_tmp);
-				}
-			}
-
-			bool failed = false;
-			auto result = exec_session.exec(did, exec_src_key, event, data);
-			for (auto it = result.begin(); it != result.end(); ++it) {
-				if (it->error()) {
-					error_info error = it->error();
-					std::cerr << dnet_addr_string(it->address())
-						<< ": failed to process: \"" << error.message() << "\": " << error.code() << std::endl;
-					failed = true;
-				} else {
-					exec_context context = it->context();
-					if (context.is_null()) {
-						std::cout << dnet_addr_string(it->address())
-							<< ": acknowledge" << std::endl;
-					} else {
-						std::cout << dnet_addr_string(context.address())
-							<< ": " << context.event()
-							<< " \"" << context.data().to_string() << "\"" << std::endl;
-					}
-				}
-			}
-			if (failed)
-				return -1;
-		}
 
 		if (lookup) {
 			sync_lookup_result res = s.lookup(create_id(id, lookup));

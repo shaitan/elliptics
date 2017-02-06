@@ -60,7 +60,6 @@ MonitorStatResultEntry.__statistics__ = MonitorStatResultEntry.statistics
 MonitorStatResultEntry.statistics = monitor_statistics
 
 wrap_address([CallbackResultEntry,
-              ExecContext,
               RouteEntry
               ])
 

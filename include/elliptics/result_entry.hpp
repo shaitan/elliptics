@@ -26,68 +26,6 @@
 namespace ioremap { namespace elliptics {
 
 class callback_result_data;
-struct exec_context_data;
-
-// exec_context is context for execution requests, it stores
-// internal identification of the process and environmental
-// variables like event name and data
-class exec_context
-{
-	public:
-		// type of reply
-		enum final_state {
-			progressive, // there will be more replies
-			final // final reply
-		};
-
-		exec_context();
-		// construct from data_pointer, may throw exception
-		exec_context(const data_pointer &data);
-		exec_context(const std::shared_ptr<exec_context_data> &data);
-		exec_context(const exec_context &other);
-		exec_context &operator =(const exec_context &other);
-		~exec_context();
-
-		// construct from raw_data
-		static exec_context from_raw(const void *data, size_t size);
-		// construct from data_pointer, in case of error \a error is filled
-		static exec_context parse(const data_pointer &data, error_info *error);
-
-		// event name
-		std::string event() const;
-		// event data
-		data_pointer data() const;
-
-		uint64_t flags() const;
-		//NOTE: dangerous, use with care
-		void set_flags(uint64_t flags) const;
-
-		// access to address of the machine emitted the reply
-		dnet_addr *address() const;
-
-		// access to "return id" by which reply is routed back,
-		// allows to augment sph.src with some sub id or change it completely
-		//NOTE: dangerous, use with care
-		dnet_raw_id *src_id() const;
-
-		// access to "sub id" supplement to src_id
-		// also allows to change it on the fly
-		//NOTE: dangerous, use with care
-		int src_key() const;
-		void set_src_key(int src_key) const;
-
-		// get back original data block of the entire request
-		data_pointer native_data() const;
-
-		bool is_final() const;
-		bool is_reply() const;
-		bool is_null() const;
-
-	private:
-		friend class session;
-		friend struct exec_context_data;
-		std::shared_ptr<exec_context_data> m_data;
-};
 
 class callback_result_entry
 {
@@ -175,25 +113,6 @@ class node_status_result_entry : public callback_result_entry
 		struct dnet_node_status *node_status() const;
 };
 
-class exec_context;
-class exec_callback;
-
-class exec_result_entry : public callback_result_entry
-{
-	public:
-		exec_result_entry();
-		exec_result_entry(const std::shared_ptr<callback_result_data> &data);
-		exec_result_entry(const exec_result_entry &other);
-		~exec_result_entry();
-
-		exec_result_entry &operator =(const exec_result_entry &other);
-
-		exec_context context() const;
-
-	private:
-		friend class exec_callback;
-};
-
 class iterator_result_entry : public callback_result_entry
 {
 	public:
@@ -251,13 +170,6 @@ typedef std::vector<backend_status_result_entry> sync_backend_status_result;
 
 typedef async_result<iterator_result_entry> async_iterator_result;
 typedef std::vector<iterator_result_entry> sync_iterator_result;
-
-typedef async_result<exec_result_entry> async_exec_result;
-typedef std::vector<exec_result_entry> sync_exec_result;
-typedef async_result<exec_result_entry> async_push_result;
-typedef std::vector<exec_result_entry> sync_push_result;
-typedef async_result<exec_result_entry> async_reply_result;
-typedef std::vector<exec_result_entry> sync_reply_result;
 
 static inline bool operator <(const dnet_raw_id &a, const dnet_raw_id &b)
 {

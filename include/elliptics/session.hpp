@@ -782,58 +782,6 @@ public:
 	async_iterator_result server_send(const std::vector<key> &keys, uint64_t flags, const std::vector<int> &groups);
 
 	/*!
-	 * Starts execution for \a id of the given \a event with \a data.
-	 *
-	 * If \a id is null, event is sent to all groups specified in the session.
-	 *
-	 * Returns async_exec_result.
-	 * Result contains all replies sent by nodes processing this event.
-	 */
-	async_exec_result exec(dnet_id *id, const std::string &event, const argument_data &data);
-	/*!
-	 * Starts execution for \a id of the given \a event with \a data.
-	 * \a src_key used as sub-id to snap execution to a distinct worker,
-	 * execs with the same \a id and \a src_key will be processed by the same worker
-	 * (subject to worker execution mode).
-	 *
-	 * If \a id is null, event is sent to all groups specified in the session.
-	 *
-	 * Returns async_exec_result.
-	 * Result contains all replies sent by nodes processing this event.
-	 */
-	async_exec_result exec(dnet_id *id, int src_key, const std::string &event, const argument_data &data);
-	/*!
-	 * Sends execution request of the given \a event and \a data
-	 * to the party specified by a given \a context.
-	 *
-	 * Returns async_exec_result.
-	 * Result contains all replies sent by nodes processing this event.
-	 */
-	async_exec_result exec(const exec_context &context, const std::string &event, const argument_data &data);
-
-	/*!
-	 * Send an \a event with \a data to \a id continuing the process specified by \a context.
-	 *
-	 * If \a id is null event is sent to all groups specified in the session.
-	 *
-	 * Returns async_exec_result.
-	 * Result contains only the information about starting of event procession, so there is no
-	 * information if it was finally processed successfully.
-	 */
-	async_push_result
-	push(dnet_id *id, const exec_context &context, const std::string &event, const argument_data &data);
-	/*!
-	 * Reply \a data to initial starter of the process specified by \a context.
-	 *
-	 * If \a state is equal to exec_context::final it is the last reply, otherwise there will be more.
-	 *
-	 * Returns async_reply_result.
-	 * Result contains information if starter received the reply.
-	 */
-	async_reply_result
-	reply(const exec_context &context, const argument_data &data, exec_context::final_state state);
-
-	/*!
 	 * Reads all data from server nodes by the list \a ios.
 	 * Exception is thrown if no entry is read successfully.
 	 *
@@ -884,7 +832,6 @@ public:
 protected:
 	std::shared_ptr<session_data> m_data;
 
-	async_exec_result request(dnet_id *id, const exec_context &context);
 	async_iterator_result iterator(const key &id, const data_pointer &request);
 
 	error_info mix_states(const key &id, std::vector<int> &groups) __attribute__((warn_unused_result));

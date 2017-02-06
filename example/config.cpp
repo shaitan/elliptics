@@ -289,12 +289,6 @@ void parse_options(config_data *data, const kora::config_t &options)
 	data->parallel_start = options.at("parallel", true);
 	snprintf(data->cfg_state.cookie, DNET_AUTH_COOKIE_SIZE, "%s", options.at<std::string>("auth_cookie").c_str());
 
-	if (options.has("srw_config")) {
-		data->cfg_state.srw.config = strdup(options.at<std::string>("srw_config").c_str());
-		if (!data->cfg_state.srw.config)
-			throw std::bad_alloc();
-	}
-
 	dnet_set_addr(data, options.at("address", std::vector<std::string>()));
 
 	const std::vector<std::string> remotes = options.at("remote", std::vector<std::string>());

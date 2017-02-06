@@ -516,7 +516,6 @@ template class async_result<lookup_result_entry>;
 template class async_result<monitor_stat_result_entry>;
 template class async_result<node_status_result_entry>;
 template class async_result<backend_status_result_entry>;
-template class async_result<exec_result_entry>;
 template class async_result<iterator_result_entry>;
 
 template class async_result<newapi::lookup_result_entry>;
@@ -529,7 +528,6 @@ template class async_result_handler<lookup_result_entry>;
 template class async_result_handler<monitor_stat_result_entry>;
 template class async_result_handler<node_status_result_entry>;
 template class async_result_handler<backend_status_result_entry>;
-template class async_result_handler<exec_result_entry>;
 template class async_result_handler<iterator_result_entry>;
 
 template class async_result_handler<newapi::lookup_result_entry>;

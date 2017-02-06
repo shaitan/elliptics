@@ -573,57 +573,6 @@ public:
 		return create_result(std::move(session::server_send(std_keys, iflags, std_groups)));
 	}
 
-	python_exec_result exec(const bp::api::object &id_or_context, const std::string &event, const bp::api::object &data, const int src_key) {
-		dnet_id* raw_id = NULL;
-		dnet_id conv_id;
-
-		std::string str_data;
-		if (data.ptr() != Py_None) {
-			bp::extract<std::string> get_data(data);
-			str_data = get_data();
-		}
-
-		if (id_or_context.ptr() != Py_None) {
-			bp::extract<exec_context> get_context(id_or_context);
-			if (get_context.check()) {
-				return create_result(std::move(session::exec(get_context(), event, data_pointer::copy(str_data))));
-			} else {
-				conv_id = transform(id_or_context).id();
-				raw_id = &conv_id;
-			}
-		}
-
-		return create_result(std::move(session::exec(raw_id, src_key, event, data_pointer::copy(str_data))));
-	}
-
-	python_exec_result push(const bp::api::object &id, const exec_context &context, const std::string &event, const bp::api::object &data) {
-		dnet_id* raw_id = NULL;
-		dnet_id conv_id;
-
-		std::string str_data;
-		if (data.ptr() != Py_None) {
-			bp::extract<std::string> get_data(data);
-			str_data = get_data();
-		}
-
-		if (id.ptr() != Py_None) {
-			conv_id = transform(id).id();
-			raw_id = &conv_id;
-		}
-
-		return create_result(std::move(session::push(raw_id, context, event, data_pointer::copy(str_data))));
-	}
-
-	python_exec_result reply(const exec_context &context, const bp::api::object &data, exec_context::final_state final_state) {
-		std::string str_data;
-		if (data.ptr() != Py_None) {
-			bp::extract<std::string> get_data(data);
-			str_data = get_data();
-		}
-
-		return create_result(std::move(session::reply(context, data_pointer::copy(str_data), final_state)));
-	}
-
 	python_remove_result remove(const bp::api::object &id) {
 		return create_result(std::move(session::remove(transform(id).id())));
 	}
@@ -917,12 +866,6 @@ void init_elliptics_session() {
 		.value("stats", elliptics_monitor_categories_stats)
 		.value("procfs", elliptics_monitor_categories_procfs)
 		.value("top", elliptics_monitor_categories_top)
-	;
-
-	bp::enum_<exec_context::final_state>("exec_context_final_states",
-	    "Final states of exec context\n")
-		.value("progressive", exec_context::final_state::progressive)
-		.value("final", exec_context::final_state::final)
 	;
 
 	bp::class_<elliptics_status>("SessionStatus", bp::init<>())
@@ -1760,32 +1703,6 @@ void init_elliptics_session() {
 		    "    stats = result.get()\n")
 
 		.def("state_num", &session::state_num)
-
-		// Couldn't use "exec" as a method name because it's a reserved keyword in python
-
-		.def("exec_", &elliptics_session::exec,
-		    (bp::arg("id_or_context")=bp::api::object(), bp::arg("event"), bp::arg("data") = "", bp::arg("src_key") = -1),
-		    "exec_(id_or_context=None, event, data="", src_key=-1)\n"
-		    "    Sends execution request of the given @event and @data\n"
-		    "     to the party specified by a given @id_or_context.\n"
-		    "     If @id_or_context is None then request will be sent to all nodes.\n"
-		    "     Returns async_exec_result.\n"
-		    "     Result contains all replies sent by nodes processing this event.\n")
-		.def("push", &elliptics_session::push,
-		    (bp::arg("id")=bp::api::object(), bp::arg("context"), bp::arg("event"), bp::arg("data") = ""),
-		    "push(id=None, context, event, data="")\n"
-		    "    Send an @event with @data to @id continuing the process specified by @context.\n"
-		    "    If @id is null event is sent to all groups specified in the session.\n"
-		    "    Returns async_exec_result.\n"
-		    "    Result contains only the information about starting of event procession, so there is no\n"
-		    "    information if it was finally processed successfully.\n")
-		.def("reply", &elliptics_session::reply,
-		    (bp::arg("context"), bp::arg("data"), bp::arg("final_state")),
-		    "reply(context, data, final_state)\n"
-		    "    Reply @data to initial starter of the process specified by @context.\n"
-		    "    If @final_state is equal to elliptics.exec_context_final_states.final it is the last reply, otherwise there will be more.\n"
-		    "    Returns async_reply_result.\n"
-		    "    Result contains information if starter received the reply.\n")
 
 		.def("prepare_latest", &elliptics_session::prepare_latest)
 	;

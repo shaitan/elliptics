@@ -24,7 +24,6 @@ add_definitions(-DCONFIG_ELLIPTICS_VERSION_2=${ELLIPTICS_VERSION_2})
 add_definitions(-DCONFIG_ELLIPTICS_VERSION_3=${ELLIPTICS_VERSION_3})
 
 option(WITH_PYTHON "Build python bindings" ON)
-option(WITH_COCAINE "Build with cocaine support" ON)
 option(DISABLE_LONG_TEST "Disable tests which take long time" OFF)
 
 set(ELLIPTICS_VERSION "${ELLIPTICS_VERSION_ABI}.${ELLIPTICS_VERSION_MINOR}")
@@ -74,13 +73,6 @@ endif()
 set(CMAKE_THREAD_PREFER_PTHREAD ON)
 find_package(Threads REQUIRED)
 
-if(WITH_COCAINE)
-    # Find some cocaine
-    find_package(Cocaine REQUIRED)
-    include_directories(${COCAINE_INCLUDE_DIRS})
-    add_definitions(${COCAINE_CFLAGS})
-endif()
-
 # Find eblob
 find_package(Eblob REQUIRED)
 include_directories(${EBLOB_INCLUDE_DIRS})
@@ -127,12 +119,10 @@ set(ELLIPTICS_LIBRARIES
     ${SENDFILE_LIBRARIES}
     ${Boost_LIBRARIES}
     ${EBLOB_LIBRARIES}
-    ${COCAINE_LIBRARIES}
     ${CMAKE_THREAD_LIBS_INIT}
     )
 
 # Build parts
-add_subdirectory(srw)
 add_subdirectory(cache)
 add_subdirectory(library)
 add_subdirectory(bindings)
@@ -144,7 +134,6 @@ install(FILES
         include/elliptics/core.h
         include/elliptics/interface.h
         include/elliptics/packet.h
-        include/elliptics/srw.h
         include/elliptics/async_result.hpp
         include/elliptics/cppdef.h
         include/elliptics/debug.hpp
@@ -162,11 +151,6 @@ install(FILES
         include/elliptics/newapi/result_entry.hpp
         include/elliptics/newapi/session.hpp
         DESTINATION include/elliptics/newapi/
-        )
-
-install(FILES
-        cocaine/include/cocaine/api/elliptics_node.hpp
-        DESTINATION include/cocaine/api/
         )
 
 set(INSTALL_INCLUDE_DIR "${CMAKE_INSTALL_PREFIX}/include")
