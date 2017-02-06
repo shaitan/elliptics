@@ -1,3 +1,10 @@
+elliptics (2.27.0.5) unstable; urgency=medium
+
+  * fix: add lock around running throw local route table
+  * monitor: cleanup code
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Mon, 06 Feb 2017 17:13:56 +0300
+
 elliptics (2.27.0.4) unstable; urgency=medium
 
   * monitor: refactor http server and add final log
