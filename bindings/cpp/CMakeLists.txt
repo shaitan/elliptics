@@ -18,7 +18,6 @@ set(ELLIPTICS_CLIENT_SRCS
     exception.cpp
     key.cpp
     logger.cpp
-    ../../foreign/cmp/cmp.c
     newapi/session.cpp
     newapi/result_entry.cpp
     ../../library/protocol.cpp
