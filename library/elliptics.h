@@ -870,7 +870,7 @@ int dnet_cmd_cache_lookup(struct dnet_backend_io *backend,
                           struct dnet_cmd *cmd,
                           struct dnet_cmd_stats *cmd_stats);
 
-int dnet_ids_update(struct dnet_node *n, int update_local, const char *file, struct dnet_addr *cfg_addrs, size_t backend_id);
+int dnet_ids_update(struct dnet_node *n, int update_local, const char *file, struct dnet_addr *cfg_addrs, uint32_t backend_id);
 
 int __attribute__((weak)) dnet_remove_local_new(struct dnet_backend_io *backend,
 						struct dnet_node *n,

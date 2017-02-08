@@ -150,7 +150,7 @@ public:
 	/*
 	 * Locks backend with \a backend_id state mutex and fills \a status
 	 */
-	void backend_fill_status(struct dnet_node *node, struct dnet_backend_status *status, size_t backend_id) const;
+	void backend_fill_status(struct dnet_node *node, struct dnet_backend_status *status, uint32_t backend_id) const;
 
 	std::vector<std::shared_ptr<dnet_backend_info> > get_all_backends() const
 	{
@@ -162,10 +162,10 @@ public:
 		return result;
 	}
 
-	std::shared_ptr<dnet_backend_info> get_backend(size_t backend_id) const;
+	std::shared_ptr<dnet_backend_info> get_backend(uint32_t backend_id) const;
 
 	void add_backend(std::shared_ptr<dnet_backend_info> &backend);
-	void remove_backend(size_t backend_id);
+	void remove_backend(uint32_t backend_id);
 
 	void set_verbosity(dnet_log_level level);
 
