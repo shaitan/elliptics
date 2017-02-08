@@ -157,7 +157,7 @@ err_out_io_threads:
 	return err;
 }
 
-static int dnet_work_pool_place_init(struct dnet_work_pool_place *pool)
+int dnet_work_pool_place_init(struct dnet_work_pool_place *pool)
 {
 	int err;
 	memset(pool, 0, sizeof(struct dnet_work_pool_place));
@@ -172,7 +172,7 @@ err_out_exit:
 	return err;
 }
 
-static void dnet_work_pool_place_cleanup(struct dnet_work_pool_place *pool)
+void dnet_work_pool_place_cleanup(struct dnet_work_pool_place *pool)
 {
 	pthread_mutex_destroy(&pool->lock);
 }
@@ -1214,133 +1214,6 @@ err_out_free:
 	free(n->io);
 err_out_exit:
 	n->io = NULL;
-	return err;
-}
-
-int dnet_server_backend_init(struct dnet_node *n, size_t backend_id)
-{
-	int err;
-	const size_t new_count = backend_id + 1;
-	struct dnet_backend_io **backends_tmp;
-	struct dnet_backend_io *io;
-
-	pthread_rwlock_wrlock(&n->io->backends_lock);
-	if (new_count > n->io->backends_count || !n->io->backends[backend_id]) {
-		io = calloc(1, sizeof(struct dnet_backend_io));
-		if (!io) {
-			err = -ENOMEM;
-			goto err_out_unlock;
-		}
-
-		io->backend_id = backend_id;
-
-		err = dnet_work_pool_place_init(&io->pool.recv_pool);
-		if (err) {
-			goto err_out_free;
-		}
-
-		err = dnet_work_pool_place_init(&io->pool.recv_pool_nb);
-		if (err) {
-			dnet_work_pool_place_cleanup(&io->pool.recv_pool);
-			goto err_out_free;
-		}
-
-		if (new_count > n->io->backends_count) {
-			backends_tmp = realloc(n->io->backends, new_count * sizeof(struct dnet_backend_io *));
-			if (backends_tmp) {
-				memset(backends_tmp + n->io->backends_count, 0,
-				       (new_count - n->io->backends_count) * sizeof(struct dnet_backend_io *));
-				n->io->backends = backends_tmp;
-				n->io->backends_count = new_count;
-			} else {
-				err = -ENOMEM;
-				goto err_out_free;
-			}
-		}
-
-		n->io->backends[backend_id] = io;
-	}
-	pthread_rwlock_unlock(&n->io->backends_lock);
-
-	return 0;
-
-err_out_free:
-	free(io);
-err_out_unlock:
-	pthread_rwlock_unlock(&n->io->backends_lock);
-	return err;
-}
-
-int dnet_server_io_init(struct dnet_node *n)
-{
-	int err;
-	size_t j = 0, k = 0;
-	size_t *backend_ids, num_backend_ids;
-	size_t backends_count;
-
-        err = dnet_get_backend_ids(n->config_data->backends, &backend_ids, &num_backend_ids);
-	if (err) {
-		goto err_out_exit;
-	}
-
-	backends_count = backend_ids[0];
-	for (j = 1; j < num_backend_ids; ++j) {
-		if (backend_ids[j] > backends_count)
-			backends_count = backend_ids[j];
-	}
-	++backends_count;
-
-	n->io->backends_count = backends_count;
-	n->io->backends = calloc(backends_count, sizeof(struct dnet_backend_io *));
-	if (!n->io->backends) {
-		err = -ENOMEM;
-		goto err_out_free_backend_ids;
-	}
-
-	for (j = 0; j < num_backend_ids; ++j) {
-		struct dnet_backend_io *io = calloc(1, sizeof(struct dnet_backend_io));
-		if (!io) {
-			err = -ENOMEM;
-			goto err_out_free_backends_io;
-		}
-
-		io->backend_id = backend_ids[j];
-
-		err = dnet_work_pool_place_init(&io->pool.recv_pool);
-		if (err) {
-			free(io);
-			goto err_out_free_backends_io;
-		}
-
-		err = dnet_work_pool_place_init(&io->pool.recv_pool_nb);
-		if (err) {
-			free(io);
-			dnet_work_pool_place_cleanup(&io->pool.recv_pool);
-			goto err_out_free_backends_io;
-		}
-
-		n->io->backends[io->backend_id] = io;
-	}
-
-	free(backend_ids);
-	return 0;
-
-err_out_free_backends_io:
-	for (k = 0; k < j; ++k) {
-		struct dnet_backend_io *backend_io = n->io->backends[backend_ids[k]];
-		backend_io->need_exit = 1;
-	}
-	for (k = 0; k < j; ++k) {
-		struct dnet_backend_io *backend_io = n->io->backends[backend_ids[k]];
-		dnet_work_pool_exit(&backend_io->pool.recv_pool);
-		dnet_work_pool_exit(&backend_io->pool.recv_pool_nb);
-		free(backend_io);
-	}
-	free(n->io->backends);
-	n->io->backends = NULL;
-err_out_free_backend_ids:
-	free(backend_ids);
-err_out_exit:
 	return err;
 }
 

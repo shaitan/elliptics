@@ -450,6 +450,59 @@ static int dnet_backend_remove(struct dnet_node *node, size_t backend_id) {
 	return 0;
 }
 
+static int dnet_server_backend_init(struct dnet_node *n, size_t backend_id) {
+	int err;
+	const size_t new_count = backend_id + 1;
+	struct dnet_backend_io *io = nullptr;
+
+	pthread_rwlock_wrlock(&n->io->backends_lock);
+	if (new_count > n->io->backends_count || !n->io->backends[backend_id]) {
+		io = static_cast<dnet_backend_io *>(calloc(1, sizeof(struct dnet_backend_io)));
+		if (!io) {
+			err = -ENOMEM;
+			goto err_out_unlock;
+		}
+
+		io->backend_id = backend_id;
+
+		err = dnet_work_pool_place_init(&io->pool.recv_pool);
+		if (err) {
+			goto err_out_free;
+		}
+
+		err = dnet_work_pool_place_init(&io->pool.recv_pool_nb);
+		if (err) {
+			dnet_work_pool_place_cleanup(&io->pool.recv_pool);
+			goto err_out_free;
+		}
+
+		if (new_count > n->io->backends_count) {
+			auto backends_tmp = static_cast<dnet_backend_io **>(
+			        realloc(n->io->backends, new_count * sizeof(struct dnet_backend_io *)));
+			if (!backends_tmp) {
+				err = -ENOMEM;
+				goto err_out_free;
+			}
+
+			memset(backends_tmp + n->io->backends_count, 0,
+			       (new_count - n->io->backends_count) * sizeof(struct dnet_backend_io *));
+			n->io->backends = backends_tmp;
+			n->io->backends_count = new_count;
+		}
+
+		n->io->backends[backend_id] = io;
+	}
+	pthread_rwlock_unlock(&n->io->backends_lock);
+
+	return 0;
+
+err_out_free:
+	free(io);
+err_out_unlock:
+	pthread_rwlock_unlock(&n->io->backends_lock);
+	return err;
+}
+
 
 int dnet_backend_create(struct dnet_node *node, size_t backend_id)
 {
