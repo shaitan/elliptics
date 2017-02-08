@@ -445,6 +445,8 @@ struct dnet_work_pool_place
 void dnet_work_pool_exit(struct dnet_work_pool_place *place);
 int dnet_work_pool_alloc(struct dnet_work_pool_place *place, struct dnet_node *n,
 	struct dnet_backend_io *io, int num, int mode, void *(* process)(void *));
+int dnet_work_pool_place_init(struct dnet_work_pool_place *pool);
+void dnet_work_pool_place_cleanup(struct dnet_work_pool_place *pool);
 
 struct dnet_io_pool
 {
@@ -494,8 +496,6 @@ struct dnet_io {
 int dnet_state_accept_process(struct dnet_net_state *st, struct epoll_event *ev);
 int dnet_io_init(struct dnet_node *n, struct dnet_config *cfg);
 void *dnet_io_process(void *data_);
-int dnet_server_backend_init(struct dnet_node *n, size_t backend_id);
-int dnet_server_io_init(struct dnet_node *n);
 /* Set need_exit flag, stop and join pool threads */
 void dnet_io_stop(struct dnet_node *n);
 /* Free pool resources of node. Must be called after dnet_io_stop() */
