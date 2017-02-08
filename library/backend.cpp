@@ -59,7 +59,7 @@ err_out_exit:
 }
 
 static struct dnet_raw_id *dnet_ids_init(struct dnet_node *n, const char *hdir, int *id_num,
-		unsigned long long storage_free, struct dnet_addr *cfg_addrs, size_t backend_id)
+		unsigned long long storage_free, struct dnet_addr *cfg_addrs, uint32_t backend_id)
 {
 	int fd, err, num;
 	const char *file = "ids";
@@ -198,7 +198,7 @@ static const char *elapsed(const dnet_time &start)
 	return buffer;
 }
 
-static int dnet_backend_init(struct dnet_node *node, size_t backend_id)
+static int dnet_backend_init(struct dnet_node *node, uint32_t backend_id)
 {
 	int ids_num;
 	struct dnet_raw_id *ids;
@@ -371,7 +371,7 @@ err_out_exit:
 	return err;
 }
 
-static int dnet_backend_cleanup(struct dnet_node *node, size_t backend_id)
+static int dnet_backend_cleanup(struct dnet_node *node, uint32_t backend_id)
 {
 	auto backend = node->config_data->backends->get_backend(backend_id);
 	if (!backend) {
@@ -436,7 +436,7 @@ static int dnet_backend_cleanup(struct dnet_node *node, size_t backend_id)
 }
 
 /* Disable and remove backend */
-static int dnet_backend_remove(struct dnet_node *node, size_t backend_id) {
+static int dnet_backend_remove(struct dnet_node *node, uint32_t backend_id) {
 	const int err = dnet_backend_cleanup(node, backend_id);
 	if (err && err != -EALREADY) {
 		DNET_LOG_INFO(node, "backend_remove: backend: {}, failed to disable backend: {} [{}]", backend_id,
@@ -450,7 +450,7 @@ static int dnet_backend_remove(struct dnet_node *node, size_t backend_id) {
 	return 0;
 }
 
-static int dnet_server_backend_init(struct dnet_node *n, size_t backend_id) {
+static int dnet_server_backend_init(struct dnet_node *n, uint32_t backend_id) {
 	int err;
 	const size_t new_count = backend_id + 1;
 	struct dnet_backend_io *io = nullptr;
@@ -504,7 +504,7 @@ err_out_unlock:
 }
 
 
-int dnet_backend_create(struct dnet_node *node, size_t backend_id)
+int dnet_backend_create(struct dnet_node *node, uint32_t backend_id)
 {
 	auto backends = node->config_data->backends;
 	auto backend = backends->get_backend(backend_id);
@@ -720,7 +720,7 @@ void backend_fill_status_nolock(struct dnet_node *node, struct dnet_backend_stat
 	status->delay = io->delay;
 }
 
-void dnet_backend_info_manager::backend_fill_status(dnet_node *node, dnet_backend_status *status, size_t backend_id) const
+void dnet_backend_info_manager::backend_fill_status(dnet_node *node, dnet_backend_status *status, uint32_t backend_id) const
 {
 	std::shared_ptr<dnet_backend_info> backend;
 	{
@@ -737,7 +737,7 @@ void dnet_backend_info_manager::backend_fill_status(dnet_node *node, dnet_backen
 	}
 }
 
-std::shared_ptr<dnet_backend_info> dnet_backend_info_manager::get_backend(size_t backend_id) const
+std::shared_ptr<dnet_backend_info> dnet_backend_info_manager::get_backend(uint32_t backend_id) const
 {
 	std::lock_guard<std::mutex> guard(backends_mutex);
 	auto it = backends.find(backend_id);
@@ -753,7 +753,7 @@ void dnet_backend_info_manager::add_backend(std::shared_ptr<dnet_backend_info> &
 	backends.insert({backend->backend_id, backend});
 }
 
-void dnet_backend_info_manager::remove_backend(size_t backend_id) {
+void dnet_backend_info_manager::remove_backend(uint32_t backend_id) {
 	std::lock_guard<std::mutex> guard(backends_mutex);
 	backends.erase(backend_id);
 }

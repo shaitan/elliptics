@@ -18,7 +18,7 @@ int dnet_get_backend_ids(const dnet_backend_info_manager *backends, size_t **bac
 	return 0;
 }
 
-struct dnet_backend_io *dnet_get_backend_io(struct dnet_io *io, size_t backend_id)
+struct dnet_backend_io *dnet_get_backend_io(struct dnet_io *io, uint32_t backend_id)
 {
 	struct dnet_backend_io *backend_io = nullptr;
 
