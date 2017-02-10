@@ -277,57 +277,6 @@ static inline struct dnet_net_state *dnet_state_get(struct dnet_net_state *st)
 	return st;
 }
 
-struct dnet_wait
-{
-	pthread_cond_t		wait;
-	pthread_mutex_t		wait_lock;
-	int			cond;
-	int			status;
-
-	void			*ret;
-	int			size;
-
-	atomic_t		refcnt;
-};
-
-#define dnet_wait_event(w, condition, wts)						\
-({											\
-	int __err = 0;									\
-	struct timespec __ts;								\
- 	struct timeval __tv;								\
-	gettimeofday(&__tv, NULL);							\
-	__ts.tv_nsec = __tv.tv_usec * 1000 + (wts)->tv_nsec;				\
-	__ts.tv_sec = __tv.tv_sec + (wts)->tv_sec;						\
-	pthread_mutex_lock(&(w)->wait_lock);						\
-	while (!(condition) && !__err)							\
-		__err = pthread_cond_timedwait(&(w)->wait, &(w)->wait_lock, &__ts);		\
-	pthread_mutex_unlock(&(w)->wait_lock);						\
-	-__err;										\
-})
-
-#define dnet_wakeup(w, task)								\
-({											\
-	pthread_mutex_lock(&(w)->wait_lock);						\
-	task;										\
-	pthread_cond_broadcast(&(w)->wait);						\
-	pthread_mutex_unlock(&(w)->wait_lock);						\
-})
-
-struct dnet_wait *dnet_wait_alloc(int cond);
-void dnet_wait_destroy(struct dnet_wait *w);
-
-static inline struct dnet_wait *dnet_wait_get(struct dnet_wait *w)
-{
-	atomic_inc(&w->refcnt);
-	return w;
-}
-
-static inline void dnet_wait_put(struct dnet_wait *w)
-{
-	if (atomic_dec_and_test(&w->refcnt))
-		dnet_wait_destroy(w);
-}
-
 struct dnet_notify_bucket
 {
 	struct list_head		notify_list;
@@ -561,7 +510,6 @@ struct dnet_node
 
 	dnet_logger		*log;
 
-	struct dnet_wait	*wait;
 	struct timespec		wait_ts;
 
 	struct dnet_io		*io;
@@ -725,7 +673,6 @@ int __attribute__((weak)) dnet_process_cmd_raw(struct dnet_backend_io *backend,
 int dnet_process_recv(struct dnet_backend_io *backend, struct dnet_net_state *st, struct dnet_io_req *r);
 void dnet_trans_update_timestamp(struct dnet_trans *t);
 
-int dnet_recv(struct dnet_net_state *st, void *data, unsigned int size);
 int dnet_sendfile(struct dnet_net_state *st, int fd, uint64_t *offset, uint64_t size);
 
 int dnet_send_request(struct dnet_net_state *st, struct dnet_io_req *r);

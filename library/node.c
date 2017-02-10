@@ -50,16 +50,10 @@ static struct dnet_node *dnet_node_alloc(struct dnet_config *cfg)
 		goto err_out_free;
 	}
 
-	n->wait = dnet_wait_alloc(0);
-	if (!n->wait) {
-		DNET_ERROR(n, "Failed to allocate wait structure");
-		goto err_out_destroy_state;
-	}
-
 	err = dnet_counter_init(n);
 	if (err) {
 		DNET_ERROR(n, "Failed to initialize statistics counters lock: err: %d", err);
-		goto err_out_destroy_wait;
+		goto err_out_destroy_state;
 	}
 
 	err = pthread_mutex_init(&n->reconnect_lock, NULL);
@@ -103,8 +97,6 @@ err_out_destroy_reconnect_lock:
 	pthread_mutex_destroy(&n->reconnect_lock);
 err_out_destroy_counter:
 	dnet_counter_destroy(n);
-err_out_destroy_wait:
-	dnet_wait_put(n->wait);
 err_out_destroy_state:
 	pthread_mutex_destroy(&n->state_lock);
 err_out_free:
@@ -869,8 +861,6 @@ void dnet_node_cleanup_common_resources(struct dnet_node *n)
 	}
 	pthread_rwlock_destroy(&n->test_settings_lock);
 	pthread_mutex_destroy(&n->reconnect_lock);
-
-	dnet_wait_put(n->wait);
 
 	free(n->test_settings);
 	free(n->route_addr);
