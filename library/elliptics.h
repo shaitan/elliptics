@@ -472,8 +472,6 @@ void dnet_config_data_destroy(struct dnet_config_data *data);
 
 struct dnet_node
 {
-	struct list_head	check_entry;
-
 	struct dnet_transform	transform;
 
 	int			need_exit;
@@ -514,7 +512,6 @@ struct dnet_node
 
 	struct dnet_io		*io;
 
-	int			check_in_progress;
 	long			check_timeout;
 
 	pthread_t		check_tid;
@@ -780,8 +777,6 @@ void dnet_check_thread_stop(struct dnet_node *n);
 void dnet_reconnect_and_check_route_table(struct dnet_node *node);
 
 int dnet_set_name(const char *format, ...);
-int dnet_ioprio_set(long pid, int class_id, int prio);
-int dnet_ioprio_get(long pid);
 
 struct dnet_map_fd {
 	int			fd;
