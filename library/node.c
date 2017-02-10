@@ -360,6 +360,12 @@ int dnet_idc_update_backend(struct dnet_net_state *st, struct dnet_backend_ids *
 		return 0;
 	}
 
+	if (st->__need_exit) {
+		dnet_log(n, DNET_LOG_WARNING, "dnet_idc_update: prevent adding route to lost connection, state: %s",
+		         dnet_state_dump_addr(st));
+		return -EINTR;
+	}
+
 	idc = malloc(sizeof(struct dnet_idc) + sizeof(struct dnet_state_id) * id_num);
 	if (!idc)
 		goto err_out_exit;
