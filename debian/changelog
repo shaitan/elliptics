@@ -1,3 +1,11 @@
+elliptics (2.27.0.6) unstable; urgency=medium
+
+  * routes: prevent adding route to lost connection
+  * fix: remove references to removed submodule
+  * indexes: RIP
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Mon, 13 Feb 2017 12:14:08 +0300
+
 elliptics (2.27.0.5) unstable; urgency=medium
 
   * fix: add lock around running throw local route table
