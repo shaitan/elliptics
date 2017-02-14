@@ -22,6 +22,8 @@
 
 #include <deque>
 
+#include <blackhole/attribute.hpp>
+
 #include "library/request_queue.h"
 #include "library/protocol.hpp"
 

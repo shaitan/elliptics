@@ -19,6 +19,8 @@
 
 #include "procfs_provider.hpp"
 
+#include <blackhole/attribute.hpp>
+
 #include "rapidjson/writer.h"
 #include "rapidjson/stringbuffer.h"
 #include "elliptics/interface.h"

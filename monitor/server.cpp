@@ -22,6 +22,8 @@
 
 #include <chrono>
 
+#include <blackhole/attribute.hpp>
+
 #include "library/elliptics.h"
 #include "library/logger.hpp"
 #include "http_miscs.hpp"

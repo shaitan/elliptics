@@ -17,6 +17,9 @@
  * along with Elliptics.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
+
 #include <sys/epoll.h>
 #include <sys/types.h>
 #include <sys/stat.h>

@@ -36,6 +36,7 @@
 #include <unistd.h>
 
 #include "elliptics.h"
+#include "backend.h"
 #include "request_queue.h"
 #include "monitor/monitor.h"
 

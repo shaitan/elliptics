@@ -17,6 +17,8 @@
 #include "test_base.hpp"
 #include "../cache/cache.hpp"
 
+#include "library/backend.h"
+
 #include <list>
 #include <stdexcept>
 

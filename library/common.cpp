@@ -1,4 +1,5 @@
 #include "elliptics.h"
+#include "backend.h"
 
 int dnet_get_backend_ids(const dnet_backend_info_manager *backends, size_t **backend_ids, size_t *num_backend_ids)
 {

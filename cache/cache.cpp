@@ -20,6 +20,8 @@
 
 #include <fstream>
 
+#include <kora/config.hpp>
+
 #include "library/protocol.hpp"
 
 #include "monitor/monitor.h"

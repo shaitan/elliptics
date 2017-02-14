@@ -48,7 +48,6 @@ typedef unsigned short u_short;
 #include "atomic.h"
 #include "lock.h"
 #include "route.h"
-#include "backend.h"
 
 #include "elliptics/packet.h"
 #include "elliptics/interface.h"
@@ -452,6 +451,7 @@ void dnet_io_cleanup(struct dnet_node *n);
 
 void dnet_io_req_free(struct dnet_io_req *r);
 
+struct dnet_backend_info_manager;
 struct dnet_config_data {
 	void (*destroy_config_data) (struct dnet_config_data *);
 
@@ -464,7 +464,7 @@ struct dnet_config_data {
 	int daemon_mode;
 	int parallel_start;
 
-	dnet_backend_info_manager *backends;
+	struct dnet_backend_info_manager *backends;
 };
 
 struct dnet_config_data *dnet_config_data_create();

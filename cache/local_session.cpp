@@ -18,6 +18,9 @@
  */
 
 #include "local_session.h"
+
+#include <blackhole/attribute.hpp>
+
 #include "library/logger.hpp"
 
 using namespace ioremap::elliptics;
