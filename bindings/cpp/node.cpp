@@ -21,6 +21,8 @@
 #include <sstream>
 #include <vector>
 
+#include <blackhole/wrapper.hpp>
+
 #include "node_p.hpp"
 #include "library/elliptics.h"
 

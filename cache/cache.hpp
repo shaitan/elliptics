@@ -398,6 +398,7 @@ typedef std::tuple<write_status, int, cache_item> write_response_t;
 typedef std::tuple<int, cache_item> read_response_t;
 
 class slru_cache_t;
+class cache_config;
 
 class cache_manager {
 public:

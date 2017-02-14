@@ -2,6 +2,7 @@
 #include "library/protocol.hpp"
 #include "library/elliptics.h"
 
+#include <algorithm>
 #include <fcntl.h>
 #include <queue>
 

@@ -19,6 +19,8 @@
 
 #include "statistics.hpp"
 
+#include <blackhole/attribute.hpp>
+
 #include "monitor.hpp"
 #include "cache/cache.hpp"
 #include "elliptics/backends.h"

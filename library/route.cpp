@@ -1,4 +1,7 @@
 #include "route.h"
+
+#include <blackhole/attribute.hpp>
+
 #include "elliptics.h"
 #include <elliptics/utils.hpp>
 #include "logger.hpp"

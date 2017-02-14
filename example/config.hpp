@@ -6,8 +6,9 @@
 
 #include "elliptics/session.hpp"
 
-
 #include "library/logger.hpp"
+#include "library/backend.h"
+
 #include "monitor/monitor.hpp"
 
 namespace ioremap { namespace elliptics { namespace config {

@@ -17,6 +17,9 @@
  * along with Elliptics.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
+
 #include <sys/stat.h>
 #include <netinet/in.h>
 
@@ -27,6 +30,7 @@
 #include <signal.h>
 
 #include "elliptics.h"
+#include "backend.h"
 #include "elliptics/interface.h"
 #include "monitor/monitor.h"
 #include "monitor/measure_points.h"

@@ -26,6 +26,7 @@
 #include <signal.h>
 
 #include "elliptics.h"
+#include "backend.h"
 #include "elliptics/interface.h"
 #include "monitor/monitor.h"
 
