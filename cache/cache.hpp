@@ -21,6 +21,7 @@
 #include <vector>
 #include <mutex>
 #include <thread>
+#include <cstdarg>
 #include <cstdio>
 #include <limits>
 #include <atomic>

@@ -34,20 +34,12 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
-#include <eblob/blob.h>
-
-#ifndef HAVE_UCHAR
-typedef unsigned char u_char;
-typedef unsigned short u_short;
-#endif
-
 #include "list.h"
 
 #include "rbtree.h"
 
 #include "atomic.h"
 #include "lock.h"
-#include "route.h"
 
 #include "elliptics/packet.h"
 #include "elliptics/interface.h"
@@ -470,6 +462,7 @@ struct dnet_config_data {
 struct dnet_config_data *dnet_config_data_create();
 void dnet_config_data_destroy(struct dnet_config_data *data);
 
+struct dnet_route_list;
 struct dnet_node
 {
 	struct dnet_transform	transform;
@@ -497,7 +490,7 @@ struct dnet_node
 
 	atomic_t		trans;
 
-	dnet_route_list		*route;
+	struct dnet_route_list	*route;
 	struct dnet_net_state	*st;
 
 	int			error;

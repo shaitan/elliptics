@@ -5,6 +5,7 @@
 #include "bindings/cpp/session_internals.hpp"
 #include "library/logger.hpp"
 #include "library/protocol.hpp"
+#include "library/route.h"
 
 #include <fstream>
 #include <memory>
