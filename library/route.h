@@ -46,7 +46,7 @@ private:
 
 extern "C" {
 #else // __cplusplus
-typedef struct dnet_route_list_t dnet_route_list;
+typedef struct dnet_route_list dnet_route_list;
 #endif // __cplusplus
 
 dnet_route_list *dnet_route_list_create(struct dnet_node *node);

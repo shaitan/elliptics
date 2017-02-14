@@ -23,6 +23,7 @@
 #include <sys/mman.h>
 #include <sys/wait.h>
 
+#include <stdarg.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
