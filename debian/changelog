@@ -1,3 +1,9 @@
+elliptics (2.27.0.7) unstable; urgency=medium
+
+  * srw: update to cocaine v0.12.12
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Fri, 03 Mar 2017 21:18:57 +0300
+
 elliptics (2.27.0.6) unstable; urgency=medium
 
   * routes: prevent adding route to lost connection
