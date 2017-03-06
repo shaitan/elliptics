@@ -3,7 +3,7 @@
 
 Summary:	Distributed hash table storage
 Name:		elliptics
-Version:	2.26.11.0
+Version:	2.27.1.0
 Release:	1%{?dist}
 
 License:	GPLv2+
@@ -14,10 +14,10 @@ BuildRoot:	%{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 
 BuildRequires:	python-devel
 BuildRequires:	eblob-devel >= 0.23.11
-BuildRequires:  libblackhole-devel = 0.2.4
+BuildRequires:  libblackhole-devel = 1.3.0
 BuildRequires:	libev-devel libtool-ltdl-devel
 BuildRequires:	cmake msgpack-devel python-msgpack
-BuildRequires:	handystats >= 1.10.2
+BuildRequires:	handystats >= 1.11.0
 
 %define boost_ver %{nil}
 
@@ -55,7 +55,7 @@ Elliptics client library (C++/Python bindings)
 Summary:	Elliptics library C++ binding development headers and libraries
 Group:		Development/Libraries
 Requires:	%{name} = %{version}-%{release}
-Requires:	libblackhole-devel = 0.2.4
+Requires:	libblackhole-devel = 1.3.0
 
 
 %description client-devel
@@ -131,6 +131,212 @@ rm -rf %{buildroot}
 
 
 %changelog
+* Mon Mar 06 2017 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.1.0
+- srw: RIP
+- srw: update to cocaine v0.12.12
+* routes: prevent adding route to lost connection
+- fix: remove references to removed submodule
+- indexes: RIP
+- fix: add lock around running throw local route table
+- monitor: cleanup code
+- monitor: refactor http server and add final log
+- logs: move RECV log to info level and add timings
+- Update srw to cocaine 0.12.11
+- recovery: refactoring after latest changes
+- recovery: removed unnecessary code, that removes uncommitted keys from dc and server-send recoveries
+- recovery: use common process_merged_keys() in both dump and non-dump recoveries
+- recovery: remove expired uncommitted keys
+- recovery: use CAS with data timestamp for remove operations
+- newapi: remove CAS with data timestamp fixes
+- Fix timestamp cas for records without ext header
+- newapi: remove CAS with data timestamp
+- tests: added chunked server-send test to new api tests
+- recovery: added test that reproduces bug with incorrect chunked server_send
+- recovery: fixed bug with incorrect chunked server_send
+- fix some issues found by clang static analyzer
+- fix compilation errors on clang
+- network: bugfix: no io-thread awake full_wait condvar, while net thread waits for it
+- dc recovery: update status on server_send error
+- recovery: use --data-flow-rate parameters in adjustment of timeout for server-send
+- recovery: use old dc recovery only on ENXIO errors
+- Add test for overridden in backend queue timeout
+- Add queue_timeout to backends' config in monitor
+- Allow to specify queue_timeout for a backend
+- recovery: use cas_timestamp on write
+- dc recovery: set correct json_timestamp on write
+- recovery: enforce node destruction in main thread to ensure that all io-threads are completed before node destruction
+- Update to blackhole v1.3.0-1
+- fix(debian): update control to proper versions of cocaine
+- refact(cocaine): adapt to 0.12.10
+- recovery: use elliptics iterator error codes in stats
+- recovery: optimizations
+- ioserv: fork process before logger initialization
+- recovery: dc: sort bucket items by physical order before server send
+- blob_id & data_offset returned via a new protocol, used in a modified IteratorResultContainer
+- recovery: merge: removed obsolete Recovery code; used server-send, copy-iter everywhere
+- server-send: check that moving keys to itself doesn't permitted
+- recovery: dump corrupted keys into {tmp_dir}/corrupted_keys file
+- config: allow to put handystats config inside monitor object
+- cache: allow to set cache size in kilo-, mega- and etc. bytes
+- logs: decreas number of logs printed on info level
+- recovery: retry only timeouted or broken connection attempts
+- logger: cleanup elliptics/logger.hpp
+- merge elliptics_cpp into elliptics_client
+- logger: add const to logger_ref
+- logger: set 'flush' to 1 message for file logger
+- deprecate indexes subsystem
+- net: do not choose route table check victims
+- fix session.hpp code style
+- using external sort for iterator result container sorting
+- recovery: fail immediately when some iteration is failed
+- logger: use local timezone in timestamp specification
+- logger: update to blackhole v1.2.1
+- separate package and protocol versions
+- logger: migrate to blackhole v1
+- debian: temporary rename elliptics-client to elliptics-client2.27
+- fix using improper index
+- cache: fix truncating data after sync
+- net: add send_limit option
+- localnode: add tracing support
+- srw: better headers logging in tests
+- srw: connect tracing mechanics of elliptics and cocaine
+- localnode: accept {c,io}flags by all methods
+- localnode: set DNET_FLAGS_NOLOCK for lookups
+- localnode: handle exceptions for cocaine::deferred method calls
+- recovery: added removed_uncommitted_keys & removed_corrupted_keys stats to 'recover' section
+- forward: add ability to set forward node in session
+- client: remove boost asio symbols from elliptics_client
+- recovery: added 'commands' section in statistics
+- recovery: do not skip big keys in dc recovery via server send
+- debian: fixed elliptics-client depends on libblackhole1
+- debian: add elliptics_node.hpp to elliptics-dev
+- srw: use new cocaine repository interface
+- srw: adapt to cocaine-v12.9, blackhole-v1.0.0rc1
+- debian: remove install files of cocaine-plugin-elliptics
+- cache: small fix in clear_json_timestamp()
+- dnet_client: --json/--json-file and or --data/--data-file can be omitted
+- iter: reset size of uncommitted records because it is unknown.
+- tests: update newapi iterator tests for testing 7a48176
+- packages: add libblackhole1 to elliptics and elliptics-client depends
+- iterator: add to DNET_FLAGS_NOLOCK cflags for iterator
+- net: fix addicting net thread on sending responses to one state
+- remove useless #if #include #else #include #endif
+- cache: replace raw_data_t by std::string
+- Cleanup code
+- cache: add json and json_timestamp to data_t
+- cache: cleanup code
+- cache: refactoring
+- cache: handling of WRITE_NEW command with json
+- backend: fix in log message for WRITE_NEW: data_offset -> data_size
+- python: wrap python_async_result::iterator to free GIL in long operations
+- cache: handling of READ_NEW & LOOKUP_NEW command with json
+- tests: added cache tests to new api tests
+- cocaine: remove libcocaine-plugin-elliptics
+- session: added description of set_cache_lifetime()
+- stats: update commands and top statistics for {READ,WRITE}_NEW
+- tests: fixed bad cast of err in locks test
+- oplock: lock keys during server-send
+- server-send: write data by chunks
+- server-send: use congestion_control_monitor for async writes with dynamic batch size
+- dnet_client: add '-T/--trace-id' option to all commands
+- dnet_client: add new subcommands
+- dnet_client: refactor the code
+- python: add docstrings to elliptics.newapi.Session methods
+- git: add cocaine-plugin-elliptics temporary build files to .gitignore
+- python: add update_json to elliptics.newapi.Session
+- depends: update depends on libcocaine-dev and libcocaine-core3 to '>= 0.12.8.15'
+- pytests: fix srw tests which occasionally fails
+- tests: fix running pytests
+- build: fix blackhole upper limit
+- build: stick to cocaine-v12.8 and blackhole-v1.0beta1 (temporary)
+- debian: add Suggests dependencies to elliptics-dev
+- recovery: fix hanging process of multiprocessing.Manager
+- tests: new target `test_python`
+- stylistic changes (tests/, srw/, cocaine/)
+- localnode: use newapi, read() returns record_info, write() not accepts offset
+- srw: link with new cocaine-io-util shared lib
+- srw: improve formatting in worker errors logging
+- srw: more specific logging for errors raised in srw->process
+- srw: comments and spell checking
+- srw: change log level to debug in tests
+- srw: pass sph to worker in cocaine invocation headers
+- srw: add test for dispatch errors (unknown app, unknown event)
+- pytests: fix failing monitor tests
+- Remove log on session destroy
+- debian: update cocaine depepdencies to 0.12.8
+- srw: adapt to cocaine-v12.8
+- srw: temporary fix for cocaine-v12.7
+- srw: basic adaptation to cocaine-v12.7
+- tests: fix race in reconnect test
+- tests: fix sessions and server nodes lifetime issues
+- tests: remove empty file
+- tests: test.cpp falls out of test naming pattern
+- srw: mark destroy phase in the log
+- server: mark the end of server node destruction
+- server: distinguish config errors from others
+- debian: bump minimum blackhole version (>= 1.0.0-0alpha10)
+- debian: update dependencies, make dependency on cocaine rigid for now
+- build: rename target elliptics_cocaine to elliptics_srw
+- build: drop direct dependency on libelliptics_cocaine from libelliptics
+- tests: fix test output out of sync problem (observable when running on build farm)
+- tests: impove test output readability
+- tests: fix target name typo: dnet_queue_timeoue_test
+- tests: safer way to set environment variables
+- cleanup, comments and spelling fixes
+- tests: srw_test.cpp: `sess` renamed to `client`
+- tests: proper multinode support for srw and srw apps
+- tests: target `test` should depend on `core_python` (elliptics python binding)
+- tests: fix python srw tests (fixture cleanup and proper call order)
+- build: use proper cmake construct for relative paths
+- tests: framework little cleanup
+- tests: remove libev, add binding/cpp dependencies
+- srw: drop test app dependency on cocaine-core (cocaine-framework-native had stopped to force it)
+- srw: refactor and adapt to cocaine-v12, blackhole-v1
+- srw: move init/fini methods out of dnet.c completely to srw.cpp
+- localnode: adapt to cocaine-v12, blackhole-v1
+- foreign/asio: new submodule moved out of cocaine/ to the top level
+- exec_context: add set_flags() method
+- make methods to create exec_context accessible to srw module
+- build: search for msgpack once only
+- build: full library name in cmake module for cocaine-framework-native
+- logging: little cleanup and double-free error avoidence
+- comment texts correction
+- plugins: adapt to cocaine-v12, blackhole-v1
+- Add test for 'initial_config' in monitor statistics
+- monitor: add 'initial_config' to enabled backend's json
+- config: use libkora-util
+- recovery: use absolute path for dumping stats from monitor
+- python: remove unused 'server' argument from test functions
+- Add json_timestamp to elliptics.newapi.Session
+- Check RO status of backend on WRITE_NEW
+- newapi: write CAS with data & json timestamps
+- Add multi option '--user-flags' to dnet_client iterate
+- python: Fix cloning newapi.Session
+- Fix using data after free
+- Fix returning wrong error status by plain_write and commit
+- python: return None in read/lookup result entry's property on error
+- newapi: overloaded get_timestamp() and added reset_timestamp() for interface consistancy
+- newapi: fixed non-empty json timestamp on empty json
+- Remove updating json_capacity by WRITE_NEW without DNET_IO_FLAGS_PREPARE
+- added adjustable json_timestamp to newapi session
+- mask annoying warning happening at the deep of blackhole v0.2
+- move blackhole-dev from deps to submodule
+- tests: fix compilation warning in server-send tests
+- tests: add test for removing backend
+- Provide 'remove_backend' via Python binding
+- Provide 'remove_backend' via C++ binding
+- Add 'remove' backend command
+- docs: add comments to session methods
+- Cleanup code by removing useless 'state' argument
+- Fix typos
+- tests: added description of m_serializable var in config_data class
+- ioserv: fixed incorrect detection of backends count in dnet_server_io_init
+- tests: backends: add backend to ioserv.conf after ioserv launch and enable this backend
+- ioserv: dynamically parse & insert backend on DNET_BACKEND_ENABLE command
+- json: Add 'trans' to 'finished' logs for {READ,WRITE}_NEW
+- Add test for lookuping corrupted key
+- Validate record on lookup if its checksum is requested
+
 * Fri May 13 2016 Evgeniy Polyakov <zbr@ioremap.net> - 2.26.11.0
 - trans: always set @wait_ts at allocation time to node's wait timeout
 - 	it will be overwritten if there is session's timeout
