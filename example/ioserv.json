@@ -32,9 +32,7 @@
 		],
 		"wait_timeout": 60,
 		"check_timeout": 60,
-		"io_thread_num": 16,
 		"stall_count": 3,
-		"nonblocking_io_thread_num": 16,
 		"net_thread_num": 4,
 		"daemon": false,
 		"parallel": true,
@@ -48,6 +46,14 @@
 		},
 		"monitor": {
 			"port":20000
+		},
+		"io_pools": {
+			"0": {
+				"thread_num": 16,
+				"nonblocking_thread_num": 16
+			},
+			"1": {},
+			"2": null
 		}
 	},
 	"backends": [

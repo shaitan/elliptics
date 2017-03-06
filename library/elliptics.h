@@ -242,6 +242,8 @@ int dnet_node_reset_log(struct dnet_node *n);
 enum dnet_log_level dnet_node_get_verbosity(struct dnet_node *n);
 int dnet_node_set_verbosity(struct dnet_node *n, enum dnet_log_level level);
 
+uint64_t dnet_node_get_queue_timeout(struct dnet_node *node);
+
 int dnet_search_range(struct dnet_node *n, struct dnet_id *id,
 		struct dnet_raw_id *start, struct dnet_raw_id *next);
 
@@ -363,16 +365,18 @@ static inline void list_stat_size_decrease(struct list_stat *st, int num) {
 	st->list_size -= num;
 }
 
-struct dnet_backend_io;
+struct dnet_request_queue;
 struct dnet_work_pool {
-	struct dnet_node	*n;
-	struct dnet_backend_io	*io;
-	int			mode;
-	int			num;
-	pthread_mutex_t		lock;
-	struct dnet_work_io	*wio_list;
+	struct dnet_node		*n;
+	char				pool_id[6];  // reserve 10 bytes for thread_index from 16 bytes limit
+					             // (http://man7.org/linux/man-pages/man3/pthread_setname_np.3.html)
+	int				need_exit;
+	int				mode;
+	int				num;
+	pthread_mutex_t			lock;
+	struct dnet_work_io		*wio_list;
 
-	void			*request_queue;
+	struct dnet_request_queue	*request_queue;
 };
 
 struct dnet_work_pool_place
@@ -383,47 +387,36 @@ struct dnet_work_pool_place
 };
 
 void dnet_work_pool_exit(struct dnet_work_pool_place *place);
-int dnet_work_pool_alloc(struct dnet_work_pool_place *place, struct dnet_node *n,
-	struct dnet_backend_io *io, int num, int mode, void *(* process)(void *));
+int dnet_work_pool_alloc(struct dnet_work_pool_place *place,
+                         struct dnet_node *n,
+                         int num,
+                         int mode,
+                         const char *pool_id,
+                         void *(*process)(void *));
 int dnet_work_pool_place_init(struct dnet_work_pool_place *pool);
+void dnet_work_pool_stop(struct dnet_work_pool_place *place);
 void dnet_work_pool_place_cleanup(struct dnet_work_pool_place *pool);
 
-struct dnet_io_pool
-{
+struct dnet_io_pool {
 	struct dnet_work_pool_place	recv_pool;
 	struct dnet_work_pool_place	recv_pool_nb;
 };
 
-struct dnet_backend_io
-{
-	int				need_exit;
-	int				read_only;
-	uint32_t			delay; // delay in ms for every command
-	size_t				backend_id;
-	struct dnet_io_pool		pool;
-	struct dnet_backend_callbacks	*cb;
-	void				*cache;
-	void				*command_stats;
-	uint64_t			queue_timeout;
-};
+void dnet_check_io_pool(struct dnet_io_pool *io, uint64_t *queue_size, uint64_t *threads_count);
 
-int dnet_backend_command_stats_init(struct dnet_backend_io *backend_io);
-void dnet_backend_command_stats_cleanup(struct dnet_backend_io *backend_io);
-void dnet_backend_command_stats_update(struct dnet_node *node, struct dnet_backend_io *backend_io,
-		struct dnet_cmd *cmd, uint64_t size, int handled_in_cache, int err, long diff);
-
+struct dnet_backends_manager;
+struct dnet_io_pools_manager;
 struct dnet_io {
 	int			need_exit;
 
 	int			net_thread_num, net_thread_pos;
 	struct dnet_net_io	*net;
 
-
-	struct dnet_backend_io	**backends;
-	size_t			backends_count;
-	pthread_rwlock_t	backends_lock;
+	struct dnet_backends_manager	*backends_manager;
 
 	struct dnet_io_pool	pool;
+
+	struct dnet_io_pools_manager	*pools_manager;
 
 	// condition variable for waiting when io pools are able to process packets
 	pthread_mutex_t		full_lock;
@@ -443,7 +436,6 @@ void dnet_io_cleanup(struct dnet_node *n);
 
 void dnet_io_req_free(struct dnet_io_req *r);
 
-struct dnet_backend_info_manager;
 struct dnet_config_data {
 	void (*destroy_config_data) (struct dnet_config_data *);
 
@@ -455,16 +447,12 @@ struct dnet_config_data {
 	struct dnet_config cfg_state;
 	int daemon_mode;
 	int parallel_start;
-
-	struct dnet_backend_info_manager *backends;
 };
 
 struct dnet_config_data *dnet_config_data_create();
-void dnet_config_data_destroy(struct dnet_config_data *data);
 
 struct dnet_route_list;
-struct dnet_node
-{
+struct dnet_node {
 	struct dnet_transform	transform;
 
 	int			need_exit;
@@ -616,51 +604,48 @@ struct dnet_session {
 	int			nsize;
 };
 
-static inline int dnet_counter_init(struct dnet_node *n)
-{
+static inline int dnet_counter_init(struct dnet_node *n) {
 	memset(&n->counters, 0, __DNET_CMD_MAX * 2 * sizeof(struct dnet_stat_count));
 	return dnet_lock_init(&n->counters_lock);
 }
 
-static inline void dnet_counter_destroy(struct dnet_node *n)
-{
+static inline void dnet_counter_destroy(struct dnet_node *n) {
 	return dnet_lock_destroy(&n->counters_lock);
 }
 
-static inline void dnet_counter_inc(struct dnet_node *n, int counter, int err)
-{
+static inline void dnet_counter_inc(struct dnet_node *n, int counter, int err) {
 	if (counter >= __DNET_CMD_MAX * 2)
 		counter = DNET_CMD_UNKNOWN + __DNET_CMD_MAX;
 
 	dnet_lock_lock(&n->counters_lock);
-	if (!err)
+	if (!err) {
 		n->counters[counter].count++;
-	else
+	} else {
 		n->counters[counter].err++;
+	}
 	dnet_lock_unlock(&n->counters_lock);
 }
 
-static inline void dnet_counter_set(struct dnet_node *n, int counter, int err, int64_t val)
-{
+static inline void dnet_counter_set(struct dnet_node *n, int counter, int err, int64_t val) {
 	if (counter >= __DNET_CMD_MAX * 2)
 		counter = DNET_CMD_UNKNOWN + __DNET_CMD_MAX;
 
 	dnet_lock_lock(&n->counters_lock);
-	if (!err)
+	if (!err) {
 		n->counters[counter].count = val;
-	else
+	} else {
 		n->counters[counter].err = val;
+	}
 	dnet_lock_unlock(&n->counters_lock);
 }
 
 struct dnet_trans;
-int __attribute__((weak)) dnet_process_cmd_raw(struct dnet_backend_io *backend,
-                                               struct dnet_net_state *st,
+int __attribute__((weak)) dnet_process_cmd_raw(struct dnet_net_state *st,
                                                struct dnet_cmd *cmd,
                                                void *data,
                                                int recursive,
                                                long queue_time);
-int dnet_process_recv(struct dnet_backend_io *backend, struct dnet_net_state *st, struct dnet_io_req *r);
+int dnet_process_recv(struct dnet_net_state *st, struct dnet_io_req *r);
 void dnet_trans_update_timestamp(struct dnet_trans *t);
 
 int dnet_sendfile(struct dnet_net_state *st, int fd, uint64_t *offset, uint64_t size);
@@ -685,8 +670,7 @@ enum dnet_join_state {
 
 int __attribute__((weak)) dnet_state_join(struct dnet_net_state *st);
 
-struct dnet_trans
-{
+struct dnet_trans {
 	struct rb_node			trans_entry;
 	struct rb_node			timer_entry;
 
@@ -720,14 +704,12 @@ struct dnet_trans *dnet_trans_alloc(struct dnet_node *n, uint64_t size);
 int dnet_trans_alloc_send_state(struct dnet_session *s, struct dnet_net_state *st, struct dnet_trans_control *ctl);
 int dnet_trans_timer_setup(struct dnet_trans *t);
 
-static inline struct dnet_trans *dnet_trans_get(struct dnet_trans *t)
-{
+static inline struct dnet_trans *dnet_trans_get(struct dnet_trans *t) {
 	atomic_inc(&t->refcnt);
 	return t;
 }
 
-static inline void dnet_trans_put(struct dnet_trans *t)
-{
+static inline void dnet_trans_put(struct dnet_trans *t) {
 	if (t && atomic_dec_and_test(&t->refcnt))
 		dnet_trans_destroy(t);
 }
@@ -787,32 +769,7 @@ int dnet_data_map(struct dnet_map_fd *map);
 int dnet_data_map_rw(struct dnet_map_fd *map);
 void dnet_data_unmap(struct dnet_map_fd *map);
 
-void *dnet_cache_init(struct dnet_node *n, struct dnet_backend_io *backend, const void *config);
-void dnet_cache_cleanup(void *);
-int dnet_cmd_cache_io(struct dnet_backend_io *backend,
-                      struct dnet_net_state *st,
-                      struct dnet_cmd *cmd,
-                      struct dnet_io_attr *io,
-                      char *data,
-                      struct dnet_cmd_stats *cmd_stats);
-int dnet_cmd_cache_io_new(struct dnet_backend_io *backend,
-                          struct dnet_net_state *st,
-                          struct dnet_cmd *cmd,
-                          void *data,
-                          struct dnet_cmd_stats *cmd_stats);
-int dnet_cmd_cache_lookup(struct dnet_backend_io *backend,
-                          struct dnet_net_state *st,
-                          struct dnet_cmd *cmd,
-                          struct dnet_cmd_stats *cmd_stats);
-
 int dnet_ids_update(struct dnet_node *n, int update_local, const char *file, struct dnet_addr *cfg_addrs, uint32_t backend_id);
-
-int __attribute__((weak)) dnet_remove_local_new(struct dnet_backend_io *backend,
-						struct dnet_node *n,
-						struct dnet_id *id,
-						void *packet,
-						size_t packet_size);
-int __attribute__((weak)) dnet_remove_local(struct dnet_backend_io *backend, struct dnet_node *n, struct dnet_id *id);
 
 /*
  * Internal iterator state

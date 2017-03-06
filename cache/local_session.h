@@ -25,56 +25,60 @@
 
 #include <chrono>
 
-class local_session
-{
+struct dnet_backend;
+
+namespace ioremap { namespace elliptics {
+class dnet_remove_request;
+}} /* namespace ioremap::elliptics */
+
+class local_session {
 	ELLIPTICS_DISABLE_COPY(local_session)
-	public:
-		local_session(dnet_backend_io *backend, dnet_node *node);
-		~local_session();
+public:
+	local_session(dnet_backend &backend, dnet_node *node);
+	~local_session();
 
-		void set_ioflags(uint32_t flags);
-		void set_cflags(uint64_t flags);
+	void set_ioflags(uint32_t flags);
+	void set_cflags(uint64_t flags);
 
-		int backend_id() const;
+	int backend_id() const;
 
-		ioremap::elliptics::data_pointer read(const dnet_id &id, int *errp);
-		ioremap::elliptics::data_pointer read(const dnet_id &id, uint64_t *user_flags, dnet_time *timestamp, int *errp);
-		int write(const dnet_id &id, const ioremap::elliptics::data_pointer &data);
-		int write(const dnet_id &id, const char *data, size_t size);
-		int write(const dnet_id &id, const char *data, size_t size, uint64_t user_flags, const dnet_time &timestamp);
-		ioremap::elliptics::data_pointer lookup(const dnet_cmd &cmd, int *errp);
-		int remove(const dnet_id &id);
+	ioremap::elliptics::data_pointer read(const dnet_id &id, int *errp);
+	ioremap::elliptics::data_pointer read(const dnet_id &id, uint64_t *user_flags, dnet_time *timestamp, int *errp);
 
-	private:
-		void clear_queue(int *errp = NULL);
+	int write(const dnet_id &id, const ioremap::elliptics::data_pointer &data);
+	int write(const dnet_id &id, const char *data, size_t size);
+	int write(const dnet_id &id, const char *data, size_t size, uint64_t user_flags, const dnet_time &timestamp);
 
-		dnet_backend_io *m_backend;
-		dnet_net_state *m_state;
-		uint32_t m_ioflags;
-		uint64_t m_cflags;
+	ioremap::elliptics::data_pointer lookup(const dnet_cmd &cmd, int *errp);
+
+	int remove(const struct dnet_id &id);
+	int remove_new(const struct dnet_id &id, const ioremap::elliptics::dnet_remove_request &request);
+
+private:
+	void clear_queue(int *errp = NULL);
+
+	dnet_backend &m_backend;
+	dnet_net_state *m_state;
+	uint32_t m_ioflags;
+	uint64_t m_cflags;
 };
 
-class elliptics_timer
-{
+class elliptics_timer {
 public:
-
 	typedef std::chrono::time_point<std::chrono::system_clock> time_point_t;
 
-	elliptics_timer()
-	{
+	elliptics_timer() {
 		m_last_time_chrono = std::chrono::system_clock::now();
 	}
 
-	template<class Period = std::chrono::milliseconds>
-	long long int elapsed() const
-	{
+	template <class Period = std::chrono::milliseconds>
+	long long int elapsed() const {
 		time_point_t time_chrono = std::chrono::system_clock::now();
 		return delta<Period>(m_last_time_chrono, time_chrono);
 	}
 
-	template<class Period = std::chrono::milliseconds>
-	long long int restart()
-	{
+	template <class Period = std::chrono::milliseconds>
+	long long int restart() {
 		time_point_t time_chrono = std::chrono::system_clock::now();
 		std::swap(m_last_time_chrono, time_chrono);
 
@@ -82,10 +86,9 @@ public:
 	}
 
 private:
-	template<class Period>
-	long long int delta(const time_point_t& start, const time_point_t& end) const
-	{
-		return (std::chrono::duration_cast<Period> (end - start)).count();
+	template <class Period>
+	long long int delta(const time_point_t &start, const time_point_t &end) const {
+		return (std::chrono::duration_cast<Period>(end - start)).count();
 	}
 
 	time_point_t m_last_time_chrono;

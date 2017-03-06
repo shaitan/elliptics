@@ -64,8 +64,7 @@
 #error "EBLOB_ID_SIZE must be equal to DNET_ID_SIZE"
 #endif
 
-static int eblob_read_params_compare(const void *p1, const void *p2)
-{
+static int eblob_read_params_compare(const void *p1, const void *p2) {
 	const struct eblob_read_params *r1 = p1;
 	const struct eblob_read_params *r2 = p2;
 	int ret;
@@ -83,7 +82,11 @@ static int eblob_read_params_compare(const void *p1, const void *p2)
 }
 
 /* Pre-callback that formats arguments and calls ictl->callback */
-static int blob_iterate_callback_common(struct eblob_disk_control *dc, int fd, uint64_t data_offset, void *priv, int no_meta) {
+static int blob_iterate_callback_common(struct eblob_disk_control *dc,
+                                        int fd,
+                                        uint64_t data_offset,
+                                        void *priv,
+                                        int no_meta) {
 	struct dnet_iterator_ctl *ictl = priv;
 	struct dnet_ext_list_hdr ehdr;
 	struct dnet_ext_list elist;
@@ -169,8 +172,11 @@ static int blob_iterate_callback_common(struct eblob_disk_control *dc, int fd, u
  * will empty timestamp.
  */
 static int blob_iterate_callback_without_meta(struct eblob_disk_control *dc,
-		struct eblob_ram_control *rctl __unused,
-		int fd, uint64_t data_offset, void *priv, void *thread_priv __unused) {
+                                              struct eblob_ram_control *rctl __unused,
+                                              int fd,
+                                              uint64_t data_offset,
+                                              void *priv,
+                                              void *thread_priv __unused) {
 	return blob_iterate_callback_common(dc, fd, data_offset, priv, 1);
 }
 
@@ -178,8 +184,11 @@ static int blob_iterate_callback_without_meta(struct eblob_disk_control *dc,
  * With no_meta=0 blob_iterate_callback_common will read ext header from blob.
  */
 static int blob_iterate_callback_with_meta(struct eblob_disk_control *dc,
-		struct eblob_ram_control *rctl __unused,
-		int fd, uint64_t data_offset, void *priv, void *thread_priv __unused) {
+                                           struct eblob_ram_control *rctl __unused,
+                                           int fd,
+                                           uint64_t data_offset,
+                                           void *priv,
+                                           void *thread_priv __unused) {
 	return blob_iterate_callback_common(dc, fd, data_offset, priv, 0);
 }
 
@@ -191,9 +200,7 @@ static int blob_lookup(struct eblob_backend *b, struct eblob_key *key, struct eb
 	return err;
 }
 
-static int blob_write(struct eblob_backend_config *c, void *state,
-		struct dnet_cmd *cmd, void *data)
-{
+static int blob_write(struct eblob_backend_config *c, void *state, struct dnet_cmd *cmd, void *data) {
 	struct dnet_ext_list elist;
 	struct dnet_io_attr *io = data;
 	struct eblob_backend *b = c->eblob;
@@ -371,9 +378,7 @@ err_out_exit:
 	return err;
 }
 
-
-static int blob_read(struct eblob_backend_config *c, void *state, struct dnet_cmd *cmd, void *data, int last)
-{
+static int blob_read(struct eblob_backend_config *c, void *state, struct dnet_cmd *cmd, void *data, int last) {
 	struct dnet_ext_list elist;
 	struct dnet_io_attr *io = data;
 	struct eblob_backend *b = c->eblob;
@@ -540,15 +545,13 @@ struct eblob_read_range_priv {
 	uint32_t		flags;
 };
 
-static int blob_cmp_range_request(const void *req1, const void *req2)
-{
+static int blob_cmp_range_request(const void *req1, const void *req2) {
 	return memcmp(((struct eblob_range_request *)(req1))->record_key,
 	              ((struct eblob_range_request *)(req2))->record_key,
 	              EBLOB_ID_SIZE);
 }
 
-static int blob_read_range_callback(struct eblob_range_request *req)
-{
+static int blob_read_range_callback(struct eblob_range_request *req) {
 	struct eblob_read_range_priv *p = req->priv;
 	struct dnet_io_attr io;
 	int err;
@@ -606,8 +609,7 @@ err_out_exit:
 	return err;
 }
 
-static int blob_del_range_callback(struct eblob_backend_config *c, struct eblob_range_request *req)
-{
+static int blob_del_range_callback(struct eblob_backend_config *c, struct eblob_range_request *req) {
 	struct eblob_key key;
 	int err;
 
@@ -623,8 +625,7 @@ static int blob_del_range_callback(struct eblob_backend_config *c, struct eblob_
 	return err;
 }
 
-static int blob_range_callback(struct eblob_range_request *req)
-{
+static int blob_range_callback(struct eblob_range_request *req) {
 	struct eblob_read_range_priv *p = req->priv;
 	int len = 10;
 	char start_id[len*2+1], end_id[len*2+1], cur_id[2*len+1];
@@ -670,8 +671,7 @@ err_out_exit:
 	return err;
 }
 
-static int blob_read_range(struct eblob_backend_config *c, void *state, struct dnet_cmd *cmd, void *data)
-{
+static int blob_read_range(struct eblob_backend_config *c, void *state, struct dnet_cmd *cmd, void *data) {
 	struct eblob_read_range_priv p;
 	struct dnet_io_attr *io = data;
 	struct eblob_backend *b = c->eblob;
@@ -722,18 +722,18 @@ static int blob_read_range(struct eblob_backend_config *c, void *state, struct d
 
 	for (i = start_from; i < p.keys_cnt; ++i) {
 		switch(cmd->cmd) {
-			case DNET_CMD_READ_RANGE:
-				if ((io->num > 0) && (i >= (io->num + start_from)))
-					break;
-				DNET_LOG_DEBUG(c->blog, "%s: EBLOB: blob-read-range: READ",
-				               dnet_dump_id_str(p.keys[i].record_key));
-				err = blob_read_range_callback(&p.keys[i]);
+		case DNET_CMD_READ_RANGE:
+			if ((io->num > 0) && (i >= (io->num + start_from)))
 				break;
-			case DNET_CMD_DEL_RANGE:
-				DNET_LOG_DEBUG(c->blog, "%s: EBLOB: blob-read-range: DEL",
-				               dnet_dump_id_str(p.keys[i].record_key));
-				err = blob_del_range_callback(c, &p.keys[i]);
-				break;
+			DNET_LOG_DEBUG(c->blog, "%s: EBLOB: blob-read-range: READ",
+			               dnet_dump_id_str(p.keys[i].record_key));
+			err = blob_read_range_callback(&p.keys[i]);
+			break;
+		case DNET_CMD_DEL_RANGE:
+			DNET_LOG_DEBUG(c->blog, "%s: EBLOB: blob-read-range: DEL",
+			               dnet_dump_id_str(p.keys[i].record_key));
+			err = blob_del_range_callback(c, &p.keys[i]);
+			break;
 		}
 
 		if (err) {
@@ -760,8 +760,7 @@ err_out_exit:
 	return err;
 }
 
-static int blob_del(struct eblob_backend_config *c, struct dnet_cmd *cmd)
-{
+static int blob_del(struct eblob_backend_config *c, struct dnet_cmd *cmd) {
 	struct eblob_key key;
 	int err;
 
@@ -776,8 +775,7 @@ static int blob_del(struct eblob_backend_config *c, struct dnet_cmd *cmd)
 	return err;
 }
 
-static int blob_file_info(struct eblob_backend_config *c, void *state, struct dnet_cmd *cmd)
-{
+static int blob_file_info(struct eblob_backend_config *c, void *state, struct dnet_cmd *cmd) {
 	struct eblob_backend *b = c->eblob;
 	struct eblob_key key;
 	struct eblob_write_control wc;
@@ -897,8 +895,7 @@ err_out_exit:
 	return err;
 }
 
-static int eblob_backend_lookup(struct dnet_node *n, void *priv, struct dnet_io_local *io)
-{
+static int eblob_backend_lookup(struct dnet_node *n, void *priv, struct dnet_io_local *io) {
 	struct eblob_backend_config *c = priv;
 	struct eblob_backend *b = c->eblob;
 	struct eblob_key key;
@@ -975,27 +972,25 @@ err_out_exit:
 	return err;
 }
 
-static int blob_defrag_status(void *priv)
-{
+static int blob_defrag_status(void *priv) {
 	struct eblob_backend_config *c = priv;
 
 	return eblob_defrag_status(c->eblob);
 }
 
-static int blob_defrag_start(void *priv, enum dnet_backend_defrag_level level)
-{
+static int blob_defrag_start(void *priv, enum dnet_backend_defrag_level level) {
 	struct eblob_backend_config *c = priv;
 	enum eblob_defrag_state defrag_level;
 	switch (level) {
-		case DNET_BACKEND_DEFRAG_FULL:
-			defrag_level = EBLOB_DEFRAG_STATE_DATA_SORT;
-			break;
-		case DNET_BACKEND_DEFRAG_COMPACT:
-			defrag_level = EBLOB_DEFRAG_STATE_DATA_COMPACT;
-			break;
-		default:
-			DNET_LOG_ERROR(c->blog, "DEFRAG: unknown defragmentation level: %d", (int)level);
-			return -ENOTSUP;
+	case DNET_BACKEND_DEFRAG_FULL:
+		defrag_level = EBLOB_DEFRAG_STATE_DATA_SORT;
+		break;
+	case DNET_BACKEND_DEFRAG_COMPACT:
+		defrag_level = EBLOB_DEFRAG_STATE_DATA_COMPACT;
+		break;
+	default:
+		DNET_LOG_ERROR(c->blog, "DEFRAG: unknown defragmentation level: %d", (int)level);
+		return -ENOTSUP;
 	}
 
 	int err = eblob_start_defrag_level(c->eblob, defrag_level);
@@ -1005,15 +1000,13 @@ static int blob_defrag_start(void *priv, enum dnet_backend_defrag_level level)
 	return err;
 }
 
-static int blob_defrag_stop(void *priv)
-{
+static int blob_defrag_stop(void *priv) {
 	struct eblob_backend_config *c = priv;
 
 	return eblob_stop_defrag(c->eblob);
 }
 
-static int blob_send_reply(void *state, struct dnet_cmd *cmd, struct dnet_iterator_response *re, int more)
-{
+static int blob_send_reply(void *state, struct dnet_cmd *cmd, struct dnet_iterator_response *re, int more) {
 	int err;
 
 	dnet_convert_iterator_response(re);
@@ -1024,8 +1017,7 @@ static int blob_send_reply(void *state, struct dnet_cmd *cmd, struct dnet_iterat
 	return err;
 }
 
-static int blob_send(struct eblob_backend_config *cfg, void *state, struct dnet_cmd *cmd, void *data)
-{
+static int blob_send(struct eblob_backend_config *cfg, void *state, struct dnet_cmd *cmd, void *data) {
 	struct eblob_backend *b = cfg->eblob;
 	struct dnet_server_send_request *req = data;
 	struct dnet_raw_id *ids;
@@ -1193,66 +1185,62 @@ static int eblob_backend_command_handler(void *state, void *priv, struct dnet_cm
 
 	// TODO(shaitan): pass @cmd_stats to all blob_* functions and update statistics by them
 	switch (cmd->cmd) {
-		case DNET_CMD_LOOKUP:
-			err = blob_file_info(c, state, cmd);
-			break;
-		case DNET_CMD_WRITE:
-			err = blob_write(c, state, cmd, data);
-			break;
-		case DNET_CMD_READ:
-			err = blob_read(c, state, cmd, data, 1);
-			break;
-		case DNET_CMD_READ_RANGE:
-		case DNET_CMD_DEL_RANGE:
-			err = blob_read_range(c, state, cmd, data);
-			break;
-		case DNET_CMD_DEL:
-			err = blob_del(c, cmd);
-			break;
-		case DNET_CMD_SEND:
-			err = blob_send(c, state, cmd, data);
-			break;
-		case DNET_CMD_LOOKUP_NEW:
-			err = blob_file_info_new(c, state, cmd);
-			break;
-		case DNET_CMD_READ_NEW:
-			err = blob_read_new(c, state, cmd, data, cmd_stats);
-			break;
-		case DNET_CMD_WRITE_NEW:
-			err = blob_write_new(c, state, cmd, data, cmd_stats);
-			break;
-		case DNET_CMD_ITERATOR_NEW:
-			err = blob_iterate(c, state, cmd, data);
-			break;
-		case DNET_CMD_SEND_NEW:
-			err = blob_send_new(c, state, cmd, data);
-			break;
-		case DNET_CMD_DEL_NEW:
-			err = blob_del_new(c, cmd, data);
-			break;
-		case DNET_CMD_BULK_READ_NEW:
-			err = blob_bulk_read_new(c, state, cmd, data, cmd_stats);
-			break;
-		default:
-			err = -ENOTSUP;
-			break;
+	case DNET_CMD_LOOKUP:
+		err = blob_file_info(c, state, cmd);
+		break;
+	case DNET_CMD_WRITE:
+		err = blob_write(c, state, cmd, data);
+		break;
+	case DNET_CMD_READ:
+		err = blob_read(c, state, cmd, data, 1);
+		break;
+	case DNET_CMD_READ_RANGE:
+	case DNET_CMD_DEL_RANGE:
+		err = blob_read_range(c, state, cmd, data);
+		break;
+	case DNET_CMD_DEL:
+		err = blob_del(c, cmd);
+		break;
+	case DNET_CMD_SEND:
+		err = blob_send(c, state, cmd, data);
+		break;
+	case DNET_CMD_LOOKUP_NEW:
+		err = blob_file_info_new(c, state, cmd);
+		break;
+	case DNET_CMD_READ_NEW:
+		err = blob_read_new(c, state, cmd, data, cmd_stats);
+		break;
+	case DNET_CMD_WRITE_NEW:
+		err = blob_write_new(c, state, cmd, data, cmd_stats);
+		break;
+	case DNET_CMD_ITERATOR_NEW:
+		err = blob_iterate(c, state, cmd, data);
+		break;
+	case DNET_CMD_SEND_NEW:
+		err = blob_send_new(c, state, cmd, data);
+		break;
+	case DNET_CMD_DEL_NEW:
+		err = blob_del_new(c, cmd, data);
+		break;
+	case DNET_CMD_BULK_READ_NEW:
+		err = blob_bulk_read_new(c, state, cmd, data, cmd_stats);
+		break;
+	default:
+		err = -ENOTSUP;
+		break;
 	}
 
 	return err;
 }
 
-static int dnet_blob_set_sync(struct dnet_config_backend *b,
-                              const char *key __unused, const char *value)
-{
+static int dnet_blob_set_sync(struct dnet_config_backend *b, const char *key __unused, const char *value) {
 	struct eblob_backend_config *c = b->data;
 
 	c->data.sync = atoi(value);
 	return 0;
 }
 
-static int dnet_blob_set_data(struct dnet_config_backend *b,
-                              const char *key __unused, const char *file)
-{
+static int dnet_blob_set_data(struct dnet_config_backend *b, const char *key __unused, const char *file) {
 	struct eblob_backend_config *c = b->data;
 	int err;
 
@@ -1279,9 +1267,7 @@ static int dnet_blob_set_data(struct dnet_config_backend *b,
 	return 0;
 }
 
-static int dnet_blob_set_datasort_dir(struct dnet_config_backend *b,
-				      const char *key __unused, const char *dir)
-{
+static int dnet_blob_set_datasort_dir(struct dnet_config_backend *b, const char *key __unused, const char *dir) {
 	struct eblob_backend_config *c = b->data;
 	struct stat st;
 	int err;
@@ -1317,43 +1303,38 @@ static int dnet_blob_set_blob_size(struct dnet_config_backend *b, const char *ke
 		val *= 1ULL << 10;
 	}
 
-	if (!strcmp(key, "blob_size"))
+	if (!strcmp(key, "blob_size")) {
 		c->data.blob_size = val;
-	else if (!strcmp(key, "blob_size_limit"))
+	} else if (!strcmp(key, "blob_size_limit")) {
 		c->data.blob_size_limit = val;
+	}
 
 	return 0;
 }
 
-static int dnet_blob_set_index_block_size(struct dnet_config_backend *b,
-                                          const char *key __unused, const char *value)
-{
+static int dnet_blob_set_index_block_size(struct dnet_config_backend *b, const char *key __unused, const char *value) {
 	struct eblob_backend_config *c = b->data;
 
 	c->data.index_block_size = strtoul(value, NULL, 0);
 	return 0;
 }
 
-static int dnet_blob_set_index_block_bloom_length(struct dnet_config_backend *b,
-                                                  const char *key __unused, const char *value)
-{
+static int
+dnet_blob_set_index_block_bloom_length(struct dnet_config_backend *b, const char *key __unused, const char *value) {
 	struct eblob_backend_config *c = b->data;
 
 	c->data.index_block_bloom_length = strtoul(value, NULL, 0);
 	return 0;
 }
 
-static int dnet_blob_set_periodic_timeout(struct dnet_config_backend *b,
-                                          const char *key __unused, const char *value) {
+static int dnet_blob_set_periodic_timeout(struct dnet_config_backend *b, const char *key __unused, const char *value) {
 	struct eblob_backend_config *c = b->data;
 
 	c->data.periodic_timeout = strtoul(value, NULL, 0);
 	return 0;
 }
 
-static int dnet_blob_set_records_in_blob(struct dnet_config_backend *b,
-                                         const char *key __unused, const char *value)
-{
+static int dnet_blob_set_records_in_blob(struct dnet_config_backend *b, const char *key __unused, const char *value) {
 	struct eblob_backend_config *c = b->data;
 	uint64_t val = strtoul(value, NULL, 0);
 
@@ -1361,67 +1342,54 @@ static int dnet_blob_set_records_in_blob(struct dnet_config_backend *b,
 	return 0;
 }
 
-static int dnet_blob_set_defrag_timeout(struct dnet_config_backend *b,
-                                        const char *key __unused, const char *value)
-{
+static int dnet_blob_set_defrag_timeout(struct dnet_config_backend *b, const char *key __unused, const char *value) {
 	struct eblob_backend_config *c = b->data;
 
 	c->data.defrag_timeout = strtoul(value, NULL, 0);
 	return 0;
 }
 
-static int dnet_blob_set_defrag_time(struct dnet_config_backend *b,
-                                     const char *key __unused, const char *value)
-{
+static int dnet_blob_set_defrag_time(struct dnet_config_backend *b, const char *key __unused, const char *value) {
 	struct eblob_backend_config *c = b->data;
 
 	c->data.defrag_time = strtoul(value, NULL, 0);
 	return 0;
 }
 
-static int dnet_blob_set_defrag_splay(struct dnet_config_backend *b,
-                                      const char *key __unused, const char *value)
-{
+static int dnet_blob_set_defrag_splay(struct dnet_config_backend *b, const char *key __unused, const char *value) {
 	struct eblob_backend_config *c = b->data;
 
 	c->data.defrag_splay = strtoul(value, NULL, 0);
 	return 0;
 }
 
-static int dnet_blob_set_defrag_percentage(struct dnet_config_backend *b,
-                                           const char *key __unused, const char *value)
-{
+static int dnet_blob_set_defrag_percentage(struct dnet_config_backend *b, const char *key __unused, const char *value) {
 	struct eblob_backend_config *c = b->data;
 
 	c->data.defrag_percentage = strtoul(value, NULL, 0);
 	return 0;
 }
 
-static int dnet_blob_set_blob_flags(struct dnet_config_backend *b,
-                                    const char *key __unused, const char *value)
-{
+static int dnet_blob_set_blob_flags(struct dnet_config_backend *b, const char *key __unused, const char *value) {
 	struct eblob_backend_config *c = b->data;
 
 	c->data.blob_flags = strtoul(value, NULL, 0);
 	return 0;
 }
 
-static int dnet_blob_set_backend_id(struct dnet_config_backend *b,
-                                    const char *key __unused, const char *value) {
+static int dnet_blob_set_backend_id(struct dnet_config_backend *b, const char *key __unused, const char *value) {
 	struct eblob_backend_config *c = b->data;
 
 	c->data.stat_id = strtoul(value, NULL, 0);
 	return 0;
 }
 
-
 uint64_t eblob_backend_total_elements(void *priv) {
 	struct eblob_backend_config *r = priv;
 	return eblob_total_elements(r->eblob);
 }
 
-int eblob_backend_storage_stat_json(void *priv, char **json_stat, size_t *size)
-{
+int eblob_backend_storage_stat_json(void *priv, char **json_stat, size_t *size) {
 	int err;
 	struct eblob_backend_config *r = priv;
 
@@ -1433,8 +1401,7 @@ int eblob_backend_storage_stat_json(void *priv, char **json_stat, size_t *size)
 	return 0;
 }
 
-static void eblob_backend_cleanup(void *priv)
-{
+static void eblob_backend_cleanup(void *priv) {
 	struct eblob_backend_config *c = priv;
 
 	eblob_cleanup(c->eblob);
@@ -1442,14 +1409,15 @@ static void eblob_backend_cleanup(void *priv)
 	pthread_mutex_destroy(&c->last_read_lock);
 }
 
-static int dnet_eblob_iterator(struct dnet_iterator_ctl *ictl, struct dnet_iterator_request *ireq,
-		struct dnet_iterator_range *irange)
-{
+static int dnet_eblob_iterator(struct dnet_iterator_ctl *ictl,
+                               struct dnet_iterator_request *ireq,
+                               struct dnet_iterator_range *irange) {
 	struct eblob_index_block *range = NULL;
 	struct eblob_backend_config *c = ictl->iterate_private;
 	struct eblob_backend *b = c->eblob;
 	int err;
-	const int no_meta = ireq->flags & DNET_IFLAGS_NO_META && !(ireq->flags & (DNET_IFLAGS_TS_RANGE | DNET_IFLAGS_DATA));
+	const int no_meta =
+	        ireq->flags & DNET_IFLAGS_NO_META && !(ireq->flags & (DNET_IFLAGS_TS_RANGE | DNET_IFLAGS_DATA));
 
 	/* Init iterator config */
 	struct eblob_iterate_control eictl = {
@@ -1490,8 +1458,7 @@ err_out_exit:
 	return err;
 }
 
-static enum dnet_log_level convert_to_dnet_log(int level)
-{
+static enum dnet_log_level convert_to_dnet_log(int level) {
 	switch (level) {
 	default:
 	case EBLOB_LOG_DATA:
@@ -1506,8 +1473,7 @@ static enum dnet_log_level convert_to_dnet_log(int level)
 	}
 }
 
-static enum eblob_log_levels convert_to_eblob_log(enum dnet_log_level level)
-{
+static enum eblob_log_levels convert_to_eblob_log(enum dnet_log_level level) {
 	switch (level) {
 	case DNET_LOG_DEBUG:
 		return EBLOB_LOG_DEBUG;
@@ -1524,13 +1490,11 @@ static enum eblob_log_levels convert_to_eblob_log(enum dnet_log_level level)
 	return EBLOB_LOG_ERROR;
 }
 
-static void dnet_eblob_log_implemenation(void *priv, int level, const char *msg)
-{
+static void dnet_eblob_log_implemenation(void *priv, int level, const char *msg) {
 	dnet_log_raw(priv, convert_to_dnet_log(level), "%s", msg);
 }
 
-static int dnet_blob_config_init(struct dnet_config_backend *b, enum dnet_log_level level)
-{
+static int dnet_blob_config_init(struct dnet_config_backend *b, enum dnet_log_level level) {
 	struct eblob_backend_config *c = b->data;
 	struct dnet_vm_stat st;
 	int err = 0;
@@ -1569,7 +1533,7 @@ static int dnet_blob_config_init(struct dnet_config_backend *b, enum dnet_log_le
 	if (err)
 		goto err_out_last_read_lock_destroy;
 
-	eblob_set_trace_id_function(&dnet_node_get_trace_bit);
+	eblob_set_trace_id_function(&dnet_logger_get_trace_bit);
 
 	c->vm_total = st.vm_total * st.vm_total * 1024 * 1024;
 
@@ -1610,8 +1574,7 @@ err_out_exit:
  *   So when monitor makes stage 3, it has uninitialized eblob and
  *   should cleanups up only config data.
  */
-static void dnet_blob_config_cleanup(struct dnet_config_backend *b)
-{
+static void dnet_blob_config_cleanup(struct dnet_config_backend *b) {
 	struct eblob_backend_config *c = b->data;
 
 	/* do not cleans up eblob if it hasn't been initialized */
@@ -1619,7 +1582,10 @@ static void dnet_blob_config_cleanup(struct dnet_config_backend *b)
 		eblob_backend_cleanup(c);
 
 	free(c->data.file);
+	c->data.file = NULL;
+
 	free(c->data.chunks_dir);
+	c->data.chunks_dir = NULL;
 }
 
 static void dnet_blob_set_verbosity(struct dnet_config_backend *b, enum dnet_log_level level) {
@@ -1656,7 +1622,6 @@ static struct dnet_config_backend dnet_eblob_backend = {
 	.set_verbosity		= dnet_blob_set_verbosity,
 };
 
-struct dnet_config_backend *dnet_eblob_backend_info(void)
-{
+struct dnet_config_backend *dnet_eblob_backend_info(void) {
 	return &dnet_eblob_backend;
 }

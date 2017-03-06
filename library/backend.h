@@ -1,198 +1,205 @@
+// TODO(shaitan): review this file and cleanup unused or strange places
+// TODO(shaitan): order class & function declaration order and keep it in backend.cpp and common.cpp
+
 #ifndef IOREMAP_ELLIPTICS_BACKEND_H
 #define IOREMAP_ELLIPTICS_BACKEND_H
 
-#include <elliptics/backends.h>
+#include "library/elliptics.h"
 
 #ifdef __cplusplus
 
 #include <string>
-#include <vector>
-#include <memory>
 #include <mutex>
+#include <unordered_map>
 
-#include <kora/config.hpp>
-#include <blackhole/wrapper.hpp>
+#include <boost/thread/shared_mutex.hpp>
 
-#include <elliptics/error.hpp>
+#include <rapidjson/document.h>
 
-namespace ioremap { namespace elliptics { namespace config {
-class config_data;
-}}}
+#include "monitor/statistics.hpp"
+
 
 namespace ioremap { namespace cache {
+class cache_manager;
+}} /* namespace ioremap::cache */
 
-struct cache_config
-{
-	size_t			size;
-	size_t			count;
-	unsigned		sync_timeout;
-	std::vector<size_t>	pages_proportions;
+namespace ioremap { namespace elliptics { namespace config {
+struct backend_config;
+}}} /* namespace ioremap::elliptics::config */
 
-	static std::unique_ptr<cache_config> parse(const kora::config_t &cache);
-};
+using backend_config = ioremap::elliptics::config::backend_config;
 
-}}
-
-/**
- * This structure holds config value read from config file
- * @entry.key contains config key, @value_template holds value for given key
- *
- * When backend is being initialized, it calls @entry.callback() function for each config entry
- *
- * Please note that backend initialization copies value into temporal copy,
- * since @entry.callback() can modify this data.
- */
-struct dnet_backend_config_entry
-{
-	dnet_config_entry *entry;
-	std::string value_template;
-};
-
-struct dnet_backend_info
-{
-	dnet_backend_info(dnet_logger &logger, uint32_t backend_id) :
-		log(new blackhole::wrapper_t(logger, {{"source", "eblob"}, {"backend_id", backend_id}})),
-		backend_id(backend_id), group(0), cache(NULL),
-		enable_at_start(false), read_only_at_start(false),
-		state_mutex(new std::mutex), state(DNET_BACKEND_UNITIALIZED),
-		io_thread_num(0), nonblocking_io_thread_num(0),
-		queue_timeout(0)
-	{
-		dnet_empty_time(&last_start);
-		last_start_err = 0;
-		memset(&config_template, 0, sizeof(config_template));
-		memset(&config, 0, sizeof(config));
-	}
-
-	dnet_backend_info(const dnet_backend_info &other) = delete;
-	dnet_backend_info &operator =(const dnet_backend_info &other) = delete;
-
-	dnet_backend_info(dnet_backend_info &&other) ELLIPTICS_NOEXCEPT :
-		config_template(other.config_template),
-		log(std::move(other.log)),
-		options(std::move(other.options)),
-		backend_id(other.backend_id),
-		group(other.group),
-		cache(other.cache),
-		history(other.history),
-		enable_at_start(other.enable_at_start),
-		read_only_at_start(other.read_only_at_start),
-		state_mutex(std::move(other.state_mutex)),
-		state(other.state),
-		last_start(other.last_start),
-		last_start_err(other.last_start_err),
-		config(other.config),
-		data(std::move(other.data)),
-		cache_config(std::move(other.cache_config)),
-		io_thread_num(other.io_thread_num),
-		nonblocking_io_thread_num(other.nonblocking_io_thread_num),
-		queue_timeout(other.queue_timeout),
-		initial_config(std::move(other.initial_config))
-	{
-	}
-
-	dnet_backend_info &operator =(dnet_backend_info &&other) ELLIPTICS_NOEXCEPT
-	{
-		config_template = other.config_template;
-		log = std::move(other.log);
-		options = std::move(other.options);
-		backend_id = other.backend_id;
-		group = other.group;
-		cache = other.cache;
-		history = other.history;
-		enable_at_start = other.enable_at_start;
-		read_only_at_start = other.read_only_at_start;
-		state_mutex = std::move(other.state_mutex);
-		state = other.state;
-		last_start = other.last_start;
-		last_start_err = other.last_start_err;
-		config = other.config;
-		data = std::move(other.data);
-		cache_config = std::move(other.cache_config);
-		io_thread_num = other.io_thread_num;
-		nonblocking_io_thread_num = other.nonblocking_io_thread_num;
-		queue_timeout = other.queue_timeout;
-		initial_config = other.initial_config;
-
-		return *this;
-	}
-
-	void parse(ioremap::elliptics::config::config_data *data, const kora::config_t &config);
-
-	dnet_config_backend config_template;
-	std::unique_ptr<dnet_logger> log;
-	std::vector<dnet_backend_config_entry> options;
-	uint32_t backend_id;
-	uint32_t group;
-	void *cache;
-	std::string history;
-	bool enable_at_start;
-	bool read_only_at_start;
-
-	std::unique_ptr<std::mutex> state_mutex;
-	dnet_backend_state state;
-	dnet_time last_start;
-	int last_start_err;
-
-	dnet_config_backend config;
-	std::vector<char> data;
-
-	std::unique_ptr<ioremap::cache::cache_config> cache_config;
-	int io_thread_num;
-	int nonblocking_io_thread_num;
-	uint64_t queue_timeout;
-	std::string initial_config;
-};
-
-class dnet_backend_info_manager
-{
+// TODO(shaitan): wrap dnet_backend_callbacks and backend_config::dnet_config_backend by RAII structure
+// with API for working with underlying backend
+class dnet_backend {
 public:
-	/*
-	 * Locks backend with \a backend_id state mutex and fills \a status
-	 */
-	void backend_fill_status(struct dnet_node *node, struct dnet_backend_status *status, uint32_t backend_id) const;
+	dnet_backend(dnet_node *node, std::shared_ptr<backend_config> config);
+	~dnet_backend();
 
-	std::vector<std::shared_ptr<dnet_backend_info> > get_all_backends() const
-	{
-		std::vector<std::shared_ptr<dnet_backend_info> > result;
-		std::lock_guard<std::mutex> guard(backends_mutex);
-		for (auto it : backends) {
-			result.push_back(it.second);
-		}
-		return result;
-	}
+	dnet_backend(const dnet_backend &) = delete;
+	dnet_backend &operator=(const dnet_backend &) = delete;
 
-	std::shared_ptr<dnet_backend_info> get_backend(uint32_t backend_id) const;
+	// properties
+	std::shared_ptr<backend_config> config() const { return m_config; }
 
-	void add_backend(std::shared_ptr<dnet_backend_info> &backend);
-	void remove_backend(uint32_t backend_id);
+	uint32_t backend_id() const;
+	uint32_t group_id() const;
 
-	void set_verbosity(dnet_log_level level);
+	dnet_backend_state state() const { return m_state; }
+	boost::shared_mutex &state_mutex() { return m_state_mutex; }
+
+	dnet_backend_callbacks &callbacks() { return m_callbacks; }
+	const dnet_backend_callbacks &callbacks() const { return m_callbacks; }
+	ioremap::cache::cache_manager *cache() { return m_cache.get(); }
+
+	bool read_only() const { return m_read_only; }
+	void set_read_only(bool read_only = true) { m_read_only = read_only; }
+
+	uint64_t delay() const { return m_delay; }
+	void set_delay(uint64_t delay) { m_delay = delay; }
+
+	ioremap::monitor::command_stats &command_stats() { return m_command_stats; }
+
+	uint64_t queue_timeout() const;
+
+	void set_verbosity(const dnet_log_level level);
+
+	struct dnet_io_pool *io_pool() { return m_pool.get(); }
+
+
+	// actions
+	int enable();
+	int disable();
+
+	int start_defrag(const dnet_backend_defrag_level level);
+	int stop_defrag();
+
+	int set_ids(struct dnet_raw_id *ids, uint32_t ids_count);
+
+	void fill_status(struct dnet_backend_status *status);
+
+	void statistics(uint64_t categories, rapidjson::Value &value, rapidjson::Document::AllocatorType &allocator);
 
 private:
-	std::unordered_map<uint32_t, std::shared_ptr<dnet_backend_info> > backends;
-	mutable std::mutex backends_mutex;
+	dnet_node						*m_node;
+	std::shared_ptr<backend_config>				m_config;
+
+	bool							m_read_only;
+
+	uint64_t						m_delay;
+
+	dnet_backend_state					m_state;
+	boost::shared_mutex					m_state_mutex;
+
+	dnet_time						m_last_start;
+	int							m_last_start_err;
+
+	dnet_backend_callbacks					m_callbacks;
+
+	ioremap::monitor::command_stats				m_command_stats;
+
+	std::unique_ptr<ioremap::cache::cache_manager>		m_cache;
+
+	std::unique_ptr<dnet_logger>				m_log;
+
+	std::string						m_pool_id;
+	std::shared_ptr<struct dnet_io_pool>			m_pool;
+
+	int change_state(dnet_backend_state state);
+
+	void fill_status(rapidjson::Value &value, rapidjson::Document::AllocatorType &allocator);
+	void fill_backend_stats(rapidjson::Value &value, rapidjson::Document::AllocatorType &allocator);
+	void fill_io_stats(rapidjson::Value &value, rapidjson::Document::AllocatorType &allocator);
+	void fill_cache_stats(rapidjson::Value &value, rapidjson::Document::AllocatorType &allocator);
+	void fill_commands_stats(rapidjson::Value &value, rapidjson::Document::AllocatorType &allocator);
 };
 
-void backend_fill_status_nolock(struct dnet_node *node, struct dnet_backend_status *status, const struct dnet_backend_info *config_backend);
+class dnet_backends_manager {
+public:
+	dnet_backends_manager(dnet_node *node);
+	~dnet_backends_manager();
+
+	dnet_backends_manager(const dnet_backends_manager &) = delete;
+	dnet_backends_manager &operator=(const dnet_backends_manager &) = delete;
+
+	bool add_backend(std::shared_ptr<backend_config> config);
+	std::shared_ptr<dnet_backend> get_backend(uint32_t backend_id);
+	int remove_backend(uint32_t backend_id);
+
+	int init_all_backends(bool parallel);
+
+	void set_verbosity(const dnet_log_level level);
+
+	struct dnet_backend_status_list *get_status();
+	void statistics(uint64_t categories, rapidjson::Value &value, rapidjson::Document::AllocatorType &allocator);
+
+private:
+	dnet_node							*m_node;
+
+	std::unordered_map<uint32_t, std::shared_ptr<dnet_backend>>	m_backends;
+	boost::shared_mutex						m_backends_mutex;
+};
+
+void dnet_io_pools_dump_stats(struct dnet_node *node,
+                              rapidjson::Value &value,
+                              rapidjson::Document::AllocatorType &allocator);
 
 extern "C" {
+
 #else // __cplusplus
-typedef struct dnet_backend_info_manager dnet_backend_info_manager;
-struct dnet_io;
+
+typedef struct dnet_backends_manager dnet_backends_manager;
+typedef struct dnet_backend dnet_backend;
+
 #endif // __cplusplus
+
+uint32_t dnet_backend_get_backend_id(struct dnet_backend *backend);
+int dnet_backend_read_only(struct dnet_backend *backend);
+
+void dnet_backend_sleep_delay(struct dnet_backend *backend);
+
+struct dnet_backend_callbacks *dnet_backend_get_callbacks(struct dnet_backend *backend);
 
 int dnet_backend_init_all(struct dnet_node *n);
 void dnet_backend_cleanup_all(struct dnet_node *n);
 
-int dnet_get_backend_ids(const dnet_backend_info_manager *backends, size_t **backend_ids, size_t *num_backend_ids);
-
 int dnet_cmd_backend_control(struct dnet_net_state *st, struct dnet_cmd *cmd, void *data);
-int dnet_cmd_backend_status(struct dnet_net_state *st, struct dnet_cmd *cmd, void *data);
+
+int dnet_cmd_backend_status(struct dnet_net_state *st, struct dnet_cmd *cmd);
 
 int dnet_cmd_bulk_read_new(struct dnet_net_state *st, struct dnet_cmd *cmd, void *data);
 
-struct dnet_backend_io *dnet_get_backend_io(struct dnet_io *io, size_t backend_id);
+struct dnet_io_pool *__attribute__((weak)) dnet_backend_get_pool(struct dnet_node *node, uint32_t backend_id);
+struct dnet_work_pool_place *dnet_backend_get_place(struct dnet_node *node, ssize_t backend_id, int nonblocking);
+uint64_t __attribute__((weak)) dnet_backend_get_queue_timeout(struct dnet_node *node, ssize_t backend_id);
+
+// TODO(shaitan): avoid using C function here
+void dnet_backend_command_stats_update(struct dnet_backend *backend,
+                                       struct dnet_cmd *cmd,
+                                       uint64_t size,
+                                       int handled_in_cache,
+                                       int err,
+                                       long diff);
+
+int dnet_backend_process_cmd_raw(struct dnet_backend *backend,
+                                 struct dnet_net_state *st,
+                                 struct dnet_cmd *cmd,
+                                 void *data,
+                                 struct dnet_cmd_stats *cmd_stats);
+
+void __attribute__((weak)) dnet_io_pools_check(struct dnet_io_pools_manager *pools_manager,
+                                               uint64_t *queue_size,
+                                               uint64_t *threads_count);
+
+int dnet_backends_init(struct dnet_node *node);
+void __attribute__((weak)) dnet_backends_destroy(struct dnet_node *node);
+struct dnet_backend *dnet_backends_get_backend(struct dnet_node *node, uint32_t backend_id);
+
+int dnet_cmd_cache_io(struct dnet_backend *backend,
+                      struct dnet_net_state *st,
+                      struct dnet_cmd *cmd,
+                      char *data,
+                      struct dnet_cmd_stats *cmd_stats);
 
 #ifdef __cplusplus
 }

@@ -254,6 +254,7 @@ server_config server_config::default_value()
 			("blob_size", "10M")
 			("records_in_blob", 10000000)
 			("defrag_timeout", 3600)
+			("pool_id", "bp")
 			("defrag_percentage", 25);
 	return data;
 }
@@ -343,16 +344,16 @@ void server_config::write(const std::string &path) {
 	file_sink.AddMember("path", log_path.c_str(), allocator);
 	file_sink.AddMember("flush", 1, allocator);
 
-	rapidjson::Value async_sink;
-	async_sink.SetObject();
-	async_sink.AddMember("type", "asynchronous", allocator);
-	async_sink.AddMember("factor", 10, allocator);
-	async_sink.AddMember("overflow", "wait", allocator);
-	async_sink.AddMember("sink", file_sink, allocator);
+	// rapidjson::Value async_sink;
+	// async_sink.SetObject();
+	// async_sink.AddMember("type", "asynchronous", allocator);
+	// async_sink.AddMember("factor", 10, allocator);
+	// async_sink.AddMember("overflow", "wait", allocator);
+	// async_sink.AddMember("sink", file_sink, allocator);
 
 	rapidjson::Value sinks;
 	sinks.SetArray();
-	sinks.PushBack(async_sink, allocator);
+	sinks.PushBack(file_sink, allocator);
 
 	rapidjson::Value core_0;
 	core_0.SetObject();
@@ -565,6 +566,7 @@ void server_node::stop()
 			kill(m_pid, SIGTERM);
 		}
 	} else {
+		DNET_LOG_ERROR(m_node, "server_node::stop()");
 		dnet_set_need_exit(m_node);
 	}
 }

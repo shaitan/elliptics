@@ -15,16 +15,18 @@
 # GNU General Public License for more details.
 # =============================================================================
 
+import errno
 import os
 import sys
-import errno
 import time
 sys.path.insert(0, "")  # for running from cmake
-import pytest
-from conftest import make_session, scope
 import elliptics
 import elliptics_recovery.types.dc
 import elliptics_recovery.types.merge
+import pytest
+
+from conftest import make_session
+from conftest import scope
 
 
 class RECOVERY:

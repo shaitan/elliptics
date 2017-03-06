@@ -21,8 +21,10 @@
 
 #include <blackhole/attribute.hpp>
 
+#include "rapidjson/document.h"
 #include "rapidjson/writer.h"
 #include "rapidjson/stringbuffer.h"
+
 #include "elliptics/interface.h"
 
 #include "library/logger.hpp"
@@ -298,23 +300,17 @@ static void fill_net(dnet_node *node,
 	stat_value.AddMember("net", net_stat, allocator);
 }
 
-std::string procfs_provider::json(uint64_t categories) const {
+void procfs_provider::statistics(uint64_t categories,
+                                 rapidjson::Value &value,
+                                 rapidjson::Document::AllocatorType &allocator) const {
 	if (!(categories & DNET_MONITOR_PROCFS))
-	    return std::string();
+	    return;
 
-	rapidjson::Document doc;
-	doc.SetObject();
-	auto &allocator = doc.GetAllocator();
-
-	fill_vm(m_node, doc, allocator);
-	fill_io(m_node, doc, allocator);
-	fill_stat(m_node, doc, allocator);
-	fill_net(m_node, doc, allocator);
-
-	rapidjson::StringBuffer buffer;
-	rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
-	doc.Accept(writer);
-	return buffer.GetString();
+	value.SetObject();
+	fill_vm(m_node, value, allocator);
+	fill_io(m_node, value, allocator);
+	fill_stat(m_node, value, allocator);
+	fill_net(m_node, value, allocator);
 }
 
 

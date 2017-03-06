@@ -23,6 +23,7 @@
 #include "stat_provider.hpp"
 
 struct dnet_node;
+struct dnet_io_pool;
 
 namespace ioremap { namespace monitor {
 
@@ -30,12 +31,17 @@ class io_stat_provider: public stat_provider {
 public:
 	io_stat_provider(dnet_node *n): m_node(n) {}
 
-	virtual std::string json(uint64_t categories) const;
+	void statistics(uint64_t categories,
+	                        rapidjson::Value &value,
+	                        rapidjson::Document::AllocatorType &allocator) const override;
 
 private:
 	dnet_node *m_node;
 };
 
+void dump_io_pool_stats(struct dnet_io_pool &io_pool,
+                        rapidjson::Value &value,
+                        rapidjson::Document::AllocatorType &allocator);
 }} /* namespace ioremap::monitor */
 
 #endif /* __DNET_MONITOR_IO_STAT_PROVIDER_HPP */

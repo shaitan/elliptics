@@ -20,34 +20,28 @@
 
 #include <vector>
 #include <mutex>
-#include <thread>
-#include <cstdarg>
-#include <cstdio>
 #include <limits>
-#include <atomic>
 #include <iostream>
+#include <stdarg.h>
 
 #include <boost/intrusive/list.hpp>
 
-#include "library/elliptics.h"
 #include "library/logger.hpp"  //TODO: remove from header file, required only by elliptics_unique_lock
 
 #include "elliptics/packet.h"
 #include "elliptics/interface.h"
 
-#include "monitor/rapidjson/document.h"
-#include "monitor/rapidjson/writer.h"
-#include "monitor/rapidjson/stringbuffer.h"
+#include "rapidjson/document.h"
 
 #include "local_session.h"  //TODO: remove from header file, used only for elliptics_timer
 #include "treap.hpp"
 
 namespace ioremap { namespace elliptics {
-
 struct dnet_write_request;
 struct dnet_remove_request;
-
 }}  /* namespace ioremap::elliptics */
+
+class dnet_backend;
 
 namespace ioremap { namespace cache {
 
@@ -91,8 +85,7 @@ public:
 	, m_only_append(false)
 	, m_removed_from_page(true)
 	, m_sync_state(sync_state_t::NOT_SYNCING)
-	, m_json()
-	{
+	, m_json() {
 		memcpy(m_id.id, id, DNET_ID_SIZE);
 		dnet_empty_time(&m_timestamp);
 	}
@@ -108,8 +101,7 @@ public:
 	, m_removed_from_page(true)
 	, m_sync_state(sync_state_t::NOT_SYNCING)
 	, m_data(std::make_shared<std::string>(data, size))
-	, m_json(std::make_shared<std::string>())
-	{
+	, m_json(std::make_shared<std::string>()) {
 		memcpy(m_id.id, id, DNET_ID_SIZE);
 		dnet_empty_time(&m_timestamp);
 
@@ -330,9 +322,7 @@ struct cache_stats {
 	: number_of_objects(0)
 	, size_of_objects(0)
 	, number_of_objects_marked_for_deletion(0)
-	, size_of_objects_marked_for_deletion(0)
-	{
-	}
+	, size_of_objects_marked_for_deletion(0) {}
 
 	std::size_t number_of_objects;
 	std::size_t size_of_objects;
@@ -342,31 +332,33 @@ struct cache_stats {
 	std::vector<size_t> pages_sizes;
 	std::vector<size_t> pages_max_sizes;
 
-	rapidjson::Value& to_json(rapidjson::Value &stat_value, rapidjson::Document::AllocatorType &allocator) const {
-		stat_value.AddMember("size", size_of_objects, allocator)
-				  .AddMember("removing_size", size_of_objects_marked_for_deletion, allocator)
-				  .AddMember("objects", number_of_objects, allocator)
-				  .AddMember("removing_objects", number_of_objects_marked_for_deletion, allocator);
+	void to_json(rapidjson::Value &value, rapidjson::Document::AllocatorType &allocator) const {
+		value.AddMember("size", size_of_objects, allocator);
+		value.AddMember("removing_size", size_of_objects_marked_for_deletion, allocator);
+		value.AddMember("objects", number_of_objects, allocator);
+		value.AddMember("removing_objects", number_of_objects_marked_for_deletion, allocator);
 
 		rapidjson::Value pages_sizes_stat(rapidjson::kArrayType);
 		for (auto it = pages_sizes.begin(), end = pages_sizes.end(); it != end; ++it) {
 			pages_sizes_stat.PushBack(*it, allocator);
 		}
-		stat_value.AddMember("pages_sizes", pages_sizes_stat, allocator);
+		value.AddMember("pages_sizes", pages_sizes_stat, allocator);
 
 		rapidjson::Value pages_max_sizes_stat(rapidjson::kArrayType);
 		for (auto it = pages_max_sizes.begin(), end = pages_max_sizes.end(); it != end; ++it) {
 			pages_max_sizes_stat.PushBack(*it, allocator);
 		}
-		stat_value.AddMember("pages_max_sizes", pages_max_sizes_stat, allocator);
-		return stat_value;
+		value.AddMember("pages_max_sizes", pages_max_sizes_stat, allocator);
 	}
 };
 
 struct write_request {
 	write_request(unsigned char *id, struct dnet_io_attr *io, ioremap::elliptics::data_pointer &data);
-	write_request(unsigned char *id, struct ioremap::elliptics::dnet_write_request &req, void *request_data,
-		      ioremap::elliptics::data_pointer &data, ioremap::elliptics::data_pointer &json);
+	write_request(unsigned char *id,
+	              struct ioremap::elliptics::dnet_write_request &req,
+	              void *request_data,
+	              ioremap::elliptics::data_pointer &data,
+	              ioremap::elliptics::data_pointer &json);
 
 	unsigned char *id;
 
@@ -403,7 +395,8 @@ class cache_config;
 
 class cache_manager {
 public:
-	cache_manager(dnet_backend_io *backend, dnet_node *n, const cache_config &config);
+	cache_manager(dnet_node *n, dnet_backend &backend, const cache_config &config);
+	~cache_manager();
 
 	write_response_t write(dnet_net_state *st, dnet_cmd *cmd, const write_request &request);
 
@@ -423,25 +416,26 @@ public:
 
 	std::vector<cache_stats> get_caches_stats() const;
 
-	rapidjson::Value &get_total_caches_size_stats_json(rapidjson::Value &stat_value,
-	                                                   rapidjson::Document::AllocatorType &allocator) const;
+	void get_total_caches_size_stats_json(rapidjson::Value &stat_value,
+	                                      rapidjson::Document::AllocatorType &allocator) const;
 
-	rapidjson::Value &get_total_caches_time_stats_json(rapidjson::Value &stat_value,
-	                                                   rapidjson::Document::AllocatorType &allocator) const;
+	void get_total_caches_time_stats_json(rapidjson::Value &stat_value,
+	                                      rapidjson::Document::AllocatorType &allocator) const;
 
-	rapidjson::Value &get_caches_size_stats_json(rapidjson::Value &stat_value,
-	                                             rapidjson::Document::AllocatorType &allocator) const;
+	void get_caches_size_stats_json(rapidjson::Value &stat_value,
+	                                rapidjson::Document::AllocatorType &allocator) const;
 
-	rapidjson::Value &get_caches_time_stats_json(rapidjson::Value &stat_value,
-	                                             rapidjson::Document::AllocatorType &allocator) const;
+	void get_caches_time_stats_json(rapidjson::Value &stat_value,
+	                                rapidjson::Document::AllocatorType &allocator) const;
 
-	std::string stat_json() const;
+	void statistics(rapidjson::Value &value, rapidjson::Document::AllocatorType &allocator) const;
 
 private:
 	dnet_node *m_node;
 	std::vector<std::shared_ptr<slru_cache_t>> m_caches;
 	size_t m_max_cache_size;
 	size_t m_cache_pages_number;
+	bool m_need_exit;
 
 	size_t idx(const unsigned char *id);
 };
@@ -449,8 +443,7 @@ private:
 template <typename T> class elliptics_unique_lock {
 public:
 	elliptics_unique_lock(T &mutex, dnet_node *node, const char *format, ...) __attribute__((format(printf, 4, 5)))
-	: m_node(node)
-	{
+	: m_node(node) {
 		va_list args;
 		va_start(args, format);
 
@@ -473,19 +466,16 @@ public:
 		m_timer.restart();
 	}
 
-	~elliptics_unique_lock()
-	{
+	~elliptics_unique_lock() {
 		if (owns_lock())
 			unlock();
 	}
 
-	bool owns_lock() const
-	{
+	bool owns_lock() const {
 		return m_guard.owns_lock();
 	}
 
-	void lock()
-	{
+	void lock() {
 		m_guard.lock();
 		dnet_log_level level = DNET_LOG_DEBUG;
 
@@ -499,8 +489,7 @@ public:
 		m_timer.restart();
 	}
 
-	void unlock()
-	{
+	void unlock() {
 		m_guard.unlock();
 
 		dnet_log_level level = DNET_LOG_DEBUG;

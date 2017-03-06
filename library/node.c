@@ -2,17 +2,17 @@
  * Copyright 2008+ Evgeniy Polyakov <zbr@ioremap.net>
  *
  * This file is part of Elliptics.
- * 
+ *
  * Elliptics is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * Elliptics is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU Lesser General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Lesser General Public License
  * along with Elliptics.  If not, see <http://www.gnu.org/licenses/>.
  */
@@ -30,8 +30,7 @@
 #include "monitor/monitor.h"
 #include "library/logger.hpp"
 
-static struct dnet_node *dnet_node_alloc(struct dnet_config *cfg)
-{
+static struct dnet_node *dnet_node_alloc(struct dnet_config *cfg) {
 	struct dnet_node *n;
 	int err;
 
@@ -489,8 +488,10 @@ static struct dnet_state_id *dnet_idc_search(struct dnet_group *g, const struct 
 	return &g->ids[__dnet_idc_search(g, id)];
 }
 
-static int dnet_search_range_nolock(struct dnet_node *n, struct dnet_id *id, struct dnet_raw_id *start, struct dnet_raw_id *next)
-{
+static int dnet_search_range_nolock(struct dnet_node *n,
+                                    struct dnet_id *id,
+                                    struct dnet_raw_id *start,
+                                    struct dnet_raw_id *next) {
 	struct dnet_state_id *sid;
 	struct dnet_group *group;
 	int idc_pos;
@@ -670,8 +671,9 @@ void dnet_update_backend_weight(struct dnet_net_state *st, const struct dnet_cmd
 	}
 }
 
-struct dnet_net_state *dnet_state_get_first_with_backend(struct dnet_node *n, const struct dnet_id *id, int *backend_id)
-{
+struct dnet_net_state *dnet_state_get_first_with_backend(struct dnet_node *n,
+                                                         const struct dnet_id *id,
+                                                         int *backend_id) {
 	struct dnet_net_state *found;
 
 	pthread_mutex_lock(&n->state_lock);
@@ -828,13 +830,11 @@ int dnet_need_exit(struct dnet_node *n)
 	return n->need_exit;
 }
 
-void dnet_set_need_exit(struct dnet_node *n)
-{
+void dnet_set_need_exit(struct dnet_node *n) {
 	n->need_exit = 1;
 }
 
-void dnet_node_stop_common_resources(struct dnet_node *n)
-{
+void dnet_node_stop_common_resources(struct dnet_node *n) {
 	dnet_set_need_exit(n);
 	dnet_iterator_cancel_all(n);
 	dnet_check_thread_stop(n);

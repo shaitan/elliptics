@@ -24,6 +24,7 @@
 
 #include <blackhole/attribute.hpp>
 
+#include "library/backend.h"
 #include "library/request_queue.h"
 #include "library/protocol.hpp"
 
@@ -50,26 +51,30 @@ namespace ioremap { namespace cache {
 
 // public:
 
-slru_cache_t::slru_cache_t(struct dnet_backend_io *backend, struct dnet_node *n,
-	const std::vector<size_t> &cache_pages_max_sizes, unsigned sync_timeout) :
-	m_backend(backend),
-	m_node(n),
-	m_cache_pages_number(cache_pages_max_sizes.size()),
-	m_cache_pages_max_sizes(cache_pages_max_sizes),
-	m_cache_pages_sizes(m_cache_pages_number, 0),
-	m_cache_pages_lru(new lru_list_t[m_cache_pages_number]),
-	m_clear_occured(false),
-	m_sync_timeout(sync_timeout) {
+slru_cache_t::slru_cache_t(struct dnet_node *n,
+                           dnet_backend &backend,
+                           const std::vector<size_t> &cache_pages_max_sizes,
+                           unsigned sync_timeout,
+                           bool &need_exit)
+: m_backend(backend)
+, m_node(n)
+, m_cache_pages_number(cache_pages_max_sizes.size())
+, m_cache_pages_max_sizes(cache_pages_max_sizes)
+, m_cache_pages_sizes(m_cache_pages_number, 0)
+, m_cache_pages_lru(new lru_list_t[m_cache_pages_number])
+, m_clear_occured(false)
+, m_sync_timeout(sync_timeout)
+, m_need_exit{need_exit} {
 	m_lifecheck = std::thread(std::bind(&slru_cache_t::life_check, this));
 }
 
 slru_cache_t::~slru_cache_t() {
 	TIMER_SCOPE("dtor");
-	DNET_LOG_NOTICE(m_node, "cache: disable: backend: {}: destructing SLRU cache", m_backend->backend_id);
+	DNET_LOG_NOTICE(m_node, "cache: disable: backend: {}: destructing SLRU cache", m_backend.backend_id());
 	m_lifecheck.join();
-	DNET_LOG_NOTICE(m_node, "cache: disable: backend: {}: clearing", m_backend->backend_id);
+	DNET_LOG_NOTICE(m_node, "cache: disable: backend: {}: clearing", m_backend.backend_id());
 	clear();
-	DNET_LOG_NOTICE(m_node, "cache: disable: backend: {}: destructed", m_backend->backend_id);
+	DNET_LOG_NOTICE(m_node, "cache: disable: backend: {}: destructed", m_backend.backend_id());
 }
 
 write_response_t slru_cache_t::write(dnet_net_state *st, dnet_cmd *cmd, const write_request &request)
@@ -82,7 +87,8 @@ write_response_t slru_cache_t::write(dnet_net_state *st, dnet_cmd *cmd, const wr
 	const bool cache_only = (request.ioflags & DNET_IO_FLAGS_CACHE_ONLY);
 	const bool append = (request.ioflags & DNET_IO_FLAGS_APPEND);
 	const bool update_data = (request.ioflags & DNET_IO_FLAGS_PREPARE) || request.data.size();
-	const bool update_json = (request.ioflags & (DNET_IO_FLAGS_PREPARE | DNET_IO_FLAGS_UPDATE_JSON)) || request.json.size();
+	const bool update_json =
+	        (request.ioflags & (DNET_IO_FLAGS_PREPARE | DNET_IO_FLAGS_UPDATE_JSON)) || request.json.size();
 
 	TIMER_START("write.lock");
 	elliptics_unique_lock<std::mutex> guard(m_lock, m_node, "%s: CACHE WRITE: %p", dnet_dump_id_str(id), this);
@@ -103,7 +109,8 @@ write_response_t slru_cache_t::write(dnet_net_state *st, dnet_cmd *cmd, const wr
 		sync_after_append(guard, false, &*it);
 
 		dnet_cmd_stats stats;
-		int err = m_backend->cb->command_handler(st, m_backend->cb->command_private, cmd, request.request_data, &stats);
+		const auto &callbacks = m_backend.callbacks();
+		int err = callbacks.command_handler(st, callbacks.command_private, cmd, request.request_data, &stats);
 
 		it = populate_from_disk(guard, id, false, &err);
 
@@ -344,20 +351,19 @@ int slru_cache_t::remove(const dnet_cmd *cmd, ioremap::elliptics::dnet_remove_re
 
 		dnet_setup_id(&raw, 0, (unsigned char *)id);
 
+		local_session sess(m_backend, m_node);
+
 		if (cmd->cmd == DNET_CMD_DEL_NEW) {
-			if (it) {
+			if (it)
 				request.ioflags &= ~DNET_IO_FLAGS_CAS_TIMESTAMP;
-			}
-			const auto packet = ioremap::elliptics::serialize(request);
 
 			TIMER_SCOPE("remove.local");
 
-			local_err = dnet_remove_local_new(m_backend, m_node, &raw,
-							  packet.data(), packet.size());
+			local_err = sess.remove_new(raw, request);
 		} else {
 			TIMER_SCOPE("remove.local");
 
-			local_err = dnet_remove_local(m_backend, m_node, &raw);
+			local_err = sess.remove(raw);
 		}
 
 		if (local_err != -ENOENT)
@@ -419,6 +425,10 @@ cache_stats slru_cache_t::get_cache_stats() const {
 }
 
 // private:
+
+bool slru_cache_t::need_exit() const {
+	return m_need_exit || dnet_need_exit(m_node);
+}
 
 
 int slru_cache_t::check_cas(const data_t* it, const dnet_cmd *cmd, const write_request &request) const {
@@ -735,7 +745,7 @@ void slru_cache_t::sync_after_append(elliptics_unique_lock<std::mutex> &guard, b
 
 void slru_cache_t::life_check(void) {
 
-	dnet_set_name("dnet_cache_%zu", m_backend->backend_id);
+	dnet_set_name("dnet_cache_%zu", m_backend.backend_id());
 
 	while (!need_exit()) {
 		{
@@ -790,6 +800,7 @@ void slru_cache_t::life_check(void) {
 				TIMER_SCOPE("life_check.sync_iterate");
 				HANDY_GAUGE_SET("slru_cache.life_check.sync_iterate.element_count",
 				                elements_for_sync.size());
+				auto pool = dnet_backend_get_pool(m_node, m_backend.backend_id());
 				for (data_t *elem : elements_for_sync) {
 					if (m_clear_occured)
 						break;
@@ -797,7 +808,7 @@ void slru_cache_t::life_check(void) {
 					memcpy(id.id, elem->id().id, DNET_ID_SIZE);
 
 					TIMER_START("life_check.sync_iterate.dnet_oplock");
-					dnet_oplock(m_backend, &id);
+					dnet_oplock(pool, &id);
 					TIMER_STOP("life_check.sync_iterate.dnet_oplock");
 
 					// sync_element uses local_session which always uses DNET_FLAGS_NOLOCK
@@ -807,14 +818,15 @@ void slru_cache_t::life_check(void) {
 						elem->set_sync_state(data_t::sync_state_t::ERASE_PHASE);
 					}
 
-					dnet_opunlock(m_backend, &id);
+					dnet_opunlock(pool, &id);
 				}
 			}
 
 			{
 				TIMER_SCOPE("life_check.remove_local");
-				for (struct dnet_id &id : remove) {
-				        dnet_remove_local(m_backend, m_node, &id);
+				local_session sess(m_backend, m_node);
+				for (const auto &id : remove) {
+					sess.remove(id);
 				}
 			}
 
@@ -839,7 +851,7 @@ void slru_cache_t::life_check(void) {
 			}
 		}
 
-		std::this_thread::sleep_for( std::chrono::milliseconds(1000) );
+		std::this_thread::sleep_for(std::chrono::seconds(1));
 	}
 
 }

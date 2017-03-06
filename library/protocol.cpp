@@ -2,7 +2,7 @@
 
 #include <msgpack.hpp>
 
-#include "monitor/rapidjson/document.h"
+#include "rapidjson/document.h"
 
 namespace msgpack {
 using namespace ioremap::elliptics;

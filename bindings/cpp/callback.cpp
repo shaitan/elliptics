@@ -17,6 +17,9 @@
 #include <blackhole/attribute.hpp>
 
 #include "callback_p.h"
+
+#include <blackhole/wrapper.hpp>
+
 #include "library/elliptics.h"
 #include "library/logger.hpp"
 
