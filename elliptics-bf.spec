@@ -67,7 +67,7 @@ Elliptics client library (C++/Python bindings), devel files
 %build
 export LDFLAGS="-Wl,-z,defs"
 export DESTDIR="%{buildroot}"
--%{cmake}
+-%{cmake} .
 
 #make %{?_smp_mflags}
 make
