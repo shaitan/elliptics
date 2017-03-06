@@ -1,3 +1,9 @@
+elliptics (2.27.1.0) unstable; urgency=medium
+
+  * srw: RIP
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Mon, 06 Mar 2017 11:49:37 +0300
+
 elliptics (2.27.0.7) unstable; urgency=medium
 
   * srw: update to cocaine v0.12.12
