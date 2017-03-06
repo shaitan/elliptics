@@ -29,7 +29,6 @@
 #include <blackhole/wrapper.hpp>
 
 #include "node_p.hpp"
-#include "exec_context_data_p.hpp"
 
 #include "elliptics/async_result_cast.hpp"
 
@@ -204,136 +203,6 @@ std::string address::to_string_with_family() const
 const dnet_addr &address::to_raw() const
 {
 	return m_addr;
-}
-
-exec_context::exec_context()
-{
-}
-
-exec_context::exec_context(const data_pointer &data)
-{
-	error_info error;
-	exec_context tmp = parse(data, &error);
-	if (error)
-		error.throw_error();
-	m_data = tmp.m_data;
-}
-
-exec_context::exec_context(const std::shared_ptr<exec_context_data> &data) : m_data(data)
-{
-}
-
-exec_context::exec_context(const exec_context &other) : m_data(other.m_data)
-{
-}
-
-exec_context &exec_context::operator =(const exec_context &other)
-{
-	m_data = other.m_data;
-	return *this;
-}
-
-exec_context::~exec_context()
-{
-}
-
-exec_context exec_context::from_raw(const void *const_data, size_t size)
-{
-	data_pointer data = data_pointer::from_raw(const_cast<void*>(const_data), size);
-	return exec_context(data);
-}
-
-exec_context exec_context::parse(const data_pointer &data, error_info *error)
-{
-	if (data.size() < sizeof(sph)) {
-		*error = create_error(-EINVAL, "invalid exec_context: actual size %zu, but can't be less than %zu (sizeof(sph))",
-				data.size(), sizeof(sph)
-		);
-		return exec_context();
-	}
-
-	sph *s = data.data<sph>();
-	if (data.size() != sizeof(sph) + s->event_size + s->data_size) {
-		*error = create_error(-EINVAL, "invalid exec_context: total size %zu, but"
-				" must be equal to %llu (sizeof(sph)(%zu) + event_size(%d) + data_size(%lu))",
-				data.size(),
-				static_cast<unsigned long long>(sizeof(sph) + s->event_size + s->data_size),
-				sizeof(sph), s->event_size, s->data_size
-		);
-		return exec_context();
-	}
-
-	char *event = reinterpret_cast<char *>(s + 1);
-
-	auto priv = std::make_shared<exec_context_data>();
-	priv->srw_data = data;
-	priv->event.assign(event, event + s->event_size);
-	priv->data = data.skip<sph>().skip(s->event_size);
-	return exec_context(priv);
-}
-
-std::string exec_context::event() const
-{
-	return m_data ? m_data->event : std::string();
-}
-
-data_pointer exec_context::data() const
-{
-	return m_data ? m_data->data : data_pointer();
-}
-
-uint64_t exec_context::flags() const
-{
-	return m_data ? m_data->srw_data.data<sph>()->flags : uint64_t(0);
-}
-
-void exec_context::set_flags(uint64_t flags) const
-{
-	if (m_data) {
-		m_data->srw_data.data<sph>()->flags = flags;
-	}
-}
-
-dnet_addr *exec_context::address() const
-{
-	return m_data ? &m_data->srw_data.data<sph>()->addr : NULL;
-}
-
-dnet_raw_id *exec_context::src_id() const
-{
-	return m_data ? &m_data->srw_data.data<sph>()->src : NULL;
-}
-
-int exec_context::src_key() const
-{
-	return m_data ? m_data->srw_data.data<sph>()->src_key : 0;
-}
-
-void exec_context::set_src_key(int src_key) const
-{
-	if (m_data) {
-		m_data->srw_data.data<sph>()->src_key = src_key;
-	}
-}
-
-data_pointer exec_context::native_data() const
-{
-	return m_data ? m_data->srw_data : data_pointer();
-}
-
-bool exec_context::is_final() const
-{
-	return m_data ? (m_data->srw_data.data<sph>()->flags & DNET_SPH_FLAGS_FINISH) : false;
-}
-
-bool exec_context::is_reply() const
-{
-	return m_data ? (m_data->srw_data.data<sph>()->flags & DNET_SPH_FLAGS_REPLY) : false;
-}
-
-bool exec_context::is_null() const
-{
-	return !m_data;
 }
 
 namespace filters {
@@ -2227,13 +2096,6 @@ std::vector<dnet_route_entry> session::get_routes()
 	return std::vector<dnet_route_entry>(entries.data(), entries.data() + count);
 }
 
-async_exec_result session::request(dnet_id *id, const exec_context &context)
-{
-	trace_scope scope{get_trace_id(), get_trace_bit()};
-	session sess = clean_clone();
-	return async_result_cast<exec_result_entry>(*this, send_srw_command(sess, id, context.m_data->srw_data.data<sph>()));
-}
-
 async_iterator_result session::iterator(const key &id, const data_pointer& request)
 {
 	trace_scope scope{get_trace_id(), get_trace_bit()};
@@ -2540,76 +2402,6 @@ async_iterator_result session::server_send(const std::vector<std::string> &strs,
 	}
 
 	return server_send(keys, iflags, groups);
-}
-
-async_exec_result session::exec(dnet_id *id, const std::string &event, const argument_data &data)
-{
-	trace_scope scope{get_trace_id(), get_trace_bit()};
-	return exec(id, -1, event, data);
-}
-
-async_exec_result session::exec(dnet_id *id, int src_key, const std::string &event, const argument_data &data)
-{
-	trace_scope scope{get_trace_id(), get_trace_bit()};
-	exec_context context = exec_context_data::create(event, data);
-
-	sph *s = context.m_data->srw_data.data<sph>();
-	s->flags = DNET_SPH_FLAGS_SRC_BLOCK;
-	s->src_key = src_key;
-
-	if (id)
-		memcpy(s->src.id, id->id, sizeof(s->src.id));
-
-	return request(id, context);
-}
-
-async_exec_result session::exec(const exec_context &tmp_context, const std::string &event, const argument_data &data)
-{
-	trace_scope scope{get_trace_id(), get_trace_bit()};
-	exec_context context = exec_context_data::copy(tmp_context, event, data);
-
-	sph *s = context.m_data->srw_data.data<sph>();
-	s->flags = DNET_SPH_FLAGS_SRC_BLOCK;
-
-	dnet_id id;
-	dnet_setup_id(&id, 0, s->src.id);
-
-	return request(&id, context);
-}
-
-async_push_result session::push(dnet_id *id, const exec_context &tmp_context,
-		const std::string &event, const argument_data &data)
-{
-	trace_scope scope{get_trace_id(), get_trace_bit()};
-	exec_context context = exec_context_data::copy(tmp_context, event, data);
-
-	sph *s = context.m_data->srw_data.data<sph>();
-	s->flags &= ~DNET_SPH_FLAGS_SRC_BLOCK;
-	s->flags &= ~(DNET_SPH_FLAGS_REPLY | DNET_SPH_FLAGS_FINISH);
-
-	return request(id, context);
-}
-
-async_reply_result session::reply(const exec_context &tmp_context,
-		const argument_data &data, exec_context::final_state state)
-{
-	trace_scope scope{get_trace_id(), get_trace_bit()};
-	exec_context context = exec_context_data::copy(tmp_context, tmp_context.event(), data);
-
-	sph *s = context.m_data->srw_data.data<sph>();
-
-	s->flags |= DNET_SPH_FLAGS_REPLY;
-	s->flags &= ~DNET_SPH_FLAGS_SRC_BLOCK;
-
-	if (state == exec_context::final)
-		s->flags |= DNET_SPH_FLAGS_FINISH;
-	else
-		s->flags &= ~DNET_SPH_FLAGS_FINISH;
-
-	dnet_id id;
-	dnet_setup_id(&id, 0, s->src.id);
-
-	return request(&id, context);
 }
 
 struct io_attr_comparator

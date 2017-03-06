@@ -15,9 +15,9 @@
 # GNU General Public License for more details.
 # =============================================================================
 
-import sys
 import os
 import shutil
+import sys
 sys.path.insert(0, "")  # for running from cmake
 
 
@@ -41,7 +41,6 @@ def make_servers(groups, nodes_count, backends_count):
 
 class Servers:
     def __init__(self,
-                 without_cocaine=False,
                  servers=make_servers([1], 2, 2),
                  isolated=False,
                  path='servers'):
@@ -53,7 +52,6 @@ class Servers:
         os.mkdir(self.path)
 
         config = {}
-        config['srw'] = not without_cocaine
         config['fork'] = True
         config['monitor'] = True
         config['path'] = self.path

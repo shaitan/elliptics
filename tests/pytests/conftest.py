@@ -21,7 +21,8 @@ import pytest
 
 import elliptics
 
-from server import Servers, make_servers
+from server import Servers
+from server import make_servers
 
 
 def pytest_addoption(parser):
@@ -30,8 +31,6 @@ def pytest_addoption(parser):
     parser.addoption('--groups', action='store', help='elliptics groups', default='1,2,3')
     parser.addoption('--loglevel', type='choice', choices=xrange(5), default=elliptics.log_level.debug)
 
-    parser.addoption('--without-cocaine', action='store_true', default=False,
-                     help='Turns off exec tests that are connected with cocaine')
     parser.addoption('--backends-count', action='store', default=2,
                      help='Number of backends that will be enabled per group on node')
     parser.addoption('--nodes-count', action='store', default=2,
@@ -124,8 +123,7 @@ def servers(request):
     '''
     groups = [int(g) for g in request.config.option.groups.split(',')]
 
-    _servers = Servers(without_cocaine=request.config.option.without_cocaine,
-                       servers=make_servers(groups, int(request.config.option.nodes_count),
+    _servers = Servers(servers=make_servers(groups, int(request.config.option.nodes_count),
                                             int(request.config.option.backends_count)))
 
     request.config.option.remotes = _servers.remotes

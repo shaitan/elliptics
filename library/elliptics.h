@@ -609,8 +609,6 @@ struct dnet_node
 
 	char			cookie[DNET_AUTH_COOKIE_SIZE];
 
-	void			*srw;
-
 	int			server_prio;
 	int			client_prio;
 

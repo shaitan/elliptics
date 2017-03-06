@@ -178,11 +178,9 @@ trace_wrapper_t::trace_wrapper_t(std::unique_ptr<dnet_logger> logger)
 
 blackhole::attributes_t trace_wrapper_t::attributes() {
 	if (trace::current().trace_id) {
-		return {
-			// should be replaced by plain trace::current().trace_id when blackhole gets mapping
-			// and cocaine start to specify trace_id as uint64_t
-			{"trace_id", to_hex_string(trace::current().trace_id)}
-		};
+		// should be replaced by plain trace::current().trace_id when blackhole will
+		// remove used attributes from ... list
+		return {{"trace_id", to_hex_string(trace::current().trace_id)}};
 	}
 
 	return {};

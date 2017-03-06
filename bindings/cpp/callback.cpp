@@ -61,11 +61,6 @@ public:
 
 		callback_result_entry entry(data);
 
-		//TODO: move exec_context parsing to exec_result_entry
-		if (cmd->cmd == DNET_CMD_EXEC && cmd->size > 0) {
-			data->context = exec_context::parse(entry.data(), &data->error);
-		}
-
 		m_handler.process(entry);
 
 		return false;
@@ -211,20 +206,6 @@ static size_t send_to_groups_io_impl(session &sess, dnet_io_control &ctl)
 async_generic_result send_to_groups(session &sess, dnet_io_control &control)
 {
 	return send_impl(sess, control, send_to_groups_io_impl);
-}
-
-async_generic_result send_srw_command(session &sess, dnet_id *id, sph *srw_data)
-{
-	async_generic_result result(sess);
-
-	detail::basic_handler *handler = new detail::basic_handler(sess.get_logger(), result);
-
-	const size_t count = dnet_send_cmd(sess.get_native(), id, detail::basic_handler::handler, handler, srw_data);
-
-	if (handler->set_total(count))
-		delete handler;
-
-	return result;
 }
 
 } } // namespace ioremap::elliptics

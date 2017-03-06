@@ -36,7 +36,6 @@
 #include <netinet/in.h>
 
 #include <elliptics/packet.h>
-#include <elliptics/srw.h>
 
 #include "logger.hpp"
 
@@ -376,8 +375,7 @@ struct dnet_config
 
 	int			reserved_for_future_use_3;
 
-	/* Config values for srw backend */
-	struct srw_init_ctl	srw;
+	uint64_t		reserved_for_future_use_4;
 
 	int			send_limit;
 
@@ -902,16 +900,6 @@ struct dnet_route_entry
 };
 
 int dnet_get_routes(struct dnet_session *s, struct dnet_route_entry **entries);
-/*
- * Send a shell/python command to the remote node for execution.
- */
-int dnet_send_cmd(struct dnet_session *s,
-	struct dnet_id *id,
-	int (* complete)(struct dnet_addr *addr,
-			struct dnet_cmd *cmd,
-			void *priv),
-	void *priv,
-	struct sph *e);
 
 int dnet_flags(struct dnet_node *n);
 void dnet_set_timeouts(struct dnet_node *n, long wait_timeout, long check_timeout);

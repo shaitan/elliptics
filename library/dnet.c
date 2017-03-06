@@ -1487,9 +1487,6 @@ static int dnet_process_cmd_without_backend_raw(struct dnet_net_state *st, struc
 		case DNET_CMD_ROUTE_LIST:
 			err = dnet_cmd_route_list(st, cmd);
 			break;
-		case DNET_CMD_EXEC:
-			err = dnet_cmd_exec(st, cmd, data);
-			break;
 		case DNET_CMD_MONITOR_STAT:
 			err = dnet_monitor_process_cmd(st, cmd, data);
 			break;

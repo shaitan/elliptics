@@ -55,7 +55,7 @@ enum dnet_commands {
 						 * parameters.
 						 */
 	DNET_CMD_LIST_DEPRECATED,		/* List all objects for given node ID. Deprecated and forbidden */
-	DNET_CMD_EXEC,				/* Execute given command on the remote node */
+	DNET_CMD_EXEC_DEPRECATED,		/* Execute given command on the remote node */
 	DNET_CMD_ROUTE_LIST,			/* Receive route table from given node */
 	DNET_CMD_STAT_DEPRECATED,		/* Gather remote VM, LA and FS statistics */
 	DNET_CMD_NOTIFY,			/* Notify when object in question was modified */

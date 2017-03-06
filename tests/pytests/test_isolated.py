@@ -17,18 +17,24 @@
 
 import sys
 sys.path.insert(0, "")  # for running from cmake
-import pytest
 import elliptics
-from conftest import make_session, scope
-from server import Servers, make_backends
-from test_recovery import recovery, RECOVERY, cleanup_backends, write_data, check_data
+import pytest
+
+from conftest import make_session
+from conftest import scope
+from server import Servers
+from server import make_backends
+from test_recovery import RECOVERY
+from test_recovery import check_data
+from test_recovery import cleanup_backends
+from test_recovery import recovery
+from test_recovery import write_data
 
 
 @pytest.yield_fixture(scope="module")
 def servers(request):
     servers = [{'backends': make_backends(backends_count=1, group_id=g)} for g in 1, 2]
-    _servers = Servers(without_cocaine=True,
-                       servers=servers,
+    _servers = Servers(servers=servers,
                        isolated=True,
                        path='isolated_servers')
 

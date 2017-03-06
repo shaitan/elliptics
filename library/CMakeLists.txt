@@ -30,7 +30,6 @@ target_link_libraries(elliptics
     elliptics_ids
     elliptics_monitor
     elliptics_client
-    elliptics_srw
     kora-util
     )
 

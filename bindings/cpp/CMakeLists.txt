@@ -42,7 +42,6 @@ set(ELLIPTICS_CLIENT_SRCS
     ../../include/elliptics/backends.h
     ../../include/elliptics/session.hpp
     ../../include/elliptics/result_entry.hpp
-    ../../include/elliptics/srw.h
     ../../include/elliptics/core.h
     ../../include/elliptics/debug.hpp
     ../../include/elliptics/error.hpp

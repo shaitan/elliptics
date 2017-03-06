@@ -87,9 +87,6 @@ class callback_result_data
 
 		data_pointer data;
 		error_info error;
-
-		//TODO: exec_context belong to exec_result_entry
-		exec_context context;
 };
 
 struct dnet_net_state_deleter
@@ -116,8 +113,6 @@ async_generic_result send_to_each_node(session &sess, const transport_control &c
 // Send request to one state at each session's group
 async_generic_result send_to_groups(session &sess, const transport_control &control);
 async_generic_result send_to_groups(session &sess, dnet_io_control &control);
-
-async_generic_result send_srw_command(session &sess, dnet_id *id, sph *srw_data);
 
 template <typename Handler, typename Entry>
 class multigroup_handler : public std::enable_shared_from_this<multigroup_handler<Handler, Entry>>
