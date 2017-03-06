@@ -577,7 +577,7 @@ static int dnet_process_control(struct dnet_net_state *st, struct dnet_cmd *cmd,
 	}
 }
 
-int dnet_process_recv(struct dnet_backend_io *backend, struct dnet_net_state *st, struct dnet_io_req *r)
+int dnet_process_recv(struct dnet_net_state *st, struct dnet_io_req *r)
 {
 	int err = 0;
 	struct dnet_node *n = st->n;
@@ -688,7 +688,7 @@ int dnet_process_recv(struct dnet_backend_io *backend, struct dnet_net_state *st
 		dnet_state_put(forward_state);
 
 		HANDY_COUNTER_INCREMENT("io.cmds", 1);
-		err = dnet_process_cmd_raw(backend, st, cmd, r->data, 0, r->time.tv_sec * 1000000 + r->time.tv_usec);
+		err = dnet_process_cmd_raw(st, cmd, r->data, 0, r->time.tv_sec * 1000000 + r->time.tv_usec);
 	} else {
 		if (!forward_state) {
 			err = -ENXIO;
@@ -1250,7 +1250,7 @@ int dnet_send_request(struct dnet_net_state *st, struct dnet_io_req *r)
 
 	if (1) {
 		struct dnet_cmd *cmd = r->header ? r->header : r->data;
-		dnet_node_set_trace_id(cmd->trace_id, cmd->flags & DNET_FLAGS_TRACE_BIT);
+		dnet_logger_set_trace_id(cmd->trace_id, cmd->flags & DNET_FLAGS_TRACE_BIT);
 		dnet_log(st->n, st->send_offset == 0 ? DNET_LOG_NOTICE : DNET_LOG_DEBUG,
 		         "%s: %s: sending trans: %lld -> %s/%d: size: %llu, cflags: %s, start-sent: %zd/%zd",
 		         dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), (unsigned long long)cmd->trans,
@@ -1303,7 +1303,7 @@ err_out_exit:
 		         dnet_addr_string(&st->addr), cmd->backend_id, (unsigned long long)cmd->size,
 		         dnet_flags_dump_cflags(cmd->flags), st->send_offset, total_size);
 	}
-	dnet_node_unset_trace_id();
+	dnet_logger_unset_trace_id();
 
 	if (total_size > sizeof(struct dnet_cmd)) {
 		cork = 0;

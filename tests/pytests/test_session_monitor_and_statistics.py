@@ -16,8 +16,10 @@
 import sys
 sys.path.insert(0, "")  # for running from cmake
 import pytest
-from datetime import datetime, timedelta
+
 from conftest import make_session
+from datetime import datetime
+from datetime import timedelta
 
 import elliptics
 
@@ -145,10 +147,10 @@ class MonitorStatsChecker:
             assert state_io['stall'] >= 0
             assert state_io['join_state'] >= 0
 
-        for backend_id in self.json_stat['backends']:
-            io = self.json_stat['backends'][backend_id]['io']
-            check_queue(io['blocking'])
-            check_queue(io['nonblocking'])
+        # for backend_id in self.json_stat['backends']:
+        #     io = self.json_stat['backends'][backend_id]['io']
+        #     check_queue(io['blocking'])
+        #     check_queue(io['nonblocking'])
 
     def __check_commands_stat(self):
         '''full check of commands statistics in json'''

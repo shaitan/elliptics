@@ -30,6 +30,7 @@ extern "C" {
 #endif
 
 struct dnet_node *dnet_parse_config(const char *file, int mon);
+void dnet_destroy_config_data(struct dnet_node *node);
 int dnet_parse_groups(char *value, int **groups);
 
 int dnet_background(void);

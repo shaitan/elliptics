@@ -1,40 +1,28 @@
 #include "request_queue.h"
+
+#include <blackhole/attribute.hpp>
+
 #include "murmurhash.h"
 #include "monitor/measure_points.h"
 #include "example/config.hpp"
 #include "logger.hpp"
+#include "library/backend.h"
 
-static size_t dnet_id_hash(const dnet_id &key)
-{
+static size_t dnet_id_hash(const dnet_id &key) {
 	return MurmurHash64A(reinterpret_cast<const char *>(&key), sizeof(key.id) + sizeof(key.group_id), 0);
-}
-
-static size_t dnet_raw_id_hash(const dnet_id &key)
-{
-	return MurmurHash64A(reinterpret_cast<const char *>(&key.id), sizeof(dnet_raw_id), 0);
 }
 
 static bool dnet_id_equal(const dnet_id &lhs, const dnet_id &rhs) {
 	return !dnet_id_cmp(&lhs, &rhs);
 }
 
-static bool dnet_raw_id_equal(const dnet_id &lhs, const dnet_id &rhs) {
-	return !dnet_id_cmp_str(reinterpret_cast<const unsigned char *>(&lhs.id),
-				reinterpret_cast<const unsigned char *>(&rhs.id));
-}
-
-
-dnet_request_queue::dnet_request_queue(bool has_backend, uint64_t timeout)
+dnet_request_queue::dnet_request_queue()
 : m_queue_size(0)
-, m_timeout(timeout)
-, m_locked_keys(1, has_backend ? &dnet_raw_id_hash : &dnet_id_hash,
-	       has_backend ? &dnet_raw_id_equal : &dnet_id_equal)
-{
+, m_locked_keys(1, &dnet_id_hash, &dnet_id_equal) {
 	INIT_LIST_HEAD(&m_queue);
 }
 
-dnet_request_queue::~dnet_request_queue()
-{
+dnet_request_queue::~dnet_request_queue() {
 	for (auto it = m_lock_pool.begin(); it != m_lock_pool.end(); ++it) {
 		delete *it;
 	}
@@ -46,8 +34,7 @@ dnet_request_queue::~dnet_request_queue()
 	}
 }
 
-void dnet_request_queue::push_request(dnet_io_req *req)
-{
+void dnet_request_queue::push_request(dnet_io_req *req) {
 	gettimeofday(&req->time, NULL);
 
 	{
@@ -58,9 +45,8 @@ void dnet_request_queue::push_request(dnet_io_req *req)
 	m_queue_wait.notify_one();
 }
 
-dnet_io_req *dnet_request_queue::pop_request(dnet_work_io *wio, const char *thread_stat_id)
-{
-	auto r = [&, this] () -> dnet_io_req * {
+dnet_io_req *dnet_request_queue::pop_request(dnet_work_io *wio, const char *thread_stat_id) {
+	auto r = [&, this]() -> dnet_io_req * {
 		std::unique_lock<std::mutex> lock(m_queue_mutex);
 
 		auto r = take_request(wio, thread_stat_id);
@@ -79,10 +65,11 @@ dnet_io_req *dnet_request_queue::pop_request(dnet_work_io *wio, const char *thre
 		}
 
 		return r;
-	} ();
+	}();
 
-	if (!r)
+	if (!r) {
 		return nullptr;
+	}
 
 	HANDY_COUNTER_DECREMENT("io.input.queue.size", 1);
 
@@ -90,33 +77,44 @@ dnet_io_req *dnet_request_queue::pop_request(dnet_work_io *wio, const char *thre
 	FORMATTED(HANDY_TIMER_STOP, ("pool.%s.queue.wait_time", thread_stat_id), (uint64_t)r);
 
 	auto cmd = static_cast<dnet_cmd *>(r->header);
-	const auto expired = [&r, &cmd, this] () {
-		if (!m_timeout || (cmd->flags & DNET_FLAGS_NO_QUEUE_TIMEOUT))
+	auto st = r->st;
+	auto node = st->n;
+	const auto timeout = [&node, &cmd]() -> uint64_t {
+		// ignore timeout for replies and commands with DNET_FLAGS_NO_QUEUE_TIMEOUT;
+		if (cmd->flags & (DNET_FLAGS_NO_QUEUE_TIMEOUT | DNET_FLAGS_REPLY))
+			return 0;
+
+		if (cmd->backend_id < 0)
+			return dnet_node_get_queue_timeout(node);
+
+		return dnet_backend_get_queue_timeout(node, cmd->backend_id);
+	}();
+	const auto expired = [&r, timeout, &st]() {
+		if (!timeout)
 			return false;
 
-		if (r->st->__need_exit)
+		if (st->__need_exit)
 			return true;
 
-		return (r->time.tv_sec * 1000000 + r->time.tv_usec) > m_timeout;
-	} ();
+		return (r->time.tv_sec * 1000000 + r->time.tv_usec) > timeout;
+	}();
 
 	if (!expired)
 		return r;
 
 	FORMATTED(HANDY_COUNTER_INCREMENT, ("pool.%s.queue.dropped", thread_stat_id), 1);
 	{
-		ioremap::elliptics::trace_scope trace_scope{cmd->trace_id, static_cast<bool>(cmd->flags & DNET_FLAGS_TRACE_BIT)};
-		ioremap::elliptics::backend_scope backend_scope{wio->pool->io ? (int)wio->pool->io->backend_id : -1};
+		ioremap::elliptics::trace_scope trace_scope{cmd->trace_id, cmd->flags & DNET_FLAGS_TRACE_BIT};
+		ioremap::elliptics::backend_scope backend_scope{cmd->backend_id};;
 
-		DNET_LOG_ERROR(wio->pool->n, "{}: {}: client: {}: drop request: trans: {}, cflags: {}, "
-		                             "queue_time: {} usecs, timeout: {} usecs, need_exit: {}",
+		DNET_LOG_ERROR(node, "{}: {}: client: {}: drop request: trans: {}, cflags: {}, "
+		                     "queue_time: {} usecs, timeout: {} usecs, need_exit: {}",
 		               dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), dnet_state_dump_addr(r->st),
 		               cmd->trans, dnet_flags_dump_cflags(cmd->flags),
-		               (r->time.tv_sec * 1000000 + r->time.tv_usec), m_timeout, r->st->__need_exit);
+		               (r->time.tv_sec * 1000000 + r->time.tv_usec), timeout, st->__need_exit);
 	}
-	pthread_cond_broadcast(&wio->pool->n->io->full_wait);
+	pthread_cond_broadcast(&node->io->full_wait);
 
-	auto st = r->st;
 	release_request(r);
 	dnet_io_req_free(r);
 	dnet_state_put(st);
@@ -124,8 +122,7 @@ dnet_io_req *dnet_request_queue::pop_request(dnet_work_io *wio, const char *thre
 	return nullptr;
 }
 
-dnet_io_req *dnet_request_queue::take_request(dnet_work_io *wio, const char *thread_stat_id)
-{
+dnet_io_req *dnet_request_queue::take_request(dnet_work_io *wio, const char *thread_stat_id) {
 	FORMATTED(HANDY_TIMER_SCOPE, ("pool.%s.search_trans_time", thread_stat_id));
 
 	dnet_work_pool *pool = wio->pool;
@@ -181,7 +178,7 @@ dnet_io_req *dnet_request_queue::take_request(dnet_work_io *wio, const char *thr
 			locked_keys_t::iterator it_lock;
 			bool inserted;
 			std::tie(it_lock, inserted) =
-				m_locked_keys.emplace(cmd->id, reinterpret_cast<dnet_locks_entry *>(nullptr));
+			        m_locked_keys.emplace(cmd->id, reinterpret_cast<dnet_locks_entry *>(nullptr));
 			if (inserted) {
 				auto lock_entry = take_lock_entry(wio);
 				it_lock->second = lock_entry;
@@ -189,10 +186,10 @@ dnet_io_req *dnet_request_queue::take_request(dnet_work_io *wio, const char *thr
 			} else {
 				auto lock_entry = it_lock->second;
 				dnet_work_io *owner = lock_entry->owner;
-				/* if key is already locked by other pool thread, then move it to request_list of this thread */
-				if (owner) {
+				/* if key is already locked by other pool thread, then move it to request_list of this
+				 * thread */
+				if (owner)
 					list_move_tail(&it->req_entry, &owner->request_list);
-				}
 			}
 		} else {
 			trans = cmd->trans;
@@ -217,8 +214,7 @@ dnet_io_req *dnet_request_queue::take_request(dnet_work_io *wio, const char *thr
 	return nullptr;
 }
 
-void dnet_request_queue::release_request(const dnet_io_req *req)
-{
+void dnet_request_queue::release_request(const dnet_io_req *req) {
 	auto cmd = reinterpret_cast<const dnet_cmd *>(req->header);
 	if (!(cmd->flags & DNET_FLAGS_REPLY) &&
 	    !(cmd->flags & DNET_FLAGS_NOLOCK)) {
@@ -226,13 +222,13 @@ void dnet_request_queue::release_request(const dnet_io_req *req)
 	}
 }
 
-void dnet_request_queue::lock_key(const dnet_id *id)
-{
+void dnet_request_queue::lock_key(const dnet_id *id) {
 	std::unique_lock<std::mutex> lock(m_locks_mutex);
 	while (1) {
 		auto it = m_locked_keys.find(*id);
-		if (it == m_locked_keys.end())
+		if (it == m_locked_keys.end()) {
 			break;
+		}
 
 		auto lock_entry = it->second;
 		lock_entry->unlock_event.wait_for(lock, std::chrono::seconds(1));
@@ -241,14 +237,12 @@ void dnet_request_queue::lock_key(const dnet_id *id)
 	m_locked_keys.emplace(*id, lock_entry);
 }
 
-void dnet_request_queue::unlock_key(const dnet_id *id)
-{
+void dnet_request_queue::unlock_key(const dnet_id *id) {
 	release_key(id);
 	m_queue_wait.notify_one();
 }
 
-void dnet_request_queue::release_key(const dnet_id *id)
-{
+void dnet_request_queue::release_key(const dnet_id *id) {
 	std::unique_lock<std::mutex> lock(m_locks_mutex);
 	auto it = m_locked_keys.find(*id);
 	if (it != m_locked_keys.end()) {
@@ -260,16 +254,16 @@ void dnet_request_queue::release_key(const dnet_id *id)
 		 * (where all keys have same id as given in argument)
 		 * of pool thread (owner != 0).
 		 */
-		if (owner && !list_empty(&owner->request_list))
+		if (owner && !list_empty(&owner->request_list)) {
 			return;
+		}
 		m_locked_keys.erase(it);
 		put_lock_entry(lock_entry);
 		lock_entry->unlock_event.notify_one();
 	}
 }
 
-dnet_locks_entry *dnet_request_queue::take_lock_entry(dnet_work_io *wio)
-{
+dnet_locks_entry *dnet_request_queue::take_lock_entry(dnet_work_io *wio) {
 	if (m_lock_pool.empty()) {
 		auto entry = new(std::nothrow) dnet_locks_entry;
 		m_lock_pool.push_back(entry);
@@ -280,8 +274,7 @@ dnet_locks_entry *dnet_request_queue::take_lock_entry(dnet_work_io *wio)
 	return entry;
 }
 
-void dnet_request_queue::put_lock_entry(dnet_locks_entry *entry)
-{
+void dnet_request_queue::put_lock_entry(dnet_locks_entry *entry) {
 	m_lock_pool.push_back(entry);
 }
 
@@ -289,91 +282,63 @@ size_t dnet_request_queue::size() const {
 	return m_queue_size;
 }
 
+void dnet_request_queue::notify_all() {
+	m_queue_wait.notify_all();
+}
 
-dnet_oplock_guard::dnet_oplock_guard(struct dnet_backend_io *backend_io, const struct dnet_id *id)
-: m_backend_io{backend_io}
+dnet_oplock_guard::dnet_oplock_guard(struct dnet_io_pool *pool, const struct dnet_id *id)
+: m_pool{pool}
 , m_id{id}
-, m_locked{false}
-{
+, m_locked{false} {
 	lock();
 }
 
-dnet_oplock_guard::~dnet_oplock_guard()
-{
+dnet_oplock_guard::~dnet_oplock_guard() {
 	unlock();
 }
 
-void dnet_oplock_guard::lock()
-{
+void dnet_oplock_guard::lock() {
 	if (!m_locked) {
-		dnet_oplock(m_backend_io, m_id);
+		dnet_oplock(m_pool, m_id);
 		m_locked = true;
 	}
 }
 
-void dnet_oplock_guard::unlock()
-{
+void dnet_oplock_guard::unlock() {
 	if (m_locked) {
-		dnet_opunlock(m_backend_io, m_id);
+		dnet_opunlock(m_pool, m_id);
 		m_locked = false;
 	}
 }
 
-
-void dnet_push_request(struct dnet_work_pool *pool, struct dnet_io_req *req)
-{
-	auto queue = reinterpret_cast<dnet_request_queue*>(pool->request_queue);
-	queue->push_request(req);
+void dnet_push_request(struct dnet_work_pool *pool, struct dnet_io_req *req) {
+	pool->request_queue->push_request(req);
 }
 
-struct dnet_io_req *dnet_pop_request(struct dnet_work_io *wio, const char *thread_stat_id)
-{
-	struct dnet_work_pool *pool = wio->pool;
-	auto queue = reinterpret_cast<dnet_request_queue*>(pool->request_queue);
-	return queue->pop_request(wio, thread_stat_id);
+struct dnet_io_req *dnet_pop_request(struct dnet_work_io *wio, const char *thread_stat_id) {
+	return wio->pool->request_queue->pop_request(wio, thread_stat_id);
 }
 
-void dnet_release_request(struct dnet_work_io *wio, const struct dnet_io_req *req)
-{
-	auto queue = reinterpret_cast<dnet_request_queue*>(wio->pool->request_queue);
-	queue->release_request(req);
+void dnet_release_request(struct dnet_work_io *wio, const struct dnet_io_req *req) {
+	wio->pool->request_queue->release_request(req);
 }
 
-void dnet_oplock(struct dnet_backend_io *backend, const struct dnet_id *id)
-{
-	auto pool = backend->pool.recv_pool.pool;
-	auto queue = reinterpret_cast<dnet_request_queue*>(pool->request_queue);
-	queue->lock_key(id);
+void dnet_oplock(struct dnet_io_pool *pool, const struct dnet_id *id) {
+	pool->recv_pool.pool->request_queue->lock_key(id);
 }
 
-void dnet_opunlock(struct dnet_backend_io *backend, const struct dnet_id *id)
-{
-	auto pool = backend->pool.recv_pool.pool;
-	auto queue = reinterpret_cast<dnet_request_queue*>(pool->request_queue);
-	queue->unlock_key(id);
+void dnet_opunlock(struct dnet_io_pool *pool, const struct dnet_id *id) {
+	pool->recv_pool.pool->request_queue->unlock_key(id);
 }
 
 size_t dnet_get_pool_queue_size(struct dnet_work_pool *pool) {
-	auto queue = reinterpret_cast<dnet_request_queue*>(pool->request_queue);
-	return queue->size();
+	return pool->request_queue->size();
 }
 
-void *dnet_request_queue_create(dnet_node *n, const struct dnet_backend_io *backend) {
-	const auto queue_timeout = [&backend, &n]() -> uint64_t {
-		if (backend != nullptr) {
-			return backend->queue_timeout;
-		}
-
-		using namespace ioremap::elliptics::config;
-		const auto data = static_cast<const config_data *>(n->config_data);
-		return data ? data->queue_timeout : 0;
-
-	}();
-
-	return new(std::nothrow) dnet_request_queue(backend != nullptr, queue_timeout);
+void *dnet_request_queue_create(dnet_node *n) {
+	return new(std::nothrow) dnet_request_queue();
 }
 
-void dnet_request_queue_destroy(void *queue)
-{
-	delete reinterpret_cast<dnet_request_queue*>(queue);
+void dnet_request_queue_destroy(struct dnet_work_pool *pool) {
+	delete pool->request_queue;
 }

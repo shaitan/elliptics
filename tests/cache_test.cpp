@@ -16,6 +16,7 @@
 
 #include "test_base.hpp"
 #include "../cache/cache.hpp"
+#include "library/backend.h"
 
 #include "library/backend.h"
 
@@ -80,8 +81,8 @@ static void test_cache_timestamp(session &sess)
 static void test_cache_records_sizes(session &sess, const nodes_data *setup)
 {
 	dnet_node *node = setup->nodes[0].get_native();
-	dnet_backend_io *backend_io = dnet_get_backend_io(node->io, 0);
-	ioremap::cache::cache_manager *cache = reinterpret_cast<ioremap::cache::cache_manager *>(backend_io->cache);
+	auto backend = dnet_backends_get_backend(node, 0);
+	auto cache = backend->cache();
 	const size_t cache_size = cache->cache_size();
 	const size_t cache_pages_number = cache->cache_pages_number();
 	argument_data data("0");
@@ -115,8 +116,8 @@ static void test_cache_records_sizes(session &sess, const nodes_data *setup)
 static void test_cache_overflow(session &sess, const nodes_data *setup)
 {
 	dnet_node *node = setup->nodes[0].get_native();
-	dnet_backend_io *backend_io = dnet_get_backend_io(node->io, 0);
-	ioremap::cache::cache_manager *cache = reinterpret_cast<ioremap::cache::cache_manager *>(backend_io->cache);
+	auto backend = dnet_backends_get_backend(node, 0);
+	auto cache = backend->cache();
 	const size_t cache_size = cache->cache_size();
 	const size_t cache_pages_number = cache->cache_pages_number();
 	argument_data data("0");
@@ -238,8 +239,8 @@ void cache_read_check_lru(session &sess, int id, lru_list_emulator_t &lru_list_e
 static void test_cache_lru_eviction(session &sess, const nodes_data *setup)
 {
 	dnet_node *node = setup->nodes[0].get_native();
-	dnet_backend_io *backend_io = dnet_get_backend_io(node->io, 0);
-	ioremap::cache::cache_manager *cache = reinterpret_cast<ioremap::cache::cache_manager *>(backend_io->cache);
+	auto backend = dnet_backends_get_backend(node, 0);
+	auto cache = backend->cache();
 	const size_t cache_size = cache->cache_size();
 	const size_t cache_pages_number = cache->cache_pages_number();
 

@@ -32,8 +32,7 @@ extern "C" {
 #include "elliptics/packet.h"
 #include "elliptics/interface.h"
 
-static inline int64_t dnet_backend_check_get_size(struct dnet_io_attr *io, uint64_t *offset, uint64_t *size)
-{
+static inline int64_t dnet_backend_check_get_size(struct dnet_io_attr *io, uint64_t *offset, uint64_t *size) {
 	io->total_size = *size;
 
 	if (io->offset) {
@@ -53,8 +52,7 @@ static inline int64_t dnet_backend_check_get_size(struct dnet_io_attr *io, uint6
 	return 0;
 }
 
-static inline char *file_backend_get_dir(const unsigned char *id, uint64_t bit_num, char *dst)
-{
+static inline char *file_backend_get_dir(const unsigned char *id, uint64_t bit_num, char *dst) {
 	char *res = dnet_dump_id_len_raw(id, (bit_num + 7) / 8, dst);
 
 	if (res)
@@ -65,10 +63,10 @@ static inline char *file_backend_get_dir(const unsigned char *id, uint64_t bit_n
 struct dnet_config_backend;
 struct dnet_config_entry {
 	char		key[64];
-	int		(*callback)(struct dnet_config_backend *b,
-	                            const char *key, const char *value);
+	int		(*callback)(struct dnet_config_backend *b, const char *key, const char *value);
 };
 
+struct dnet_io_pool;
 struct dnet_config_backend {
 	char				name[64];
 	struct dnet_config_entry	*ent;
@@ -93,11 +91,12 @@ struct dnet_config_backend {
  * "Master" functions
  */
 /*! Extracts \a elist from data, replaces \a datap pointer and fixes \a sizep */
-int dnet_ext_list_extract(void **datap, uint64_t *sizep,
-		struct dnet_ext_list *elist, enum dnet_ext_free_data free_data);
+int dnet_ext_list_extract(void **datap,
+                          uint64_t *sizep,
+                          struct dnet_ext_list *elist,
+                          enum dnet_ext_free_data free_data);
 /*! Combines \a datap with \a elist and fixes \a sizep */
-int dnet_ext_list_combine(void **datap, uint64_t *sizep,
-		const struct dnet_ext_list *elist);
+int dnet_ext_list_combine(void **datap, uint64_t *sizep, const struct dnet_ext_list *elist);
 
 /*
  * Extension list manipulation functions
@@ -109,14 +108,10 @@ void dnet_ext_list_init(struct dnet_ext_list *elist);
 void dnet_ext_list_destroy(struct dnet_ext_list *elist);
 
 /* Conversion functions */
-int dnet_ext_list_to_hdr(const struct dnet_ext_list *elist,
-		struct dnet_ext_list_hdr *ehdr);
-int dnet_ext_hdr_to_list(const struct dnet_ext_list_hdr *ehdr,
-		struct dnet_ext_list *elist);
-int dnet_ext_list_to_io(const struct dnet_ext_list *elist,
-		struct dnet_io_attr *io);
-int dnet_ext_io_to_list(const struct dnet_io_attr *io,
-		struct dnet_ext_list *elist);
+int dnet_ext_list_to_hdr(const struct dnet_ext_list *elist, struct dnet_ext_list_hdr *ehdr);
+int dnet_ext_hdr_to_list(const struct dnet_ext_list_hdr *ehdr, struct dnet_ext_list *elist);
+int dnet_ext_list_to_io(const struct dnet_ext_list *elist, struct dnet_io_attr *io);
+int dnet_ext_io_to_list(const struct dnet_io_attr *io, struct dnet_ext_list *elist);
 
 /*! Reads \a ehdr from specified \a offset in given \a fd */
 __attribute__((warn_unused_result))
@@ -130,9 +125,6 @@ int dnet_ext_hdr_write(const struct dnet_ext_list_hdr *ehdr, int fd, uint64_t of
  * library/backend.cpp dnet_backend_info::parse() method
  */
 struct dnet_config_backend *dnet_eblob_backend_info(void);
-
-int dnet_eblob_backend_init(void);
-void dnet_eblob_backend_exit(void);
 
 int backend_storage_size(struct dnet_config_backend *b, const char *root);
 

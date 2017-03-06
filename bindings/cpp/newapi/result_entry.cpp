@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <fcntl.h>
 #include <queue>
+#include <algorithm>
 
 namespace ioremap { namespace elliptics { namespace newapi {
 

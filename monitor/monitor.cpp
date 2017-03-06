@@ -21,10 +21,15 @@
 #include "monitor.hpp"
 #include "compress.hpp"
 
+#include <blackhole/attribute.hpp>
+
 #include <exception>
 #include <iostream>
 
+#include <kora/config.hpp>
+
 #include "library/elliptics.h"
+#include "library/logger.hpp"
 #include "io_stat_provider.hpp"
 #include "backends_stat_provider.hpp"
 #include "procfs_provider.hpp"
@@ -47,8 +52,7 @@ monitor *get_monitor(struct dnet_node *n) {
 }
 
 monitor_config* get_monitor_config(struct dnet_node *n) {
-	const auto& data = *static_cast<const ioremap::elliptics::config::config_data *>(n->config_data);
-	return data.monitor_config.get();
+	return dnet_node_get_config_data(n)->monitor_config.get();
 }
 
 std::unique_ptr<monitor_config> monitor_config::parse(const kora::config_t &monitor) {
@@ -65,9 +69,8 @@ std::unique_ptr<monitor_config> monitor_config::parse(const kora::config_t &moni
 		cfg->has_top = (cfg->top_length > 0) && (cfg->events_size > 0) && (cfg->period_in_seconds > 0);
 	}
 
-	if (monitor.has("handystats")) {
+	if (monitor.has("handystats"))
 		cfg->handystats = kora::to_json(monitor.underlying_object());
-	}
 	return cfg;
 }
 
@@ -212,15 +215,6 @@ void dnet_monitor_exit(struct dnet_node *n) {
 	if (real_monitor) {
 		n->monitor = NULL;
 		delete real_monitor;
-	}
-}
-
-void dnet_monitor_add_provider(struct dnet_node *n, struct stat_provider_raw stat, const char *name) {
-	try {
-		auto provider = new ioremap::monitor::raw_provider(stat);
-		ioremap::monitor::add_provider(n, provider, std::string(name));
-	} catch (const std::exception &e) {
-		std::cerr << e.what() << std::endl;
 	}
 }
 
