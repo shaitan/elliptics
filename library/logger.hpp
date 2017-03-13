@@ -99,7 +99,15 @@ template <class T> inline blackhole::logger_facade<dnet_logger> make_facade(T &&
 
 #else
 #define DNET_LOG_RAW(...)		dnet_log_raw(__VA_ARGS__)
-#define DNET_LOG(node, ...)		DNET_LOG_RAW(dnet_node_get_logger(node), __VA_ARGS__)
+
+#define DNET_LOG(__node__, __severity__, ...)								\
+	do {												\
+		if (dnet_node_get_trace_bit() ||							\
+		    (enum dnet_log_level)(__severity__) >= dnet_node_get_verbosity(__node__)) { 	\
+			DNET_LOG_RAW(dnet_node_get_logger(__node__), __severity__, __VA_ARGS__);	\
+		}											\
+	} while (0)
+
 #define dnet_log(...)			DNET_LOG(__VA_ARGS__)
 
 #define DNET_LOG_DEBUG(log, ...)	DNET_LOG_RAW(log, DNET_LOG_DEBUG, __VA_ARGS__)

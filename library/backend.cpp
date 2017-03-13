@@ -288,7 +288,7 @@ static int dnet_backend_init(struct dnet_node *node, size_t backend_id)
 		entry.entry->callback(&backend->config, entry.entry->key, entry.value_template.data());
 	}
 
-	err = backend->config.init(&backend->config, (dnet_log_level)dnet_node_get_verbosity(node));
+	err = backend->config.init(&backend->config, dnet_node_get_verbosity(node));
 	if (err) {
 		DNET_LOG_ERROR(node, "backend_init: backend: {}, failed to init backend: {}, elapsed: {}", backend_id,
 		               err, elapsed(start));
