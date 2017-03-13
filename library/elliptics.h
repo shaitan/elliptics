@@ -248,7 +248,7 @@ void dnet_node_stop_common_resources(struct dnet_node *n);
 void dnet_node_cleanup_common_resources(struct dnet_node *n);
 
 int dnet_node_reset_log(struct dnet_node *n);
-int dnet_node_get_verbosity(struct dnet_node *n);
+enum dnet_log_level dnet_node_get_verbosity(struct dnet_node *n);
 int dnet_node_set_verbosity(struct dnet_node *n, enum dnet_log_level level);
 
 int dnet_search_range(struct dnet_node *n, struct dnet_id *id,

@@ -13,6 +13,7 @@
 #include <blackhole/record.hpp>
 #include <blackhole/logger.hpp>
 
+#include "example/config.hpp"
 #include "elliptics/session.hpp"
 #include "library/elliptics.h"
 
@@ -27,25 +28,25 @@ public:
 	bool trace_bit;
 
 	static trace current() {
-		return trace_stack.front();
+		return trace_stack.top();
 	}
 
 	static void pop() {
-		auto stack = trace_stack;
-		if (stack.size() > 1) {
-			trace_stack.pop_front();
+		if (!trace_stack.empty()) {
+			trace_stack.pop();
 		}
 	}
 
 	static void push(uint64_t trace_id, bool trace_bit) {
-		trace_stack.emplace_front(trace_id, trace_bit);
+		trace_stack.emplace(trace_id, trace_bit);
 	}
 
 private:
-	static thread_local std::list<trace> trace_stack;
+	static thread_local std::stack<trace, std::vector<trace>> trace_stack;
 };
 
-thread_local std::list<trace> trace::trace_stack = {{0, false}};
+thread_local std::stack<trace, std::vector<trace>> trace::trace_stack{{{0, false}}};
+
 
 struct backend {
 	backend(int id)
@@ -230,6 +231,15 @@ void dnet_node_unset_backend_id() {
 
 dnet_logger *dnet_node_get_logger(struct dnet_node* node) {
 	return node->log;
+}
+
+enum dnet_log_level dnet_node_get_verbosity(struct dnet_node *n) {
+	using namespace ioremap::elliptics::config;
+	if (!n || !n->config_data) {
+		return DNET_LOG_DEBUG;
+	}
+
+	return static_cast<config_data *>(n->config_data)->logger_level;
 }
 
 static const std::array<std::string, 5> severity_names = {{"debug", "notice", "info", "warning", "error"}};

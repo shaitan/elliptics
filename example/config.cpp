@@ -443,14 +443,6 @@ extern "C" int dnet_node_reset_log(struct dnet_node *n)
 	return 0;
 }
 
-extern "C" int dnet_node_get_verbosity(struct dnet_node *n) {
-	if (!n || !n->config_data || dnet_need_exit(n)) {
-		return -EINVAL;
-	}
-
-	return static_cast<config_data *>(n->config_data)->logger_level;
-}
-
 extern "C" int dnet_node_set_verbosity(struct dnet_node *n, enum dnet_log_level level) {
 	if (level < 0 || level > DNET_LOG_ERROR) {
 		return -EINVAL;
