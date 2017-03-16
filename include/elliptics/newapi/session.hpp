@@ -125,6 +125,17 @@ public:
 
 	async_iterator_result server_send(const std::vector<key> &keys, uint64_t flags, uint64_t chunk_size,
 	                                  const int src_group, const std::vector<int> &dst_groups);
+
+	/*
+	 * Family of bulk_read methods are used to read keys from multiple groups/backends efficiently by
+	 * sending exactly one request to a node instead of sending multiple requests per each group.
+	 * NB! For now, all bulk_read methods doesn't support reading of keys from cache.
+	 */
+	async_read_result bulk_read_json(const std::vector<dnet_id> &keys);
+
+	async_read_result bulk_read_data(const std::vector<dnet_id> &keys);
+
+	async_read_result bulk_read(const std::vector<dnet_id> &keys);
 };
 
 }}} /* namespace ioremap::elliptics::newapi */

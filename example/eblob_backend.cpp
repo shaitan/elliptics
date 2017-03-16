@@ -281,22 +281,17 @@ int blob_del_new(eblob_backend_config *c, dnet_cmd *cmd, void *data) {
 	return err;
 }
 
-int blob_read_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *data,
-                  dnet_cmd_stats *cmd_stats) {
+static int blob_read_new_impl(eblob_backend_config *c, void *state, dnet_cmd *cmd, dnet_cmd_stats *cmd_stats,
+			      const ioremap::elliptics::dnet_read_request &request, bool last_read) {
 	using namespace ioremap::elliptics;
 
 	eblob_backend *b = c->eblob;
 
-	auto request = [&data, &cmd] () {
-		dnet_read_request request;
-		deserialize(data_pointer::from_raw(data, cmd->size), request);
-		return request;
-	} ();
-
-	DNET_LOG_NOTICE(c->blog, "{}: EBLOB: blob-read-new: READ_NEW: start: ioflags: {}, read_flags: {}, data_offset: "
-	                         "{}, data_size: {}",
-	                dnet_dump_id(&cmd->id), dnet_flags_dump_ioflags(request.ioflags), request.read_flags,
-	                request.data_offset, request.data_size);
+	DNET_LOG_NOTICE(c->blog, "{}: EBLOB: blob-read-new: {}: start: ioflags: {}, read_flags: {}, "
+	                         "data_offset: {}, data_size: {}",
+	                         dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd),
+	                         dnet_flags_dump_ioflags(request.ioflags), request.read_flags,
+	                         request.data_offset, request.data_size);
 
 	eblob_key key;
 	memcpy(key.id, cmd->id.id, EBLOB_ID_SIZE);
@@ -356,19 +351,22 @@ int blob_read_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *dat
 	if (request.read_flags & DNET_READ_FLAGS_JSON && jhdr.size) {
 		err = verify_checksum(record_offset, jhdr.size);
 		if (err) {
-			DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-read-new: READ_NEW: failed to verify checksum for "
+			DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-read-new: {}: failed to verify checksum for "
 			                        "json: fd: {}, offset: {}, size: {}: {} [{}]",
-			               dnet_dump_id(&cmd->id), wc.data_fd, wc.offset, wc.size, strerror(-err), err);
+			                        dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd),
+			                        wc.data_fd, wc.offset, wc.size,
+			                        strerror(-err), err);
 			return err;
 		}
 
 		json = data_pointer::allocate(jhdr.size);
 		err = dnet_read_ll(wc.data_fd, (char*)json.data(), json.size(), wc.data_offset);
 		if (err) {
-			DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-read-new: READ_NEW: failed to read json: fd: {}, "
+			DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-read-new: {}: failed to read json: fd: {}, "
 			                        "offset: {}, size: {}: {} [{}]",
-			               dnet_dump_id(&cmd->id), wc.data_fd, wc.data_offset, json.size(), strerror(-err),
-			               err);
+			                        dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd),
+			                        wc.data_fd, wc.data_offset, json.size(),
+			                        strerror(-err), err);
 			return err;
 		}
 	}
@@ -393,10 +391,11 @@ int blob_read_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *dat
 
 		err = verify_checksum(record_offset + jhdr.capacity, data_size);
 		if (err) {
-			DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-read-new: READ_NEW: failed to verify checksum for "
+			DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-read-new: {}: failed to verify checksum for "
 			                        "data: offset: {}, size: {}: {} [{}]",
-			               dnet_dump_id(&cmd->id), request.data_offset, request.data_size, strerror(-err),
-			               err);
+			                        dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd),
+			                        request.data_offset, request.data_size,
+			                        strerror(-err), err);
 			return err;
 		}
 	}
@@ -425,7 +424,7 @@ int blob_read_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *dat
 		memcpy(response.skip(sizeof(*cmd) + header.size()).data(), json.data(), json.size());
 
 	response.data<dnet_cmd>()->size = header.size() + json.size() + data_size;
-	response.data<dnet_cmd>()->flags |= DNET_FLAGS_REPLY;
+	response.data<dnet_cmd>()->flags |= DNET_FLAGS_REPLY | (last_read ? 0 : DNET_FLAGS_MORE);
 	response.data<dnet_cmd>()->flags &= ~DNET_FLAGS_NEED_ACK;
 
 	cmd->flags &= ~DNET_FLAGS_NEED_ACK;
@@ -442,6 +441,19 @@ int blob_read_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *dat
 	              wc.data_fd, json.size(), data_size);
 
 	return 0;
+}
+
+int blob_read_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *data,
+                  dnet_cmd_stats *cmd_stats) {
+	using namespace ioremap::elliptics;
+
+	const auto request = [&data, &cmd] () {
+		dnet_read_request request;
+		deserialize(data_pointer::from_raw(data, cmd->size), request);
+		return request;
+	} ();
+
+	return blob_read_new_impl(c, state, cmd, cmd_stats, request, true);
 }
 
 int blob_write_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *data,
@@ -1527,4 +1539,64 @@ int blob_send_new(struct eblob_backend_config *c, void *state, struct dnet_cmd *
 	DNET_LOG(c->blog, err ? DNET_LOG_ERROR : DNET_LOG_INFO, "EBLOB: {} finished: {}", __func__,
 	         dnet_print_error(err));
 	return err;
+}
+
+int blob_bulk_read_new(struct eblob_backend_config *c, void *state, struct dnet_cmd *cmd, void *data,
+		       struct dnet_cmd_stats *cmd_stats) {
+	using namespace ioremap::elliptics;
+
+	if (c == nullptr || state == nullptr || cmd == nullptr || data == nullptr)
+		return -EINVAL;
+
+	auto st = reinterpret_cast<dnet_net_state *>(state);
+	const int backend_id = c->data.stat_id;
+	auto backend_io = dnet_get_backend_io(st->n->io, backend_id);
+	if (!backend_io) {
+		DNET_LOG_ERROR(c->blog, "EBLOB: {}: couldn't find backend_io for backend_id: {}",
+			       __func__, backend_id);
+		return -EINVAL;
+	}
+
+	dnet_bulk_read_request bulk_request;
+	deserialize(data_pointer::from_raw(data, cmd->size), bulk_request);
+
+	int err = 0;
+	dnet_read_request request;
+	request.ioflags = bulk_request.ioflags;
+	request.read_flags = bulk_request.read_flags;
+	request.data_offset = request.data_size = 0;
+	request.deadline = bulk_request.deadline;
+
+	struct timeval start, end;
+	struct dnet_cmd_stats orig_stats(*cmd_stats);
+
+	cmd->flags &= ~DNET_FLAGS_NEED_ACK;
+	struct dnet_cmd cmd_copy(*cmd);
+	const auto num_keys = bulk_request.keys.size();
+	for (size_t i = 0; i < num_keys; ++i) {
+		gettimeofday(&start, nullptr);
+		cmd_copy.id = bulk_request.keys[i];
+
+		auto read_stats = orig_stats;
+
+		const bool last_read = i >= (num_keys - 1);
+		{
+			dnet_oplock_guard oplock_guard{backend_io, &cmd_copy.id};
+			err = blob_read_new_impl(c, state, &cmd_copy, &read_stats, request, last_read);
+		}
+		if (err) {
+			cmd_copy.status = err;
+			dnet_send_reply(st, &cmd_copy, nullptr, 0, last_read ? 0 : 1);
+		}
+		cmd_copy.cmd = DNET_CMD_READ_NEW;
+		cmd_stats->size += read_stats.size;
+
+		gettimeofday(&end, nullptr);
+		read_stats.handle_time = DIFF(start, end);
+
+		dnet_backend_command_stats_update(nullptr, backend_io, &cmd_copy, read_stats.size, 0, err,
+						  read_stats.handle_time);
+	}
+
+	return 0;
 }

@@ -472,6 +472,13 @@ dnet_id session::get_direct_id()
 	return *dnet_session_get_direct_id(get_native());
 }
 
+address session::get_direct_address() {
+	if (!(get_cflags() & (DNET_FLAGS_DIRECT | DNET_FLAGS_DIRECT_BACKEND)))
+		throw ioremap::elliptics::error(-EINVAL, "DNET_FLAGS_DIRECT and DNET_FLAGS_DIRECT_BACKEND were not set");
+
+	return *dnet_session_get_direct_addr(get_native());
+}
+
 void session::set_direct_id(const address &remote_addr)
 {
 	reset_forward();

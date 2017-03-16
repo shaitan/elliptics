@@ -318,6 +318,8 @@ public:
 	 */
 	dnet_id get_direct_id();
 
+	address get_direct_address();
+
 	/*!
 	 * Stick session to particular remote address.
 	 */

@@ -1019,6 +1019,40 @@ std::string read_file(const char *file_path)
 	return result;
 }
 
+void set_delay_for_groups(session &s, const std::unordered_set<int> &groups, uint64_t delay) {
+	struct backend {
+		dnet_addr addr;
+		uint32_t backend_id;
+
+		bool operator<(const backend &other) const {
+			if (auto cmp = dnet_addr_cmp(&addr, &other.addr))
+				return cmp < 0;
+			return backend_id < other.backend_id;
+		}
+	};
+
+	std::set<backend> backends;
+
+	for (const auto &route: s.get_routes()) {
+		if (groups.find(route.group_id) != groups.end()) {
+			backends.emplace(backend{route.addr, route.backend_id});
+		}
+	}
+
+	std::vector<async_backend_control_result> results;
+	results.reserve(backends.size());
+
+	for (const auto &backend: backends) {
+		results.emplace_back(
+			s.set_delay(address(backend.addr), backend.backend_id, delay)
+		);
+	}
+
+	for (auto &result: results) {
+		result.wait();
+	}
+}
+
 nodes_data::~nodes_data()
 {
 #ifndef NO_SERVER

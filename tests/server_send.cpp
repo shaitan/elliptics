@@ -317,42 +317,6 @@ static void ssend_test_server_send(session &s, int num, const std::string &id_pr
 	}
 }
 
-#if (!DISABLE_LONG_TEST)
-static void ssend_test_set_delay(session &s, const std::vector<int> &groups, uint64_t delay) {
-	struct backend {
-		dnet_addr addr;
-		uint32_t backend_id;
-
-		bool operator<(const backend &other) const {
-			if (auto cmp = dnet_addr_cmp(&addr, &other.addr))
-				return cmp < 0;
-			return backend_id < other.backend_id;
-		}
-	};
-
-	std::set<backend> backends;
-
-	for (const auto &route: s.get_routes()) {
-		if (std::find(groups.begin(), groups.end(), route.group_id) != groups.end()) {
-			backends.insert(backend{route.addr, route.backend_id});
-		}
-	}
-
-	std::vector<async_backend_control_result> results;
-	results.reserve(backends.size());
-
-	for (const auto &backend: backends) {
-		results.emplace_back(
-			s.set_delay(address(backend.addr), backend.backend_id, delay)
-		);
-	}
-
-	for (auto &result: results) {
-		result.wait();
-	}
-}
-#endif
-
 static bool register_tests(const tests::nodes_data *setup)
 {
 	using namespace tests;
@@ -474,7 +438,8 @@ static bool register_tests(const tests::nodes_data *setup)
 	iflags = 0;
 
 	std::vector<int> delayed_groups{ssend_dst_groups[0]};
-	ELLIPTICS_TEST_CASE(ssend_test_set_delay, use_session(n, ssend_src_groups), delayed_groups, 61000);
+	std::unordered_set<int> delayed_groups_set(delayed_groups.begin(), delayed_groups.end());
+	ELLIPTICS_TEST_CASE(set_delay_for_groups, use_session(n, ssend_src_groups), delayed_groups_set, 61000);
 
 	ELLIPTICS_TEST_CASE(ssend_test_server_send, use_session(n, ssend_src_groups), 1, id_prefix, data_prefix,
 	                    delayed_groups, iflags, -ETIMEDOUT, session::no_exceptions, 30);

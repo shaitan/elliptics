@@ -1,6 +1,7 @@
 #ifndef TEST_BASE_HPP
 #define TEST_BASE_HPP
 
+#include <unordered_set>
 #include <boost/variant.hpp>
 
 #ifndef TEST_DO_NOT_INCLUDE_PLACEHOLDERS
@@ -329,6 +330,8 @@ nodes_data::ptr start_nodes(std::ostream &debug_stream, const std::vector<std::s
                             const std::string &path);
 
 std::string read_file(const char *file_path);
+
+void set_delay_for_groups(session &s, const std::unordered_set<int> &groups, uint64_t delay);
 
 } // namespace tests
 

@@ -83,6 +83,7 @@ enum dnet_commands {
 	DNET_CMD_ITERATOR_NEW,
 	DNET_CMD_SEND_NEW,
 	DNET_CMD_DEL_NEW,
+	DNET_CMD_BULK_READ_NEW,
 
 	DNET_CMD_UNKNOWN,			/* This slot is allocated for statistics gathered for unknown commands */
 	__DNET_CMD_MAX,

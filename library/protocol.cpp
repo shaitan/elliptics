@@ -265,6 +265,28 @@ inline msgpack::packer<Stream> &operator <<(msgpack::packer<Stream> &o, const dn
 	return o;
 }
 
+inline dnet_id &operator >>(msgpack::object o, dnet_id &v) {
+	if (o.type != msgpack::type::ARRAY || o.via.array.size < 2)
+		throw msgpack::type_error();
+
+	const object *p = o.via.array.ptr;
+	if (p[0].type != msgpack::type::RAW || p[0].via.raw.size != sizeof(v.id)) {
+		throw msgpack::type_error();
+	}
+	memcpy(v.id, p[0].via.raw.ptr, sizeof(v.id));
+	p[1].convert(&v.group_id);
+	return v;
+}
+
+template <typename Stream>
+inline msgpack::packer<Stream> &operator <<(msgpack::packer<Stream> &o, const dnet_id &v) {
+	o.pack_array(2);
+	o.pack_raw(sizeof(v.id));
+	o.pack_raw_body(reinterpret_cast<const char *>(v.id), sizeof(v.id));
+	o.pack(v.group_id);
+	return o;
+}
+
 inline dnet_iterator_range &operator >>(msgpack::object o, dnet_iterator_range &v) {
 	if (o.type != msgpack::type::ARRAY || o.via.array.size != 2)
 		throw msgpack::type_error();
@@ -408,6 +430,33 @@ inline msgpack::packer<Stream> &operator <<(msgpack::packer<Stream> &o,
 	return o;
 }
 
+inline ioremap::elliptics::dnet_bulk_read_request &operator >>(msgpack::object o,
+							       ioremap::elliptics::dnet_bulk_read_request &v) {
+	if (o.type != msgpack::type::ARRAY || o.via.array.size < 4) {
+		throw msgpack::type_error();
+	}
+
+	const object *p = o.via.array.ptr;
+	p[0].convert(&v.keys);
+	p[1].convert(&v.ioflags);
+	p[2].convert(&v.read_flags);
+	p[3].convert(&v.deadline);
+
+	return v;
+}
+
+template <typename Stream>
+inline msgpack::packer<Stream> &operator <<(msgpack::packer<Stream> &o,
+                                            const ioremap::elliptics::dnet_bulk_read_request &v) {
+	o.pack_array(4);
+	o.pack(v.keys);
+	o.pack(v.ioflags);
+	o.pack(v.read_flags);
+	o.pack(v.deadline);
+
+	return o;
+}
+
 
 } // namespace msgpack
 
@@ -482,6 +531,8 @@ DEFINE_HEADER(dnet_iterator_request);
 DEFINE_HEADER(dnet_iterator_response);
 
 DEFINE_HEADER(dnet_server_send_request);
+
+DEFINE_HEADER(dnet_bulk_read_request);
 
 DEFINE_HEADER(dnet_json_header);
 }} // namespace ioremap::elliptics
