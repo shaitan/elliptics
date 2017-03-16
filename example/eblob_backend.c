@@ -1230,6 +1230,9 @@ static int eblob_backend_command_handler(void *state, void *priv, struct dnet_cm
 		case DNET_CMD_DEL_NEW:
 			err = blob_del_new(c, cmd, data);
 			break;
+		case DNET_CMD_BULK_READ_NEW:
+			err = blob_bulk_read_new(c, state, cmd, data, cmd_stats);
+			break;
 		default:
 			err = -ENOTSUP;
 			break;

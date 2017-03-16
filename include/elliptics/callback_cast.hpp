@@ -38,7 +38,8 @@ INIT_CALLBACK_TYPE(read_result_entry,
 )
 
 INIT_CALLBACK_TYPE(newapi::read_result_entry,
-	DNET_CMD_READ_NEW
+	DNET_CMD_READ_NEW,
+	DNET_CMD_BULK_READ_NEW
 )
 
 INIT_CALLBACK_TYPE(lookup_result_entry,

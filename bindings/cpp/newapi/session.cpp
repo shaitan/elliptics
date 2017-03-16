@@ -8,8 +8,10 @@
 #include "elliptics/async_result_cast.hpp"
 #include "bindings/cpp/callback_p.h"
 #include "bindings/cpp/node_p.hpp"
+#include "bindings/cpp/session_internals.hpp"
 
 #include "library/protocol.hpp"
+#include "library/common.hpp"
 
 #include "bindings/cpp/functional_p.h"
 
@@ -842,6 +844,219 @@ async_iterator_result session::server_send(const std::vector<key> &keys, uint64_
 	}
 
 	return aggregated(*this, results.begin(), results.end());
+}
+
+class bulk_read_handler : public std::enable_shared_from_this<bulk_read_handler> {
+public:
+	explicit bulk_read_handler(const async_read_result &result, const session &orig_sess,
+				   const dnet_addr &addr)
+	: m_session(orig_sess)
+	, m_handler(result)
+	, m_last_error(0)
+	, m_addr(addr)
+	, m_log(orig_sess.get_logger()) {
+	}
+
+	void start(const transport_control &control, const dnet_bulk_read_request &request) {
+		DNET_LOG_NOTICE(m_log, "{}: started: address: {}, flags: {}, read_flags: {}, num_keys: {}",
+				dnet_cmd_string(control.get_native().cmd), dnet_addr_string(&m_addr),
+				dnet_flags_dump_ioflags(request.ioflags), request.read_flags, request.keys.size());
+
+		auto rr = send_to_single_state(m_session, control);
+		m_handler.set_total(rr.total());
+
+		m_keys.assign(request.keys.begin(), request.keys.end());
+		std::sort(m_keys.begin(), m_keys.end());
+		m_key_responses.resize(m_keys.size(), false);
+
+		rr.connect(
+			std::bind(&bulk_read_handler::process, shared_from_this(), std::placeholders::_1),
+			std::bind(&bulk_read_handler::complete, shared_from_this(), std::placeholders::_1)
+		);
+	}
+
+private:
+	void process(const ioremap::elliptics::callback_result_entry &entry) {
+		auto cmd = entry.command();
+
+		const auto &resp = callback_cast<read_result_entry>(entry);
+		if (!resp.is_valid()) {
+			DNET_LOG_ERROR(m_log, "{}: {}: process: invalid response, status: {}",
+				       dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), cmd->status);
+			return;
+		}
+
+		auto it = std::lower_bound(m_keys.begin(), m_keys.end(), cmd->id);
+
+		bool found = false;
+		if (it != m_keys.end()) {
+			const auto index = std::distance(m_keys.begin(), it);
+			if (dnet_id_cmp(&cmd->id, &m_keys[index]) == 0) {
+				m_handler.process(resp);
+
+				m_key_responses[index] = true;
+				found = true;
+			}
+		}
+
+		if (!found) {
+			DNET_LOG_ERROR(m_log, "{}: {}: process: unknown key, status: {}",
+				       dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), cmd->status);
+		}
+
+		m_last_error = cmd->status;
+	}
+
+	void complete(const error_info &error) {
+		dnet_cmd cmd;
+		memset(&cmd, 0, sizeof(cmd));
+		cmd.status = error ? error.code() : m_last_error;
+		cmd.cmd = DNET_CMD_BULK_READ_NEW;
+		cmd.trace_id = m_session.get_trace_id();
+		cmd.flags = DNET_FLAGS_REPLY | DNET_FLAGS_MORE |
+			(m_session.get_trace_bit() ? DNET_FLAGS_TRACE_BIT : 0);
+
+		for (size_t i = 0; i < m_keys.size(); ++i) {
+			if (m_key_responses[i])
+				continue;
+
+			cmd.id = m_keys[i];
+			auto result_data = std::make_shared<ioremap::elliptics::callback_result_data>(&m_addr, &cmd);
+			result_data->error = error ? error :
+				create_error(m_last_error, "send_bulk_read: read failed for key: %s",
+					     dnet_dump_id(&m_keys[i]));
+			ioremap::elliptics::callback_result_entry entry(result_data);
+			m_handler.process(callback_cast<read_result_entry>(entry));
+		}
+
+		m_handler.complete(error);
+
+		DNET_LOG_NOTICE(m_log, "{}: finished: address: {}",
+				dnet_cmd_string(DNET_CMD_BULK_READ_NEW), dnet_addr_string(&m_addr));
+	}
+
+private:
+	std::vector<dnet_id> m_keys;
+	std::vector<bool> m_key_responses;
+	session m_session;
+	async_result_handler<read_result_entry> m_handler;
+	int m_last_error;
+	const dnet_addr m_addr;
+	std::unique_ptr<dnet_logger> m_log;
+};
+
+async_read_result send_bulk_read(session &sess, const std::vector<dnet_id> &keys, uint64_t read_flags) {
+	trace_scope scope{sess.get_trace_id(), sess.get_trace_bit()};
+
+	if (keys.empty()) {
+		async_read_result result{sess};
+		async_result_handler<read_result_entry> handler{result};
+		handler.complete(create_error(-ENXIO, "send_bulk_read: keys list is empty"));
+		return result;
+	}
+
+	std::vector<async_read_result> results;
+
+	auto dnet_addr_comparator = [] (const dnet_addr &lhs, const dnet_addr &rhs) -> bool {
+		return dnet_addr_cmp(&lhs, &rhs) < 0;
+	};
+	std::map<dnet_addr, std::vector<dnet_id>, decltype(dnet_addr_comparator)>
+		remotes_ids(dnet_addr_comparator); // node_address -> [list of keys]
+
+	const bool has_direct_address = sess.get_cflags() & (DNET_FLAGS_DIRECT | DNET_FLAGS_DIRECT_BACKEND);
+
+	if (!has_direct_address) {
+		/* failed_result used as a container for storing responses for keys
+		 * which are not in the route table
+		 */
+		async_read_result failed_result{sess.clean_clone()};
+		async_result_handler<read_result_entry> failed_handler{failed_result};
+
+		dnet_addr address;
+		dnet_cmd cmd;
+		memset(&cmd, 0, sizeof(cmd));
+		cmd.cmd = DNET_CMD_BULK_READ_NEW;
+		cmd.trace_id = sess.get_trace_id();
+		cmd.flags = DNET_FLAGS_REPLY | DNET_FLAGS_MORE |
+			(sess.get_trace_bit() ? DNET_FLAGS_TRACE_BIT : 0);
+
+		for (const dnet_id &id : keys) {
+			const int err = dnet_lookup_addr(sess.get_native(), nullptr, 0, &id, id.group_id,
+							 &address, nullptr);
+			if (!err) {
+				remotes_ids[address].emplace_back(id);
+			} else {
+				memset(&address, 0, sizeof(address));
+				cmd.id = id;
+				cmd.status = err;
+				auto result_data = std::make_shared<ioremap::elliptics::callback_result_data>(&address,
+													      &cmd);
+				result_data->error = create_error(err, "send_bulk_read: could not locate address & "
+								       "backend for requested key: %s",
+								       dnet_dump_id(&id));
+				ioremap::elliptics::callback_result_entry entry(result_data);
+				failed_handler.process(callback_cast<read_result_entry>(entry));
+			}
+		}
+
+		failed_handler.complete(error_info());
+		results.reserve(remotes_ids.size() + 1);
+		/* Adding failed_result to results vector won't affect behaviour from
+		 * the client's perspective: if there are no negative responses, then
+		 * addition of failed_result equivalent to just ignoring it.
+		 */
+		results.emplace_back(std::move(failed_result));
+	} else {
+		const auto address = sess.get_direct_address();
+		remotes_ids.emplace(address.to_raw(), keys);
+	}
+
+	dnet_time deadline;
+	dnet_current_time(&deadline);
+	deadline.tsec += sess.get_timeout();
+
+	for (auto &pair : remotes_ids) {
+		const auto &address = pair.first;
+		auto &ids = pair.second;
+
+		const dnet_bulk_read_request request{
+			std::move(ids),
+			sess.get_ioflags(),
+			read_flags,
+			deadline
+		};
+		const auto serialized_request = serialize(request);
+
+		transport_control control;
+		control.set_command(DNET_CMD_BULK_READ_NEW);
+		control.set_cflags(sess.get_cflags() | DNET_FLAGS_NEED_ACK | DNET_FLAGS_NOLOCK);
+		control.set_data(serialized_request.data(), serialized_request.size());
+
+		auto session = sess.clean_clone();
+		if (!has_direct_address) {
+			session.set_direct_id(address);
+		}
+
+		async_read_result result(session);
+		auto handler = std::make_shared<bulk_read_handler>(result, session, address);
+		handler->start(control, request);
+
+		results.emplace_back(std::move(result));
+	}
+
+	return aggregated(sess, results.begin(), results.end());
+}
+
+async_read_result session::bulk_read_json(const std::vector<dnet_id> &keys) {
+	return send_bulk_read(*this, keys, DNET_READ_FLAGS_JSON);
+}
+
+async_read_result session::bulk_read_data(const std::vector<dnet_id> &keys) {
+	return send_bulk_read(*this, keys, DNET_READ_FLAGS_DATA);
+}
+
+async_read_result session::bulk_read(const std::vector<dnet_id> &keys) {
+	return send_bulk_read(*this, keys, DNET_READ_FLAGS_JSON | DNET_READ_FLAGS_DATA);
 }
 
 }}} // ioremap::elliptics::newapi

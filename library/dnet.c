@@ -1496,6 +1496,9 @@ static int dnet_process_cmd_without_backend_raw(struct dnet_net_state *st, struc
 		case DNET_CMD_BACKEND_STATUS:
 			err = dnet_cmd_backend_status(st, cmd, data);
 			break;
+		case DNET_CMD_BULK_READ_NEW:
+			err = dnet_cmd_bulk_read_new(st, cmd, data);
+			break;
 		default:
 			err = -ENOTSUP;
 			break;

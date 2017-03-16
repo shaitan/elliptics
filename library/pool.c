@@ -238,6 +238,7 @@ static int dnet_cmd_needs_backend(int command)
 	case DNET_CMD_MONITOR_STAT:
 	case DNET_CMD_BACKEND_CONTROL:
 	case DNET_CMD_BACKEND_STATUS:
+	case DNET_CMD_BULK_READ_NEW:
 		return 0;
 	}
 	return 1;

@@ -6,7 +6,7 @@
 #include <boost/test/included/unit_test.hpp>
 
 #include <eblob/blob.h>
-
+#include "library/common.hpp"
 #include "elliptics/newapi/session.hpp"
 
 #include "test_base.hpp"
@@ -18,13 +18,21 @@ namespace bu = boost::unit_test;
 const std::vector<int> groups{1,2,3};
 
 nodes_data::ptr configure_test_setup(const std::string &path) {
-	auto server_config = [](const config_data &c) {
-		return server_config::default_value().apply_options(c);
+	auto server_config = [](const std::vector<int> &groups) {
+		auto ret = server_config::default_value();
+		ret.backends.resize(groups.size(), ret.backends.front());
+		for (size_t i = 0; i < groups.size(); ++i) {
+			ret.backends[i]("group", groups[i]);
+		}
+		return ret;
 	};
 
-	auto configs = {server_config(config_data()("group", 1)),
-	                server_config(config_data()("group", 2)),
-	                server_config(config_data()("group", 3))};
+	/* Create 3 server nodes each containing two groups.
+	 * Groups 1, 2, 3 are used in all tests, while 4, 5, 6 are bulk_read-specific.
+	 */
+	auto configs = {server_config({1, 4}),
+	                server_config({2, 5}),
+	                server_config({3, 6})};
 
 	start_nodes_config config(bu::results_reporter::get_stream(), configs, path);
 	config.fork = true;
@@ -851,7 +859,7 @@ void corrupt_record(const std::string &path, off_t offset, const std::string &in
 	close(fd);
 }
 
-void write_and_corrupt_record(ioremap::elliptics::newapi::session &s, const std::string &key,
+void write_and_corrupt_record(ioremap::elliptics::newapi::session &s, const ioremap::elliptics::key &key,
                               const std::string &json, uint64_t json_capacity,
                               const std::string &data, uint64_t data_capacity,
                               uint64_t injection_offset) {
@@ -864,13 +872,13 @@ void write_and_corrupt_record(ioremap::elliptics::newapi::session &s, const std:
 	corrupt_record(result.path(), result.record_info().json_offset + injection_offset, "asjdhfpapof");
 }
 
-void write_and_corrupt_json(ioremap::elliptics::newapi::session &s, const std::string &key,
+void write_and_corrupt_json(ioremap::elliptics::newapi::session &s, const ioremap::elliptics::key &key,
                             const std::string &json, uint64_t json_capacity,
                             const std::string &data, uint64_t data_capacity) {
 	write_and_corrupt_record(s, key, json, json_capacity, data, data_capacity, 0);
 }
 
-void write_and_corrupt_data(ioremap::elliptics::newapi::session &s, const std::string &key,
+void write_and_corrupt_data(ioremap::elliptics::newapi::session &s, const ioremap::elliptics::key &key,
                             const std::string &json, uint64_t json_capacity,
                             const std::string &data, uint64_t data_capacity) {
 	write_and_corrupt_record(s, key, json, json_capacity, data, data_capacity, json_capacity);
@@ -1345,6 +1353,276 @@ void test_remove_corrupted(const ioremap::elliptics::newapi::session &session) {
 	BOOST_REQUIRE_EQUAL(result.status(), 0);
 }
 
+void test_bulk_read(const ioremap::elliptics::newapi::session &session) {
+	record record{
+		std::string{"key"},
+		0xff1ff2ff3,
+		dnet_time{10, 20},
+		dnet_time{10, 20},
+		std::string{"{\"key\": \"key\"}"},
+		512,
+		std::string{"key data"},
+		1024,
+		(session.get_ioflags() & DNET_IO_FLAGS_CACHE) != 0
+	};
+
+	std::map<dnet_id, tests::record> records;
+	std::set<dnet_id> responses;
+
+	auto check_all_responses_presence = [&records, &responses] () {
+		for (const auto &pair : records) {
+			auto &key = pair.first;
+			BOOST_REQUIRE(responses.find(key) != responses.end());
+		}
+	};
+
+	std::vector<int> groups{1, 2, 3, 4, 5, 6};
+
+	/*
+	 * Step 1. Prepare test data: write keys to multiple groups. Each key will be presented
+	 * exactly once in every group.
+	 */
+	const static size_t NUM_KEYS_IN_GROUP = 100;
+	const static size_t NUM_KEYS_TOTAL = NUM_KEYS_IN_GROUP * groups.size();
+
+	std::vector<std::tuple<ioremap::elliptics::newapi::async_write_result,
+			       decltype(records)::const_iterator>> write_results;
+	write_results.reserve(NUM_KEYS_TOTAL);
+
+	std::vector<dnet_id> ids;
+	ids.reserve(NUM_KEYS_TOTAL);
+
+	auto s = session.clone();
+	s.set_filter(ioremap::elliptics::filters::all_with_ack);
+	s.set_trace_id(rand());
+	s.set_user_flags(record.user_flags);
+	s.set_timestamp(record.timestamp);
+	s.set_json_timestamp(record.json_timestamp);
+
+	for (size_t i = 0; i < NUM_KEYS_IN_GROUP; ++i) {
+		for (const int group_id : groups) {
+			record.key = key("bulk_key_" + std::to_string(i));
+			record.key.transform(s);
+			record.key.set_group_id(group_id);
+
+			auto unique_suffix = std::to_string(group_id * NUM_KEYS_IN_GROUP + i);
+			record.json = "{\"key\": \"bulk_json_" + unique_suffix + "\"}";
+			record.data = "bulk_data_" + unique_suffix;
+
+			s.set_groups({group_id});
+			auto async = s.write(record.key,
+					     record.json, record.json_capacity,
+					     record.data, record.data_capacity);
+
+			auto it = records.emplace(record.key.id(), record).first;
+
+			write_results.emplace_back(std::move(async), it);
+			ids.emplace_back(record.key.id());
+		}
+	}
+
+	for (auto &r : write_results) {
+		auto &async = std::get<0>(r);
+		const auto &record = std::get<1>(r)->second;
+		check_lookup_result(async, DNET_CMD_WRITE_NEW, record, 1);
+	}
+
+	/*
+	 * Step 2. Check bulk read in normal conditions: read keys from all groups
+	 * and check its data. Check it against different read methods:
+	 * bulk_read, bulk_read_data, bulk_read_json.
+	 */
+	size_t count = 0;
+	auto check_read_result = [&] (ioremap::elliptics::newapi::async_read_result &async,
+				      bool check_json, bool check_data) {
+		responses.clear();
+		size_t count = 0;
+		for (const auto &result: async) {
+			BOOST_REQUIRE_EQUAL(result.status(), 0);
+			BOOST_REQUIRE_EQUAL(result.command()->cmd, DNET_CMD_BULK_READ_NEW);
+			BOOST_REQUIRE_EQUAL(result.error().code(), 0);
+			BOOST_REQUIRE_EQUAL(result.error().message(), "");
+
+			const auto cmd = result.command();
+			responses.emplace(cmd->id);
+
+			auto it = records.find(cmd->id);
+			BOOST_REQUIRE(it != records.end());
+			auto ref = it->second;
+
+			auto record_info = result.record_info();
+
+			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.json_timestamp, &ref.json_timestamp), 0);
+			BOOST_REQUIRE_EQUAL(record_info.json_offset, 0);
+			BOOST_REQUIRE_EQUAL(record_info.json_size, ref.json.size());
+			if (!ref.in_cache) {
+				BOOST_REQUIRE_EQUAL(record_info.json_capacity, ref.json_capacity);
+			}
+
+			BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.data_timestamp, &ref.timestamp), 0);
+			BOOST_REQUIRE_EQUAL(record_info.data_offset, 0);
+			BOOST_REQUIRE_EQUAL(record_info.data_size, ref.data.size());
+
+			if (check_json) {
+				BOOST_REQUIRE_EQUAL(result.json().to_string(), ref.json);
+			} else {
+				BOOST_REQUIRE(result.json().to_string().empty());
+			}
+
+			if (check_data) {
+				BOOST_REQUIRE_EQUAL(result.data().to_string(), ref.data);
+			} else {
+				BOOST_REQUIRE(result.data().to_string().empty());
+			}
+
+			++count;
+		}
+		BOOST_REQUIRE_EQUAL(count, NUM_KEYS_TOTAL);
+		check_all_responses_presence();
+	};
+
+	auto async = s.bulk_read(ids);
+	check_read_result(async, true, true);
+
+	async = s.bulk_read_json(ids);
+	check_read_result(async, true, false);
+
+	async = s.bulk_read_data(ids);
+	check_read_result(async, false, true);
+
+	/*
+	 * Step 3. Check bulk read from non-existent groups. Half of the keys will point to an
+	 * invalid group. Read from invalid groups must raise ENXIO error for each corresponding key.
+	 */
+	std::vector<dnet_id> ids_invalid_group(ids);
+	const int invalid_group = 42;
+	for (size_t i = 0; i < ids_invalid_group.size(); ++i) {
+		if (i % 2 == 0) {
+			ids_invalid_group[i].group_id = invalid_group;
+		}
+	}
+
+	async = s.bulk_read(ids_invalid_group);
+
+	count = 0;
+	for (const auto &result: async) {
+		const auto cmd = result.command();
+
+		BOOST_REQUIRE_EQUAL(cmd->cmd, DNET_CMD_BULK_READ_NEW);
+
+		if (cmd->id.group_id == invalid_group) {
+			BOOST_REQUIRE_EQUAL(result.status(), -ENXIO);
+			BOOST_REQUIRE_EQUAL(result.error().code(), -ENXIO);
+		} else {
+			BOOST_REQUIRE_EQUAL(result.status(), 0);
+			BOOST_REQUIRE_EQUAL(result.error().code(), 0);
+		}
+
+		++count;
+	}
+	BOOST_REQUIRE_EQUAL(count, NUM_KEYS_TOTAL);
+
+	/*
+	 * Step 4. Check bulk read from normal groups, corrupted groups and groups without a key.
+	 * At first, remove and corrupt all keys on appropriate groups. Then check that bulk read
+	 * will raise ENOENT, EILSEQ errors for keys from empty and corrupted groups respectively.
+	 * At the same time, read from normal groups must return valid data.
+	 */
+	auto group_iter = groups.begin();
+	const int remove_group = *group_iter++;
+	const int corrupt_group = *group_iter++;
+	const int delay_group = *group_iter++;
+
+	for (const auto &pair : records) {
+		auto &key = pair.first;
+		auto &record = pair.second;
+		const int group_id = key.group_id;
+
+		if (group_id == remove_group) {
+			s.set_groups({group_id});
+			s.remove(key);
+		}
+
+		if (group_id == corrupt_group) {
+			s.set_groups({group_id});
+			write_and_corrupt_data(s, record.key,
+					       record.json, record.json_capacity,
+					       record.data, record.data_capacity);
+		}
+	}
+
+	async = s.bulk_read(ids);
+
+	responses.clear();
+	count = 0;
+	for (const auto &result: async) {
+		const auto cmd = result.command();
+
+		BOOST_REQUIRE_EQUAL(cmd->cmd, DNET_CMD_BULK_READ_NEW);
+
+		if (cmd->id.group_id == static_cast<uint32_t>(remove_group)) {
+			BOOST_REQUIRE_EQUAL(result.status(), -ENOENT);
+			BOOST_REQUIRE_EQUAL(result.error().code(), -ENOENT);
+		} else if (cmd->id.group_id == static_cast<uint32_t>(corrupt_group)) {
+			BOOST_REQUIRE_EQUAL(result.status(), -EILSEQ);
+			BOOST_REQUIRE_EQUAL(result.error().code(), -EILSEQ);
+		} else {
+			BOOST_REQUIRE_EQUAL(result.status(), 0);
+			BOOST_REQUIRE_EQUAL(result.error().code(), 0);
+		}
+
+		responses.emplace(cmd->id);
+
+		auto it = records.find(cmd->id);
+		BOOST_REQUIRE(it != records.end());
+
+		++count;
+	}
+	BOOST_REQUIRE_EQUAL(count, NUM_KEYS_TOTAL);
+	check_all_responses_presence();
+
+	/*
+	 * Step 5. Check that bulk read from slow group will raise ETIMEDOUT error.
+	 */
+	s.set_groups(groups);
+	set_delay_for_groups(s, {delay_group}, (s.get_timeout() + 1) * 1000);
+
+	async = s.bulk_read(ids);
+
+	responses.clear();
+	count = 0;
+	for (const auto &result: async) {
+		const auto cmd = result.command();
+
+		BOOST_REQUIRE_EQUAL(cmd->cmd, DNET_CMD_BULK_READ_NEW);
+
+		if (cmd->id.group_id == static_cast<uint32_t>(remove_group)) {
+			BOOST_REQUIRE_EQUAL(result.status(), -ENOENT);
+			BOOST_REQUIRE_EQUAL(result.error().code(), -ENOENT);
+		} else if (cmd->id.group_id == static_cast<uint32_t>(corrupt_group)) {
+			BOOST_REQUIRE_EQUAL(result.status(), -EILSEQ);
+			BOOST_REQUIRE_EQUAL(result.error().code(), -EILSEQ);
+		} else if (cmd->id.group_id == static_cast<uint32_t>(delay_group)) {
+			BOOST_REQUIRE_EQUAL(result.status(), -ETIMEDOUT);
+			BOOST_REQUIRE_EQUAL(result.error().code(), -ETIMEDOUT);
+		} else {
+			BOOST_REQUIRE_EQUAL(result.status(), 0);
+			BOOST_REQUIRE_EQUAL(result.error().code(), 0);
+		}
+
+		responses.emplace(cmd->id);
+
+		auto it = records.find(cmd->id);
+		BOOST_REQUIRE(it != records.end());
+
+		++count;
+	}
+	BOOST_REQUIRE_EQUAL(count, NUM_KEYS_TOTAL);
+	check_all_responses_presence();
+
+	set_delay_for_groups(s, {delay_group}, 0);
+}
+
 bool register_tests(const nodes_data *setup) {
 	record record{
 		std::string{"key"},
@@ -1386,6 +1664,10 @@ bool register_tests(const nodes_data *setup) {
 		ELLIPTICS_TEST_CASE(test_read, use_session(n, {}, 0, ioflags), record, 1, 0);
 		ELLIPTICS_TEST_CASE(test_read, use_session(n, {}, 0, ioflags), record, 2, 1);
 		ELLIPTICS_TEST_CASE(test_read, use_session(n, {}, 0, ioflags), record, 3, std::numeric_limits<uint64_t>::max());
+
+		if (!in_cache) {
+			ELLIPTICS_TEST_CASE(test_bulk_read, use_session(n, {}, 0, ioflags));
+		}
 
 		record.json = R"json({
 			"record": {

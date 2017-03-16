@@ -42,7 +42,7 @@ static void fill_backend_backend(rapidjson::Value &stat_value,
                                  rapidjson::Document::AllocatorType &allocator,
                                  const struct dnet_backend_io *backend,
                                  const dnet_backend_info *config_backend) {
-	char *json_stat = NULL;
+	char *json_stat = nullptr;
 	size_t size = 0;
 	struct dnet_backend_callbacks *cb = backend->cb;
 	if (cb->storage_stat_json) {
@@ -151,7 +151,7 @@ static void fill_disabled_backend_config(rapidjson::Value &stat_value,
 
 	/* If config template provides API for serializing parsed config values to json - use it */
 	if (config_backend->config_template.to_json) {
-		char *json_stat = NULL;
+		char *json_stat = nullptr;
 		size_t size = 0;
 
 		dnet_config_backend config = config_backend->config_template;
@@ -214,7 +214,8 @@ static rapidjson::Value& backend_stats_json(uint64_t categories,
 		if (categories & DNET_MONITOR_COMMANDS) {
 			const command_stats *stats = (command_stats *)(backend_io->command_stats);
 			rapidjson::Value commands_value(rapidjson::kObjectType);
-			stat_value.AddMember("commands", stats->commands_report(NULL, commands_value, allocator), allocator);
+			stat_value.AddMember("commands", stats->commands_report(nullptr, commands_value, allocator),
+					     allocator);
 		}
 
 		if (categories & DNET_MONITOR_BACKEND) {
@@ -279,8 +280,6 @@ std::string backends_stat_provider::json(uint64_t categories) const {
 
 }} /* namespace ioremap::monitor */
 
-#include <fstream>
-
 int dnet_backend_command_stats_init(struct dnet_backend_io *backend_io)
 {
 	int err = 0;
@@ -288,7 +287,7 @@ int dnet_backend_command_stats_init(struct dnet_backend_io *backend_io)
 	try {
 		backend_io->command_stats = (void *)(new ioremap::monitor::command_stats());
 	} catch (...) {
-		backend_io->command_stats = NULL;
+		backend_io->command_stats = nullptr;
 		err = -ENOMEM;
 	}
 
@@ -297,16 +296,16 @@ int dnet_backend_command_stats_init(struct dnet_backend_io *backend_io)
 
 void dnet_backend_command_stats_cleanup(struct dnet_backend_io *backend_io)
 {
-	delete (ioremap::monitor::command_stats *)backend_io->command_stats;
-	backend_io->command_stats = NULL;
+	delete reinterpret_cast<ioremap::monitor::command_stats *>(backend_io->command_stats);
+	backend_io->command_stats = nullptr;
 }
 
 void dnet_backend_command_stats_update(struct dnet_node *node, struct dnet_backend_io *backend_io,
 		struct dnet_cmd *cmd, uint64_t size, int handled_in_cache, int err, long diff)
 {
-	ioremap::monitor::command_stats *stats = (ioremap::monitor::command_stats *)backend_io->command_stats;
+	auto stats = reinterpret_cast<ioremap::monitor::command_stats *>(backend_io->command_stats);
 
-	assert(stats != NULL);
+	assert(stats != nullptr);
 
 	(void) node;
 

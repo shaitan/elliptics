@@ -129,8 +129,7 @@ static void clients_stat_json(dnet_node *n, rapidjson::Value &stat_value,
 
 
 command_stats::command_stats()
-{
-	m_cmd_stats.resize(__DNET_CMD_MAX);
+: m_cmd_stats(__DNET_CMD_MAX) {
 }
 
 void command_stats::command_counter(const int orig_cmd,
@@ -145,11 +144,11 @@ void command_stats::command_counter(const int orig_cmd,
 	if (cmd >= __DNET_CMD_MAX || cmd <= 0)
 		cmd = DNET_CMD_UNKNOWN;
 
-	std::unique_lock<std::mutex> guard(m_cmd_stats_mutex);
 	auto &place = cache ? m_cmd_stats[cmd].cache : m_cmd_stats[cmd].disk;
 	auto &source = trans ? place.outside : place.internal;
 	auto &counter = err ? source.counter.failures : source.counter.successes;
 
+	std::unique_lock<std::mutex> guard(m_cmd_stats_mutex);
 	++counter;
 	source.size += size;
 	source.time += time;

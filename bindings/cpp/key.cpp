@@ -16,10 +16,6 @@
 
 #include <elliptics/cppdef.h>
 
-#include <sstream>
-
-#include <boost/make_shared.hpp>
-
 namespace ioremap { namespace elliptics {
 
 enum key_reserved_flags : int {

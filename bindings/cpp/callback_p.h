@@ -70,7 +70,7 @@ class callback_result_data
 		{
 		}
 
-		callback_result_data(dnet_addr *addr, dnet_cmd *cmd)
+		callback_result_data(const dnet_addr *addr, const dnet_cmd *cmd)
 		{
 			const size_t size = sizeof(dnet_addr) + sizeof(dnet_cmd) + cmd->size;
 			data = data_pointer::allocate(size);

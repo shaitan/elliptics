@@ -85,6 +85,14 @@ struct dnet_remove_request {
 	dnet_time timestamp;
 };
 
+struct dnet_bulk_read_request {
+	std::vector<dnet_id> keys;
+	uint64_t ioflags;
+	uint64_t read_flags;
+
+	dnet_time deadline;
+};
+
 struct dnet_iterator_request {
 	dnet_iterator_request();
 	dnet_iterator_request(uint32_t type, uint64_t flags,

@@ -190,6 +190,8 @@ int dnet_get_backend_ids(const dnet_backend_info_manager *backends, size_t **bac
 int dnet_cmd_backend_control(struct dnet_net_state *st, struct dnet_cmd *cmd, void *data);
 int dnet_cmd_backend_status(struct dnet_net_state *st, struct dnet_cmd *cmd, void *data);
 
+int dnet_cmd_bulk_read_new(struct dnet_net_state *st, struct dnet_cmd *cmd, void *data);
+
 struct dnet_backend_io *dnet_get_backend_io(struct dnet_io *io, size_t backend_id);
 
 #ifdef __cplusplus

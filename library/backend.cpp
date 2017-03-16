@@ -2,7 +2,9 @@
 #include "monitor/monitor.hpp"
 #include "example/config.hpp"
 #include "bindings/cpp/functional_p.h"
+#include "bindings/cpp/session_internals.hpp"
 #include "library/logger.hpp"
+#include "library/protocol.hpp"
 
 #include <fstream>
 #include <memory>
@@ -894,6 +896,144 @@ int dnet_cmd_backend_status(struct dnet_net_state *st, struct dnet_cmd *cmd, voi
 	}
 
 	return err;
+}
+
+class bulk_read_handler : public std::enable_shared_from_this<bulk_read_handler> {
+public:
+	explicit bulk_read_handler(struct dnet_net_state *st, const struct dnet_cmd *cmd)
+	: m_session(st->n)
+	, m_node(st->n)
+	, m_state(dnet_state_get(st))
+	, m_orig_cmd(*cmd)
+	, m_total(0) {
+		using namespace ioremap::elliptics;
+		m_session.set_exceptions_policy(session::no_exceptions);
+		m_session.set_filter(filters::all_with_ack);
+		m_session.set_trace_id(cmd->trace_id);
+		m_session.set_trace_bit(!!(cmd->flags & DNET_FLAGS_TRACE_BIT));
+	}
+
+	void start(const ioremap::elliptics::dnet_bulk_read_request &request) {
+		using namespace ioremap::elliptics;
+
+		m_total = request.keys.size();
+		for (const auto &id : request.keys) {
+			auto backend_id = dnet_state_search_backend(m_node, &id);
+			if (backend_id < 0) {
+				send_fail_reply(id, backend_id, -ENXIO);
+				continue;
+			}
+
+			m_backend_keys[backend_id].emplace_back(id);
+		}
+
+		m_num_backend_responses.reserve(m_backend_keys.size());
+		for (const auto &pair : m_backend_keys) {
+			auto &backend_id = pair.first;
+			m_num_backend_responses.emplace(backend_id, 0);
+		}
+
+		dnet_time current_time;
+		dnet_current_time(&current_time);
+		if (request.deadline.tsec > current_time.tsec) {
+			m_session.set_timeout(request.deadline.tsec - current_time.tsec);
+		} else {
+			DNET_LOG_ERROR(m_node, "{}: local: expired, skip sending keys to local backends: deadline: {}",
+				       dnet_cmd_string(DNET_CMD_BULK_READ_NEW), dnet_print_time(&request.deadline));
+			return;
+		}
+
+		m_session.set_ioflags(request.ioflags);
+		address addr(m_node->addrs[0]);
+		for (const auto &pair : m_backend_keys) {
+			auto &backend_id = pair.first;
+			auto &keys = pair.second;
+
+			m_session.set_direct_id(addr, backend_id);
+
+			auto async = send_bulk_read(m_session, keys, request.read_flags);
+			async.connect(
+				std::bind(&bulk_read_handler::process, shared_from_this(), backend_id, std::placeholders::_1),
+				std::bind(&bulk_read_handler::complete, shared_from_this(), backend_id, std::placeholders::_1)
+			);
+		}
+	}
+
+private:
+	void process(uint32_t backend_id, const ioremap::elliptics::callback_result_entry &entry) {
+		const auto entry_cmd = entry.command();
+		if (entry_cmd->status == 0) {
+			const auto data = entry.data();
+			dnet_cmd cmd(m_orig_cmd);
+			cmd.id = entry_cmd->id;
+			cmd.backend_id = backend_id;
+
+			dnet_send_reply(m_state.get(), &cmd, data.data(), data.size(), need_more());
+		} else {
+			send_fail_reply(entry_cmd->id, backend_id, entry_cmd->status);
+		}
+		++m_num_backend_responses[backend_id];
+
+		DNET_LOG_NOTICE(m_node, "{}: {}: local: process: status: {}",
+				dnet_dump_id(&entry_cmd->id), dnet_cmd_string(DNET_CMD_BULK_READ_NEW),
+				entry_cmd->status);
+	}
+
+	void complete(uint32_t backend_id, const ioremap::elliptics::error_info &error) {
+		/* Send fail replies for keys which wasn't processed by backend. Keys are read in original order,
+		 * so number of read keys can be used as index of last read key.
+		 */
+		const auto &keys = m_backend_keys[backend_id];
+		for (size_t i = m_num_backend_responses[backend_id]; i < keys.size(); ++i) {
+			send_fail_reply(keys[i], backend_id, error.code());
+		}
+
+		DNET_LOG_NOTICE(m_node, "{}: local: complete: status: {}",
+				dnet_cmd_string(DNET_CMD_BULK_READ_NEW), error.code());
+	}
+
+	void send_fail_reply(const dnet_id &id, uint32_t backend_id, int err) {
+		dnet_cmd cmd(m_orig_cmd);
+		cmd.id = id;
+		cmd.status = err;
+		cmd.backend_id = backend_id;
+
+		dnet_send_reply(m_state.get(), &cmd, nullptr, 0, need_more());
+	}
+
+	inline int need_more() {
+		return --m_total > 0 ? 1 : 0;
+	}
+
+private:
+	ioremap::elliptics::newapi::session m_session;
+	struct dnet_node *m_node;
+	ioremap::elliptics::net_state_ptr m_state;
+	const struct dnet_cmd m_orig_cmd;
+	std::unordered_map<uint32_t, std::vector<dnet_id>> m_backend_keys; // backend_id -> [list of keys]
+	std::unordered_map<uint32_t, size_t> m_num_backend_responses; // backend_id -> num_responses
+	std::atomic_size_t m_total;
+};
+
+int dnet_cmd_bulk_read_new(struct dnet_net_state *st, struct dnet_cmd *cmd, void *data) {
+	if (cmd->backend_id >= 0) {
+		return -ENOTSUP;
+	}
+
+	if (!st || !st->n || !st->n->addrs || !data) {
+		return -EINVAL;
+	}
+
+	using namespace ioremap::elliptics;
+
+	dnet_bulk_read_request request;
+	deserialize(data_pointer::from_raw(data, cmd->size), request);
+
+	cmd->flags &= ~DNET_FLAGS_NEED_ACK;
+	auto handler = std::make_shared<bulk_read_handler>(st, cmd);
+	handler->start(request);
+
+	return 0;
 }
 
 void dnet_backend_info::parse(ioremap::elliptics::config::config_data *data,

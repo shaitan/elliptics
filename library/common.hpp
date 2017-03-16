@@ -1,6 +1,9 @@
 #ifndef IOREMAP_ELLIPTICS_COMMON_HPP
 #define IOREMAP_ELLIPTICS_COMMON_HPP
 
+#include <mutex>
+#include "elliptics/interface.h"
+
 class dnet_pthread_mutex
 {
 public:
@@ -53,6 +56,10 @@ inline static int safe_call(Class *obj, Method method, Args &&...args)
 	} catch (...) {
 		return -EINVAL;
 	}
+}
+
+inline static bool operator <(const dnet_id &lhs, const dnet_id &rhs) {
+	return dnet_id_cmp(&lhs, &rhs) < 0;
 }
 
 #endif // IOREMAP_ELLIPTICS_COMMON_HPP

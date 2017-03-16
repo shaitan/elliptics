@@ -14,13 +14,11 @@ static size_t dnet_raw_id_hash(const dnet_id &key)
 	return MurmurHash64A(reinterpret_cast<const char *>(&key.id), sizeof(dnet_raw_id), 0);
 }
 
-static bool dnet_id_comparator(const dnet_id &lhs, const dnet_id &rhs)
-{
+static bool dnet_id_equal(const dnet_id &lhs, const dnet_id &rhs) {
 	return !dnet_id_cmp(&lhs, &rhs);
 }
 
-static bool dnet_raw_id_comparator(const dnet_id &lhs, const dnet_id &rhs)
-{
+static bool dnet_raw_id_equal(const dnet_id &lhs, const dnet_id &rhs) {
 	return !dnet_id_cmp_str(reinterpret_cast<const unsigned char *>(&lhs.id),
 				reinterpret_cast<const unsigned char *>(&rhs.id));
 }
@@ -30,7 +28,7 @@ dnet_request_queue::dnet_request_queue(bool has_backend, uint64_t timeout)
 : m_queue_size(0)
 , m_timeout(timeout)
 , m_locked_keys(1, has_backend ? &dnet_raw_id_hash : &dnet_id_hash,
-	       has_backend ? &dnet_raw_id_comparator : &dnet_id_comparator)
+	       has_backend ? &dnet_raw_id_equal : &dnet_id_equal)
 {
 	INIT_LIST_HEAD(&m_queue);
 }
