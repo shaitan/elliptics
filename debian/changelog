@@ -1,3 +1,11 @@
+elliptics (2.27.1.1) unstable; urgency=medium
+
+  * new bulk_read command
+  * monitor: small refactoring
+  * logger: optimizations: 1) use std::vector instead of std::list in 'struct trace'; 2) check logging level in DNET_LOG macro
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Thu, 16 Mar 2017 16:57:16 +0300
+
 elliptics (2.27.1.0) unstable; urgency=medium
 
   * srw: RIP
