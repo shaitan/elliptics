@@ -258,6 +258,13 @@ bp::object lookup_result_get_record_info(const newapi::lookup_result_entry &resu
 	return bp::object(result.record_info());
 }
 
+elliptics_id read_result_get_id(const newapi::read_result_entry &result)
+{
+	dnet_id id;
+	memcpy(&id, &result.command()->id, sizeof(struct dnet_id));
+	return elliptics_id(id);
+}
+
 bp::object read_result_get_record_info(const newapi::read_result_entry &result) {
 	if (result.status()) {
 		return bp::object();
@@ -534,6 +541,8 @@ void init_result_entry() {
 	bp::class_<newapi::read_result_entry, bp::bases<newapi::callback_result_entry>>("ReadResultEntry",
 		"Result of read which contains information of read key and read json and/or data.",
 		bp::no_init)
+		.add_property("id", newapi::read_result_get_id,
+		              "elliptics.Id of read object")
 		.add_property("record_info", newapi::read_result_get_record_info,
 		              "Information of read key.")
 		.add_property("io_info", newapi::read_result_get_io_info,
