@@ -132,3 +132,58 @@ def test_session_timestamps(simple_node):
     result = session.write(key, json_string, len(json_string), data, len(data)).get()[0]
     assert elliptics.Time.now() > result.record_info.data_timestamp > json_ts
     assert result.record_info.json_timestamp == json_ts
+
+@pytest.mark.usefixtures('servers')
+def test_session_bulk_read(simple_node):
+    """Test bulk_read_json, bulk_read_data, bulk_read."""
+    session = elliptics.newapi.Session(simple_node)
+    session.trace_id = make_trace_id('test_session_bulk_read')
+    session.groups = session.routes.groups()
+
+    # prepare test data
+    keys = []
+    datas = {}
+    def make_item(data, json):
+        return {"data": data, "json": json}
+
+    write_results = []
+    for group_id in session.groups:
+        session.groups = [group_id]
+        for i in range(10):
+            eid = session.transform('k{}'.format(i))
+            eid.group_id = group_id
+            keys.append(eid)
+            data = "data{}_{}".format(group_id, i)
+            json_string = json.dumps({'some': "json{}_{}".format(group_id, i)})
+            datas[repr(eid)] = make_item(data, json_string)
+            result = session.write(eid, json_string, len(json_string), data, len(data))
+            write_results.append(result)
+
+    for r in write_results:
+        assert r.get()[0].status == 0
+
+    assert len(keys) == len(datas)
+
+    # check bulk_read_json, bulk_read_data, bulk_read
+    def check_result(method, check_json, check_data):
+        result = method(keys)
+        counter = 0
+        for r in result:
+            counter += 1
+            assert repr(r.id) in datas
+            ref = datas[repr(r.id)]
+
+            if check_json:
+                assert ref["json"] == r.json
+            else:
+                assert not r.json
+
+            if check_data:
+                assert ref["data"] == r.data
+            else:
+                assert not r.data
+        assert counter == len(keys)
+
+    check_result(session.bulk_read_json, True, False)
+    check_result(session.bulk_read_data, False, True)
+    check_result(session.bulk_read, True, True)

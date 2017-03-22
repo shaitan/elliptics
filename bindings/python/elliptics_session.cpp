@@ -577,13 +577,6 @@ public:
 		return create_result(std::move(session::remove(transform(id).id())));
 	}
 
-	struct dnet_id_comparator {
-		bool operator() (const struct dnet_id &first, const struct dnet_id &second) const
-		{
-			return memcmp(first.id, second.id, sizeof(first.id)) < 0;
-		}
-	};
-
 	python_read_result bulk_read(const bp::api::object &keys) {
 		std::vector<dnet_io_attr> ios;
 		ios.reserve(bp::len(keys));
@@ -813,6 +806,45 @@ public:
 
 		return create_result(
 			newapi::session{*this}.server_send(std_keys, flags, chunk_size, src_group, std_dst_groups)
+		);
+	}
+
+	python_read_result bulk_read_json(const bp::api::object &keys) {
+		std::vector<dnet_id> std_keys;
+		std_keys.reserve(bp::len(keys));
+
+		for (bp::stl_input_iterator<elliptics_id> it(keys), end; it != end; ++it) {
+			std_keys.emplace_back(it->id());
+		}
+
+		return create_result(
+			newapi::session{*this}.bulk_read_json(std_keys)
+		);
+	}
+
+	python_read_result bulk_read_data(const bp::api::object &keys) {
+		std::vector<dnet_id> std_keys;
+		std_keys.reserve(bp::len(keys));
+
+		for (bp::stl_input_iterator<elliptics_id> it(keys), end; it != end; ++it) {
+			std_keys.emplace_back(it->id());
+		}
+
+		return create_result(
+			newapi::session{*this}.bulk_read_data(std_keys)
+		);
+	}
+
+	python_read_result bulk_read(const bp::api::object &keys) {
+		std::vector<dnet_id> std_keys;
+		std_keys.reserve(bp::len(keys));
+
+		for (bp::stl_input_iterator<elliptics_id> it(keys), end; it != end; ++it) {
+			std_keys.emplace_back(it->id());
+		}
+
+		return create_result(
+			newapi::session{*this}.bulk_read(std_keys)
 		);
 	}
 };
@@ -1898,6 +1930,57 @@ void init_elliptics_session() {
 		.def("server_send", &newapi::elliptics_session::server_send,
 		     bp::args("keys", "flags", "chunk_size", "src_group", "dst_groups"))
 
+		.def("bulk_read_json", &newapi::elliptics_session::bulk_read_json,
+		     (bp::arg("keys")),
+		    "bulk_read_json(keys)\n"
+		    "    Read json for all specified keys from multiple groups. Multiple read requests to the same\n"
+		    "    node are merged together into a single request.\n"
+		    "    Return elliptics.AsyncResult.\n"
+		    "    -- keys - list of elliptics.Id with specified group_id.\n\n"
+		    "    keys = []\n"
+		    "    keys.append(elliptics.Id([0] * 64, 1))\n"
+		    "    keys.append(elliptics.Id([1] * 64, 2))\n\n"
+		    "    result = session.bulk_read_json(keys)\n"
+		    "    for read_result in result:\n"
+		    "        print ('key: {}, json: {}, status: {}'\n"
+		    "               .format(read_result.id,\n"
+		    "                       read_result.json,\n"
+		    "                       read_result.status))\n")
+
+		.def("bulk_read_data", &newapi::elliptics_session::bulk_read_data,
+		     (bp::arg("keys")),
+		    "bulk_read_data(keys)\n"
+		    "    Read data for all specified keys from multiple groups. Multiple read requests to the same\n"
+		    "    node are merged together into a single request.\n"
+		    "    Return elliptics.AsyncResult.\n"
+		    "    -- keys - list of elliptics.Id with specified group_id.\n\n"
+		    "    keys = []\n"
+		    "    keys.append(elliptics.Id([0] * 64, 1))\n"
+		    "    keys.append(elliptics.Id([1] * 64, 2))\n\n"
+		    "    result = session.bulk_read_data(keys)\n"
+		    "    for read_result in result:\n"
+		    "        print ('key: {}, data: {}, status: {}'\n"
+		    "               .format(read_result.id,\n"
+		    "                       read_result.data,\n"
+		    "                       read_result.status))\n")
+
+		.def("bulk_read", &newapi::elliptics_session::bulk_read,
+		     (bp::arg("keys")),
+		    "bulk_read(keys)\n"
+		    "    Read both json and data for all specified keys from multiple groups. Multiple read requests\n"
+		    "    to the same node are merged together into a single request.\n"
+		    "    Return elliptics.AsyncResult.\n"
+		    "    -- keys - list of elliptics.Id with specified group_id.\n\n"
+		    "    keys = []\n"
+		    "    keys.append(elliptics.Id([0] * 64, 1))\n"
+		    "    keys.append(elliptics.Id([1] * 64, 2))\n\n"
+		    "    result = session.bulk_read(keys)\n"
+		    "    for read_result in result:\n"
+		    "        print ('key: {}, json: {}, data: {}, status: {}'\n"
+		    "               .format(read_result.id,\n"
+		    "                       read_result.json,\n"
+		    "                       read_result.data,\n"
+		    "                       read_result.status))\n")
 	;
 }
 
