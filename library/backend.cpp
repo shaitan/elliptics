@@ -953,8 +953,10 @@ public:
 
 			auto async = send_bulk_read(m_session, keys, request.read_flags);
 			async.connect(
-				std::bind(&bulk_read_handler::process, shared_from_this(), backend_id, std::placeholders::_1),
-				std::bind(&bulk_read_handler::complete, shared_from_this(), backend_id, std::placeholders::_1)
+				std::bind(&bulk_read_handler::process, shared_from_this(), backend_id,
+					  std::placeholders::_1),
+				std::bind(&bulk_read_handler::complete, shared_from_this(), backend_id,
+					  std::placeholders::_1)
 			);
 		}
 	}
@@ -968,15 +970,14 @@ private:
 			cmd.id = entry_cmd->id;
 			cmd.backend_id = backend_id;
 
-			dnet_send_reply(m_state.get(), &cmd, data.data(), data.size(), need_more());
+			send_reply(cmd, data);
 		} else {
 			send_fail_reply(entry_cmd->id, backend_id, entry_cmd->status);
 		}
 		++m_num_backend_responses[backend_id];
 
-		DNET_LOG_NOTICE(m_node, "{}: {}: local: process: status: {}",
-				dnet_dump_id(&entry_cmd->id), dnet_cmd_string(DNET_CMD_BULK_READ_NEW),
-				entry_cmd->status);
+		DNET_LOG_NOTICE(m_node, "{}: {}: local: process: status: {}", dnet_dump_id(&entry_cmd->id),
+				dnet_cmd_string(DNET_CMD_BULK_READ_NEW), entry_cmd->status);
 	}
 
 	void complete(uint32_t backend_id, const ioremap::elliptics::error_info &error) {
@@ -988,8 +989,8 @@ private:
 			send_fail_reply(keys[i], backend_id, error.code());
 		}
 
-		DNET_LOG_NOTICE(m_node, "{}: local: complete: status: {}",
-				dnet_cmd_string(DNET_CMD_BULK_READ_NEW), error.code());
+		DNET_LOG_NOTICE(m_node, "{}: local: complete: status: {}", dnet_cmd_string(DNET_CMD_BULK_READ_NEW),
+				error.code());
 	}
 
 	void send_fail_reply(const dnet_id &id, uint32_t backend_id, int err) {
@@ -998,11 +999,14 @@ private:
 		cmd.status = err;
 		cmd.backend_id = backend_id;
 
-		dnet_send_reply(m_state.get(), &cmd, nullptr, 0, need_more());
+		send_reply(cmd, {});
 	}
 
-	inline int need_more() {
-		return --m_total > 0 ? 1 : 0;
+	void send_reply(struct dnet_cmd &cmd, const ioremap::elliptics::data_pointer &data) {
+		std::lock_guard<std::mutex> gurad(m_mutex);
+
+		const int more = --m_total > 0 ? 1 : 0;
+		dnet_send_reply(m_state.get(), &cmd, data.data(), data.size(), more);
 	}
 
 private:
@@ -1011,8 +1015,9 @@ private:
 	ioremap::elliptics::net_state_ptr m_state;
 	const struct dnet_cmd m_orig_cmd;
 	std::unordered_map<uint32_t, std::vector<dnet_id>> m_backend_keys; // backend_id -> [list of keys]
-	std::unordered_map<uint32_t, size_t> m_num_backend_responses; // backend_id -> num_responses
-	std::atomic_size_t m_total;
+	std::unordered_map<uint32_t, size_t> m_num_backend_responses;      // backend_id -> num_responses
+	size_t m_total;
+	std::mutex m_mutex;
 };
 
 int dnet_cmd_bulk_read_new(struct dnet_net_state *st, struct dnet_cmd *cmd, void *data) {
