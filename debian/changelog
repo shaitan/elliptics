@@ -1,3 +1,17 @@
+elliptics (2.27.1.1~pool) unstable; urgency=medium
+
+  * stats: add handled commands statuses counter
+  * draft
+  * refactoring: remove eblob and route.h includes from elliptics.h
+  * refactoring: remove 'backend.h' from 'library/elliptics.h'
+  * cleanup: remove unused code
+  * cleanup: remove unused dnet_wait
+  * use uint32_t for backend_id
+  * refactoring
+  * new bulk_read in python binding
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Wed, 22 Mar 2017 10:39:11 +0300
+
 elliptics (2.27.1.1) unstable; urgency=medium
 
   * new bulk_read command
