@@ -54,8 +54,10 @@ dnet_logger *get_base_logger(dnet_logger *logger);
 
 bool log_filter(const blackhole::record_t &record, int level);
 
+class session;
 struct trace_scope {
 	explicit trace_scope(uint64_t trace_id, bool trace_bit);
+	explicit trace_scope(const session &s);
 	~trace_scope();
 };
 

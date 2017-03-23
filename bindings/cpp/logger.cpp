@@ -114,6 +114,10 @@ trace_scope::trace_scope(uint64_t trace_id, bool trace_bit) {
 	dnet_logger_set_trace_id(trace_id, trace_bit);
 }
 
+trace_scope::trace_scope(const session &s) {
+	dnet_logger_set_trace_id(s.get_trace_id(), s.get_trace_bit());
+}
+
 trace_scope::~trace_scope() {
 	dnet_logger_unset_trace_id();
 }
