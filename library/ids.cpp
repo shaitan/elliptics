@@ -25,7 +25,7 @@
 #include "elliptics.h"
 #include "elliptics/interface.h"
 
-#include "../include/elliptics/session.hpp"
+#include "elliptics/session.hpp"
 
 int dnet_ids_update(struct dnet_node *n, int update_local, const char *file, struct dnet_addr *cfg_addrs, uint32_t backend_id)
 {

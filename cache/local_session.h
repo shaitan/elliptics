@@ -20,8 +20,8 @@
 #ifndef LOCAL_SESSION_H
 #define LOCAL_SESSION_H
 
-#include "../library/elliptics.h"
-#include "../include/elliptics/session.hpp"
+#include "library/elliptics.h"
+#include "elliptics/session.hpp"
 
 #include <chrono>
 
