@@ -414,18 +414,7 @@ public:
 
 	cache_stats get_total_cache_stats() const;
 
-	std::vector<cache_stats> get_caches_stats() const;
-
-	void get_total_caches_size_stats_json(rapidjson::Value &stat_value,
-	                                      rapidjson::Document::AllocatorType &allocator) const;
-
-	void get_total_caches_time_stats_json(rapidjson::Value &stat_value,
-	                                      rapidjson::Document::AllocatorType &allocator) const;
-
 	void get_caches_size_stats_json(rapidjson::Value &stat_value,
-	                                rapidjson::Document::AllocatorType &allocator) const;
-
-	void get_caches_time_stats_json(rapidjson::Value &stat_value,
 	                                rapidjson::Document::AllocatorType &allocator) const;
 
 	void statistics(rapidjson::Value &value, rapidjson::Document::AllocatorType &allocator) const;
@@ -435,7 +424,7 @@ private:
 	std::vector<std::shared_ptr<slru_cache_t>> m_caches;
 	size_t m_max_cache_size;
 	size_t m_cache_pages_number;
-	bool m_need_exit;
+	bool m_need_exit; // @m_need_exit is shared between slru_caches and signals them to stop
 
 	size_t idx(const unsigned char *id);
 };

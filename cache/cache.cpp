@@ -102,15 +102,14 @@ static size_t parse_size(const kora::config_t &value) {
 }
 
 cache_config cache_config::parse(const kora::config_t &cache) {
-	static const std::vector<size_t> default_proportions(DNET_DEFAULT_CACHE_PAGES_NUMBER, 1);
-
 	cache_config config;
 	config.enable = true;
 	config.size = parse_size(cache["size"]);
 	config.count = cache.at<size_t>("shards", DNET_DEFAULT_CACHES_NUMBER);
 	config.sync_timeout = cache.at<unsigned>("sync_timeout", DNET_DEFAULT_CACHE_SYNC_TIMEOUT_SEC);
-	config.pages_proportions = cache.at("pages_proportions", default_proportions);
-	return config;
+	config.pages_proportions =
+	        cache.at("pages_proportions", std::vector<size_t>(DNET_DEFAULT_CACHE_PAGES_NUMBER, 1));
+	return std::move(config);
 }
 
 cache_manager::cache_manager(dnet_node *n, dnet_backend &backend, const cache_config &config)
@@ -192,20 +191,6 @@ cache_stats cache_manager::get_total_cache_stats() const {
 	return stats;
 }
 
-std::vector<cache_stats> cache_manager::get_caches_stats() const {
-	std::vector<cache_stats> caches_stats;
-	for (size_t i = 0; i < m_caches.size(); ++i) {
-		caches_stats.push_back(m_caches[i]->get_cache_stats());
-	}
-	return caches_stats;
-}
-
-void cache_manager::get_total_caches_size_stats_json(rapidjson::Value &stat_value,
-                                                     rapidjson::Document::AllocatorType &allocator) const {
-	cache_stats stats = get_total_cache_stats();
-	stats.to_json(stat_value, allocator);
-}
-
 void cache_manager::get_caches_size_stats_json(rapidjson::Value &stat_value,
                                                rapidjson::Document::AllocatorType &allocator) const {
 	for (size_t i = 0; i < m_caches.size(); ++i) {
@@ -222,7 +207,7 @@ void cache_manager::statistics(rapidjson::Value &value, rapidjson::Document::All
 	rapidjson::Value total_cache(rapidjson::kObjectType);
 	{
 		rapidjson::Value size_stats(rapidjson::kObjectType);
-		get_total_caches_size_stats_json(size_stats, allocator);
+		get_total_cache_stats().to_json(size_stats, allocator);
 		total_cache.AddMember("size_stats", size_stats, allocator);
 	}
 	value.AddMember("total_cache", total_cache, allocator);
@@ -610,7 +595,6 @@ int dnet_cmd_cache_io(struct dnet_backend *backend,
 			return dnet_cmd_cache_io_lookup(backend, st, cmd, cmd_stats);
 		case DNET_CMD_DEL:
 			return dnet_cmd_cache_io_remove(cache, cmd, io, cmd_stats);
-
 		case DNET_CMD_WRITE_NEW:
 			return dnet_cmd_cache_io_write_new(cache, st, cmd, data, cmd_stats);
 		case DNET_CMD_READ_NEW:
