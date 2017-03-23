@@ -15,55 +15,54 @@
 #include <blackhole/sink/file.hpp>
 
 #include "example/config.hpp"
+#include "elliptics/session.hpp"
 
 namespace ioremap { namespace elliptics {
+
 namespace attributes {
 struct trace {
 public:
-	trace(uint64_t id, bool bit)
-	: m_id(id)
-	, m_bit(bit) {}
-
 	static uint64_t id() {
-		return stack().top().m_id;
+		return m_stack.empty() ? 0 : m_stack.top().m_id;
 	}
 
 	static bool bit() {
-		return stack().top().m_bit;
+		return m_stack.empty() ? false : m_stack.top().m_bit;
 	}
 
 	static void pop() {
-		if (stack().size() > 1)
-			stack().pop();
+		m_stack.pop();
 	}
 
 	static void push(uint64_t id, bool bit) {
-		stack().emplace(id, bit);
+		m_stack.push({id, bit});
 	}
+
+private:
+	// constructor is private since trace should not be constructed outside.
+	trace(uint64_t id, bool bit)
+	: m_id(id)
+	, m_bit(bit) {}
 
 private:
 	uint64_t m_id;
 	bool m_bit;
 
-	static std::stack<trace> &stack() {
-		static thread_local std::stack<trace> _stack{std::deque<trace>{{0, false}}};
-		return _stack;
-	}
+	static thread_local std::stack<trace, std::deque<trace>> m_stack;
+
 };
 
-namespace pool {
-	static std::string &id() {
-		static thread_local std::string id;
-		return id;
-	}
-} /* namespace pool */
+thread_local std::stack<trace, std::deque<trace>> trace::m_stack;
 
-namespace backend {
-	static ssize_t &id() {
-		static thread_local ssize_t id{-1};
-		return id;
-	}
-} /* namespace backend */
+static std::string &pool_id() {
+	static thread_local std::string id;
+	return id;
+}
+
+static ssize_t &backend_id() {
+	static thread_local ssize_t id{-1};
+	return id;
+}
 
 } /* namespace attributes */
 
@@ -194,16 +193,16 @@ pool_wrapper_t::pool_wrapper_t(std::unique_ptr<dnet_logger> logger)
 : wrapper_t{std::move(logger)} {}
 
 blackhole::attributes_t pool_wrapper_t::attributes() {
-	return !attributes::pool::id().empty() ? blackhole::attributes_t{{"pool", attributes::pool::id()}}
-	                                       : blackhole::attributes_t{};
+	return !attributes::pool_id().empty() ? blackhole::attributes_t{{"pool", attributes::pool_id()}}
+	                                      : blackhole::attributes_t{};
 }
 
 backend_wrapper_t::backend_wrapper_t(std::unique_ptr<dnet_logger> logger)
 : wrapper_t{std::move(logger)} {}
 
 blackhole::attributes_t backend_wrapper_t::attributes() {
-	return (attributes::backend::id() != -1) ? blackhole::attributes_t{{"backend_id", attributes::backend::id()}}
-	                                         : blackhole::attributes_t{};
+	return (attributes::backend_id() != -1) ? blackhole::attributes_t{{"backend_id", attributes::backend_id()}}
+	                                        : blackhole::attributes_t{};
 }
 
 dnet_logger *get_base_logger(dnet_logger *logger) {
@@ -228,19 +227,19 @@ uint64_t dnet_logger_get_trace_bit() {
 }
 
 void dnet_logger_set_backend_id(int backend_id) {
-	ioremap::elliptics::attributes::backend::id() = backend_id;
+	ioremap::elliptics::attributes::backend_id() = backend_id;
 }
 
 void dnet_logger_unset_backend_id() {
-	ioremap::elliptics::attributes::backend::id() = -1;
+	ioremap::elliptics::attributes::backend_id() = -1;
 }
 
 void dnet_logger_set_pool_id(const char *pool_id) {
-	ioremap::elliptics::attributes::pool::id() = pool_id;
+	ioremap::elliptics::attributes::pool_id() = pool_id;
 }
 
 void dnet_logger_unset_pool_id() {
-	ioremap::elliptics::attributes::pool::id().clear();
+	ioremap::elliptics::attributes::pool_id().clear();
 }
 
 dnet_logger *dnet_node_get_logger(struct dnet_node* node) {
