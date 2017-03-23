@@ -984,17 +984,17 @@ static iterator_callback make_iterator_server_send_callback(eblob_backend_config
 			});
 		};
 
-		auto session = std::make_shared<newapi::session>(st->n);
-		session->set_exceptions_policy(session::no_exceptions);
-		session->set_trace_id(cmd->trace_id);
-		session->set_trace_bit(!!(cmd->flags & DNET_FLAGS_TRACE_BIT));
-		session->set_groups(request.groups);
-		session->set_user_flags(info->ehdr.flags);
-		session->set_ioflags(DNET_IO_FLAGS_CAS_TIMESTAMP);
-		session->set_json_timestamp(info->jhdr.timestamp);
-		session->set_timestamp(info->ehdr.timestamp);
-		if (session->get_timeout() < 60) {
-			session->set_timeout(60);
+		newapi::session session(st->n);
+		session.set_exceptions_policy(session::no_exceptions);
+		session.set_trace_id(cmd->trace_id);
+		session.set_trace_bit(!!(cmd->flags & DNET_FLAGS_TRACE_BIT));
+		session.set_groups(request.groups);
+		session.set_user_flags(info->ehdr.flags);
+		session.set_ioflags(DNET_IO_FLAGS_CAS_TIMESTAMP);
+		session.set_json_timestamp(info->jhdr.timestamp);
+		session.set_timestamp(info->ehdr.timestamp);
+		if (session.get_timeout() < 60) {
+			session.set_timeout(60);
 		}
 
 		data_pointer json, data;
@@ -1031,9 +1031,9 @@ static iterator_callback make_iterator_server_send_callback(eblob_backend_config
 
 			monitor.add_bytes(info->jhdr.size + info->data_size);
 
-			auto async = session->write(info->key,
-						    json, info->jhdr.capacity,
-						    data, info->data_size);
+			auto async = session.write(info->key,
+						   json, info->jhdr.capacity,
+						   data, info->data_size);
 
 			async.connect([=, &request, &monitor] (const newapi::sync_write_result &/*results*/, const error_info &error) {
 					if (st->__need_exit) {
@@ -1071,14 +1071,14 @@ static iterator_callback make_iterator_server_send_callback(eblob_backend_config
 				}
 
 				if (data_offset == 0) {
-					auto async = session->write_prepare(info->key,
-									    json, info->jhdr.capacity,
-									    data, 0, info->data_size);
+					auto async = session.write_prepare(info->key,
+									   json, info->jhdr.capacity,
+									   data, 0, info->data_size);
 					if ((err = get_write_result(async)) != 0) {
 						return send_fail_reply(err);
 					}
 				} else if (remaining_size > request.chunk_size) {
-					auto async = session->write_plain(info->key, "", data, data_offset);
+					auto async = session.write_plain(info->key, "", data, data_offset);
 					if ((err = get_write_result(async)) != 0) {
 						return send_fail_reply(err);
 					}
@@ -1086,8 +1086,8 @@ static iterator_callback make_iterator_server_send_callback(eblob_backend_config
 					oplock_guard.unlock();
 
 					data_pointer data_slice{data.slice(0, data_size)};
-					auto async = session->write_commit(info->key, "", data_slice, data_offset,
-									   info->data_size);
+					auto async = session.write_commit(info->key, "", data_slice, data_offset,
+									  info->data_size);
 					err = get_write_result(async);
 
 					auto response = serialize_response(err);
