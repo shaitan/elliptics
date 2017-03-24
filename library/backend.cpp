@@ -450,6 +450,8 @@ static int dnet_cmd_backend_control_dangerous(struct dnet_net_state *st, struct 
 		err = backend->disable();
 		break;
 	case DNET_BACKEND_REMOVE:
+		// disable backend before remove to avoid disabling it inside internal calls
+		backend->disable();
 		err = node->io->backends_manager->remove_backend(control->backend_id);
 		break;
 	case DNET_BACKEND_START_DEFRAG:
@@ -1111,7 +1113,7 @@ std::shared_ptr<dnet_backend> dnet_backends_manager::get_backend(uint32_t backen
 }
 
 int dnet_backends_manager::remove_backend(uint32_t backend_id) {
-	boost::shared_lock<boost::shared_mutex> guard(m_backends_mutex);
+	boost::unique_lock<boost::shared_mutex> guard(m_backends_mutex);
 	auto it = m_backends.find(backend_id);
 	if (it == m_backends.end())
 		return -ENOENT;
