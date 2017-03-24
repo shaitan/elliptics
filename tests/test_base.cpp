@@ -254,7 +254,6 @@ server_config server_config::default_value()
 			("blob_size", "10M")
 			("records_in_blob", 10000000)
 			("defrag_timeout", 3600)
-			("pool_id", "bp")
 			("defrag_percentage", 25);
 	return data;
 }
@@ -319,7 +318,7 @@ struct json_value_visitor : public boost::static_visitor<>
 	}
 };
 
-void server_config::write(const std::string &path) {
+void server_config::write(const std::string &path) const {
 	rapidjson::MemoryPoolAllocator<> allocator;
 
 	rapidjson::Value sevmap;
