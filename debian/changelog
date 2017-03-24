@@ -1,3 +1,10 @@
+elliptics (2.27.1.1~pool2) unstable; urgency=medium
+
+  * enable backends at startup with DNET_FLAGS_NO_QUEUE_TIMEOUT
+  * disable backend before removing it
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Fri, 24 Mar 2017 15:11:41 +0300
+
 elliptics (2.27.1.1) unstable; urgency=medium
 
   * new bulk_read command
