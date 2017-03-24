@@ -44,7 +44,9 @@ static void remove_backend(ioremap::elliptics::newapi::session &s, const nodes_d
 	BOOST_REQUIRE_EQUAL(async.get().size(), 1);
 }
 
-static void check_statistics(ioremap::elliptics::newapi::session &s, std::vector<std::tuple<uint32_t, std::string>> enabled_backends, std::vector<std::tuple<uint32_t, std::string>> disabled_backends) {
+static void check_statistics(ioremap::elliptics::newapi::session &s,
+                             std::vector<std::tuple<uint32_t, std::string>> enabled_backends,
+                             std::vector<std::tuple<uint32_t, std::string>> disabled_backends) {
 	if (enabled_backends.empty())
 		// routes should be empty if no backends are enabled
 		BOOST_REQUIRE_EQUAL(s.get_routes().size(), 0);
@@ -141,7 +143,8 @@ static void test_empy_node(ioremap::elliptics::newapi::session &s) {
 	check_statistics(s, {}, {});
 }
 
-static void add_backends_to_config(const nodes_data *setup, std::vector<std::tuple<uint32_t, std::string>> backends_to_add) {
+static void add_backends_to_config(const nodes_data *setup,
+                                   std::vector<std::tuple<uint32_t, std::string>> backends_to_add) {
 	auto config_path = setup->nodes.front().config_path();
 
 	auto config = [&config_path]() {
@@ -159,7 +162,8 @@ static void add_backends_to_config(const nodes_data *setup, std::vector<std::tup
 		const auto &pool_id = std::get<1>(backend_to_add);
 
 		// prepare directory for the backend
-		std::string prefix = config_path.substr(0, config_path.find_last_of('/')) + '/' + std::to_string(backend_id);
+		std::string prefix =
+		        config_path.substr(0, config_path.find_last_of('/')) + '/' + std::to_string(backend_id);
 		create_directory(prefix);
 		create_directory(prefix + "/history");
 		create_directory(prefix + "/blob");
@@ -180,8 +184,9 @@ static void add_backends_to_config(const nodes_data *setup, std::vector<std::tup
 	kora::write_pretty_json(stream, config);
 }
 
-static void test_one_backend(ioremap::elliptics::newapi::session &s, const nodes_data *setup, const std::tuple<uint32_t, std::string> &backend) {
-
+static void test_one_backend(ioremap::elliptics::newapi::session &s,
+                             const nodes_data *setup,
+                             const std::tuple<uint32_t, std::string> &backend) {
 	// add backend with @backend_id and individual pool to config
 	add_backends_to_config(setup, {backend});
 	// nothing should happen after config update
