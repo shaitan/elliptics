@@ -180,23 +180,30 @@ static void add_backends_to_config(const nodes_data *setup, std::vector<std::tup
 	kora::write_pretty_json(stream, config);
 }
 
-static void test_one_backend_with_individual_pool(ioremap::elliptics::newapi::session &s, const nodes_data *setup) {
-	static const uint32_t backend_id = 1;
+static void test_one_backend(ioremap::elliptics::newapi::session &s, const nodes_data *setup, const std::tuple<uint32_t, std::string> &backend) {
 
 	// add backend with @backend_id and individual pool to config
-	add_backends_to_config(setup, {std::make_tuple(backend_id, "")});
+	add_backends_to_config(setup, {backend});
 	// nothing should happen after config update
 	check_statistics(s, {}, {});
 
-	// repeat enabled/disable/remove 20 times
+	// repeat test's body 20 times
 	// for (size_t i = 0; i < 20; ++i) {
-		enable_backend(s, setup, backend_id);
-		check_statistics(s, {std::make_tuple(backend_id, "")}, {});
+		// make enabled -> disable -> remove
+		enable_backend(s, setup, std::get<0>(backend));
+		check_statistics(s, {backend}, {});
 
-		disable_backend(s, setup, backend_id);
-		check_statistics(s, {}, {std::make_tuple(backend_id, "")});
+		disable_backend(s, setup, std::get<0>(backend));
+		check_statistics(s, {}, {backend});
 
-		remove_backend(s, setup, backend_id);
+		remove_backend(s, setup, std::get<0>(backend));
+		check_statistics(s, {}, {});
+
+		// make enabled -> remove
+		enable_backend(s, setup, std::get<0>(backend));
+		check_statistics(s, {backend}, {});
+
+		remove_backend(s, setup, std::get<0>(backend));
 		check_statistics(s, {}, {});
 	// }
 
@@ -204,62 +211,38 @@ static void test_one_backend_with_individual_pool(ioremap::elliptics::newapi::se
 	setup->nodes.front().config().write(setup->nodes.front().config_path());
 }
 
-static void test_one_backend_with_shared_pool(ioremap::elliptics::newapi::session &s, const nodes_data *setup) {
-	static const uint32_t backend_id = 1;
-	static const std::string pool_id = "bla";
+typedef std::array<std::tuple<uint32_t, std::string>, 2> two_backends_array;
 
+static void test_two_backends(ioremap::elliptics::newapi::session &s,
+                              const nodes_data *setup,
+                              two_backends_array backends) {
 	// add backend with @backend_id and shared pool to config
-	add_backends_to_config(setup, {std::make_tuple(backend_id, pool_id)});
-	// nothing should happen after config update
-	check_statistics(s, {}, {});
-
-	// repeat enabled/disable/remove 20 times
-	// for (size_t i = 0; i < 20; ++i) {
-		enable_backend(s, setup, backend_id);
-		check_statistics(s, {std::make_tuple(backend_id, pool_id)}, {});
-
-		disable_backend(s, setup, backend_id);
-		check_statistics(s, {}, {std::make_tuple(backend_id, pool_id)});
-
-		remove_backend(s, setup, backend_id);
-		check_statistics(s, {}, {});
-	// }
-
-	// revert on-disk config to original one
-	setup->nodes.front().config().write(setup->nodes.front().config_path());
-}
-
-static void test_two_backends_with_one_shared_pool(ioremap::elliptics::newapi::session &s, const nodes_data *setup) {
-	static const std::array<uint32_t, 2> backends = {1, 2};
-	static const std::string pool_id = "bla";
-
-	// add backend with @backend_id and shared pool to config
-	add_backends_to_config(setup, {std::make_tuple(backends[0], pool_id), std::make_tuple(backends[1], pool_id)});
+	add_backends_to_config(setup, {backends[0], backends[1]});
 	// nothing should happen after config update
 	check_statistics(s, {}, {});
 
 	// enable one by one backends
 
-	enable_backend(s, setup, backends[0]);
-	check_statistics(s, {std::make_tuple(backends[0], pool_id)}, {});
+	enable_backend(s, setup, std::get<0>(backends[0]));
+	check_statistics(s, {backends[0]}, {});
 
-	enable_backend(s, setup, backends[1]);
-	check_statistics(s, {std::make_tuple(backends[0], pool_id), std::make_tuple(backends[1], pool_id)}, {});
+	enable_backend(s, setup, std::get<0>(backends[1]));
+	check_statistics(s, {backends[0], backends[1]}, {});
 
 	// disable one by one backends
 
-	disable_backend(s, setup, backends[0]);
-	check_statistics(s, {std::make_tuple(backends[1], pool_id)}, {std::make_tuple(backends[0], pool_id)});
+	disable_backend(s, setup, std::get<0>(backends[0]));
+	check_statistics(s, {backends[1]}, {backends[0]});
 
-	disable_backend(s, setup, backends[1]);
-	check_statistics(s, {}, {std::make_tuple(backends[0], pool_id), std::make_tuple(backends[1], pool_id)});
+	disable_backend(s, setup, std::get<0>(backends[1]));
+	check_statistics(s, {}, {backends[0], backends[1]});
 
 	// remove one by one backends
 
-	remove_backend(s, setup, backends[0]);
-	check_statistics(s, {}, {std::make_tuple(backends[1], pool_id)});
+	remove_backend(s, setup, std::get<0>(backends[0]));
+	check_statistics(s, {}, {backends[1]});
 
-	remove_backend(s, setup, backends[1]);
+	remove_backend(s, setup, std::get<0>(backends[1]));
 	// after remove node should be returned to original state
 	check_statistics(s, {}, {});
 
@@ -272,15 +255,23 @@ bool register_tests(const nodes_data *setup) {
 
 	ELLIPTICS_TEST_CASE(test_empy_node, use_session(n));
 
-	// Test node with 1 backend
-	ELLIPTICS_TEST_CASE(test_one_backend_with_individual_pool, use_session(n), setup);
-	ELLIPTICS_TEST_CASE(test_one_backend_with_shared_pool, use_session(n), setup);
+	// Test node with one backend
+	// one backend with individual pool
+	ELLIPTICS_TEST_CASE(test_one_backend, use_session(n), setup, std::make_tuple(1, ""));
+	// one backend with shared pool
+	ELLIPTICS_TEST_CASE(test_one_backend, use_session(n), setup, std::make_tuple(1, "bla"));
 
-	// Test node with 2 backends
-	ELLIPTICS_TEST_CASE(test_two_backends_with_one_shared_pool, use_session(n), setup);
-	// ELLIPTICS_TEST_CASE(test_two_backends_with_individual_pools, use_session(n), setup);
-	// ELLIPTICS_TEST_CASE(test_two_backends_with_two_shared_pools, use_session(n), setup);
-	// ELLIPTICS_TEST_CASE(test_two_backends_with_shared_and_individual_pools, use_session(n), setup);
+	// Test node with two backends
+
+	// two backends with one shared pool
+	ELLIPTICS_TEST_CASE(test_two_backends, use_session(n), setup,
+	                    two_backends_array{std::make_tuple(1, "bla"), std::make_tuple(2, "bla")});
+	// two backends with two shared pool
+	ELLIPTICS_TEST_CASE(test_two_backends, use_session(n), setup,
+	                    two_backends_array{std::make_tuple(1, "bla1"), std::make_tuple(2, "bla2")});
+	// one backend with shared pool and one with individual
+	ELLIPTICS_TEST_CASE(test_two_backends, use_session(n), setup,
+	                    two_backends_array{std::make_tuple(1, "bla1"), std::make_tuple(2, "")});
 
 	// TODO(shaitan): test start/stop node with enabled/disabled backends at start
 
