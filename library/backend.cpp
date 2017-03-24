@@ -1132,6 +1132,7 @@ int dnet_backends_manager::init_all_backends(bool parallel) {
 			session sess(m_node);
 			sess.set_exceptions_policy(session::no_exceptions);
 			sess.set_timeout(std::numeric_limits<unsigned>::max() / 2);
+			sess.set_cflags(sess.get_cflags() | DNET_FLAGS_NO_QUEUE_TIMEOUT);
 
 			session clean_sess = sess.clean_clone();
 
