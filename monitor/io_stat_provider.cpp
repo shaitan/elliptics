@@ -19,68 +19,64 @@
 
 #include "io_stat_provider.hpp"
 
+#include "library/backend.h"
 #include "library/elliptics.h"
 #include "library/request_queue.h"
-#include "rapidjson/document.h"
-#include "rapidjson/writer.h"
-#include "rapidjson/stringbuffer.h"
 
 namespace ioremap { namespace monitor {
 
-void dump_list_stats(rapidjson::Value &stat, list_stat &list_stats, rapidjson::Document::AllocatorType &allocator) {
-	stat.AddMember("current_size", list_stats.list_size, allocator);
-}
-
-void dump_states_stats(rapidjson::Value &stat, struct dnet_node *n, rapidjson::Document::AllocatorType &allocator) {
-	struct dnet_net_state *st;
-
+// fill @value with all states' statistics
+static rapidjson::Value & fill_states_stats(struct dnet_node *n,
+                                            rapidjson::Value &value,
+                                            rapidjson::Document::AllocatorType &allocator) {
 	pthread_mutex_lock(&n->state_lock);
+	struct dnet_net_state *st;
 	list_for_each_entry(st, &n->empty_state_list, node_entry) {
-		rapidjson::Value state_value(rapidjson::kObjectType);
-		state_value.AddMember("send_queue_size", atomic_read(&st->send_queue_size), allocator)
-		           .AddMember("la", st->la, allocator)
-		           .AddMember("free", (uint64_t)st->free, allocator)
-		           .AddMember("stall", st->stall, allocator)
-		           .AddMember("join_state", st->__join_state, allocator);
-
-		rapidjson::Value addr(dnet_addr_string(&st->addr), allocator);
-		stat.AddMember(addr, state_value, allocator);
+		rapidjson::Value state(rapidjson::kObjectType);
+		state.AddMember("send_queue_size", atomic_read(&st->send_queue_size), allocator);
+		state.AddMember("la", st->la, allocator);
+		state.AddMember("free", (uint64_t)st->free, allocator);
+		state.AddMember("stall", st->stall, allocator);
+		state.AddMember("join_state", st->__join_state, allocator);
+		value.AddMember(dnet_addr_string(&st->addr), allocator, state, allocator);
 	}
 	pthread_mutex_unlock(&n->state_lock);
+
+	return value;
 }
 
-std::string io_stat_provider::json(uint64_t categories) const {
+void io_stat_provider::statistics(uint64_t categories,
+                                  rapidjson::Value &value,
+                                  rapidjson::Document::AllocatorType &allocator) const {
 	if (!(categories & DNET_MONITOR_IO))
-		return std::string();
+		return;
 
-	rapidjson::Document doc;
-	doc.SetObject();
-	auto &allocator = doc.GetAllocator();
+	value.SetObject();
+	dump_io_pool_stats(m_node->io->pool, value, allocator);
 
-	rapidjson::Value blocking_stat(rapidjson::kObjectType);
-	auto size = dnet_get_pool_queue_size(m_node->io->pool.recv_pool.pool);
-	blocking_stat.AddMember("current_size", size, allocator);
-	doc.AddMember("blocking", blocking_stat, allocator);
+	rapidjson::Value output(rapidjson::kObjectType);
+	output.AddMember("current_size", m_node->io->output_stats.list_size, allocator);
+	value.AddMember("output", output, allocator);
 
-	rapidjson::Value nonblocking_stat(rapidjson::kObjectType);
-	size = dnet_get_pool_queue_size(m_node->io->pool.recv_pool_nb.pool);
-	nonblocking_stat.AddMember("current_size", size, allocator);
-	doc.AddMember("nonblocking", nonblocking_stat, allocator);
+	rapidjson::Value states(rapidjson::kObjectType);
+	value.AddMember("states", fill_states_stats(m_node, states, allocator), allocator);
+	value.AddMember("blocked", m_node->io->blocked == 1, allocator);
 
-	rapidjson::Value output_stat(rapidjson::kObjectType);
-	dump_list_stats(output_stat, m_node->io->output_stats, allocator);
-	doc.AddMember("output", output_stat, allocator);
+	rapidjson::Value pools(rapidjson::kObjectType);
+	dnet_io_pools_fill_stats(m_node, pools, allocator);
+	value.AddMember("pools", pools, allocator);
+}
 
-	rapidjson::Value states_stat(rapidjson::kObjectType);
-	dump_states_stats(states_stat, m_node, allocator);
-	doc.AddMember("states", states_stat, allocator);
+void dump_io_pool_stats(struct dnet_io_pool &io_pool,
+                        rapidjson::Value &value,
+                        rapidjson::Document::AllocatorType &allocator) {
+	rapidjson::Value blocking(rapidjson::kObjectType);
+	blocking.AddMember("current_size", dnet_get_pool_queue_size(io_pool.recv_pool.pool), allocator);
+	value.AddMember("blocking", blocking, allocator);
 
-	doc.AddMember("blocked", m_node->io->blocked == 1, allocator);
-
-	rapidjson::StringBuffer buffer;
-	rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
-	doc.Accept(writer);
-	return buffer.GetString();
+	rapidjson::Value nonblocking(rapidjson::kObjectType);
+	nonblocking.AddMember("current_size", dnet_get_pool_queue_size(io_pool.recv_pool_nb.pool), allocator);
+	value.AddMember("nonblocking", nonblocking, allocator);
 }
 
 }} /* namespace ioremap::monitor */

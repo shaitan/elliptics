@@ -125,7 +125,6 @@ enum dnet_backend_command {
 };
 
 enum dnet_backend_state {
-	DNET_BACKEND_UNITIALIZED = -1,
 	DNET_BACKEND_DISABLED = 0,
 	DNET_BACKEND_ENABLED,
 	DNET_BACKEND_ACTIVATING,

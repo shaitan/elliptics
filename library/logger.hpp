@@ -33,6 +33,12 @@ public:
 	virtual blackhole::attributes_t attributes();
 };
 
+class pool_wrapper_t : public wrapper_t {
+public:
+	pool_wrapper_t(std::unique_ptr<dnet_logger> logger);
+	virtual blackhole::attributes_t attributes();
+};
+
 class backend_wrapper_t: public wrapper_t {
 public:
 	backend_wrapper_t(std::unique_ptr<dnet_logger> logger);
@@ -64,6 +70,9 @@ void dnet_node_set_trace_id(uint64_t trace_id, int trace_bit);
 void dnet_node_unset_trace_id();
 
 uint64_t dnet_node_get_trace_bit();
+
+void dnet_logger_set_pool_id(const char *pool_id);
+void dnet_logger_unset_pool_id();
 
 void dnet_node_set_backend_id(int backend_id);
 void dnet_node_unset_backend_id();

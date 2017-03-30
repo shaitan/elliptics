@@ -17,6 +17,9 @@
  * along with Elliptics.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
+
 #include <sys/epoll.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -662,7 +665,7 @@ static int dnet_process_control(struct dnet_net_state *st, struct dnet_cmd *cmd,
 	}
 }
 
-int dnet_process_recv(struct dnet_backend_io *backend, struct dnet_net_state *st, struct dnet_io_req *r)
+int dnet_process_recv(struct dnet_net_state *st, struct dnet_io_req *r)
 {
 	int err = 0;
 	struct dnet_node *n = st->n;
@@ -773,7 +776,7 @@ int dnet_process_recv(struct dnet_backend_io *backend, struct dnet_net_state *st
 		dnet_state_put(forward_state);
 
 		HANDY_COUNTER_INCREMENT("io.cmds", 1);
-		err = dnet_process_cmd_raw(backend, st, cmd, r->data, 0, r->time.tv_sec * 1000000 + r->time.tv_usec);
+		err = dnet_process_cmd_raw(st, cmd, r->data, 0, r->time.tv_sec * 1000000 + r->time.tv_usec);
 	} else {
 		if (!forward_state) {
 			err = -ENXIO;
