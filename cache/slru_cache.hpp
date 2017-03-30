@@ -17,16 +17,21 @@
 #ifndef SLRU_CACHE_HPP
 #define SLRU_CACHE_HPP
 
+#include <thread>
+
 #include "cache.hpp"
+
+class dnet_backend;
 
 namespace ioremap { namespace cache {
 
 class slru_cache_t {
 public:
-	slru_cache_t(struct dnet_backend_io *backend,
-	             struct dnet_node *n,
+	slru_cache_t(struct dnet_node *n,
+	             dnet_backend &backend,
 	             const std::vector<size_t> &cache_pages_max_sizes,
-	             unsigned sync_timeout);
+	             unsigned sync_timeout,
+	             bool &need_exit);
 
 	~slru_cache_t();
 
@@ -43,7 +48,7 @@ public:
 	cache_stats get_cache_stats() const;
 
 private:
-	struct dnet_backend_io *m_backend;
+	dnet_backend &m_backend;
 	struct dnet_node *m_node;
 	std::mutex m_lock;
 	size_t m_cache_pages_number;
@@ -55,13 +60,11 @@ private:
 	mutable cache_stats m_cache_stats;
 	bool m_clear_occured;
 	unsigned m_sync_timeout;
+	const bool &m_need_exit;
 
 	slru_cache_t(const slru_cache_t &) = delete;
 
-	bool need_exit() const
-	{
-		return dnet_need_exit(m_node) || m_backend->need_exit;
-	}
+	bool need_exit() const;
 
 	size_t get_next_page_number(size_t page_number) const {
 		if (page_number == 0) {

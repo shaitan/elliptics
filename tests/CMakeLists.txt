@@ -167,6 +167,11 @@ set_target_properties(dnet_new_api_test ${TEST_PROPERTIES})
 target_link_libraries(dnet_new_api_test ${TEST_LIBRARIES})
 add_test_target(test_new_api dnet_new_api_test DEPENDS ${TESTS_DEPS})
 
+add_executable(dnet_io_pools_test io_pools_test.cpp)
+set_target_properties(dnet_io_pools_test ${TEST_PROPERTIES})
+target_link_libraries(dnet_io_pools_test ${TEST_LIBRARIES})
+add_test_target(test_io_pools dnet_io_pools_test DEPENDS ${TESTS_DEPS})
+
 add_executable(dnet_new_api_iterator_test new_api_iterator_test.cpp)
 set_target_properties(dnet_new_api_iterator_test ${TEST_PROPERTIES})
 target_link_libraries(dnet_new_api_iterator_test ${TEST_LIBRARIES})
@@ -200,6 +205,7 @@ set(TESTS_LIST
     dnet_new_api_test
     dnet_new_api_server_send_test
     dnet_forwarding_test
+    dnet_io_pools_test
 )
 
 #

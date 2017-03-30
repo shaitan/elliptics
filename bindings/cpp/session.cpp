@@ -1774,7 +1774,7 @@ static async_backend_control_result update_backend_status(const backend_status_p
 	transport_control control;
 	control.set_key(id);
 	control.set_command(DNET_CMD_BACKEND_CONTROL);
-	control.set_cflags(DNET_FLAGS_NEED_ACK | DNET_FLAGS_DIRECT);
+	control.set_cflags(DNET_FLAGS_NEED_ACK | DNET_FLAGS_DIRECT | params.orig_sess.get_cflags());
 	control.set_data(data.data(), data.size());
 
 	session sess = params.orig_sess.clean_clone();

@@ -318,7 +318,7 @@ struct json_value_visitor : public boost::static_visitor<>
 	}
 };
 
-void server_config::write(const std::string &path) {
+void server_config::write(const std::string &path) const {
 	rapidjson::MemoryPoolAllocator<> allocator;
 
 	rapidjson::Value sevmap;

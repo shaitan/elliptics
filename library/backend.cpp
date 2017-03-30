@@ -1,18 +1,165 @@
-#include "elliptics.h"
-#include "monitor/monitor.hpp"
-#include "example/config.hpp"
-#include "bindings/cpp/functional_p.h"
-#include "bindings/cpp/session_internals.hpp"
-#include "library/logger.hpp"
-#include "library/protocol.hpp"
+#include "backend.h"
 
+#include <fcntl.h>
 #include <fstream>
 #include <memory>
 
-#include <fcntl.h>
+#include <blackhole/wrapper.hpp>
 
-static int dnet_ids_generate(struct dnet_node *n, const char *file, unsigned long long storage_free)
-{
+#include "bindings/cpp/functional_p.h"
+#include "bindings/cpp/session_internals.hpp"
+#include "cache/cache.hpp"
+#include "example/config.hpp"
+#include "library/logger.hpp"
+#include "library/protocol.hpp"
+#include "library/request_queue.h"
+#include "library/route.h"
+#include "monitor/io_stat_provider.hpp"
+#include "monitor/monitor.hpp"
+
+// @dnet_io_pools_manager is responsible for storing and providing access to shared io pools
+class dnet_io_pools_manager {
+public:
+	dnet_io_pools_manager(struct dnet_node *node)
+	: m_node(node) {}
+
+	// return io pool with @pool_id
+	std::shared_ptr<struct dnet_io_pool> get(const std::string &pool_id);
+	// check and stop io pool with @pool_id if no backends are attached to it.
+	// should be called whenever backend is decided to be detached from io pool.
+	int detach(const std::string &pool_id);
+	// fill @value with all shared io pools' statistics
+	void statistics(rapidjson::Value &value, rapidjson::Document::AllocatorType &allocator);
+	// add to @queue_size and @threads_count all shared io pools' queues' sizes and number of threads.
+	void check(uint64_t &queue_size, uint64_t threads_count);
+
+private:
+	struct dnet_node							*m_node;
+
+	boost::shared_mutex							m_pools_mutex;
+	std::unordered_map<std::string, std::shared_ptr<struct dnet_io_pool>>	m_pools;
+};
+
+// create (initialize and run) io pool with @pool_id and @config
+static std::shared_ptr<struct dnet_io_pool> create_io_pool(struct dnet_node *node,
+                                                           const std::string &pool_id,
+                                                           const ioremap::elliptics::config::io_pool_config &config) {
+	auto pool = std::make_shared<struct dnet_io_pool>();
+	memset(pool.get(), 0, sizeof(*pool.get()));
+
+	int err = dnet_work_pool_place_init(&pool->recv_pool);
+	if (err) {
+		DNET_LOG_ERROR(node, "create_io_pool(pool_id: {}): failed to initialize blocking pool: {} [{}]",
+		               pool_id, strerror(-err), err);
+		return nullptr;
+	}
+
+	err = dnet_work_pool_alloc(&pool->recv_pool, node, config.io_thread_num, DNET_WORK_IO_MODE_BLOCKING,
+	                           pool_id.c_str(), dnet_io_process);
+	if (err) {
+		DNET_LOG_ERROR(node, "create_io_pool(pool_id: {}): failed to allocate blocking pool: {} [{}]",
+		               pool_id, strerror(-err), err);
+		dnet_work_pool_place_cleanup(&pool->recv_pool);
+		return nullptr;
+	}
+
+	err = dnet_work_pool_place_init(&pool->recv_pool_nb);
+	if (err) {
+		DNET_LOG_ERROR(node, "create_io_pool(pool_id: {}): failed to initialize nonblocking pool: {} [{}]",
+		               pool_id, strerror(-err), err);
+		dnet_work_pool_exit(&pool->recv_pool);
+		dnet_work_pool_place_cleanup(&pool->recv_pool);
+		return nullptr;
+	}
+
+	err = dnet_work_pool_alloc(&pool->recv_pool_nb, node, config.nonblocking_io_thread_num,
+	                           DNET_WORK_IO_MODE_NONBLOCKING, pool_id.c_str(), dnet_io_process);
+	if (err) {
+		DNET_LOG_ERROR(node, "create_io_pool(pool_id: {}): failed to allocate nonblocking pool: {} [{}]",
+		               pool_id, strerror(-err), err);
+		dnet_work_pool_place_cleanup(&pool->recv_pool_nb);
+		dnet_work_pool_exit(&pool->recv_pool);
+		dnet_work_pool_place_cleanup(&pool->recv_pool);
+		return nullptr;
+	}
+
+	DNET_LOG_INFO(node, "create_io_pool(pool_id: {}): pool was successfully started", pool_id);
+
+	return std::move(pool);
+}
+
+static void stop_io_pool(struct dnet_node *node,
+                         std::shared_ptr<struct dnet_io_pool> pool,
+                         const std::string &pool_id) {
+	DNET_LOG_INFO(node, "stop_io_pool(pool_id: {}): stopping the pool", pool_id);
+
+	pool->recv_pool.pool->need_exit = 1;
+	pool->recv_pool_nb.pool->need_exit = 1;
+
+	// notify all threads to make them exit
+	pool->recv_pool.pool->request_queue->notify_all();
+	pool->recv_pool_nb.pool->request_queue->notify_all();
+
+	dnet_work_pool_exit(&pool->recv_pool);
+	dnet_work_pool_exit(&pool->recv_pool_nb);
+
+	DNET_LOG_INFO(node, "stop_io_pool(pool_id: {}): the pool has been stopped", pool_id);
+}
+
+std::shared_ptr<struct dnet_io_pool> dnet_io_pools_manager::get(const std::string &pool_id) {
+	boost::unique_lock<boost::shared_mutex> guard(m_pools_mutex);
+	auto it = m_pools.find(pool_id);
+	if (it != m_pools.end())
+		return it->second;
+
+	const auto pool_config = dnet_node_get_config_data(m_node)->get_io_pool_config(pool_id);
+	auto pool = create_io_pool(m_node, pool_id, pool_config);
+	m_pools.emplace(pool_id, pool);
+
+	return std::move(pool);
+}
+
+int dnet_io_pools_manager::detach(const std::string &pool_id) {
+	boost::unique_lock<boost::shared_mutex> guard(m_pools_mutex);
+	auto pool_it = m_pools.find(pool_id);
+	if (pool_it == m_pools.end()) {
+		DNET_LOG_ERROR(m_node, "dnet_io_pools_manager::detach(pool_id: {}): there is no such pool", pool_id);
+		return -ENOENT;
+	}
+
+	auto &pool = pool_it->second;
+
+	// stop @pool without any backend attached to it
+	if (pool.use_count() == 1) {
+		stop_io_pool(m_node, pool, pool_id);
+		m_pools.erase(pool_it);
+	}
+
+	DNET_LOG_INFO(m_node, "dnet_io_pools_manager::detach(pool_id: {}): finished", pool_id);
+	return 0;
+}
+
+void dnet_io_pools_manager::statistics(rapidjson::Value &value, rapidjson::Document::AllocatorType &allocator) {
+	boost::shared_lock<boost::shared_mutex> guard(m_pools_mutex);
+	for (auto &item : m_pools) {
+		const auto &pool_id = item.first;
+		const auto &io_pool = item.second;
+
+		rapidjson::Value pool(rapidjson::kObjectType);
+		ioremap::monitor::dump_io_pool_stats(*io_pool, pool, allocator);
+		value.AddMember(pool_id.c_str(), allocator, pool, allocator);
+	}
+}
+
+void dnet_io_pools_manager::check(uint64_t &queue_size, uint64_t threads_count) {
+	boost::shared_lock<boost::shared_mutex> guard(m_pools_mutex);
+	for (auto &item : m_pools) {
+		const auto &io_pool = item.second;
+		dnet_check_io_pool(io_pool.get(), &queue_size, &threads_count);
+	}
+}
+
+static int dnet_ids_generate(struct dnet_node *n, const char *file, unsigned long long storage_free) {
 	const unsigned long long size_per_id = 100 * 1024 * 1024 * 1024ULL;
 	const size_t num = storage_free / size_per_id + 1;
 	dnet_raw_id tmp;
@@ -58,16 +205,19 @@ err_out_exit:
 	return err;
 }
 
-static struct dnet_raw_id *dnet_ids_init(struct dnet_node *n, const char *hdir, int *id_num,
-		unsigned long long storage_free, struct dnet_addr *cfg_addrs, size_t backend_id)
-{
+static struct dnet_raw_id *dnet_ids_init(struct dnet_node *n,
+                                         const std::string &hdir,
+                                         int *id_num,
+                                         unsigned long long storage_free,
+                                         struct dnet_addr *cfg_addrs,
+                                         uint32_t backend_id) {
 	int fd, err, num;
 	const char *file = "ids";
-	char path[strlen(hdir) + 1 + strlen(file) + 1]; /* / + null-byte */
+	char path[hdir.size() + 1 + strlen(file) + 1]; /* / + null-byte */
 	struct stat st;
 	struct dnet_raw_id *ids;
 
-	snprintf(path, sizeof(path), "%s/%s", hdir, file);
+	snprintf(path, sizeof(path), "%s/%s", hdir.c_str(), file);
 
 again:
 	fd = open(path, O_RDONLY | O_CLOEXEC);
@@ -76,6 +226,7 @@ again:
 		if (err == -ENOENT) {
 			if (n->flags & DNET_CFG_KEEPS_IDS_IN_CLUSTER)
 				err = dnet_ids_update(n, 1, path, cfg_addrs, backend_id);
+
 			if (err)
 				err = dnet_ids_generate(n, path, storage_free);
 
@@ -132,60 +283,10 @@ err_out_free:
 err_out_close:
 	close(fd);
 err_out_exit:
-	return NULL;
+	return nullptr;
 }
 
-static int dnet_backend_io_init(struct dnet_node *n, struct dnet_backend_io *io,
-		int io_thread_num, int nonblocking_io_thread_num)
-{
-	int err;
-
-	err = dnet_backend_command_stats_init(io);
-	if (err) {
-		DNET_LOG_ERROR(n, "dnet_backend_io_init: backend: {}, failed to allocate command stat structure: {}",
-		               io->backend_id, err);
-		goto err_out_exit;
-	}
-
-	err = dnet_work_pool_alloc(&io->pool.recv_pool, n, io,
-			io_thread_num, DNET_WORK_IO_MODE_BLOCKING,
-			dnet_io_process);
-	if (err) {
-		goto err_out_command_stats_cleanup;
-	}
-
-	err = dnet_work_pool_alloc(&io->pool.recv_pool_nb, n, io,
-			nonblocking_io_thread_num, DNET_WORK_IO_MODE_NONBLOCKING,
-			dnet_io_process);
-	if (err) {
-		err = -ENOMEM;
-		goto err_out_free_recv_pool;
-	}
-
-	return 0;
-
-err_out_free_recv_pool:
-	n->need_exit = 1;
-	dnet_work_pool_exit(&io->pool.recv_pool);
-err_out_command_stats_cleanup:
-	dnet_backend_command_stats_cleanup(io);
-err_out_exit:
-	return err;
-}
-
-static void dnet_backend_io_cleanup(struct dnet_node *n, struct dnet_backend_io *io)
-{
-	(void) n;
-
-	dnet_work_pool_exit(&io->pool.recv_pool);
-	dnet_work_pool_exit(&io->pool.recv_pool_nb);
-	dnet_backend_command_stats_cleanup(io);
-
-	DNET_LOG_NOTICE(n, "dnet_backend_io_cleanup: backend: {}", io->backend_id);
-}
-
-static const char *elapsed(const dnet_time &start)
-{
+static const char *elapsed(const dnet_time &start) {
 	static __thread char buffer[64];
 	dnet_time end;
 	dnet_current_time(&end);
@@ -198,411 +299,63 @@ static const char *elapsed(const dnet_time &start)
 	return buffer;
 }
 
-static int dnet_backend_init(struct dnet_node *node, size_t backend_id)
-{
-	int ids_num;
-	struct dnet_raw_id *ids;
 
-	auto backend = node->config_data->backends->get_backend(backend_id);
-	if (!backend) {
-		DNET_LOG_ERROR(node, "backend_init: backend: {}, invalid backend id", backend_id);
+uint32_t dnet_backend_get_backend_id(struct dnet_backend *backend) {
+	return backend->backend_id();
+}
+
+int dnet_backend_read_only(struct dnet_backend *backend) {
+	return backend->read_only() ? 1 : 0;
+}
+
+dnet_backend_callbacks *dnet_backend_get_callbacks(struct dnet_backend *backend) {
+	return &backend->callbacks();
+}
+
+void dnet_backend_sleep_delay(struct dnet_backend *backend) {
+	if (!backend || !backend->delay())
+		return;
+
+	std::this_thread::sleep_for(std::chrono::milliseconds(backend->delay()));
+}
+
+int dnet_backends_init_all(struct dnet_node *node) {
+	if (!node || !node->io || !node->io->backends_manager)
 		return -EINVAL;
-	}
 
-	dnet_time start;
-	dnet_current_time(&start);
-
-	{
-		std::lock_guard<std::mutex> guard(*backend->state_mutex);
-		if (backend->state != DNET_BACKEND_DISABLED) {
-			DNET_LOG_ERROR(
-			        node, "backend_init: backend: {}, trying to activate not disabled backend, elapsed: {}",
-			        backend_id, elapsed(start));
-			switch (backend->state) {
-				case DNET_BACKEND_ENABLED:
-					return -EALREADY;
-				case DNET_BACKEND_ACTIVATING:
-					return -EINPROGRESS;
-				case DNET_BACKEND_DEACTIVATING:
-					return -EAGAIN;
-				case DNET_BACKEND_UNITIALIZED:
-				default:
-					return -EINVAL;
-			}
-		}
-		backend->state = DNET_BACKEND_ACTIVATING;
-	}
-
-	DNET_LOG_INFO(node, "backend_init: backend: {}, initializing", backend_id);
-
-	int err;
-	dnet_backend_io *backend_io;
-
-	try {
-		using namespace ioremap::elliptics::config;
-		auto &data = *static_cast<config_data *>(node->config_data);
-		auto parser = data.parse_config();
-		auto cfg = parser->root();
-		const auto backends_config = cfg["backends"];
-		bool found = false;
-
-		for (size_t index = 0; index < backends_config.size(); ++index) {
-			const auto backend_config = backends_config[index];
-			const uint32_t config_backend_id = backend_config.at<uint32_t>("backend_id");
-			if (backend_id == config_backend_id) {
-				backend->parse(&data, backend_config);
-				found = true;
-				break;
-			}
-		}
-
-		if (!found) {
-			err = -EBADF;
-			DNET_LOG_ERROR(node, "backend_init: backend: {}, have not found backend section in "
-			                     "configuration file, elapsed: {}",
-			               backend_id, elapsed(start));
-			goto err_out_exit;
-		}
-	} catch (std::bad_alloc &) {
-		err = -ENOMEM;
-		DNET_LOG_ERROR(node, "backend_init: backend: {}, failed as not enough memory, elapsed: {}", backend_id,
-		               elapsed(start));
-		goto err_out_exit;
-	} catch (std::exception &exc) {
-		DNET_LOG_ERROR(node, "backend_init: backend: {}, failed to read configuration file: {}, elapsed: {}",
-		               backend_id, exc.what(), elapsed(start));
-		err = -EBADF;
-		goto err_out_exit;
-	}
-
-	backend->config = backend->config_template;
-	backend->data.assign(backend->data.size(), '\0');
-	backend->config.data = backend->data.data();
-	backend->config.log = backend->log.get();
-
-	backend_io = dnet_get_backend_io(node->io, backend_id);
-	backend_io->need_exit = 0;
-	backend_io->read_only = backend->read_only_at_start;
-	backend_io->queue_timeout = backend->queue_timeout;
-
-	for (auto it = backend->options.begin(); it != backend->options.end(); ++it) {
-		const dnet_backend_config_entry &entry = *it;
-		entry.entry->callback(&backend->config, entry.entry->key, entry.value_template.data());
-	}
-
-	err = backend->config.init(&backend->config, dnet_node_get_verbosity(node));
-	if (err) {
-		DNET_LOG_ERROR(node, "backend_init: backend: {}, failed to init backend: {}, elapsed: {}", backend_id,
-		               err, elapsed(start));
-		goto err_out_exit;
-	}
-
-	backend_io->cb = &backend->config.cb;
-
-	err = dnet_backend_io_init(node, backend_io, backend->io_thread_num, backend->nonblocking_io_thread_num);
-	if (err) {
-		DNET_LOG_ERROR(node, "backend_init: backend: {}, failed to init io pool, err: {}, elapsed: {}",
-		               backend_id, err, elapsed(start));
-		goto err_out_backend_cleanup;
-	}
-
-	if (backend->cache_config) {
-		backend_io->cache = backend->cache = dnet_cache_init(node, backend_io, backend->cache_config.get());
-		if (!backend->cache) {
-			err = -ENOMEM;
-			DNET_LOG_ERROR(node, "backend_init: backend: {}, failed to init cache, err: {}, elapsed: {}",
-			               backend_id, err, elapsed(start));
-			goto err_out_backend_io_cleanup;
-		}
-	}
-
-	ids_num = 0;
-	ids = dnet_ids_init(node, backend->history.c_str(), &ids_num, backend->config.storage_free, node->addrs, backend_id);
-	if (ids == NULL) {
-		err = -EINVAL;
-		DNET_LOG_ERROR(
-		        node,
-		        "backend_init: backend: {}, history path: {}, failed to initialize ids, elapsed: {}: {} [{}]",
-		        backend_id, backend->history, elapsed(start), strerror(-err), err);
-		goto err_out_cache_cleanup;
-	}
-	err = dnet_route_list_enable_backend(node->route, backend_id, backend->group, ids, ids_num);
-	free(ids);
-
-	if (err) {
-		DNET_LOG_ERROR(node,
-		               "backend_init: backend: {}, failed to add backend to route list, err: {}, elapsed: {}",
-		               backend_id, err, elapsed(start));
-		goto err_out_cache_cleanup;
-	}
-
-	DNET_LOG_INFO(node, "backend_init: backend: {}, initialized, elapsed: {}", backend_id, elapsed(start));
-
-	{
-		std::lock_guard<std::mutex> guard(*backend->state_mutex);
-		dnet_current_time(&backend->last_start);
-		backend->last_start_err = 0;
-		backend->state = DNET_BACKEND_ENABLED;
-	}
-	return 0;
-
-	dnet_route_list_disable_backend(node->route, backend_id);
-err_out_cache_cleanup:
-	if (backend->cache) {
-		/* Set need_exit to stop cache's threads */
-		backend_io->need_exit = 1;
-		dnet_cache_cleanup(backend->cache);
-		backend->cache = NULL;
-		backend_io->cache = NULL;
-	}
-err_out_backend_io_cleanup:
-	backend_io->need_exit = 1;
-	dnet_backend_io_cleanup(node, backend_io);
-	backend_io->cb = nullptr;
-err_out_backend_cleanup:
-	backend->config.cleanup(&backend->config);
-err_out_exit:
-	{
-		std::lock_guard<std::mutex> guard(*backend->state_mutex);
-		dnet_current_time(&backend->last_start);
-		backend->last_start_err = err;
-		backend->state = DNET_BACKEND_DISABLED;
-	}
-	return err;
+	return node->io->backends_manager->init_all(dnet_node_get_config_data(node)->parallel_start);
 }
 
-static int dnet_backend_cleanup(struct dnet_node *node, size_t backend_id)
-{
-	auto backend = node->config_data->backends->get_backend(backend_id);
-	if (!backend) {
-		return -EINVAL;
-	}
+void dnet_backends_cleanup_all(struct dnet_node *node) {
+	if (!node || !node->io || !node->io->backends_manager)
+		return;
 
-	{
-		std::lock_guard<std::mutex> guard(*backend->state_mutex);
-		if (backend->state != DNET_BACKEND_ENABLED) {
-			DNET_LOG_ERROR(node, "backend_cleanup: backend: {}, trying to destroy not activated backend",
-			               backend_id);
-			switch (backend->state) {
-				case DNET_BACKEND_DISABLED:
-					return -EALREADY;
-				case DNET_BACKEND_DEACTIVATING:
-					return -EINPROGRESS;
-				case DNET_BACKEND_ACTIVATING:
-					return -EAGAIN;
-				case DNET_BACKEND_UNITIALIZED:
-				default:
-					return -EINVAL;
-			}
-		}
-		backend->state = DNET_BACKEND_DEACTIVATING;
-	}
-
-	DNET_LOG_INFO(node, "backend_cleanup: backend: {}, destroying", backend_id);
-
-	if (node->route)
-		dnet_route_list_disable_backend(node->route, backend_id);
-
-	dnet_backend_io *backend_io = node->io ? dnet_get_backend_io(node->io, backend_id) : nullptr;
-
-	// set @need_exit to true to force cache lifecheck thread to exit and slru cache to sync all elements to backend
-	// this also leads to IO threads to stop, but since we already removed itself from route table,
-	// and cache syncs data to backend either in lifecheck thread or in destructor context,
-	// it is safe to set @need_exit early
-	if (backend_io)
-		backend_io->need_exit = 1;
-
-	DNET_LOG_INFO(node, "backend_cleanup: backend: {}: cleaning cache", backend_id);
-	dnet_cache_cleanup(backend->cache);
-	backend->cache = NULL;
-
-	DNET_LOG_INFO(node, "backend_cleanup: backend: {}: cleaning io: {:p}", backend_id, (void *)backend_io);
-	if (backend_io) {
-		dnet_backend_io_cleanup(node, backend_io);
-		backend_io->cb = NULL;
-	}
-
-	backend->config.cleanup(&backend->config);
-	memset(&backend->config.cb, 0, sizeof(backend->config.cb));
-
-	{
-		std::lock_guard<std::mutex> guard(*backend->state_mutex);
-		backend->state = DNET_BACKEND_DISABLED;
-	}
-
-	DNET_LOG_INFO(node, "backend_cleanup: backend: {}, destroyed", backend_id);
-
-	return 0;
+	node->io->backends_manager->clear();
 }
 
-/* Disable and remove backend */
-static int dnet_backend_remove(struct dnet_node *node, size_t backend_id) {
-	const int err = dnet_backend_cleanup(node, backend_id);
-	if (err && err != -EALREADY) {
-		DNET_LOG_INFO(node, "backend_remove: backend: {}, failed to disable backend: {} [{}]", backend_id,
-		              strerror(-err), err);
-		return err;
-	}
-
-	node->config_data->backends->remove_backend(backend_id);
-
-	DNET_LOG_INFO(node, "backend_remove: backend: {}, removed", backend_id);
-	return 0;
-}
-
-
-int dnet_backend_create(struct dnet_node *node, size_t backend_id)
-{
-	auto backends = node->config_data->backends;
-	auto backend = backends->get_backend(backend_id);
-	if (backend)
-		return 0;
-
-	try {
-		using namespace ioremap::elliptics::config;
-		auto data = static_cast<config_data *>(node->config_data);
-		auto parser = data->parse_config();
-		auto cfg = parser->root();
-		const auto backends_config = cfg["backends"];
-
-		for (size_t index = 0; index < backends_config.size(); ++index) {
-			const auto backend_config = backends_config[index];
-
-			if (backend_id == backend_config.at<uint32_t>("backend_id")) {
-				backend = dnet_parse_backend(data, backend_id, backend_config);
-			}
-		}
-	} catch (std::bad_alloc &) {
-		DNET_LOG_ERROR(node, "backend_create: backend: {}, failed as not enough memory", backend_id);
-		return -ENOMEM;
-	} catch (std::exception &exc) {
-		DNET_LOG_ERROR(node, "backend_create: backend: {}, failed to read configuration file: {}", backend_id,
-		               exc.what());
-		return -EBADF;
-	}
-
-	if (!backend)
-		return -ENOENT;
-
-	int err = dnet_server_backend_init(node, backend_id);
-	if (!err) {
-		backends->add_backend(backend);
-	}
-
-	return err;
-}
-
-int dnet_backend_init_all(struct dnet_node *node)
-{
-	int err = 1;
-	bool all_ok = true;
-
-	auto backends = node->config_data->backends;
-	using namespace ioremap::elliptics::config;
-	auto &data = *static_cast<config_data *>(node->config_data);
-	auto parser = data.parse_config();
-	auto cfg = parser->root();
-	const auto backends_config = cfg["backends"];
-
-	if (node->config_data->parallel_start) {
-		try {
-			using ioremap::elliptics::session;
-			using ioremap::elliptics::async_backend_control_result;
-
-			session sess(node);
-			sess.set_exceptions_policy(session::no_exceptions);
-			sess.set_timeout(std::numeric_limits<unsigned>::max() / 2);
-
-			session clean_sess = sess.clean_clone();
-
-			std::vector<async_backend_control_result> results;
-
-
-			for (size_t index = 0; index < backends_config.size(); ++index) {
-				const auto backend_config = backends_config[index];
-				const uint32_t backend_id = backend_config.at<uint32_t>("backend_id");
-				auto backend = backends->get_backend(backend_id);
-				if (!backend->enable_at_start) {
-					backend->parse(&data, backend_config);
-					continue;
-				}
-
-				results.emplace_back(clean_sess.enable_backend(node->st->addr, backend_id));
-			}
-
-			async_backend_control_result result =
-				ioremap::elliptics::aggregated(sess, results.begin(), results.end());
-			result.wait();
-
-			err = result.error().code();
-		} catch (std::bad_alloc &) {
-			return -ENOMEM;
-		}
-	} else {
-		for (size_t index = 0; index < backends_config.size(); ++index) {
-			const auto backend_config = backends_config[index];
-			const uint32_t backend_id = backend_config.at<uint32_t>("backend_id");
-			auto backend = backends->get_backend(backend_id);
-			if (!backend->enable_at_start) {
-				backend->parse(&data, backend_config);
-				continue;
-			}
-
-			int tmp = dnet_backend_init(node, backend_id);
-			if (!tmp) {
-				err = 0;
-			} else if (err == 1) {
-				err = tmp;
-				all_ok = false;
-			}
-		}
-	}
-
-	if (all_ok) {
-		err = 0;
-	} else if (err == 1) {
-		err = -EINVAL;
-	}
-
-	DNET_LOG(node, err ? DNET_LOG_ERROR : DNET_LOG_NOTICE,
-	         "backend_init_all: finished initializing all backends: {}", err);
-
-	return err;
-}
-
-void dnet_backend_cleanup_all(struct dnet_node *node) {
-	for (auto backend : node->config_data->backends->get_all_backends()) {
-		if (backend->state != DNET_BACKEND_DISABLED)
-			dnet_backend_cleanup(node, backend->backend_id);
-	}
-}
-
-static int dnet_backend_set_ids(dnet_node *node, uint32_t backend_id, dnet_raw_id *ids, uint32_t ids_count)
-{
-	auto backend = node->config_data->backends->get_backend(backend_id);
-	if (!backend) {
-		return -EINVAL;
-	}
-
-	if (backend->history.empty()) {
-		DNET_LOG_ERROR(
-		        node,
-		        "backend_set_ids: backend_id: {}, failed to open temporary ids file: history is not specified",
-		        backend_id);
+static int dnet_backend_set_ids(dnet_node *node,
+                                dnet_backend &backend,
+                                std::shared_ptr<backend_config> config,
+                                dnet_raw_id *ids,
+                                uint32_t ids_count) {
+	if (config->history.empty()) {
+		DNET_LOG_ERROR(node, "backend_set_ids: backend_id: {}, failed to open temporary ids file: "
+		                     "history is not specified",
+		               backend.backend_id());
 		return -EINVAL;
 	}
 
 	char tmp_ids[1024];
 	char target_ids[1024];
-	snprintf(tmp_ids, sizeof(tmp_ids), "%s/ids_%08x%08x", backend->history.c_str(), rand(), rand());
-	snprintf(target_ids, sizeof(target_ids), "%s/ids", backend->history.c_str());
+	snprintf(tmp_ids, sizeof(tmp_ids), "%s/ids_%08x%08x", config->history.c_str(), rand(), rand());
+	snprintf(target_ids, sizeof(target_ids), "%s/ids", config->history.c_str());
 	int err = 0;
 
 	std::ofstream out(tmp_ids, std::ofstream::binary | std::ofstream::trunc);
 	if (!out) {
 		err = -errno;
 		DNET_LOG_ERROR(node, "backend_set_ids: backend_id: {}, failed to open temporary ids file: {}, err: {}",
-		               backend_id, tmp_ids, err);
+		               backend.backend_id(), tmp_ids, err);
 		return err;
 	}
 
@@ -616,25 +369,25 @@ static int dnet_backend_set_ids(dnet_node *node, uint32_t backend_id, dnet_raw_i
 			DNET_LOG_ERROR(
 			        node,
 			        "backend_set_ids: backend_id: {}, failed to write ids to temporary file: {}, err: {}",
-			        backend_id, tmp_ids, err);
+			        backend.backend_id(), tmp_ids, err);
 		} else {
-
 			if (!err) {
-				std::lock_guard<std::mutex> guard(*backend->state_mutex);
-				switch (backend->state) {
-					case DNET_BACKEND_ENABLED:
-						err = std::rename(tmp_ids, target_ids);
-						if (err)
-							break;
-						err = dnet_route_list_enable_backend(node->route,
-								backend_id, backend->group, ids, ids_count);
+				boost::shared_lock<boost::shared_mutex> guard(backend.state_mutex());
+				switch (backend.state()) {
+				case DNET_BACKEND_ENABLED:
+					err = std::rename(tmp_ids, target_ids);
+					if (err) {
 						break;
-					case DNET_BACKEND_DISABLED:
-						err = std::rename(tmp_ids, target_ids);
-						break;
-					default:
-						err = -EBUSY;
-						break;
+					}
+					err = dnet_route_list_enable_backend(node->route, backend.backend_id(),
+					                                     backend.group_id(), ids, ids_count);
+					break;
+				case DNET_BACKEND_DISABLED:
+					err = std::rename(tmp_ids, target_ids);
+					break;
+				default:
+					err = -EBUSY;
+					break;
 				}
 			}
 		}
@@ -647,78 +400,28 @@ static int dnet_backend_set_ids(dnet_node *node, uint32_t backend_id, dnet_raw_i
 	return err;
 }
 
-void backend_fill_status_nolock(struct dnet_node *node, struct dnet_backend_status *status, const struct dnet_backend_info *config_backend)
-{
-	if (!status || !config_backend)
-		return;
+static int dnet_backend_create(struct dnet_node *node, uint32_t backend_id) {
+	try {
+		// check if backend with @backend_id is already initialized
+		if (node->io->backends_manager->get(backend_id))
+			return 0;
 
-	auto backend_id = config_backend->backend_id;
-	const dnet_backend_io *io = dnet_get_backend_io(node->io, backend_id);
+		auto config = dnet_node_get_config_data(node)->get_backend_config(backend_id);
+		if (!config)
+			return -ENOENT;
 
-	const auto &cb = config_backend->config.cb;
-
-	status->backend_id = backend_id;
-	status->state = config_backend->state;
-	if (config_backend->state == DNET_BACKEND_ENABLED && cb.defrag_status)
-		status->defrag_state = cb.defrag_status(cb.command_private);
-	status->last_start = config_backend->last_start;
-	status->last_start_err = config_backend->last_start_err;
-	status->read_only = io->read_only;
-	status->delay = io->delay;
-}
-
-void dnet_backend_info_manager::backend_fill_status(dnet_node *node, dnet_backend_status *status, size_t backend_id) const
-{
-	std::shared_ptr<dnet_backend_info> backend;
-	{
-		std::lock_guard<std::mutex> guard(backends_mutex);
-		auto it = backends.find(backend_id);
-		if (it != backends.end()) {
-			backend = it->second;
-		}
-	}
-	if (backend)
-	{
-		std::lock_guard<std::mutex> guard(*backend->state_mutex);
-		backend_fill_status_nolock(node, status, backend.get());
+		node->io->backends_manager->emplace(config);
+		return 0;
+	} catch (const std::exception &e) {
+		DNET_LOG_ERROR(node, "failed to add backend: {} : {}", backend_id, e.what());
+		return -ENOMEM;
 	}
 }
 
-std::shared_ptr<dnet_backend_info> dnet_backend_info_manager::get_backend(size_t backend_id) const
-{
-	std::lock_guard<std::mutex> guard(backends_mutex);
-	auto it = backends.find(backend_id);
-	if (it != backends.end()) {
-		return it->second;
-	}
-	return std::shared_ptr<dnet_backend_info>();
-}
-
-void dnet_backend_info_manager::add_backend(std::shared_ptr<dnet_backend_info> &backend)
-{
-	std::lock_guard<std::mutex> guard(backends_mutex);
-	backends.insert({backend->backend_id, backend});
-}
-
-void dnet_backend_info_manager::remove_backend(size_t backend_id) {
-	std::lock_guard<std::mutex> guard(backends_mutex);
-	backends.erase(backend_id);
-}
-
-void dnet_backend_info_manager::set_verbosity(dnet_log_level level) {
-	std::lock_guard<std::mutex> guard(backends_mutex);
-	for (auto &backend: backends) {
-		if (backend.second->state == DNET_BACKEND_ENABLED) {
-			backend.second->config.set_verbosity(&backend.second->config, level);
-		}
-	}
-}
-
-static int dnet_cmd_backend_control_dangerous(struct dnet_net_state *st, struct dnet_cmd *cmd, void *data)
-{
+static int dnet_cmd_backend_control_dangerous(struct dnet_net_state *st, struct dnet_cmd *cmd, void *data) {
 	int err = 0;
-	dnet_node *node = st->n;
-	struct dnet_backend_control *control = reinterpret_cast<dnet_backend_control *>(data);
+	struct dnet_node *node = st->n;
+	auto *control = reinterpret_cast<struct dnet_backend_control *>(data);
 
 	if (dnet_backend_command(control->command) == DNET_BACKEND_ENABLE) {
 		err = dnet_backend_create(node, control->backend_id);
@@ -729,8 +432,7 @@ static int dnet_cmd_backend_control_dangerous(struct dnet_net_state *st, struct 
 		}
 	}
 
-	auto backends = node->config_data->backends;
-	auto backend = backends->get_backend(control->backend_id);
+	auto backend = node->io->backends_manager->get(control->backend_id);
 	if (!backend) {
 		DNET_LOG_ERROR(node, "backend_control: there is no such backend: {}, state: {}", control->backend_id,
 		               dnet_state_dump_addr(st));
@@ -746,62 +448,45 @@ static int dnet_cmd_backend_control_dangerous(struct dnet_net_state *st, struct 
 	DNET_LOG_INFO(node, "backend_control: received BACKEND_CONTROL: backend_id: {}, command: {}, state: {}",
 	              control->backend_id, control->command, dnet_state_dump_addr(st));
 
-	if (backend->state == DNET_BACKEND_UNITIALIZED) {
-		DNET_LOG_ERROR(node, "backend_control: there is no such backend: {}, state: {}", control->backend_id,
-		               dnet_state_dump_addr(st));
-		return -EINVAL;
-	}
-
-	dnet_backend_io *io = dnet_get_backend_io(node->io, control->backend_id);
-
-	const dnet_backend_callbacks &cb = backend->config.cb;
-
 	switch (dnet_backend_command(control->command)) {
 	case DNET_BACKEND_ENABLE:
-		err = dnet_backend_init(node, control->backend_id);
+		err = backend->enable();
 		break;
 	case DNET_BACKEND_DISABLE:
-		err = dnet_backend_cleanup(node, control->backend_id);
+		err = backend->disable();
 		break;
 	case DNET_BACKEND_REMOVE:
-		err = dnet_backend_remove(node, control->backend_id);
+		// disable backend before remove to avoid disabling it inside internal calls
+		backend->disable();
+		err = node->io->backends_manager->erase(control->backend_id);
 		break;
 	case DNET_BACKEND_START_DEFRAG:
-		if (cb.defrag_start) {
-			err = cb.defrag_start(cb.command_private,
-				static_cast<enum dnet_backend_defrag_level>(control->defrag_level));
-		} else {
-			err = -ENOTSUP;
-		}
+		err = backend->start_defrag((dnet_backend_defrag_level)control->defrag_level);
 		break;
 	case DNET_BACKEND_STOP_DEFRAG:
-		if (cb.defrag_stop) {
-			err = cb.defrag_stop(cb.command_private);
-		} else {
-			err = -ENOTSUP;
-		}
+		err = backend->stop_defrag();
 		break;
 	case DNET_BACKEND_SET_IDS:
-		err = dnet_backend_set_ids(st->n, control->backend_id, control->ids, control->ids_count);
+		err = backend->set_ids(control->ids, control->ids_count);
 		break;
 	case DNET_BACKEND_READ_ONLY:
-		if (io->read_only) {
+		if (backend->read_only()) {
 			err = -EALREADY;
 		} else {
-			io->read_only = 1;
+			backend->set_read_only();
 			err = 0;
 		}
 		break;
 	case DNET_BACKEND_WRITEABLE:
-		if (!io->read_only) {
+		if (!backend->read_only()) {
 			err = -EALREADY;
 		} else {
-			io->read_only = 0;
+			backend->set_read_only(false);
 			err = 0;
 		}
 		break;
 	case DNET_BACKEND_CTL:
-		io->delay = control->delay;
+		backend->set_delay(control->delay);
 		err = 0;
 		break;
 	default:
@@ -813,10 +498,9 @@ static int dnet_cmd_backend_control_dangerous(struct dnet_net_state *st, struct 
 	memset(buffer, 0, sizeof(buffer));
 
 	dnet_backend_status_list *list = reinterpret_cast<dnet_backend_status_list *>(buffer);
-	dnet_backend_status *status = reinterpret_cast<dnet_backend_status *>(list + 1);
-
 	list->backends_count = 1;
-	backends->backend_fill_status(node, status, control->backend_id);
+
+	backend->fill_status(list->backends[0]);
 
 	if (err) {
 		dnet_send_reply(st, cmd, list, sizeof(buffer), true);
@@ -832,8 +516,7 @@ static int dnet_cmd_backend_control_dangerous(struct dnet_net_state *st, struct 
 	return err;
 }
 
-int dnet_cmd_backend_control(struct dnet_net_state *st, struct dnet_cmd *cmd, void *data)
-{
+int dnet_cmd_backend_control(struct dnet_net_state *st, struct dnet_cmd *cmd, void *data) {
 	dnet_node *node = st->n;
 
 	if (cmd->size < sizeof(dnet_backend_control)) {
@@ -842,11 +525,7 @@ int dnet_cmd_backend_control(struct dnet_net_state *st, struct dnet_cmd *cmd, vo
 		return -EINVAL;
 	}
 
-	struct dnet_backend_control *control = reinterpret_cast<dnet_backend_control *>(data);
-
 	try {
-		ioremap::elliptics::backend_scope backend_scope{int(control->backend_id)};
-
 		return dnet_cmd_backend_control_dangerous(st, cmd, data);
 	} catch (std::bad_alloc &) {
 		DNET_LOG_ERROR(node, "backend_control: insufficient memory");
@@ -857,45 +536,195 @@ int dnet_cmd_backend_control(struct dnet_net_state *st, struct dnet_cmd *cmd, vo
 	}
 }
 
-int dnet_cmd_backend_status(struct dnet_net_state *st, struct dnet_cmd *cmd, void *data)
-{
-	(void) data;
-	dnet_node *node = st->n;
+int dnet_cmd_backend_status(struct dnet_net_state *st, struct dnet_cmd *cmd) {
+	std::unique_ptr<dnet_backend_status_list, free_destroyer> list(st->n->io->backends_manager->get_status());
 
-	auto backends = node->config_data->backends->get_all_backends();
-	auto cmp_backends = [](const std::shared_ptr<dnet_backend_info> &lhs, const std::shared_ptr<dnet_backend_info> &rhs) -> bool {
-		return lhs->backend_id < rhs->backend_id;
-	};
-	std::sort(backends.begin(), backends.end(), cmp_backends);
-
-	const size_t total_size = sizeof(dnet_backend_status_list) + backends.size() * sizeof(dnet_backend_status);
-
-	std::unique_ptr<dnet_backend_status_list, free_destroyer>
-		list(reinterpret_cast<dnet_backend_status_list *>(calloc(1, total_size)));
-	if (!list) {
-		return -ENOMEM;
-	}
-
-	size_t i = 0;
-
-	for (auto &backend : backends) {
-		dnet_backend_status &status = list->backends[i];
-		node->config_data->backends->backend_fill_status(st->n, &status, backend->backend_id);
-		if (status.state != DNET_BACKEND_UNITIALIZED)
-			++i;
-	}
-
-	list->backends_count = i;
+	const size_t size = sizeof(dnet_backend_status_list) + list->backends_count * sizeof(dnet_backend_status);
 
 	cmd->flags &= ~DNET_FLAGS_NEED_ACK;
-
-	int err = dnet_send_reply(st, cmd, list.get(), total_size, false);
-
+	int err = dnet_send_reply(st, cmd, list.get(), size, false);
 	if (err != 0) {
 		cmd->flags |= DNET_FLAGS_NEED_ACK;
 	}
-
 	return err;
+}
+
+static dnet_logger &get_logger(struct dnet_node *node) {
+	return *(dnet_node_get_config_data(node)->logger->inner_logger());
+}
+
+dnet_backend::dnet_backend(dnet_node *node, std::shared_ptr<backend_config> config)
+: m_node{node}
+, m_config(config)
+, m_read_only{config->read_only_at_start}
+, m_delay{0}
+, m_state{DNET_BACKEND_DISABLED}
+, m_last_start_err{0}
+, m_cache{}
+, m_log{new blackhole::wrapper_t{get_logger(node), {{"source", "eblob"}, {"backend_id", m_config->backend_id}}}}
+, m_pool_id{} {
+	dnet_empty_time(&m_last_start);
+
+	memset(&m_callbacks, 0, sizeof(m_callbacks));
+}
+
+dnet_backend::~dnet_backend() {
+	disable();
+}
+
+uint32_t dnet_backend::backend_id() const {
+	return m_config->backend_id;
+}
+
+uint32_t dnet_backend::group_id() const {
+	return m_config->group_id;
+}
+
+uint64_t dnet_backend::queue_timeout() const {
+	return m_config->queue_timeout;
+}
+
+void dnet_backend::set_verbosity(const dnet_log_level level) {
+	boost::shared_lock<boost::shared_mutex> guard(m_state_mutex);
+	if (m_state != DNET_BACKEND_ENABLED)
+		return;
+
+	m_config->config_backend.set_verbosity(&m_config->config_backend, level);
+}
+
+int dnet_backend::enable() {
+	auto fail = [this](int err) {
+		m_cache.reset();
+		detach_from_io_pool();
+		{
+			dnet_current_time(&m_last_start);
+			m_last_start_err = err;
+			change_state(DNET_BACKEND_DISABLED);
+		}
+		return err;
+	};
+
+	dnet_time start;
+	dnet_current_time(&start);
+
+	int err = change_state(DNET_BACKEND_ACTIVATING);
+	if (err) {
+		DNET_LOG_ERROR(m_node, "dnet_backend::enable(): backend: {}, trying to activate not disabled backend, "
+		                       "elapsed: {}: {} [{}]",
+		               m_config->backend_id, elapsed(start), strerror(-err), err);
+		return err;
+	}
+
+	auto config = dnet_node_get_config_data(m_node)->get_backend_config(m_config->backend_id);
+	if (!config)
+		return -ENOENT;
+
+	m_config = std::move(config);
+
+	// reset delay after restart
+	m_delay = 0;
+	m_read_only = m_config->read_only_at_start;
+	m_config->config_backend.log = m_log.get();
+
+	m_command_stats.clear();
+
+	err = m_config->config_backend.init(&m_config->config_backend, dnet_node_get_verbosity(m_node));
+	if (err) {
+		DNET_LOG_ERROR(m_node, "dnet_backend::enable(): backend: {}, failed to init backend, "
+		                       "elapsed: {}: {} [{}]",
+		               m_config->backend_id, elapsed(start), strerror(-err), err);
+		return fail(err);
+	}
+
+	m_callbacks = m_config->config_backend.cb;
+
+	if (!m_config->pool_id.empty()) {
+		// use shared io pool if pool_id is set
+		m_pool = m_node->io->pools_manager->get(m_config->pool_id);
+	} else {
+		// use individual io pool if pool_id isn't set
+		m_pool = create_io_pool(m_node, std::to_string(m_config->backend_id), m_config->pool_config);
+	}
+
+	if (!m_pool) {
+		DNET_LOG_ERROR(m_node, "dnet_backend::enable(): backend: {}, failed to attach backend to io_pool, "
+		                       "elapsed: {}: {} [{}]",
+		               m_config->backend_id, elapsed(start), strerror(-err), err);
+		m_config->config_backend.cleanup(&m_config->config_backend);
+		return fail(err);
+	}
+
+	// use backend_id as pool_id for individual io pool
+	m_pool_id = m_config->pool_id.empty() ? std::to_string(m_config->backend_id) : m_config->pool_id;
+
+	if (m_config->cache_config) {
+		m_cache.reset(new ioremap::cache::cache_manager(m_node, *this, *m_config->cache_config));
+		if (!m_cache) {
+			err = -ENOMEM;
+			DNET_LOG_ERROR(m_node, "dnet_backend::enable(): backend: {}, failed to create cache, "
+			                       "elapsed: {}: {} [{}]",
+			               m_config->backend_id, elapsed(start), strerror(-err), err);
+			m_config->config_backend.cleanup(&m_config->config_backend);
+			return fail(err);
+		}
+	}
+
+	int ids_num = 0;
+	auto ids = dnet_ids_init(m_node, m_config->history, &ids_num, m_config->config_backend.storage_free,
+	                         m_node->addrs, m_config->backend_id);
+	if (ids == nullptr) {
+		err = -EINVAL;
+		DNET_LOG_ERROR(m_node, "dnet_backend::enable(): backend: {}, history path: {}, failed to initialize "
+		                       "ids, elapsed: {}: {} [{}]",
+		               m_config->backend_id, m_config->history, elapsed(start), strerror(-err), err);
+		m_config->config_backend.cleanup(&m_config->config_backend);
+		return fail(err);
+	}
+
+	err = dnet_route_list_enable_backend(m_node->route, m_config->backend_id, m_config->group_id, ids, ids_num);
+	free(ids);
+
+	if (err) {
+		DNET_LOG_ERROR(m_node, "dnet_backend::enable(): backend: {}, failed to add backend to route list, "
+		                       "elapsed: {}: {} [{}]",
+		               m_config->backend_id, elapsed(start), strerror(-err), err);
+		m_config->config_backend.cleanup(&m_config->config_backend);
+		return fail(err);
+	}
+
+	// TODO(shaitan): cleanup everything in case of error
+
+	DNET_LOG_INFO(m_node, "dnet_backend::enable(): backend: {}, initialized, elapsed: {}", m_config->backend_id,
+	              elapsed(start));
+
+	change_state(DNET_BACKEND_ENABLED);
+	dnet_current_time(&m_last_start);
+	m_last_start_err = 0;
+
+	return 0;
+}
+
+int dnet_backend::disable() {
+	int err = change_state(DNET_BACKEND_DEACTIVATING);
+	if (err) {
+		DNET_LOG_ERROR(m_node, "dnet_backend::disable(): backend_id: {}, "
+		                       "trying to disable not enabled backend: {} [{}]",
+		               m_config->backend_id, strerror(-err), err);
+		return err;
+	}
+
+	dnet_route_list_disable_backend(m_node->route, m_config->backend_id);
+
+	detach_from_io_pool();
+
+	m_cache.reset();
+	m_config->config_backend.cleanup(&m_config->config_backend);
+	memset(&m_callbacks, 0, sizeof(m_callbacks));
+
+	m_command_stats.clear();
+
+	change_state(DNET_BACKEND_DISABLED);
+	return 0;
 }
 
 class bulk_read_handler : public std::enable_shared_from_this<bulk_read_handler> {
@@ -1041,71 +870,461 @@ int dnet_cmd_bulk_read_new(struct dnet_net_state *st, struct dnet_cmd *cmd, void
 	return 0;
 }
 
-void dnet_backend_info::parse(ioremap::elliptics::config::config_data *data,
-		const kora::config_t &backend)
-{
-	std::string type = backend.at<std::string>("type");
-
-	dnet_config_backend *backends_info[] = {
-		dnet_eblob_backend_info(),
+int dnet_backend::change_state(dnet_backend_state state) {
+	auto set_activating = [this]() {
+		switch (m_state) {
+		case DNET_BACKEND_DISABLED:
+			m_state = DNET_BACKEND_ACTIVATING; // only disabled backend can be enabled
+			return 0;
+		case DNET_BACKEND_ENABLED:
+			return -EALREADY; // backend is already enabled
+		case DNET_BACKEND_ACTIVATING:
+			return -EINPROGRESS; // backend's enabling is in progress
+		case DNET_BACKEND_DEACTIVATING:
+			return -EAGAIN; // backend's disabling is in progress
+		default:
+			return -EINVAL; // backend is in unknown state
+		}
 	};
 
-	bool found_backend = false;
-
-	for (size_t i = 0; i < sizeof(backends_info) / sizeof(backends_info[0]); ++i) {
-		dnet_config_backend *current_backend = backends_info[i];
-		if (type == current_backend->name) {
-			config_template = *current_backend;
-			config = *current_backend;
-			this->data.resize(config.size, '\0');
-			found_backend = true;
-			break;
+	auto set_deactivating = [this]() {
+		switch (m_state) {
+		case DNET_BACKEND_ENABLED:
+			m_state = DNET_BACKEND_DEACTIVATING; // only enabled backend can be disabled
+			return 0;
+		case DNET_BACKEND_DISABLED:
+			return -EALREADY; // backend is already disabled
+		case DNET_BACKEND_ACTIVATING:
+			return -EAGAIN; // backend's enabling is in progress
+		case DNET_BACKEND_DEACTIVATING:
+			return -EINPROGRESS; // backend's disabling is in progress
+		default:
+			return -EINVAL; // backend is in unknown state
 		}
-	}
+	};
 
-	if (!found_backend)
-		throw ioremap::elliptics::config::config_error() <<
-			backend["type"].path() <<
-			" is unknown backend";
+	boost::unique_lock<boost::shared_mutex> guard(m_state_mutex);
+	switch (state) {
+	case DNET_BACKEND_DISABLED:
+		m_state = DNET_BACKEND_DISABLED;
+		return 0;
+	case DNET_BACKEND_ENABLED:
+		m_state = DNET_BACKEND_ENABLED;
+		return 0;
+	case DNET_BACKEND_ACTIVATING:
+		return set_activating();
+	case DNET_BACKEND_DEACTIVATING:
+		return set_deactivating();
+	};
 
-	group = backend.at<uint32_t>("group");
-	history = backend.at<std::string>("history");
-	cache = NULL;
+	return -EINVAL;
+}
 
-	if (backend.has("cache")) {
-		const auto cache = backend["cache"];
-		cache_config = ioremap::cache::cache_config::parse(cache);
-	} else if (data->cache_config) {
-		cache_config = std::unique_ptr<ioremap::cache::cache_config>(new ioremap::cache::cache_config(*data->cache_config));
-	}
+void dnet_backend::detach_from_io_pool() {
+	// do nothing if backend isn't attached to any io pool
+	if (!m_pool)
+		return;
 
-	io_thread_num = backend.at("io_thread_num", data->cfg_state.io_thread_num);
-	nonblocking_io_thread_num = backend.at("nonblocking_io_thread_num", data->cfg_state.nonblocking_io_thread_num);
-
-	// use backend's queue_timeout if it's specified otherwise use global one.
-	if (backend.has("queue_timeout")) {
-		queue_timeout = ioremap::elliptics::config::parse_queue_timeout(backend);
+	if (!m_config->pool_id.empty()) {
+		// detach from shared io pool if pool_id was specified
+		m_pool.reset();
+		m_node->io->pools_manager->detach(m_pool_id);
 	} else {
-		queue_timeout = data->queue_timeout;
+		// stop individual io pool if no pool_id was specified
+		stop_io_pool(m_node, m_pool, m_pool_id);
+		m_pool.reset();
 	}
 
-	for (int i = 0; i < config.num; ++i) {
-		dnet_config_entry &entry = config.ent[i];
-		if (backend.has(entry.key)) {
-			const std::string value = [&] () {
-				std::ostringstream stream;
-				stream << backend[entry.key];
-				return stream.str();
-			} ();
+	m_pool_id.clear();
+}
 
-			dnet_backend_config_entry option = {
-				&entry,
-				std::move(value)
-			};
+int dnet_backend::start_defrag(const dnet_backend_defrag_level level) {
+	if (!m_callbacks.defrag_start) {
+		return -ENOTSUP;
+	}
 
-			options.emplace_back(std::move(option));
+	return m_callbacks.defrag_start(m_callbacks.command_private, level);
+}
+
+int dnet_backend::stop_defrag() {
+	if (!m_callbacks.defrag_stop)
+		return -ENOTSUP;
+
+	return m_callbacks.defrag_stop(m_callbacks.command_private);
+}
+
+int dnet_backend::set_ids(struct dnet_raw_id *ids, uint32_t ids_count) {
+	return dnet_backend_set_ids(m_node, *this, m_config, ids, ids_count);
+}
+
+void dnet_backend::fill_status(dnet_backend_status &status) {
+	boost::shared_lock<boost::shared_mutex> guard(m_state_mutex);
+
+	status.backend_id = m_config->backend_id;
+	status.state = m_state;
+	if (m_state == DNET_BACKEND_ENABLED && m_callbacks.defrag_status)
+		status.defrag_state = m_callbacks.defrag_status(m_callbacks.command_private);
+	status.last_start = m_last_start;
+	status.last_start_err = m_last_start_err;
+	status.read_only = m_read_only;
+	status.delay = m_delay;
+}
+
+void dnet_backend::fill_status(rapidjson::Value &value, rapidjson::Document::AllocatorType &allocator) {
+	boost::shared_lock<boost::shared_mutex> guard(m_state_mutex);
+
+	value.AddMember("backend_id", m_config->backend_id, allocator);
+	rapidjson::Value status(rapidjson::kObjectType);
+	{
+		status.AddMember("backend_id",  m_config->backend_id, allocator);
+		status.AddMember("state",  (int)m_state, allocator);
+		status.AddMember("string_state",  dnet_backend_state_string(m_state), allocator);
+		status.AddMember("read_only",  m_read_only, allocator);
+		status.AddMember("delay",  m_delay, allocator);
+		status.AddMember("group",  m_config->group_id, allocator);
+		status.AddMember("pool_id", m_pool_id.c_str(), allocator);
+		const auto defrag_state = (m_state == DNET_BACKEND_ENABLED && m_callbacks.defrag_status)
+		                                  ? m_callbacks.defrag_status(m_callbacks.command_private)
+		                                  : 0;
+		status.AddMember("defrag_state", defrag_state, allocator);
+		status.AddMember("string_defrag_state", dnet_backend_defrag_state_string(defrag_state), allocator);
+		rapidjson::Value last_start(rapidjson::kObjectType);
+		{
+			last_start.AddMember("tv_sec", m_last_start.tsec, allocator);
+			last_start.AddMember("tv_usec", m_last_start.tnsec / 1000, allocator);
+		}
+		status.AddMember("last_start", last_start, allocator);
+		status.AddMember("string_last_time", dnet_print_time(&m_last_start), allocator);
+		status.AddMember("last_start_err", m_last_start_err, allocator);
+	}
+	value.AddMember("status", status, allocator);
+}
+
+void dnet_backend::fill_backend_stats(rapidjson::Value &value, rapidjson::Document::AllocatorType &allocator) {
+	rapidjson::Document backend(&allocator);
+	if (m_state == DNET_BACKEND_ENABLED) {
+		char *json_stat = nullptr;
+		size_t json_size = 0;
+		m_callbacks.storage_stat_json(m_callbacks.command_private, &json_stat, &json_size);
+		if (json_stat && json_size) {
+			backend.Parse<0>(json_stat);
+			auto &config_value = backend["config"];
+			config_value.AddMember("group", m_config->group_id, allocator);
+			config_value.AddMember("queue_timeout", m_config->queue_timeout, allocator);
+		}
+		free(json_stat);
+	} else {
+		if (m_state == DNET_BACKEND_DISABLED) {
+			/* load actual config from config file. Load only for disabled backend since
+			 * in other state current config is in-use.
+			 */
+			auto config = dnet_node_get_config_data(m_node)->get_backend_config(m_config->backend_id);
+			if (config)
+				m_config = std::move(config);
+		}
+
+		char *json_stat = nullptr;
+		size_t json_size = 0;
+		m_config->config_backend.to_json(&m_config->config_backend, &json_stat, &json_size);
+		if (json_stat && json_size) {
+			rapidjson::Document config_value(&allocator);
+			config_value.Parse<0>(json_stat);
+			config_value.AddMember("group", m_config->group_id, allocator);
+			config_value.AddMember("queue_timeout", m_config->queue_timeout, allocator);
+			backend.SetObject();
+			backend.AddMember("config", static_cast<rapidjson::Value &>(config_value), allocator);
+		}
+		free(json_stat);
+	}
+
+	if (!backend.IsObject())
+		backend.SetObject();
+
+	rapidjson::Document initial_config(&allocator);
+	initial_config.Parse<0>(m_config->raw_config.c_str());
+	backend.AddMember("initial_config", static_cast<rapidjson::Value &>(initial_config), allocator);
+
+	value.AddMember("backend", static_cast<rapidjson::Value &>(backend), allocator);
+}
+
+void dnet_backend::fill_io_stats(rapidjson::Value &value, rapidjson::Document::AllocatorType &allocator) {
+	if (m_state != DNET_BACKEND_ENABLED)
+		return;
+
+	rapidjson::Value io(rapidjson::kObjectType);
+	ioremap::monitor::dump_io_pool_stats(*m_pool, io, allocator);
+	value.AddMember("io", io, allocator);
+}
+
+void dnet_backend::fill_cache_stats(rapidjson::Value &value, rapidjson::Document::AllocatorType &allocator) {
+	if (m_state != DNET_BACKEND_ENABLED || !m_cache)
+		return;
+
+	rapidjson::Value cache;
+	m_cache->statistics(cache, allocator);
+	value.AddMember("cache", cache, allocator);
+}
+
+void dnet_backend::fill_commands_stats(rapidjson::Value &value, rapidjson::Document::AllocatorType &allocator) {
+	if (m_state != DNET_BACKEND_ENABLED)
+		return;
+
+	rapidjson::Value commands_value(rapidjson::kObjectType);
+	m_command_stats.commands_report(nullptr, commands_value, allocator);
+	value.AddMember("commands", commands_value, allocator);
+}
+
+void dnet_backend::statistics(uint64_t categories,
+                              rapidjson::Value &value,
+                              rapidjson::Document::AllocatorType &allocator) {
+	boost::shared_lock<boost::shared_mutex> guard(m_state_mutex);
+	fill_status(value, allocator);
+	if (categories & DNET_MONITOR_BACKEND)
+		fill_backend_stats(value, allocator);
+	if (categories & DNET_MONITOR_IO)
+		fill_io_stats(value, allocator);
+	if (categories & DNET_MONITOR_CACHE)
+		fill_cache_stats(value, allocator);
+	if (categories & DNET_MONITOR_COMMANDS)
+		fill_commands_stats(value, allocator);
+}
+
+dnet_backends_manager::dnet_backends_manager(struct dnet_node *node)
+: m_node(node) {
+	auto data = dnet_node_get_config_data(node);
+	m_backends.reserve(data->backends.size());
+
+	for (auto &config : data->backends) {
+		emplace(std::move(config));
+	}
+
+	// data->backends has been used and now longer needed, so clear it.
+	data->backends.clear();
+}
+
+dnet_backends_manager::~dnet_backends_manager() {
+	clear();
+}
+
+bool dnet_backends_manager::emplace(std::shared_ptr<backend_config> config) {
+	if (m_backends.find(config->backend_id) != m_backends.end())
+		return false;
+
+	m_backends.emplace(config->backend_id, std::make_shared<dnet_backend>(m_node, config));
+	return true;
+}
+
+std::shared_ptr<dnet_backend> dnet_backends_manager::get(uint32_t backend_id) {
+	boost::shared_lock<boost::shared_mutex> guard(m_backends_mutex);
+
+	auto it = m_backends.find(backend_id);
+	if (it == m_backends.end())
+		return nullptr;
+
+	return it->second;
+}
+
+int dnet_backends_manager::erase(uint32_t backend_id) {
+	boost::unique_lock<boost::shared_mutex> guard(m_backends_mutex);
+	return m_backends.erase(backend_id) == 0 ? -ENOENT : 0;
+}
+
+void dnet_backends_manager::clear() {
+	boost::upgrade_lock<boost::shared_mutex> guard(m_backends_mutex);
+	for (auto &item: m_backends) {
+		auto &backend = item.second;
+		backend->disable();
+	}
+
+	boost::upgrade_to_unique_lock<boost::shared_mutex> unique_guard(guard);
+	m_backends.clear();
+}
+
+int dnet_backends_manager::init_all(bool parallel) {
+	int err = 1;
+
+	if (parallel) {
+		try {
+			using namespace ioremap::elliptics;
+			session sess(m_node);
+			sess.set_filter(filters::all_with_ack);
+			sess.set_checker(checkers::no_check);
+			sess.set_exceptions_policy(session::no_exceptions);
+			sess.set_timeout(std::numeric_limits<unsigned>::max() / 2);
+			sess.set_cflags(sess.get_cflags() | DNET_FLAGS_NO_QUEUE_TIMEOUT);
+
+			std::vector<async_backend_control_result> results;
+			results.reserve(m_backends.size());
+
+			for (const auto &item : m_backends) {
+				const auto &backend_id = item.first;
+				const auto &backend = item.second;
+
+				if (!backend->config()->enable_at_start)
+					continue;
+
+				results.emplace_back(sess.enable_backend(m_node->st->addr, backend_id));
+			}
+
+			if (results.size()) {
+				async_backend_control_result result =
+				        ioremap::elliptics::aggregated(sess, results.begin(), results.end());
+				result.wait();
+
+				err = result.error().code();
+				if (err)
+					DNET_LOG_ERROR(m_node, "Failed to initialize backends: {}", err);
+			}
+		} catch (std::bad_alloc &) {
+			return -ENOMEM;
+		}
+	} else {
+		for (const auto &item : m_backends) {
+			auto &backend = item.second;
+
+			if (!backend->config()->enable_at_start)
+				continue;
+
+			const int tmp = backend->enable();
+			// set @err to @tmp if it wasn't set yet or if backend was successfully enabled
+			if ((err == 1) || !tmp) {
+				err = tmp;
+			}
 		}
 	}
 
-	initial_config = kora::to_json(backend.underlying_object());
+	// if @err is still 1 then no backends should be enabled at start
+	if (err == 1)
+		err = 0;
+
+	DNET_LOG(m_node, err ? DNET_LOG_ERROR : DNET_LOG_NOTICE,
+	         "dnet_backends_manager::init_all(): finished initializing all backends: {}", err);
+
+	return err;
+}
+
+
+void dnet_backends_manager::set_verbosity(const dnet_log_level level) {
+	boost::shared_lock<boost::shared_mutex> guard(m_backends_mutex);
+
+	for (const auto &item: m_backends) {
+		const auto &backend = item.second;
+		backend->set_verbosity(level);
+	}
+}
+
+struct dnet_backend_status_list *dnet_backends_manager::get_status() {
+	boost::shared_lock<boost::shared_mutex> guard(m_backends_mutex);
+	auto backends = [this]() {
+		std::vector<std::shared_ptr<dnet_backend>> sorted;
+		sorted.reserve(m_backends.size());
+		for (auto &item : m_backends) {
+			const auto &backend = item.second;
+			sorted.emplace_back(backend);
+		}
+
+		std::sort(sorted.begin(), sorted.end(), [](const std::shared_ptr<dnet_backend> &lhs,
+		                                           const std::shared_ptr<dnet_backend> &rhs) {
+			return lhs->backend_id() < rhs->backend_id();
+		});
+		return std::move(sorted);
+	}();
+
+	const size_t size = sizeof(dnet_backend_status_list) + backends.size() * sizeof(dnet_backend_status);
+
+	auto list = reinterpret_cast<dnet_backend_status_list *>(calloc(1, size));
+
+	for (size_t i = 0; i < backends.size(); ++i) {
+		backends[i]->fill_status(list->backends[i]);
+	}
+	list->backends_count = backends.size();
+
+	return list;
+}
+
+void dnet_backends_manager::statistics(uint64_t categories,
+                                       rapidjson::Value &value,
+                                       rapidjson::Document::AllocatorType &allocator) {
+	value.SetObject();
+
+	boost::shared_lock<boost::shared_mutex> guard(m_backends_mutex);
+	for (auto &item: m_backends) {
+		const auto &backend_id = std::to_string(item.first);
+		auto &backend = item.second;
+
+		rapidjson::Value backend_value(rapidjson::kObjectType);
+		backend->statistics(categories, backend_value, allocator);
+		value.AddMember(backend_id.c_str(), allocator, backend_value, allocator);
+	}
+}
+
+void dnet_io_pools_fill_stats(struct dnet_node *node,
+                              rapidjson::Value &value,
+                              rapidjson::Document::AllocatorType &allocator) {
+	node->io->pools_manager->statistics(value, allocator);
+}
+
+void dnet_io_pools_check(struct dnet_io_pools_manager *pools_manager, uint64_t *queue_size, uint64_t *threads_count) {
+	if (!pools_manager)
+		return;
+
+	// TODO(shaitan): it should count also individual io pools.
+	pools_manager->check(*queue_size, *threads_count);
+}
+
+int dnet_backends_init(struct dnet_node *node) {
+	std::unique_ptr<dnet_io_pools_manager> pools{new(std::nothrow) dnet_io_pools_manager(node)};
+	if (!pools) {
+		DNET_LOG_ERROR(node, "backends: failed to initialize dnet_io_pools_manager");
+		return -ENOMEM;
+	}
+
+	std::unique_ptr<dnet_backends_manager> backends{new(std::nothrow) dnet_backends_manager(node)};
+	if (!backends) {
+		DNET_LOG_ERROR(node, "backends: failed to initialize dnet_backends_manager");
+		return -ENOMEM;
+	}
+
+	node->io->pools_manager = pools.release();
+	node->io->backends_manager = backends.release();
+
+	return 0;
+}
+
+void dnet_backends_destroy(struct dnet_node *node) {
+	delete node->io->backends_manager;
+	delete node->io->pools_manager;
+}
+
+struct dnet_backend *dnet_backends_get_backend(struct dnet_node *node, uint32_t backend_id) {
+	return node->io->backends_manager->get(backend_id).get();
+}
+
+struct dnet_io_pool *dnet_backend_get_pool(struct dnet_node *node, uint32_t backend_id) {
+	if (!node || !node->io || !node->io->backends_manager)
+		return nullptr;
+
+	return node->io->backends_manager->get(backend_id)->io_pool();
+}
+
+uint64_t dnet_backend_get_queue_timeout(struct dnet_node *node, ssize_t backend_id) {
+	if (!node || !node->io || !node->io->backends_manager)
+		return 0;
+	if (backend_id < 0)
+		return dnet_node_get_queue_timeout(node);
+
+	auto backend = node->io->backends_manager->get(backend_id);
+	if (!backend)
+		return dnet_node_get_queue_timeout(node);
+
+	return backend->queue_timeout();
+}
+
+int dnet_backend_process_cmd_raw(struct dnet_backend *backend,
+                                 struct dnet_net_state *st,
+                                 struct dnet_cmd *cmd,
+                                 void *data,
+                                 struct dnet_cmd_stats *cmd_stats) {
+	auto &callbacks = backend->callbacks();
+	return callbacks.command_handler(st, callbacks.command_private, cmd, data, cmd_stats);
 }

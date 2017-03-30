@@ -1,5 +1,6 @@
 #include "library/logger.hpp"
 
+#include <stack>
 #include <stdarg.h>
 #include <iomanip>
 
@@ -47,6 +48,10 @@ private:
 
 thread_local std::stack<trace, std::vector<trace>> trace::trace_stack{{{0, false}}};
 
+static std::string &pool_id() {
+	static thread_local std::string id;
+	return id;
+}
 
 struct backend {
 	backend(int id)
@@ -187,6 +192,14 @@ blackhole::attributes_t trace_wrapper_t::attributes() {
 	return {};
 }
 
+pool_wrapper_t::pool_wrapper_t(std::unique_ptr<dnet_logger> logger)
+: wrapper_t(std::move(logger)) {}
+
+blackhole::attributes_t pool_wrapper_t::attributes() {
+	return !pool_id().empty() ? blackhole::attributes_t{{"pool", pool_id()}}
+	                                      : blackhole::attributes_t{};
+}
+
 backend_wrapper_t::backend_wrapper_t(std::unique_ptr<dnet_logger> logger)
 : wrapper_t(std::move(logger)) {}
 
@@ -227,6 +240,14 @@ void dnet_node_set_backend_id(int backend_id) {
 
 void dnet_node_unset_backend_id() {
 	ioremap::elliptics::backend::current() = {-1};
+}
+
+void dnet_logger_set_pool_id(const char *pool_id) {
+	ioremap::elliptics::pool_id() = pool_id;
+}
+
+void dnet_logger_unset_pool_id() {
+	ioremap::elliptics::pool_id().clear();
 }
 
 dnet_logger *dnet_node_get_logger(struct dnet_node* node) {

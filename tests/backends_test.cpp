@@ -490,10 +490,10 @@ static void test_change_group(session &sess)
 	unique_hosts = get_unique_hosts(sess);
 
 	BOOST_REQUIRE_MESSAGE(unique_hosts.find(old_tuple) == unique_hosts.end(),
-		"Host must not exist: " + host + ", group: 2, backend: 1");
+		"Host must not exist: " + host + ", group: 2, backend: " + std::to_string(backend_id));
 
 	BOOST_REQUIRE_MESSAGE(unique_hosts.find(new_tuple) != unique_hosts.end(),
-		"Host must not exist: " + host + ", group: 10, backend: 1");
+		"Host must exist: " + host + ", group: 10, backend: " + std::to_string(backend_id));
 }
 
 static void test_check_initial_config(session &sess) {

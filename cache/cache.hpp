@@ -20,23 +20,18 @@
 
 #include <vector>
 #include <mutex>
-#include <thread>
-#include <cstdio>
 #include <limits>
-#include <atomic>
 #include <iostream>
+#include <stdarg.h>
 
 #include <boost/intrusive/list.hpp>
 
-#include "library/elliptics.h"
 #include "library/logger.hpp"  //TODO: remove from header file, required only by elliptics_unique_lock
 
 #include "elliptics/packet.h"
 #include "elliptics/interface.h"
 
-#include "monitor/rapidjson/document.h"
-#include "monitor/rapidjson/writer.h"
-#include "monitor/rapidjson/stringbuffer.h"
+#include "rapidjson/document.h"
 
 #include "local_session.h"  //TODO: remove from header file, used only for elliptics_timer
 #include "treap.hpp"
@@ -47,6 +42,8 @@ struct dnet_write_request;
 struct dnet_remove_request;
 
 }}  /* namespace ioremap::elliptics */
+
+class dnet_backend;
 
 namespace ioremap { namespace cache {
 
@@ -341,31 +338,33 @@ struct cache_stats {
 	std::vector<size_t> pages_sizes;
 	std::vector<size_t> pages_max_sizes;
 
-	rapidjson::Value& to_json(rapidjson::Value &stat_value, rapidjson::Document::AllocatorType &allocator) const {
-		stat_value.AddMember("size", size_of_objects, allocator)
-				  .AddMember("removing_size", size_of_objects_marked_for_deletion, allocator)
-				  .AddMember("objects", number_of_objects, allocator)
-				  .AddMember("removing_objects", number_of_objects_marked_for_deletion, allocator);
+	void to_json(rapidjson::Value &value, rapidjson::Document::AllocatorType &allocator) const {
+		value.AddMember("size", size_of_objects, allocator);
+		value.AddMember("removing_size", size_of_objects_marked_for_deletion, allocator);
+		value.AddMember("objects", number_of_objects, allocator);
+		value.AddMember("removing_objects", number_of_objects_marked_for_deletion, allocator);
 
 		rapidjson::Value pages_sizes_stat(rapidjson::kArrayType);
 		for (auto it = pages_sizes.begin(), end = pages_sizes.end(); it != end; ++it) {
 			pages_sizes_stat.PushBack(*it, allocator);
 		}
-		stat_value.AddMember("pages_sizes", pages_sizes_stat, allocator);
+		value.AddMember("pages_sizes", pages_sizes_stat, allocator);
 
 		rapidjson::Value pages_max_sizes_stat(rapidjson::kArrayType);
 		for (auto it = pages_max_sizes.begin(), end = pages_max_sizes.end(); it != end; ++it) {
 			pages_max_sizes_stat.PushBack(*it, allocator);
 		}
-		stat_value.AddMember("pages_max_sizes", pages_max_sizes_stat, allocator);
-		return stat_value;
+		value.AddMember("pages_max_sizes", pages_max_sizes_stat, allocator);
 	}
 };
 
 struct write_request {
 	write_request(unsigned char *id, struct dnet_io_attr *io, ioremap::elliptics::data_pointer &data);
-	write_request(unsigned char *id, struct ioremap::elliptics::dnet_write_request &req, void *request_data,
-		      ioremap::elliptics::data_pointer &data, ioremap::elliptics::data_pointer &json);
+	write_request(unsigned char *id,
+	              struct ioremap::elliptics::dnet_write_request &req,
+	              void *request_data,
+	              ioremap::elliptics::data_pointer &data,
+	              ioremap::elliptics::data_pointer &json);
 
 	unsigned char *id;
 
@@ -398,10 +397,12 @@ typedef std::tuple<write_status, int, cache_item> write_response_t;
 typedef std::tuple<int, cache_item> read_response_t;
 
 class slru_cache_t;
+class cache_config;
 
 class cache_manager {
 public:
-	cache_manager(dnet_backend_io *backend, dnet_node *n, const cache_config &config);
+	cache_manager(dnet_node *n, dnet_backend &backend, const cache_config &config);
+	~cache_manager();
 
 	write_response_t write(dnet_net_state *st, dnet_cmd *cmd, const write_request &request);
 
@@ -419,27 +420,14 @@ public:
 
 	cache_stats get_total_cache_stats() const;
 
-	std::vector<cache_stats> get_caches_stats() const;
-
-	rapidjson::Value &get_total_caches_size_stats_json(rapidjson::Value &stat_value,
-	                                                   rapidjson::Document::AllocatorType &allocator) const;
-
-	rapidjson::Value &get_total_caches_time_stats_json(rapidjson::Value &stat_value,
-	                                                   rapidjson::Document::AllocatorType &allocator) const;
-
-	rapidjson::Value &get_caches_size_stats_json(rapidjson::Value &stat_value,
-	                                             rapidjson::Document::AllocatorType &allocator) const;
-
-	rapidjson::Value &get_caches_time_stats_json(rapidjson::Value &stat_value,
-	                                             rapidjson::Document::AllocatorType &allocator) const;
-
-	std::string stat_json() const;
+	void statistics(rapidjson::Value &value, rapidjson::Document::AllocatorType &allocator) const;
 
 private:
 	dnet_node *m_node;
 	std::vector<std::shared_ptr<slru_cache_t>> m_caches;
 	size_t m_max_cache_size;
 	size_t m_cache_pages_number;
+	bool m_need_exit; // @m_need_exit is shared between slru_caches and signals them to stop
 
 	size_t idx(const unsigned char *id);
 };
