@@ -1,198 +1,250 @@
 #ifndef IOREMAP_ELLIPTICS_BACKEND_H
 #define IOREMAP_ELLIPTICS_BACKEND_H
 
-#include <elliptics/backends.h>
+#include "library/elliptics.h"
 
 #ifdef __cplusplus
 
 #include <string>
-#include <vector>
-#include <memory>
 #include <mutex>
+#include <unordered_map>
 
-#include <kora/config.hpp>
-#include <blackhole/wrapper.hpp>
+#include <boost/thread/shared_mutex.hpp>
 
-#include <elliptics/error.hpp>
+#include <rapidjson/document.h>
 
-namespace ioremap { namespace elliptics { namespace config {
-class config_data;
-}}}
+#include "monitor/statistics.hpp"
+
 
 namespace ioremap { namespace cache {
+class cache_manager;
+}} /* namespace ioremap::cache */
 
-struct cache_config
-{
-	size_t			size;
-	size_t			count;
-	unsigned		sync_timeout;
-	std::vector<size_t>	pages_proportions;
+namespace ioremap { namespace elliptics { namespace config {
+struct backend_config;
+}}} /* namespace ioremap::elliptics::config */
 
-	static std::unique_ptr<cache_config> parse(const kora::config_t &cache);
-};
+using backend_config = ioremap::elliptics::config::backend_config;
 
-}}
-
-/**
- * This structure holds config value read from config file
- * @entry.key contains config key, @value_template holds value for given key
- *
- * When backend is being initialized, it calls @entry.callback() function for each config entry
- *
- * Please note that backend initialization copies value into temporal copy,
- * since @entry.callback() can modify this data.
- */
-struct dnet_backend_config_entry
-{
-	dnet_config_entry *entry;
-	std::string value_template;
-};
-
-struct dnet_backend_info
-{
-	dnet_backend_info(dnet_logger &logger, uint32_t backend_id) :
-		log(new blackhole::wrapper_t(logger, {{"source", "eblob"}, {"backend_id", backend_id}})),
-		backend_id(backend_id), group(0), cache(NULL),
-		enable_at_start(false), read_only_at_start(false),
-		state_mutex(new std::mutex), state(DNET_BACKEND_UNITIALIZED),
-		io_thread_num(0), nonblocking_io_thread_num(0),
-		queue_timeout(0)
-	{
-		dnet_empty_time(&last_start);
-		last_start_err = 0;
-		memset(&config_template, 0, sizeof(config_template));
-		memset(&config, 0, sizeof(config));
-	}
-
-	dnet_backend_info(const dnet_backend_info &other) = delete;
-	dnet_backend_info &operator =(const dnet_backend_info &other) = delete;
-
-	dnet_backend_info(dnet_backend_info &&other) ELLIPTICS_NOEXCEPT :
-		config_template(other.config_template),
-		log(std::move(other.log)),
-		options(std::move(other.options)),
-		backend_id(other.backend_id),
-		group(other.group),
-		cache(other.cache),
-		history(other.history),
-		enable_at_start(other.enable_at_start),
-		read_only_at_start(other.read_only_at_start),
-		state_mutex(std::move(other.state_mutex)),
-		state(other.state),
-		last_start(other.last_start),
-		last_start_err(other.last_start_err),
-		config(other.config),
-		data(std::move(other.data)),
-		cache_config(std::move(other.cache_config)),
-		io_thread_num(other.io_thread_num),
-		nonblocking_io_thread_num(other.nonblocking_io_thread_num),
-		queue_timeout(other.queue_timeout),
-		initial_config(std::move(other.initial_config))
-	{
-	}
-
-	dnet_backend_info &operator =(dnet_backend_info &&other) ELLIPTICS_NOEXCEPT
-	{
-		config_template = other.config_template;
-		log = std::move(other.log);
-		options = std::move(other.options);
-		backend_id = other.backend_id;
-		group = other.group;
-		cache = other.cache;
-		history = other.history;
-		enable_at_start = other.enable_at_start;
-		read_only_at_start = other.read_only_at_start;
-		state_mutex = std::move(other.state_mutex);
-		state = other.state;
-		last_start = other.last_start;
-		last_start_err = other.last_start_err;
-		config = other.config;
-		data = std::move(other.data);
-		cache_config = std::move(other.cache_config);
-		io_thread_num = other.io_thread_num;
-		nonblocking_io_thread_num = other.nonblocking_io_thread_num;
-		queue_timeout = other.queue_timeout;
-		initial_config = other.initial_config;
-
-		return *this;
-	}
-
-	void parse(ioremap::elliptics::config::config_data *data, const kora::config_t &config);
-
-	dnet_config_backend config_template;
-	std::unique_ptr<dnet_logger> log;
-	std::vector<dnet_backend_config_entry> options;
-	uint32_t backend_id;
-	uint32_t group;
-	void *cache;
-	std::string history;
-	bool enable_at_start;
-	bool read_only_at_start;
-
-	std::unique_ptr<std::mutex> state_mutex;
-	dnet_backend_state state;
-	dnet_time last_start;
-	int last_start_err;
-
-	dnet_config_backend config;
-	std::vector<char> data;
-
-	std::unique_ptr<ioremap::cache::cache_config> cache_config;
-	int io_thread_num;
-	int nonblocking_io_thread_num;
-	uint64_t queue_timeout;
-	std::string initial_config;
-};
-
-class dnet_backend_info_manager
-{
+// TODO(shaitan): wrap dnet_backend_callbacks and backend_config::dnet_config_backend by RAII structure
+// with API for working with underlying backend
+struct dnet_backend {
 public:
-	/*
-	 * Locks backend with \a backend_id state mutex and fills \a status
-	 */
-	void backend_fill_status(struct dnet_node *node, struct dnet_backend_status *status, size_t backend_id) const;
+	dnet_backend(dnet_node *node, std::shared_ptr<backend_config> config);
+	~dnet_backend();
 
-	std::vector<std::shared_ptr<dnet_backend_info> > get_all_backends() const
-	{
-		std::vector<std::shared_ptr<dnet_backend_info> > result;
-		std::lock_guard<std::mutex> guard(backends_mutex);
-		for (auto it : backends) {
-			result.push_back(it.second);
-		}
-		return result;
-	}
+	dnet_backend(const dnet_backend &) = delete;
+	dnet_backend &operator=(const dnet_backend &) = delete;
 
-	std::shared_ptr<dnet_backend_info> get_backend(size_t backend_id) const;
+	// actual backend's config
+	std::shared_ptr<backend_config> config() const { return m_config; }
+	// backend's id
+	uint32_t backend_id() const;
+	// group served by the backend
+	uint32_t group_id() const;
+	// actual backend's state
+	dnet_backend_state state() const { return m_state; }
+	// backend's state guard
+	boost::shared_mutex &state_mutex() { return m_state_mutex; }
+	// return low-level callbacks to underlying backend
+	dnet_backend_callbacks &callbacks() { return m_callbacks; }
+	// return low-level callbacks to underlying backend
+	const dnet_backend_callbacks &callbacks() const { return m_callbacks; }
+	// return cache which can be nullptr if cache is disabled
+	ioremap::cache::cache_manager *cache() { return m_cache.get(); }
+	// return whether read-only mode is enabled
+	bool read_only() const { return m_read_only; }
+	// enable/disable read-only mode
+	void set_read_only(bool read_only = true) { m_read_only = read_only; }
+	// return current delay in milliseconds the backend will sleep before handling any request
+	uint64_t delay() const { return m_delay; }
+	// set backend's delay
+	void set_delay(uint64_t delay) { m_delay = delay; }
+	// return statistics of handled by the backend commands
+	ioremap::monitor::command_stats &command_stats() { return m_command_stats; }
+	// return backend's queue_timeout
+	uint64_t queue_timeout() const;
+	// set backend's verbosity to @level
+	void set_verbosity(const dnet_log_level level);
+	// return io pool the backend is attached to
+	struct dnet_io_pool *io_pool() { return m_pool.get(); }
 
-	void add_backend(std::shared_ptr<dnet_backend_info> &backend);
-	void remove_backend(size_t backend_id);
+	// enable (run) backend
+	int enable();
+	// disable (stop) backend
+	int disable();
+	// start defragmentation on @level
+	int start_defrag(const dnet_backend_defrag_level level);
+	// stop defragmentation
+	int stop_defrag();
+	// update ids ranges served by the backend
+	int set_ids(struct dnet_raw_id *ids, uint32_t ids_count);
 
-	void set_verbosity(dnet_log_level level);
+	// status and statistics methods
+	// fill backend's status
+	void fill_status(dnet_backend_status &status);
+	// fill backend's statistics for monitor
+	void statistics(uint64_t categories, rapidjson::Value &value, rapidjson::Document::AllocatorType &allocator);
 
 private:
-	std::unordered_map<uint32_t, std::shared_ptr<dnet_backend_info> > backends;
-	mutable std::mutex backends_mutex;
+	dnet_node						*m_node;
+	// backend's config
+	std::shared_ptr<backend_config>				m_config;
+	// read-only mode of backend
+	bool							m_read_only;
+	// delay in milliseconds which will slept by backend before handling any request
+	uint64_t						m_delay;
+	// current backend's state
+	dnet_backend_state					m_state;
+	// backend's state guard
+	boost::shared_mutex					m_state_mutex;
+	// time when the backend was enabled last time
+	dnet_time						m_last_start;
+	// result of last backend's enabling in terms of error code
+	int							m_last_start_err;
+	// low-level callbacks to underlying backend
+	dnet_backend_callbacks					m_callbacks;
+	// statistics collected for monitor
+	ioremap::monitor::command_stats				m_command_stats;
+	// cache. It will be nullptr if cache is disabled
+	std::unique_ptr<ioremap::cache::cache_manager>		m_cache;
+	// logger with attached backend's attributes
+	std::unique_ptr<dnet_logger>				m_log;
+	// id of io pool serves the backend. It can be individual or shared.
+	std::string						m_pool_id;
+	// pointer to io pool serves the backend
+	std::shared_ptr<struct dnet_io_pool>			m_pool;
+
+private:
+	// change backend's state to @state and check the adequacy of this change
+	int change_state(dnet_backend_state state);
+	// detach the backend from io pool. If the backend has individual io pool it will lead to pool's shutdown,
+	void detach_from_io_pool();
+
+	// statistics methods
+
+	// fill @value with backend's status
+	void fill_status(rapidjson::Value &value, rapidjson::Document::AllocatorType &allocator);
+	// fill @value with backend's statistics
+	void fill_backend_stats(rapidjson::Value &value, rapidjson::Document::AllocatorType &allocator);
+	// fill @value with statistics of backend's io pool
+	void fill_io_stats(rapidjson::Value &value, rapidjson::Document::AllocatorType &allocator);
+	// fill @value with statistics of backend's cache
+	void fill_cache_stats(rapidjson::Value &value, rapidjson::Document::AllocatorType &allocator);
+	// fill @value with statistics of handled by the backend commands
+	void fill_commands_stats(rapidjson::Value &value, rapidjson::Document::AllocatorType &allocator);
 };
 
-void backend_fill_status_nolock(struct dnet_node *node, struct dnet_backend_status *status, const struct dnet_backend_info *config_backend);
+struct dnet_backends_manager {
+public:
+	dnet_backends_manager(dnet_node *node);
+	~dnet_backends_manager();
+
+	dnet_backends_manager(const dnet_backends_manager &) = delete;
+	dnet_backends_manager &operator=(const dnet_backends_manager &) = delete;
+
+	// create and insert new backend with the given @config
+	bool emplace(std::shared_ptr<backend_config> config);
+	// return backend with @backend_id. If there is no backend with @backend_id it will return nullptr.
+	std::shared_ptr<dnet_backend> get(uint32_t backend_id);
+	// disable and remove backend with @backend_id. Returns error code.
+	int erase(uint32_t backend_id);
+	// disable and remove all backends
+	void clear();
+	// enable all enabled at start backends. If @parallel is true backends will be enabled via sending
+	// asynchronous commands otherwise via synchronous call.
+	int init_all(bool parallel);
+	// set verbosity to all backends
+	void set_verbosity(const dnet_log_level level);
+	// return status of all backends
+	struct dnet_backend_status_list *get_status();
+	// return statistics of all backends
+	void statistics(uint64_t categories, rapidjson::Value &value, rapidjson::Document::AllocatorType &allocator);
+
+private:
+	dnet_node							*m_node;
+
+	// backend_id -> backend
+	std::unordered_map<uint32_t, std::shared_ptr<dnet_backend>>	m_backends;
+	boost::shared_mutex						m_backends_mutex;
+};
+
+// fill @value with all io pools statistics
+void dnet_io_pools_fill_stats(struct dnet_node *node,
+                              rapidjson::Value &value,
+                              rapidjson::Document::AllocatorType &allocator);
 
 extern "C" {
+
 #else // __cplusplus
-typedef struct dnet_backend_info_manager dnet_backend_info_manager;
-struct dnet_io;
+struct dnet_backends_manager;
+struct dnet_backend;
 #endif // __cplusplus
 
-int dnet_backend_init_all(struct dnet_node *n);
-void dnet_backend_cleanup_all(struct dnet_node *n);
+// return @backend's backend_id
+uint32_t dnet_backend_get_backend_id(struct dnet_backend *backend);
+// return whether backend's read-only mode is on or not
+int dnet_backend_read_only(struct dnet_backend *backend);
+// sleep specified in @backend delay
+void dnet_backend_sleep_delay(struct dnet_backend *backend);
+// return low-level callbacks to underlying backend
+struct dnet_backend_callbacks *dnet_backend_get_callbacks(struct dnet_backend *backend);
 
-int dnet_get_backend_ids(const dnet_backend_info_manager *backends, size_t **backend_ids, size_t *num_backend_ids);
+// return io pool backend is attached to
+struct dnet_io_pool *__attribute__((weak)) dnet_backend_get_pool(struct dnet_node *node, uint32_t backend_id);
+// return io pool's place backend is attached to
+struct dnet_work_pool_place *dnet_backend_get_place(struct dnet_node *node, ssize_t backend_id, int nonblocking);
+// return backend's queue_timeout
+uint64_t __attribute__((weak)) dnet_backend_get_queue_timeout(struct dnet_node *node, ssize_t backend_id);
 
+// update statistics for commands handled by the @backend
+void dnet_backend_command_stats_update(struct dnet_backend *backend,
+                                       struct dnet_cmd *cmd,
+                                       uint64_t size,
+                                       int handled_in_cache,
+                                       int err,
+                                       long diff);
+// handle command by @backend
+int dnet_backend_process_cmd_raw(struct dnet_backend *backend,
+                                 struct dnet_net_state *st,
+                                 struct dnet_cmd *cmd,
+                                 void *data,
+                                 struct dnet_cmd_stats *cmd_stats);
+
+// handle command by @backend's cache
+int dnet_cmd_cache_io(struct dnet_backend *backend,
+                      struct dnet_net_state *st,
+                      struct dnet_cmd *cmd,
+                      char *data,
+                      struct dnet_cmd_stats *cmd_stats);
+
+// initialize backends' subsystem, but do not enable any backend
+int dnet_backends_init(struct dnet_node *node);
+// deinitialize backends' subsystem
+void __attribute__((weak)) dnet_backends_destroy(struct dnet_node *node);
+// initialize all backends
+int dnet_backends_init_all(struct dnet_node *n);
+// deinitialize all backends
+void dnet_backends_cleanup_all(struct dnet_node *n);
+/* find and return a backend with @backend_id with locking its state_mutex, so it should be unlocked after use.
+ * If there is no backend with @backend_id or the backend isn't in DNET_BACKEND_ENABLED state, it will return nullptr.
+ */
+struct dnet_backend *dnet_backends_get_backend_locked(struct dnet_node *node, uint32_t backend_id);
+// unlock backend's state_mutex previously locked
+void dnet_backend_unlock_state(struct dnet_backend *backend);
+
+// handle DNET_CMD_BACKEND_CONTROL
 int dnet_cmd_backend_control(struct dnet_net_state *st, struct dnet_cmd *cmd, void *data);
-int dnet_cmd_backend_status(struct dnet_net_state *st, struct dnet_cmd *cmd, void *data);
-
+// handle DNET_CMD_BACKEND_STATUS
+int dnet_cmd_backend_status(struct dnet_net_state *st, struct dnet_cmd *cmd);
+// handle DNET_CMD_BULK_READ_NEW
 int dnet_cmd_bulk_read_new(struct dnet_net_state *st, struct dnet_cmd *cmd, void *data);
 
-struct dnet_backend_io *dnet_get_backend_io(struct dnet_io *io, size_t backend_id);
+// add to @queue_size and @threads_count all io pools' queues' sizes and number of threads.
+// This is used to suspend net threads if queues are heavily filled
+void __attribute__((weak)) dnet_io_pools_check(struct dnet_io_pools_manager *pools_manager,
+                                               uint64_t *queue_size,
+                                               uint64_t *threads_count);
 
 #ifdef __cplusplus
 }

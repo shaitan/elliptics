@@ -217,7 +217,7 @@ class server_config
 public:
 	static server_config default_value();
 
-	void write(const std::string &path);
+	void write(const std::string &path) const;
 	server_config &apply_options(const config_data &data);
 
 	config_data options;
@@ -287,6 +287,8 @@ private:
 	std::string m_path;
 	bool m_remove;
 };
+
+void create_directory(const std::string &path);
 
 struct nodes_data
 {

@@ -25,6 +25,10 @@
 
 struct dnet_node;
 
+namespace kora {
+class config_t;
+} /* namespace kora */
+
 namespace ioremap { namespace monitor {
 
 struct monitor_config {

@@ -25,39 +25,45 @@
 
 #include <chrono>
 
-class local_session
-{
-	ELLIPTICS_DISABLE_COPY(local_session)
-	public:
-		local_session(dnet_backend_io *backend, dnet_node *node);
-		~local_session();
+struct dnet_backend;
 
-		void set_ioflags(uint32_t flags);
-		void set_cflags(uint64_t flags);
+namespace ioremap { namespace elliptics {
+class dnet_remove_request;
+}} /* namespace ioremap::elliptics */
 
-		int backend_id() const;
+class local_session {
+	local_session(const local_session&) = delete;
+	local_session &operator =(const local_session &) = delete;
+public:
+	local_session(dnet_backend &backend, dnet_node *node);
+	~local_session();
 
-		ioremap::elliptics::data_pointer read(const dnet_id &id, int *errp);
-		ioremap::elliptics::data_pointer read(const dnet_id &id, uint64_t *user_flags, dnet_time *timestamp, int *errp);
-		int write(const dnet_id &id, const ioremap::elliptics::data_pointer &data);
-		int write(const dnet_id &id, const char *data, size_t size);
-		int write(const dnet_id &id, const char *data, size_t size, uint64_t user_flags, const dnet_time &timestamp);
-		ioremap::elliptics::data_pointer lookup(const dnet_cmd &cmd, int *errp);
-		int remove(const dnet_id &id);
+	void set_ioflags(uint32_t flags);
+	void set_cflags(uint64_t flags);
 
-	private:
-		void clear_queue(int *errp = NULL);
+	ioremap::elliptics::data_pointer read(const dnet_id &id, int *errp);
+	ioremap::elliptics::data_pointer read(const dnet_id &id, uint64_t *user_flags, dnet_time *timestamp, int *errp);
 
-		dnet_backend_io *m_backend;
-		dnet_net_state *m_state;
-		uint32_t m_ioflags;
-		uint64_t m_cflags;
+	int write(const dnet_id &id, const ioremap::elliptics::data_pointer &data);
+	int write(const dnet_id &id, const char *data, size_t size);
+	int write(const dnet_id &id, const char *data, size_t size, uint64_t user_flags, const dnet_time &timestamp);
+
+	ioremap::elliptics::data_pointer lookup(const dnet_cmd &cmd, int *errp);
+
+	int remove(const struct dnet_id &id);
+	int remove_new(const struct dnet_id &id, const ioremap::elliptics::dnet_remove_request &request);
+
+private:
+	void clear_queue(int *errp = nullptr);
+
+	dnet_backend &m_backend;
+	dnet_net_state *m_state;
+	uint32_t m_ioflags;
+	uint64_t m_cflags;
 };
 
-class elliptics_timer
-{
+class elliptics_timer {
 public:
-
 	typedef std::chrono::time_point<std::chrono::system_clock> time_point_t;
 
 	elliptics_timer()

@@ -34,6 +34,8 @@
 
 #include <set>
 
+#include <blackhole/attribute.hpp>
+
 #include "elliptics.h"
 #include "elliptics/packet.h"
 #include "elliptics/interface.h"

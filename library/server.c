@@ -26,10 +26,13 @@
 #include <signal.h>
 
 #include "elliptics.h"
+#include "backend.h"
+#include "route.h"
 #include "elliptics/interface.h"
 #include "monitor/monitor.h"
 
 #include "logger.hpp"
+#include "example/common.h"
 
 static int dnet_node_check_stack(struct dnet_node *n)
 {
@@ -104,7 +107,7 @@ struct dnet_node *dnet_server_node_create(struct dnet_config_data *cfg_data)
 
 	n->config_data = cfg_data;
 
-	err = dnet_server_io_init(n);
+	err = dnet_backends_init(n);
 	if (err)
 		goto err_out_node_destroy;
 
@@ -172,7 +175,7 @@ struct dnet_node *dnet_server_node_create(struct dnet_config_data *cfg_data)
 		// by network thread given state was attached to, and it can already release it.
 		dnet_state_put(n->st);
 
-		err = dnet_backend_init_all(n);
+		err = dnet_backends_init_all(n);
 		if (err) {
 			dnet_log(n, DNET_LOG_ERROR, "failed to init backends: %s %d", strerror(-err), err);
 			goto err_out_state_destroy;
@@ -185,7 +188,7 @@ struct dnet_node *dnet_server_node_create(struct dnet_config_data *cfg_data)
 	return n;
 
 	dnet_set_need_exit(n);
-	dnet_backend_cleanup_all(n);
+	dnet_backends_cleanup_all(n);
 err_out_state_destroy:
 	dnet_state_put(n->st);
 err_out_route_list_destroy:
@@ -223,7 +226,7 @@ void dnet_server_node_destroy(struct dnet_node *n)
 	dnet_route_list_destroy(n->route);
 	n->route = NULL;
 
-	dnet_backend_cleanup_all(n);
+	dnet_backends_cleanup_all(n);
 
 	dnet_node_cleanup_common_resources(n);
 
@@ -232,12 +235,11 @@ void dnet_server_node_destroy(struct dnet_node *n)
 	dnet_notify_exit(n);
 
 	/*
-	 * Can't do it later, logger gets destroyed in n->config_data->destroy_config_data call
+	 * Can't do it later, logger gets destroyed in dnet_config_data_destroy() call
 	 */
 	dnet_log(n, DNET_LOG_DEBUG, "Server node destroyed");
 
-	if (n->config_data)
-		n->config_data->destroy_config_data(n->config_data);
+	dnet_config_data_destroy(n->config_data);
 
 	free(n);
 }
