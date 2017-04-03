@@ -41,28 +41,22 @@ struct cache_config {
 
 namespace ioremap { namespace elliptics { namespace config {
 
-class config_error : public std::exception
-{
+class config_error : public std::exception {
 public:
-	explicit config_error()
-	{
-	}
+	explicit config_error() {}
 
-	config_error(const config_error &other) :
-		m_message(other.m_message)
-	{
+	config_error(const config_error &other)
+	: m_message(other.m_message) {
 		m_stream << m_message;
 	}
 
-	config_error &operator =(const config_error &other)
-	{
+	config_error &operator=(const config_error &other) {
 		m_message = other.m_message;
 		m_stream << m_message;
 		return *this;
 	}
 
-	explicit config_error(const std::string &message)
-	{
+	explicit config_error(const std::string &message) {
 		m_stream << message;
 		m_message = message;
 	}
@@ -72,25 +66,22 @@ public:
 	}
 
 	template <typename T>
-	config_error &operator <<(const T &value)
-	{
+	config_error &operator<<(const T &value) {
 		m_stream << value;
 		m_message = m_stream.str();
 		return *this;
 	}
 
-	config_error &operator <<(std::ostream &(*handler)(std::ostream &))
-	{
+	config_error &operator<<(std::ostream &(*handler)(std::ostream &)) {
 		m_stream << handler;
 		m_message = m_stream.str();
 		return *this;
 	}
 
-	virtual ~config_error() throw()
-	{}
+	virtual ~config_error() throw() {}
 
 private:
-	std::stringstream m_stream;
+	std::ostringstream m_stream;
 	std::string m_message;
 };
 
