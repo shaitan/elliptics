@@ -407,45 +407,6 @@ int dnet_trans_create_send_all(struct dnet_session *s, struct dnet_io_control *c
 	return num;
 }
 
-struct dnet_wait *dnet_wait_alloc(int cond)
-{
-	int err;
-	struct dnet_wait *w;
-
-	w = calloc(1, sizeof(struct dnet_wait));
-	if (!w) {
-		err = -ENOMEM;
-		goto err_out_exit;
-	}
-
-	err = pthread_cond_init(&w->wait, NULL);
-	if (err)
-		goto err_out_exit;
-
-	err = pthread_mutex_init(&w->wait_lock, NULL);
-	if (err)
-		goto err_out_destroy;
-
-	w->cond = cond;
-	atomic_init(&w->refcnt, 1);
-
-	return w;
-
-err_out_destroy:
-	pthread_mutex_destroy(&w->wait_lock);
-	free(w);
-err_out_exit:
-	return NULL;
-}
-
-void dnet_wait_destroy(struct dnet_wait *w)
-{
-	pthread_mutex_destroy(&w->wait_lock);
-	pthread_cond_destroy(&w->wait);
-	free(w->ret);
-	free(w);
-}
-
 struct dnet_addr *dnet_state_addr(struct dnet_net_state *st)
 {
 	return &st->addr;

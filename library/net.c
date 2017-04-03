@@ -329,57 +329,6 @@ void dnet_io_req_free(struct dnet_io_req *r)
 	free(r);
 }
 
-static int dnet_wait(struct dnet_net_state *st, unsigned int events, long timeout)
-{
-	struct pollfd pfd;
-	int err;
-
-	pfd.fd = st->read_s;
-	pfd.revents = 0;
-	pfd.events = events;
-
-	err = poll(&pfd, 1, timeout);
-	if (err < 0) {
-		if (errno == EAGAIN || errno == EINTR) {
-			err = -EAGAIN;
-			goto out_exit;
-		}
-
-		dnet_log(st->n, DNET_LOG_ERROR, "Failed to wait for descriptor: err: %d, socket: %d.",
-				err, st->read_s);
-		err = -errno;
-		goto out_exit;
-	}
-
-	if (err == 0) {
-		err = -EAGAIN;
-		goto out_exit;
-	}
-
-	if (pfd.revents & (POLLRDHUP | POLLERR | POLLHUP | POLLNVAL)) {
-		dnet_log(st->n, DNET_LOG_ERROR, "Connection reset by peer: sock: %d, revents: 0x%x.",
-			st->read_s, pfd.revents);
-		err = -ECONNRESET;
-		goto out_exit;
-	}
-
-	if (pfd.revents & events) {
-		err = 0;
-		goto out_exit;
-	}
-
-	dnet_log(st->n, DNET_LOG_ERROR, "Socket reported error: sock: %d, revents: 0x%x.",
-			st->read_s, pfd.revents);
-	err = -EINVAL;
-out_exit:
-	if (st->n->need_exit || st->__need_exit) {
-		dnet_log(st->n, DNET_LOG_ERROR, "Need to exit: node: %d, state: %d.", st->n->need_exit, st->__need_exit);
-		err = -EIO;
-	}
-
-	return err;
-}
-
 ssize_t dnet_send_nolock(struct dnet_net_state *st, void *data, uint64_t size)
 {
 	ssize_t err = 0;
@@ -523,43 +472,6 @@ err_out_remove:
 err_out_put:
 	dnet_trans_put(t);
 	return err;
-}
-
-int dnet_recv(struct dnet_net_state *st, void *data, unsigned int size)
-{
-	int err;
-	int wait = st->n->wait_ts.tv_sec;
-
-	while (size) {
-		err = dnet_wait(st, POLLIN, 1000);
-		if (err < 0) {
-			if (err == -EAGAIN) {
-				if (--wait > 0)
-					continue;
-
-				err = -ETIMEDOUT;
-			}
-			return err;
-		}
-
-		err = recv(st->read_s, data, size, MSG_DONTWAIT);
-		if (err < 0) {
-			DNET_ERROR(st->n, "Failed to recv packet: size: %u", size);
-			return err;
-		}
-
-		if (err == 0) {
-			dnet_log(st->n, DNET_LOG_ERROR, "dnet_recv: peer %s has disconnected.",
-					dnet_addr_string(&st->addr));
-			return -ECONNRESET;
-		}
-
-		data += err;
-		size -= err;
-		wait = st->n->wait_ts.tv_sec;
-	}
-
-	return 0;
 }
 
 int dnet_add_reconnect_state(struct dnet_node *n, const struct dnet_addr *addr, unsigned int join_state)
