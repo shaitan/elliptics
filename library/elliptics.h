@@ -768,7 +768,7 @@ int dnet_data_map(struct dnet_map_fd *map);
 int dnet_data_map_rw(struct dnet_map_fd *map);
 void dnet_data_unmap(struct dnet_map_fd *map);
 
-int dnet_ids_update(struct dnet_node *n, int update_local, const char *file, struct dnet_addr *cfg_addrs, size_t backend_id);
+int dnet_ids_update(struct dnet_node *n, int update_local, const char *file, struct dnet_addr *cfg_addrs, uint32_t backend_id);
 
 /*
  * Internal iterator state
