@@ -21,7 +21,6 @@
 
 #include <malloc.h>
 
-#include <boost/lexical_cast.hpp>
 #include <unordered_set>
 
 #include <blackhole/config/json.hpp>
@@ -101,13 +100,11 @@ struct dnet_addr_wrap {
 	int			addr_group;
 };
 
-static bool dnet_addr_wrap_less_than(const dnet_addr_wrap &w1, const dnet_addr_wrap &w2)
-{
+static bool dnet_addr_wrap_less_than(const dnet_addr_wrap &w1, const dnet_addr_wrap &w2) {
 	return w1.addr_group < w2.addr_group;
 }
 
-static void dnet_set_addr(config_data *data, const std::vector<std::string> &addresses)
-{
+static void dnet_set_addr(config_data *data, const std::vector<std::string> &addresses) {
 	if (addresses.empty())
 		return;
 
@@ -125,9 +122,8 @@ static void dnet_set_addr(config_data *data, const std::vector<std::string> &add
 			size_t group_index = address.find_first_of('-', delim_index);
 
 			if (group_index != std::string::npos) {
-				std::string group_str = address.substr(group_index + 1);
 				try {
-					group = boost::lexical_cast<int>(group_str);
+					group = stoi(address.substr(group_index + 1));
 				} catch (std::exception &exc) {
 					throw config_error() << "address group parse error: " << exc.what();
 				}
@@ -143,8 +139,8 @@ static void dnet_set_addr(config_data *data, const std::vector<std::string> &add
 			int err = dnet_parse_addr(address_copy.data(), &port, &family);
 
 			if (err) {
-				throw config_error() << *it << ": failed to parse address: " << strerror(-err)
-					<< ", " << boost::lexical_cast<std::string>(err);
+				throw config_error() << *it << ": failed to parse address: " << strerror(-err) << ", "
+				                     << err;
 			}
 
 			data->cfg_state.port = port;
@@ -159,14 +155,14 @@ static void dnet_set_addr(config_data *data, const std::vector<std::string> &add
 			err = dnet_fill_addr(&wrap.addr, address_copy.data(), port, SOCK_STREAM, IPPROTO_TCP);
 
 			if (err) {
-				throw config_error() << *it << ": could not resolve address: " << strerror(-err)
-					<< ", " << boost::lexical_cast<std::string>(err);
+				throw config_error() << *it << ": could not resolve address: " << strerror(-err) << ", "
+				                     << err;
 			}
 
 			wraps.push_back(wrap);
 		} catch (std::exception &exc) {
-			throw config_error() << "'options.address[" << std::distance(addresses.begin(), it)
-				<< "]', " << exc.what();
+			throw config_error() << "'options.address[" << std::distance(addresses.begin(), it) << "]', "
+			                     << exc.what();
 		}
 	}
 
@@ -177,14 +173,14 @@ static void dnet_set_addr(config_data *data, const std::vector<std::string> &add
 		if (!data->cfg_addrs)
 			throw std::bad_alloc();
 
-		for (size_t i = 0; i < wraps.size(); ++i)
+		for (size_t i = 0; i < wraps.size(); ++i) {
 			data->cfg_addrs[i] = wraps[i].addr;
+		}
 		data->cfg_addr_num = wraps.size();
 	}
 }
 
-static int dnet_set_malloc_options(config_data *data, unsigned long long value)
-{
+static int dnet_set_malloc_options(config_data *data, unsigned long long value) {
 	int err, thr = value;
 
 	err = mallopt(M_MMAP_THRESHOLD, thr);
@@ -198,14 +194,13 @@ static int dnet_set_malloc_options(config_data *data, unsigned long long value)
 }
 
 uint64_t parse_queue_timeout(const kora::config_t &options) {
-	if (!options.has("queue_timeout")) {
+	if (!options.has("queue_timeout"))
 		return 0;
-	}
 
 	const auto timeout = options.at<std::string>("queue_timeout");
 	const uint64_t queue_timeout = strtoul(timeout.c_str(), NULL, 0);
 
-	const auto scale = [&timeout] () {
+	const auto scale = [&timeout]() {
 		constexpr uint64_t microsecond = 1;
 		constexpr uint64_t millisecond = 1000 * microsecond;
 		constexpr uint64_t second = 1000 * millisecond;
@@ -214,7 +209,7 @@ uint64_t parse_queue_timeout(const kora::config_t &options) {
 		constexpr uint64_t day = 24 * hour;
 		constexpr uint64_t week = 7 * day;
 
-		auto check = [&timeout] (const std::string &name) {
+		auto check = [&timeout](const std::string &name) {
 			return timeout.find(name) != std::string::npos;
 		};
 
@@ -232,11 +227,9 @@ uint64_t parse_queue_timeout(const kora::config_t &options) {
 	return queue_timeout * scale;
 }
 
-void parse_options(config_data *data, const kora::config_t &options)
-{
-	if (options.has("mallopt_mmap_threshold")) {
+static void parse_options(config_data *data, const kora::config_t &options) {
+	if (options.has("mallopt_mmap_threshold"))
 		dnet_set_malloc_options(data, options.at<int>("mallopt_mmap_threshold"));
-	}
 
 	data->cfg_state.wait_timeout = options.at("wait_timeout", 0u);
 	data->cfg_state.check_timeout = options.at("check_timeout", 0l);
@@ -266,10 +259,8 @@ void parse_options(config_data *data, const kora::config_t &options)
 		}
 	}
 
-	if (options.has("monitor")) {
-		const auto monitor = options["monitor"];
-		data->monitor_config = ioremap::monitor::monitor_config::parse(monitor);
-	}
+	if (options.has("monitor"))
+		data->monitor_config = ioremap::monitor::monitor_config::parse(options["monitor"]);
 
 	if (options.has("handystats_config")) {
 		data->cfg_state.handystats_config = strdup(options.at<std::string>("handystats_config").c_str());
@@ -315,9 +306,11 @@ extern "C" struct dnet_node *dnet_parse_config(const char *file, int mon) {
 		if (!node)
 			throw std::runtime_error("failed to create node");
 
-		static_assert(sizeof(dnet_addr) == sizeof(address), "Size of dnet_addr and size of address must be equal");
-		if (data->remotes.size() != 0) {
-			int err = dnet_add_state(node, reinterpret_cast<const dnet_addr *>(data->remotes.data()), data->remotes.size(), 0);
+		static_assert(sizeof(dnet_addr) == sizeof(address),
+		              "Size of dnet_addr and size of address must be equal");
+		if (!data->remotes.empty()) {
+			const int err = dnet_add_state(node, reinterpret_cast<const dnet_addr *>(data->remotes.data()),
+			                               data->remotes.size(), 0);
 			if (err < 0)
 				DNET_LOG_WARNING(node->log, "Failed to connect to remote nodes: {}", err);
 		}
@@ -342,35 +335,32 @@ extern "C" struct dnet_node *dnet_parse_config(const char *file, int mon) {
 		}
 	}
 
-	if (node)
+	if (node) {
 		dnet_server_node_destroy(node);
-	else if (data)
+	} else if (data) {
 		dnet_config_data_destroy(data);
+	}
 
 	return NULL;
 }
 
-extern "C" int dnet_node_reset_log(struct dnet_node *n)
-{
-	if (!n || !n->config_data || dnet_need_exit(n)) {
+extern "C" int dnet_node_reset_log(struct dnet_node *n) {
+	if (!n || !n->config_data || dnet_need_exit(n))
 		return -EINVAL;
-	}
 
-	static_cast<config_data *>(n->config_data)->reset_logger();
+	dnet_node_get_config_data(n)->reset_logger();
 	return 0;
 }
 
-extern "C" int dnet_node_set_verbosity(struct dnet_node *n, enum dnet_log_level level) {
-	if (level < 0 || level > DNET_LOG_ERROR) {
+extern "C" int dnet_node_set_verbosity(struct dnet_node *node, enum dnet_log_level level) {
+	if (level < 0 || level > DNET_LOG_ERROR)
 		return -EINVAL;
-	}
 
-	if (!n || !n->config_data || dnet_need_exit(n)) {
+	if (!node || !node->config_data || dnet_need_exit(node))
 		return -EINVAL;
-	}
 
-	static_cast<config_data *>(n->config_data)->logger_level = level;
-	n->io->backends_manager->set_verbosity(level);
+	dnet_node_get_config_data(node)->logger_level = level;
+	node->io->backends_manager->set_verbosity(level);
 	return 0;
 }
 
