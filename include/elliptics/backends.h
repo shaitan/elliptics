@@ -131,9 +131,6 @@ int dnet_ext_hdr_write(const struct dnet_ext_list_hdr *ehdr, int fd, uint64_t of
  */
 struct dnet_config_backend *dnet_eblob_backend_info(void);
 
-int dnet_eblob_backend_init(void);
-void dnet_eblob_backend_exit(void);
-
 int backend_storage_size(struct dnet_config_backend *b, const char *root);
 
 #ifdef __cplusplus

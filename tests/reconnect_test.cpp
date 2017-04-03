@@ -15,7 +15,7 @@
 
 #include "test_base.hpp"
 #include "test_session.hpp"
-#include "../library/elliptics.h"
+#include "library/elliptics.h"
 
 #define BOOST_TEST_NO_MAIN
 #define BOOST_TEST_ALTERNATIVE_INIT_API
