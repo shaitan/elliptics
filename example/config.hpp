@@ -93,8 +93,8 @@ struct io_pool_config {
 struct config_data;
 struct backend_config {
 	backend_config(const config_data &data, const kora::config_t &config);
-	backend_config(backend_config &) = delete;
-	backend_config &operator=(backend_config &) = delete;
+	backend_config(const backend_config &) = delete;
+	backend_config &operator=(const backend_config &) = delete;
 
 	// raw config as it presented in config file
 	const std::string				raw_config;
