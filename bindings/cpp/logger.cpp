@@ -115,6 +115,10 @@ trace_scope::trace_scope(uint64_t trace_id, bool trace_bit) {
 	dnet_logger_set_trace_id(trace_id, trace_bit);
 }
 
+trace_scope::trace_scope(const session &s) {
+	dnet_logger_set_trace_id(s.get_trace_id(), s.get_trace_bit());
+}
+
 trace_scope::~trace_scope() {
 	dnet_logger_unset_trace_id();
 }
@@ -208,9 +212,8 @@ blackhole::attributes_t backend_wrapper_t::attributes() {
 
 dnet_logger *get_base_logger(dnet_logger *logger) {
 	auto wrapper = dynamic_cast<wrapper_t *>(logger);
-	if (wrapper) {
+	if (wrapper)
 		return wrapper->base_logger();
-	}
 	return logger;
 }
 
@@ -249,9 +252,8 @@ dnet_logger *dnet_node_get_logger(struct dnet_node* node) {
 }
 
 enum dnet_log_level dnet_node_get_verbosity(struct dnet_node *n) {
-	if (!n || !n->config_data) {
+	if (!n || !n->config_data)
 		return DNET_LOG_DEBUG;
-	}
 
 	return dnet_node_get_config_data(n)->logger_level;
 }
@@ -260,24 +262,22 @@ static const std::array<std::string, 5> severity_names = {{"debug", "notice", "i
 
 enum dnet_log_level dnet_log_parse_level(const char *name) {
 	auto it = std::find(severity_names.begin(), severity_names.end(), name);
-	if (it == severity_names.end()) {
+	if (it == severity_names.end())
 		throw std::logic_error(std::string{"Unknown log level: "} + name);
-	}
 
 	return static_cast<dnet_log_level>(it - severity_names.begin());
 }
 
 const char* dnet_log_print_level(enum dnet_log_level level) {
-	if (level > severity_names.size()) {
+	if (level > severity_names.size())
 		throw std::logic_error(std::string{"Unknown log level: "} + std::to_string(level));
-	}
+
 	return severity_names[level].c_str();
 }
 
 void dnet_log_raw(dnet_logger *logger, dnet_log_level level, const char *format, ...) {
-	if (!logger) {
+	if (!logger)
 		return;
-	}
 
 	char buffer[2048];
 
