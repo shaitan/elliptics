@@ -213,7 +213,7 @@ struct dnet_backend_update_cmd
 	dnet_backend_ids ids;
 };
 
-int dnet_route_list::enable_backend(size_t backend_id, int group_id, dnet_raw_id *ids, size_t ids_count)
+int dnet_route_list::enable_backend(uint32_t backend_id, int group_id, dnet_raw_id *ids, size_t ids_count)
 {
 	dnet_cmd *cmd = reinterpret_cast<dnet_cmd *>(malloc(sizeof(dnet_backend_update_cmd) + ids_count * sizeof(dnet_raw_id)));
 	if (!cmd)
@@ -239,7 +239,7 @@ int dnet_route_list::enable_backend(size_t backend_id, int group_id, dnet_raw_id
 
 	std::lock_guard<std::mutex> lock_guard(m_mutex);
 
-	m_backends.resize(std::max(m_backends.size(), backend_id + 1));
+	m_backends.resize(std::max(m_backends.size(), size_t(backend_id + 1)));
 
 	backend_info &backend = m_backends[backend_id];
 	backend.activated = true;
@@ -251,7 +251,7 @@ int dnet_route_list::enable_backend(size_t backend_id, int group_id, dnet_raw_id
 	return err;
 }
 
-int dnet_route_list::disable_backend(size_t backend_id)
+int dnet_route_list::disable_backend(uint32_t backend_id)
 {
 	std::lock_guard<std::mutex> lock_guard(m_mutex);
 
@@ -360,7 +360,7 @@ int dnet_route_list::send_all_ids_nolock(dnet_net_state *st, dnet_id *id,
 
 	char *ptr = reinterpret_cast<char *>(id_container + 1);
 
-	for (size_t backend_id = 0; backend_id < m_backends.size(); ++backend_id) {
+	for (uint32_t backend_id = 0; backend_id < m_backends.size(); ++backend_id) {
 		backend_info &backend = m_backends[backend_id];
 		if (!backend.activated)
 			continue;
@@ -390,7 +390,7 @@ int dnet_route_list::send_all_ids_nolock(dnet_net_state *st, dnet_id *id,
 	return dnet_send(st, buffer, total_size);
 }
 
-void dnet_route_list::send_update_to_states(dnet_cmd *cmd, size_t backend_id)
+void dnet_route_list::send_update_to_states(dnet_cmd *cmd, uint32_t backend_id)
 {
 	dnet_net_state *state;
 	dnet_pthread_lock_guard guard(m_node->state_lock);
@@ -443,12 +443,12 @@ int dnet_state_join(struct dnet_net_state *st)
 	return safe_call(st->n->route, &dnet_route_list::join, st);
 }
 
-int dnet_route_list_enable_backend(dnet_route_list *route, size_t backend_id, int group_id, dnet_raw_id *ids, size_t ids_count)
+int dnet_route_list_enable_backend(dnet_route_list *route, uint32_t backend_id, int group_id, dnet_raw_id *ids, size_t ids_count)
 {
 	return safe_call(route, &dnet_route_list::enable_backend, backend_id, group_id, ids, ids_count);
 }
 
-int dnet_route_list_disable_backend(dnet_route_list *route, size_t backend_id)
+int dnet_route_list_disable_backend(dnet_route_list *route, uint32_t backend_id)
 {
 	return safe_call(route, &dnet_route_list::disable_backend, backend_id);
 }

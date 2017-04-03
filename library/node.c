@@ -670,8 +670,9 @@ void dnet_update_backend_weight(struct dnet_net_state *st, const struct dnet_cmd
 	}
 }
 
-struct dnet_net_state *dnet_state_get_first_with_backend(struct dnet_node *n, const struct dnet_id *id, int *backend_id)
-{
+struct dnet_net_state *dnet_state_get_first_with_backend(struct dnet_node *n,
+                                                         const struct dnet_id *id,
+                                                         int *backend_id) {
 	struct dnet_net_state *found;
 
 	pthread_mutex_lock(&n->state_lock);
