@@ -4,7 +4,6 @@
 
 #ifdef __cplusplus
 #include <atomic>
-#include <blackhole/record.hpp>
 #include <blackhole/extensions/facade.hpp>
 
 namespace ioremap { namespace elliptics {
@@ -52,7 +51,7 @@ public:
 
 dnet_logger *get_base_logger(dnet_logger *logger);
 
-bool log_filter(const blackhole::record_t &record, const int level);
+bool log_filter(const int severity, const int level);
 
 class session;
 struct trace_scope {
