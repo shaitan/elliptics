@@ -67,8 +67,8 @@ static ssize_t &backend_id() {
 
 } /* namespace attributes */
 
-bool log_filter(const blackhole::record_t &record, const int level) {
-	return attributes::trace::bit() || record.severity() >= level;
+bool log_filter(const int severity, const int level) {
+	return attributes::trace::bit() || severity >= level;
 }
 
 std::unique_ptr<dnet_logger> make_file_logger(const std::string &path, dnet_log_level level) {
@@ -99,7 +99,7 @@ std::unique_ptr<dnet_logger> make_file_logger(const std::string &path, dnet_log_
 	std::unique_ptr<blackhole::root_logger_t> logger(new blackhole::root_logger_t(std::move(handlers)));
 
 	logger->filter([level](const blackhole::record_t &record) {
-		return log_filter(record, level);
+		return log_filter(record.severity(), level);
 	});
 
 	return std::move(logger);
