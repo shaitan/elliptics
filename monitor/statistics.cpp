@@ -40,15 +40,17 @@
 namespace ioremap { namespace monitor {
 
 static void ext_stat_json(const ext_counter &ext_stat,
-		rapidjson::Value &stat_value, rapidjson::Document::AllocatorType &allocator) {
+                          rapidjson::Value &stat_value,
+                          rapidjson::Document::AllocatorType &allocator) {
 	stat_value.AddMember("successes", ext_stat.counter.successes, allocator);
 	stat_value.AddMember("failures", ext_stat.counter.failures, allocator);
 	stat_value.AddMember("size", ext_stat.size, allocator);
 	stat_value.AddMember("time", ext_stat.time, allocator);
 }
 
-static void source_stat_json(const source_counter &source_stat, rapidjson::Value &stat_value,
-		rapidjson::Document::AllocatorType &allocator) {
+static void source_stat_json(const source_counter &source_stat,
+                             rapidjson::Value &stat_value,
+                             rapidjson::Document::AllocatorType &allocator) {
 	rapidjson::Value outside_stat(rapidjson::kObjectType);
 	ext_stat_json(source_stat.outside, outside_stat, allocator);
 	stat_value.AddMember("outside", outside_stat, allocator);
@@ -200,12 +202,6 @@ void statistics::add_provider(stat_provider *stat, const std::string &name)
 	m_stat_providers.insert(make_pair(name, std::shared_ptr<stat_provider>(stat)));
 }
 
-void statistics::remove_provider(const std::string &name)
-{
-	std::unique_lock<std::mutex> guard(m_provider_mutex);
-	m_stat_providers.erase(name);
-}
-
 inline std::string convert_report(const rapidjson::Document &report)
 {
 	rapidjson::StringBuffer buffer;
@@ -231,6 +227,7 @@ std::string statistics::report(uint64_t categories)
 	report.AddMember("string_timestamp", dnet_print_time(&time), allocator);
 
 	report.AddMember("monitor_status", "enabled", allocator);
+	report.AddMember("categories", categories, allocator);
 
 	if (categories & DNET_MONITOR_COMMANDS) {
 		rapidjson::Value commands_value(rapidjson::kObjectType);

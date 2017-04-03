@@ -52,8 +52,7 @@ monitor *get_monitor(struct dnet_node *n) {
 }
 
 monitor_config* get_monitor_config(struct dnet_node *n) {
-	const auto& data = *static_cast<const ioremap::elliptics::config::config_data *>(n->config_data);
-	return data.monitor_config.get();
+	return dnet_node_get_config_data(n)->monitor_config.get();
 }
 
 std::unique_ptr<monitor_config> monitor_config::parse(const kora::config_t &monitor) {
@@ -70,9 +69,8 @@ std::unique_ptr<monitor_config> monitor_config::parse(const kora::config_t &moni
 		cfg->has_top = (cfg->top_length > 0) && (cfg->events_size > 0) && (cfg->period_in_seconds > 0);
 	}
 
-	if (monitor.has("handystats")) {
+	if (monitor.has("handystats"))
 		cfg->handystats = kora::to_json(monitor.underlying_object());
-	}
 	return cfg;
 }
 
@@ -128,13 +126,6 @@ void add_provider(struct dnet_node *n, stat_provider *provider, const std::strin
 		real_monitor->get_statistics().add_provider(provider, name);
 	else
 		delete provider;
-}
-
-void remove_provider(dnet_node *n, const std::string &name)
-{
-	auto real_monitor = get_monitor(n);
-	if (real_monitor)
-		real_monitor->get_statistics().remove_provider(name);
 }
 
 static void init_io_stat_provider(struct dnet_node *n) {
@@ -218,10 +209,6 @@ void dnet_monitor_exit(struct dnet_node *n) {
 		n->monitor = NULL;
 		delete real_monitor;
 	}
-}
-
-void dnet_monitor_remove_provider(struct dnet_node *n, const char *name) {
-	ioremap::monitor::remove_provider(n, std::string(name));
 }
 
 void dnet_monitor_stats_update(struct dnet_node *n,

@@ -997,14 +997,13 @@ static void dnet_io_cleanup_states(struct dnet_node *n)
 	n->st = NULL;
 }
 
-void *dnet_io_process(void *data_)
-{
+void *dnet_io_process(void *data_) {
 	struct dnet_work_io *wio = data_;
 	struct dnet_work_pool *pool = wio->pool;
 	struct dnet_node *n = pool->n;
 	struct dnet_net_state *st;
 	struct dnet_io_req *r;
-	struct dnet_cmd *cmd;
+	struct dnet_cmd *cmd = NULL;
 	int nonblocking = (pool->mode == DNET_WORK_IO_MODE_NONBLOCKING);
 	char thread_stat_id[255];
 

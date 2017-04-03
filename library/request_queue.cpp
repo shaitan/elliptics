@@ -322,24 +322,16 @@ void dnet_oplock_guard::unlock()
 	}
 }
 
-
-void dnet_push_request(struct dnet_work_pool *pool, struct dnet_io_req *req)
-{
-	auto queue = reinterpret_cast<dnet_request_queue*>(pool->request_queue);
-	queue->push_request(req);
+void dnet_push_request(struct dnet_work_pool *pool, struct dnet_io_req *req) {
+	pool->request_queue->push_request(req);
 }
 
-struct dnet_io_req *dnet_pop_request(struct dnet_work_io *wio, const char *thread_stat_id)
-{
-	struct dnet_work_pool *pool = wio->pool;
-	auto queue = reinterpret_cast<dnet_request_queue*>(pool->request_queue);
-	return queue->pop_request(wio, thread_stat_id);
+struct dnet_io_req *dnet_pop_request(struct dnet_work_io *wio, const char *thread_stat_id) {
+	return wio->pool->request_queue->pop_request(wio, thread_stat_id);
 }
 
-void dnet_release_request(struct dnet_work_io *wio, const struct dnet_io_req *req)
-{
-	auto queue = reinterpret_cast<dnet_request_queue*>(wio->pool->request_queue);
-	queue->release_request(req);
+void dnet_release_request(struct dnet_work_io *wio, const struct dnet_io_req *req) {
+	wio->pool->request_queue->release_request(req);
 }
 
 void dnet_oplock(struct dnet_io_pool *pool, const struct dnet_id *id) {
@@ -351,8 +343,7 @@ void dnet_opunlock(struct dnet_io_pool *pool, const struct dnet_id *id) {
 }
 
 size_t dnet_get_pool_queue_size(struct dnet_work_pool *pool) {
-	auto queue = reinterpret_cast<dnet_request_queue*>(pool->request_queue);
-	return queue->size();
+	return pool->request_queue->size();
 }
 
 void *dnet_request_queue_create() {

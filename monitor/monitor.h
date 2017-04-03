@@ -49,12 +49,6 @@ void dnet_monitor_exit(struct dnet_node *n);
 
 /*!
  * \internal
- * Removes statistics provider by \a name from \a monitor.
- */
-void dnet_monitor_remove_provider(struct dnet_node *n, const char *name);
-
-/*!
- * \internal
  *
  * Sends to \a monitor statistics some properties of executed command:
  * \a cmd - identifier of the command
