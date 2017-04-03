@@ -54,8 +54,10 @@ dnet_logger *get_base_logger(dnet_logger *logger);
 
 bool log_filter(const blackhole::record_t &record, const int level);
 
+class session;
 struct trace_scope {
 	explicit trace_scope(uint64_t trace_id, bool trace_bit);
+	explicit trace_scope(const session &s);
 	~trace_scope();
 };
 
@@ -65,7 +67,6 @@ struct backend_scope {
 };
 
 std::string to_hex_string(uint64_t value);
-
 }} /* namespace ioremap::elliptics */
 
 extern "C"{
@@ -83,7 +84,7 @@ void dnet_logger_set_pool_id(const char *pool_id);
 void dnet_logger_unset_pool_id();
 
 void dnet_log_raw(dnet_logger *logger, enum dnet_log_level level, const char *format, ...)
-    __attribute__((format(printf, 3, 4)));
+        __attribute__((format(printf, 3, 4)));
 
 dnet_logger *dnet_node_get_logger(struct dnet_node *node);
 

@@ -703,7 +703,7 @@ private:
 
 async_read_result session::read_data(const key &id, const std::vector<int> &groups, const dnet_io_attr &io, unsigned int cmd)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	transform(id);
 
 	dnet_io_control control;
@@ -726,20 +726,20 @@ async_read_result session::read_data(const key &id, const std::vector<int> &grou
 
 async_read_result session::read_data(const key &id, const std::vector<int> &groups, const dnet_io_attr &io)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	return read_data(id, groups, io, DNET_CMD_READ);
 }
 
 async_read_result session::read_data(const key &id, int group, const dnet_io_attr &io)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	const std::vector<int> groups(1, group);
 	return read_data(id, groups, io);
 }
 
 async_read_result session::read_data(const key &id, const std::vector<int> &groups, uint64_t offset, uint64_t size)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	transform(id);
 
 	dnet_io_attr io;
@@ -757,7 +757,7 @@ async_read_result session::read_data(const key &id, const std::vector<int> &grou
 
 async_read_result session::read_data(const key &id, uint64_t offset, uint64_t size)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	DNET_SESSION_GET_GROUPS(async_read_result);
 
 	return read_data(id, std::move(groups), offset, size);
@@ -796,7 +796,7 @@ struct read_latest_callback
 
 async_read_result session::read_latest(const key &id, uint64_t offset, uint64_t size)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	DNET_SESSION_GET_GROUPS(async_read_result);
 
 	session sess = clone();
@@ -813,7 +813,7 @@ async_read_result session::read_latest(const key &id, uint64_t offset, uint64_t 
 
 async_write_result session::write_data(const dnet_io_control &ctl)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	dnet_io_control ctl_copy = ctl;
 
 	ctl_copy.cmd = DNET_CMD_WRITE;
@@ -835,7 +835,7 @@ async_write_result session::write_data(const dnet_io_control &ctl)
 
 async_write_result session::write_data(const dnet_io_attr &io, const argument_data &file)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	dnet_io_control ctl;
 	memset(&ctl, 0, sizeof(ctl));
 	dnet_empty_time(&ctl.io.timestamp);
@@ -859,7 +859,7 @@ async_write_result session::write_data(const dnet_io_attr &io, const argument_da
 
 async_write_result session::write_data(const key &id, const argument_data &file, uint64_t remote_offset)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	transform(id);
 
 	dnet_io_control ctl;
@@ -946,7 +946,7 @@ struct chunk_handler : public std::enable_shared_from_this<chunk_handler> {
 
 async_write_result session::write_data(const key &id, const data_pointer &file, uint64_t remote_offset, uint64_t chunk_size)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	if (file.size() <= chunk_size || chunk_size == 0)
 		return write_data(id, file, remote_offset);
 
@@ -1142,7 +1142,7 @@ struct cas_functor : std::enable_shared_from_this<cas_functor>
 async_write_result session::write_cas(const key &id, const std::function<data_pointer (const data_pointer &)> &converter,
 		uint64_t remote_offset, int count)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	DNET_SESSION_GET_GROUPS(async_write_result);
 
 	async_write_result result(*this);
@@ -1155,7 +1155,7 @@ async_write_result session::write_cas(const key &id, const std::function<data_po
 
 async_write_result session::write_cas(const key &id, const argument_data &file, const dnet_id &old_csum, uint64_t remote_offset)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	transform(id);
 	dnet_id raw = id.id();
 
@@ -1183,7 +1183,7 @@ async_write_result session::write_cas(const key &id, const argument_data &file, 
 
 async_write_result session::write_prepare(const key &id, const argument_data &file, uint64_t remote_offset, uint64_t psize)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	transform(id);
 
 	dnet_io_control ctl;
@@ -1209,7 +1209,7 @@ async_write_result session::write_prepare(const key &id, const argument_data &fi
 
 async_write_result session::write_plain(const key &id, const argument_data &file, uint64_t remote_offset)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	transform(id);
 
 	dnet_io_control ctl;
@@ -1236,7 +1236,7 @@ async_write_result session::write_plain(const key &id, const argument_data &file
 
 async_write_result session::write_commit(const key &id, const argument_data &file, uint64_t remote_offset, uint64_t csize)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	transform(id);
 
 	dnet_io_control ctl;
@@ -1261,7 +1261,7 @@ async_write_result session::write_commit(const key &id, const argument_data &fil
 
 async_write_result session::write_cache(const key &id, const argument_data &file, long timeout)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	transform(id);
 	dnet_id raw = id.id();
 
@@ -1288,7 +1288,7 @@ async_write_result session::write_cache(const key &id, const argument_data &file
 // TODO: Remove this method in elliptics-2.27
 std::string session::lookup_address(const key &id, int group_id)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	char buf[128];
 	struct dnet_addr addr;
 	int backend_id = -1;
@@ -1357,7 +1357,7 @@ private:
 
 async_lookup_result session::lookup(const key &id)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	DNET_SESSION_GET_GROUPS(async_lookup_result);
 
 	transport_control control(id.id(), DNET_CMD_LOOKUP, DNET_FLAGS_NEED_ACK);
@@ -1372,7 +1372,7 @@ async_lookup_result session::lookup(const key &id)
 
 async_lookup_result session::parallel_lookup(const key &id)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	transform(id);
 
 	transport_control control(id.id(), DNET_CMD_LOOKUP, DNET_FLAGS_NEED_ACK);
@@ -1449,7 +1449,7 @@ struct prepare_latest_functor
 
 async_lookup_result session::prepare_latest(const key &id, const std::vector<int> &groups)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	async_lookup_result result(*this);
 	async_result_handler<lookup_result_entry> result_handler(result);
 	result_handler.set_total(groups.size());
@@ -1592,7 +1592,7 @@ struct quorum_lookup_aggregator_handler
 // In both cases result also contains lookup_result_entries with error info
 async_lookup_result session::quorum_lookup(const key &id)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	// The only thing doing here: connecting helper class to async_results
 	transform(id);
 
@@ -1624,7 +1624,7 @@ async_lookup_result session::quorum_lookup(const key &id)
 
 async_remove_result session::remove(const key &id)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	transform(id);
 
 	dnet_io_control ctl;
@@ -1646,7 +1646,7 @@ async_remove_result session::remove(const key &id)
 
 async_monitor_stat_result session::monitor_stat(uint64_t categories)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	dnet_monitor_stat_request request;
 	memset(&request, 0, sizeof(struct dnet_monitor_stat_request));
 	request.categories = categories;
@@ -1663,7 +1663,7 @@ async_monitor_stat_result session::monitor_stat(uint64_t categories)
 
 async_monitor_stat_result session::monitor_stat(const address &addr, uint64_t categories)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	dnet_monitor_stat_request request;
 	memset(&request, 0, sizeof(struct dnet_monitor_stat_request));
 	request.categories = categories;
@@ -1686,19 +1686,19 @@ int session::state_num(void)
 
 async_generic_result session::request_cmd(const transport_control &ctl)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	return send_to_each_backend(*this, ctl);
 }
 
 async_generic_result session::request_single_cmd(const transport_control &ctl)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	return send_to_single_state(*this, ctl);
 }
 
 async_node_status_result session::update_status(const address &addr, const dnet_node_status &status)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	data_pointer data = data_pointer::allocate(sizeof(dnet_node_status));
 	dnet_node_status *node_status = data.data<dnet_node_status>();
 	*node_status = status;
@@ -1715,7 +1715,7 @@ async_node_status_result session::update_status(const address &addr, const dnet_
 
 async_node_status_result session::request_node_status(const address &addr)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	struct dnet_node_status node_status;
 	memset(&node_status, 0, sizeof(struct dnet_node_status));
 	node_status.nflags = -1;
@@ -1784,25 +1784,25 @@ static async_backend_control_result update_backend_status(const backend_status_p
 
 async_backend_control_result session::enable_backend(const address &addr, uint32_t backend_id)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	return update_backend_status(backend_status_params(*this, addr, backend_id, DNET_BACKEND_ENABLE));
 }
 
 async_backend_control_result session::disable_backend(const address &addr, uint32_t backend_id)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	return update_backend_status(backend_status_params(*this, addr, backend_id, DNET_BACKEND_DISABLE));
 }
 
 async_backend_control_result session::remove_backend(const address &addr, uint32_t backend_id)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	return update_backend_status(backend_status_params(*this, addr, backend_id, DNET_BACKEND_REMOVE));
 }
 
 async_backend_control_result session::start_defrag(const address &addr, uint32_t backend_id)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	backend_status_params params(*this, addr, backend_id, DNET_BACKEND_START_DEFRAG);
 	params.defrag_level = DNET_BACKEND_DEFRAG_FULL;
 	return update_backend_status(params);
@@ -1810,7 +1810,7 @@ async_backend_control_result session::start_defrag(const address &addr, uint32_t
 
 async_backend_control_result session::start_compact(const address &addr, uint32_t backend_id)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	backend_status_params params(*this, addr, backend_id, DNET_BACKEND_START_DEFRAG);
 	params.defrag_level = DNET_BACKEND_DEFRAG_COMPACT;
 	return update_backend_status(params);
@@ -1818,14 +1818,14 @@ async_backend_control_result session::start_compact(const address &addr, uint32_
 
 async_backend_control_result session::stop_defrag(const address &addr, uint32_t backend_id)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	return update_backend_status(backend_status_params(*this, addr, backend_id, DNET_BACKEND_STOP_DEFRAG));
 }
 
 async_backend_control_result session::set_backend_ids(const address &addr, uint32_t backend_id,
 		const std::vector<dnet_raw_id> &ids)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	backend_status_params params(*this, addr, backend_id, DNET_BACKEND_SET_IDS);
 	params.ids = ids;
 	return update_backend_status(params);
@@ -1833,19 +1833,19 @@ async_backend_control_result session::set_backend_ids(const address &addr, uint3
 
 async_backend_control_result session::make_readonly(const address &addr, uint32_t backend_id)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	return update_backend_status(backend_status_params(*this, addr, backend_id, DNET_BACKEND_READ_ONLY));
 }
 
 async_backend_control_result session::make_writable(const address &addr, uint32_t backend_id)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	return update_backend_status(backend_status_params(*this, addr, backend_id, DNET_BACKEND_WRITEABLE));
 }
 
 async_backend_control_result session::set_delay(const address &addr, uint32_t backend_id, uint32_t delay)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	backend_status_params params(*this, addr, backend_id, DNET_BACKEND_CTL);
 	params.delay = delay;
 	return update_backend_status(params);
@@ -1853,7 +1853,7 @@ async_backend_control_result session::set_delay(const address &addr, uint32_t ba
 
 async_backend_status_result session::request_backends_status(const address &addr)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	transport_control control;
 	control.set_command(DNET_CMD_BACKEND_STATUS);
 	control.set_cflags(DNET_FLAGS_NEED_ACK | DNET_FLAGS_DIRECT);
@@ -2067,7 +2067,7 @@ class remove_data_range_callback : public read_data_range_callback
 
 async_read_result session::read_data_range(const dnet_io_attr &io, int group_id)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	async_read_result result(*this);
 	async_result_handler<read_result_entry> handler(result);
 	error_info error;
@@ -2079,7 +2079,7 @@ async_read_result session::read_data_range(const dnet_io_attr &io, int group_id)
 
 async_read_result session::remove_data_range(const dnet_io_attr &io, int group_id)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	async_read_result result(*this);
 	async_result_handler<read_result_entry> handler(result);
 	error_info error;
@@ -2091,7 +2091,7 @@ async_read_result session::remove_data_range(const dnet_io_attr &io, int group_i
 
 std::vector<dnet_route_entry> session::get_routes()
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 
 	cstyle_scoped_pointer<dnet_route_entry> entries;
 
@@ -2105,7 +2105,7 @@ std::vector<dnet_route_entry> session::get_routes()
 
 async_iterator_result session::iterator(const key &id, const data_pointer& request)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	if (get_groups().empty()) {
 		async_iterator_result result(*this);
 		async_result_handler<iterator_result_entry> handler(result);
@@ -2137,7 +2137,7 @@ async_iterator_result session::iterator(const key &id, const data_pointer& reque
 
 error_info session::mix_states(const key &id, std::vector<int> &groups)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	transform(id);
 
 	cstyle_scoped_pointer<int> groups_ptr;
@@ -2157,7 +2157,7 @@ error_info session::mix_states(const key &id, std::vector<int> &groups)
 async_iterator_result session::start_iterator(const key &id, const std::vector<dnet_iterator_range>& ranges,
 		uint32_t type, uint64_t flags, const dnet_time& time_begin, const dnet_time& time_end)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	if (type == DNET_ITYPE_SERVER_SEND) {
 		async_iterator_result result(*this);
 		async_result_handler<iterator_result_entry> handler(result);
@@ -2191,7 +2191,7 @@ async_iterator_result session::start_copy_iterator(const key &id,
 		const dnet_time& time_begin, const dnet_time& time_end,
 		const std::vector<int> &dst_groups)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	size_t ranges_size = ranges.size() * sizeof(ranges.front());
 	size_t groups_size = dst_groups.size() * sizeof(dst_groups.front());
 
@@ -2227,7 +2227,7 @@ async_iterator_result session::start_copy_iterator(const key &id,
 
 async_iterator_result session::pause_iterator(const key &id, uint64_t iterator_id)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	data_pointer data = data_pointer::allocate(sizeof(dnet_iterator_request));
 	auto request = data.data<dnet_iterator_request>();
 	memset(request, 0, sizeof(dnet_iterator_request));
@@ -2239,7 +2239,7 @@ async_iterator_result session::pause_iterator(const key &id, uint64_t iterator_i
 
 async_iterator_result session::continue_iterator(const key &id, uint64_t iterator_id)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	data_pointer data = data_pointer::allocate(sizeof(dnet_iterator_request));
 	auto request = data.data<dnet_iterator_request>();
 	memset(request, 0, sizeof(dnet_iterator_request));
@@ -2251,7 +2251,7 @@ async_iterator_result session::continue_iterator(const key &id, uint64_t iterato
 
 async_iterator_result session::cancel_iterator(const key &id, uint64_t iterator_id)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	data_pointer data = data_pointer::allocate(sizeof(dnet_iterator_request));
 	auto request = data.data<dnet_iterator_request>();
 	memset(request, 0, sizeof(dnet_iterator_request));
@@ -2263,7 +2263,7 @@ async_iterator_result session::cancel_iterator(const key &id, uint64_t iterator_
 
 async_iterator_result session::server_send(const std::vector<key> &keys, uint64_t iflags, const std::vector<int> &groups)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	if (get_groups().empty()) {
 		async_iterator_result result(*this);
 		async_result_handler<iterator_result_entry> handler(result);
@@ -2388,7 +2388,7 @@ async_iterator_result session::server_send(const std::vector<key> &keys, uint64_
 
 async_iterator_result session::server_send(const std::vector<dnet_raw_id> &ids, uint64_t iflags, const std::vector<int> &groups)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	std::vector<key> keys;
 	for (auto id = ids.begin(), id_end = ids.end(); id != id_end; ++id) {
 		keys.emplace_back(*id);
@@ -2399,7 +2399,7 @@ async_iterator_result session::server_send(const std::vector<dnet_raw_id> &ids, 
 
 async_iterator_result session::server_send(const std::vector<std::string> &strs, uint64_t iflags, const std::vector<int> &groups)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	std::vector<key> keys;
 	for (auto s = strs.begin(), send = strs.end(); s != send; ++s) {
 		key k(*s);
@@ -2547,7 +2547,7 @@ private:
 
 async_read_result session::bulk_read(const std::vector<dnet_io_attr> &ios_vector)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	if (ios_vector.empty()) {
 		error_info error = create_error(-EINVAL, "bulk_read failed: ios list is empty");
 		if (get_exceptions_policy() & throw_at_start) {
@@ -2587,7 +2587,7 @@ async_read_result session::bulk_read(const std::vector<dnet_io_attr> &ios_vector
 
 async_read_result session::bulk_read(const std::vector<std::string> &keys)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	std::vector<dnet_io_attr> ios;
 	dnet_io_attr io;
 	memset(&io, 0, sizeof(io));
@@ -2609,7 +2609,7 @@ async_read_result session::bulk_read(const std::vector<std::string> &keys)
 
 async_read_result session::bulk_read(const std::vector<key> &keys)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	std::vector<dnet_io_attr> ios;
 	dnet_io_attr io;
 	memset(&io, 0, sizeof(io));
@@ -2630,7 +2630,7 @@ async_read_result session::bulk_read(const std::vector<key> &keys)
 
 async_write_result session::bulk_write(const std::vector<dnet_io_attr> &ios, const std::vector<argument_data> &data)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	if (ios.size() != data.size()) {
 		error_info error = create_error(-EINVAL, "BULK_WRITE: ios doesn't meet data: io.size: %zd, data.size: %zd",
 			ios.size(), data.size());
@@ -2664,7 +2664,7 @@ async_write_result session::bulk_write(const std::vector<dnet_io_attr> &ios, con
 
 async_remove_result session::bulk_remove(const std::vector<key> &keys)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	std::vector<async_remove_result> results;
 
 	{
@@ -2685,7 +2685,7 @@ async_remove_result session::bulk_remove(const std::vector<key> &keys)
 
 async_write_result session::bulk_write(const std::vector<dnet_io_attr> &ios, const std::vector<std::string> &data)
 {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	std::vector<argument_data> pointer_data;
 	pointer_data.reserve(data.size());
 	for (auto it = data.begin(); it != data.end(); ++it)
