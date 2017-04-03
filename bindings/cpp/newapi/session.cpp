@@ -124,7 +124,7 @@ private:
 };
 
 async_lookup_result session::lookup(const key &id) {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	DNET_SESSION_GET_GROUPS(async_lookup_result);
 	transform(id);
 
@@ -143,7 +143,7 @@ async_lookup_result session::lookup(const key &id) {
 }
 
 async_remove_result session::remove(const key &id) {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	transform(id);
 
 	dnet_remove_request request;
@@ -307,7 +307,7 @@ async_read_result send_read(const session &orig_sess, const key &id, const dnet_
 }
 
 async_read_result session::read_json(const key &id) {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	DNET_SESSION_GET_GROUPS(async_read_result);
 	transform(id);
 
@@ -324,7 +324,7 @@ async_read_result session::read_json(const key &id) {
 }
 
 async_read_result session::read_data(const key &id, uint64_t offset, uint64_t size) {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	DNET_SESSION_GET_GROUPS(async_read_result);
 	transform(id);
 
@@ -343,7 +343,7 @@ async_read_result session::read_data(const key &id, uint64_t offset, uint64_t si
 }
 
 async_read_result session::read(const key &id, uint64_t offset, uint64_t size) {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	DNET_SESSION_GET_GROUPS(async_read_result);
 	transform(id);
 
@@ -521,7 +521,7 @@ static dnet_write_request create_write_request(const session &sess)
 async_write_result session::write(const key &id,
                                   const argument_data &json, uint64_t json_capacity,
                                   const argument_data &data, uint64_t data_capacity) {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	transform(id);
 
 	auto on_fail = [this](const error_info & error) {
@@ -579,7 +579,7 @@ async_write_result session::write(const key &id,
 async_lookup_result session::write_prepare(const key &id,
                                            const argument_data &json, uint64_t json_capacity,
                                            const argument_data &data, uint64_t data_offset, uint64_t data_capacity) {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	transform(id);
 
 	auto on_fail = [this](const error_info & error) {
@@ -636,7 +636,7 @@ async_lookup_result session::write_prepare(const key &id,
 async_lookup_result session::write_plain(const key &id,
                                          const argument_data &json,
                                          const argument_data &data, uint64_t data_offset) {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	transform(id);
 
 	try {
@@ -664,7 +664,7 @@ async_lookup_result session::write_plain(const key &id,
 async_lookup_result session::write_commit(const key &id,
                                           const argument_data &json,
                                           const argument_data &data, uint64_t data_offset, uint64_t data_commit_size) {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	transform(id);
 
 	try {
@@ -694,7 +694,7 @@ async_lookup_result session::write_commit(const key &id,
 }
 
 async_lookup_result session::update_json(const key &id, const argument_data &json) {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	transform(id);
 
 	try {
@@ -720,7 +720,7 @@ async_iterator_result session::start_iterator(const address &addr, uint32_t back
                                               uint64_t flags,
                                               const std::vector<dnet_iterator_range> &key_ranges,
                                               const std::tuple<dnet_time, dnet_time> &time_range) {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	if (key_ranges.empty()) {
 		flags &= ~DNET_IFLAGS_KEY_RANGE;
 	} else {
@@ -770,7 +770,7 @@ async_iterator_result session::server_send(const std::vector<std::string> &keys,
 
 async_iterator_result session::server_send(const std::vector<key> &keys, uint64_t flags, uint64_t chunk_size,
                                            const int src_group, const std::vector<int> &dst_groups) {
-	trace_scope scope{get_trace_id(), get_trace_bit()};
+	trace_scope scope{*this};
 	if (dst_groups.empty()) {
 		async_iterator_result result{*this};
 		async_result_handler<iterator_result_entry> handler{result};
@@ -946,7 +946,7 @@ private:
 };
 
 async_read_result send_bulk_read(session &sess, const std::vector<dnet_id> &keys, uint64_t read_flags) {
-	trace_scope scope{sess.get_trace_id(), sess.get_trace_bit()};
+	trace_scope scope{sess};
 
 	if (keys.empty()) {
 		async_read_result result{sess};
