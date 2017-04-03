@@ -31,7 +31,8 @@ public:
 	}
 
 	static void pop() {
-		m_stack.pop();
+		if (!m_stack.empty())
+			m_stack.pop();
 	}
 
 	static void push(uint64_t id, bool bit) {
