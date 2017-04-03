@@ -376,7 +376,7 @@ static int dnet_process_recv_single(struct dnet_net_state *st)
 	uint64_t size;
 	int err;
 
-	dnet_node_set_trace_id(st->rcv_cmd.trace_id, st->rcv_cmd.flags & DNET_FLAGS_TRACE_BIT);
+	dnet_logger_set_trace_id(st->rcv_cmd.trace_id, st->rcv_cmd.flags & DNET_FLAGS_TRACE_BIT);
 again:
 	/*
 	 * Reading command first.
@@ -409,8 +409,8 @@ again:
 			goto out;
 		}
 
-		dnet_node_unset_trace_id();
-		dnet_node_set_trace_id(st->rcv_cmd.trace_id, st->rcv_cmd.flags & DNET_FLAGS_TRACE_BIT);
+		dnet_logger_unset_trace_id();
+		dnet_logger_set_trace_id(st->rcv_cmd.trace_id, st->rcv_cmd.flags & DNET_FLAGS_TRACE_BIT);
 
 		if ((st->rcv_flags & DNET_IO_CMD) && (st->rcv_offset == 0)) {
 			gettimeofday(&st->rcv_start_tv, NULL);
@@ -472,14 +472,14 @@ again:
 	r->st = dnet_state_get(st);
 
 	dnet_schedule_io(n, r);
-	dnet_node_unset_trace_id();
+	dnet_logger_unset_trace_id();
 	return 0;
 
 out:
 	if (err != -EAGAIN && err != -EINTR)
 		dnet_schedule_command(st);
 
-	dnet_node_unset_trace_id();
+	dnet_logger_unset_trace_id();
 	return err;
 }
 
@@ -1029,8 +1029,8 @@ void *dnet_io_process(void *data_)
 		st = r->st;
 		cmd = r->header;
 
-		dnet_node_set_backend_id(cmd->backend_id);
-		dnet_node_set_trace_id(cmd->trace_id, cmd->flags & DNET_FLAGS_TRACE_BIT);
+		dnet_logger_set_backend_id(cmd->backend_id);
+		dnet_logger_set_trace_id(cmd->trace_id, cmd->flags & DNET_FLAGS_TRACE_BIT);
 
 		dnet_log(n, DNET_LOG_DEBUG, "%s: %s: got IO event: %p: cmd: %s, hsize: %zu, dsize: %zu, mode: %s, "
 		                            "backend_id: %d, queue_time: %ld usecs",
@@ -1047,8 +1047,8 @@ void *dnet_io_process(void *data_)
 		dnet_io_req_free(r);
 		dnet_state_put(st);
 
-		dnet_node_unset_trace_id();
-		dnet_node_unset_backend_id();
+		dnet_logger_unset_trace_id();
+		dnet_logger_unset_backend_id();
 
 		FORMATTED(HANDY_COUNTER_DECREMENT, ("pool.%s.active_threads", thread_stat_id), 1);
 	}

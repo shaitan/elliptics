@@ -9,64 +9,65 @@
 #include <blackhole/extensions/writer.hpp>
 #include <blackhole/formatter/string.hpp>
 #include <blackhole/handler/blocking.hpp>
+#include <blackhole/logger.hpp>
+#include <blackhole/record.hpp>
 #include <blackhole/root.hpp>
 #include <blackhole/sink/file.hpp>
-#include <blackhole/record.hpp>
-#include <blackhole/logger.hpp>
 
 #include "example/config.hpp"
 #include "elliptics/session.hpp"
-#include "library/elliptics.h"
 
 namespace ioremap { namespace elliptics {
+
+namespace attributes {
 struct trace {
 public:
-	trace(uint64_t trace_id, bool trace_bit)
-	: trace_id(trace_id)
-	, trace_bit(trace_bit) {}
+	static uint64_t id() {
+		return m_stack.empty() ? 0 : m_stack.top().m_id;
+	}
 
-	uint64_t trace_id;
-	bool trace_bit;
-
-	static trace current() {
-		return trace_stack.top();
+	static bool bit() {
+		return m_stack.empty() ? false : m_stack.top().m_bit;
 	}
 
 	static void pop() {
-		if (!trace_stack.empty()) {
-			trace_stack.pop();
-		}
+		m_stack.pop();
 	}
 
-	static void push(uint64_t trace_id, bool trace_bit) {
-		trace_stack.emplace(trace_id, trace_bit);
+	static void push(uint64_t id, bool bit) {
+		m_stack.push({id, bit});
 	}
 
 private:
-	static thread_local std::stack<trace, std::vector<trace>> trace_stack;
+	// constructor is private since trace should not be constructed outside.
+	trace(uint64_t id, bool bit)
+	: m_id(id)
+	, m_bit(bit) {}
+
+private:
+	uint64_t m_id;
+	bool m_bit;
+
+	static thread_local std::stack<trace, std::deque<trace>> m_stack;
+
 };
 
-thread_local std::stack<trace, std::vector<trace>> trace::trace_stack{{{0, false}}};
+thread_local std::stack<trace, std::deque<trace>> trace::m_stack;
 
 static std::string &pool_id() {
 	static thread_local std::string id;
 	return id;
 }
 
-struct backend {
-	backend(int id)
-	: id(id) {}
+static ssize_t &backend_id() {
+	static thread_local ssize_t id{-1};
+	return id;
+}
 
-	int id;
+} /* namespace attributes */
 
-	static backend &current() {
-		static thread_local backend current{-1};
-		return current;
-	}
-};
-
-bool log_filter(const blackhole::record_t &record, int level) {
-	return trace::current().trace_bit || record.severity() >= level;
+bool log_filter(const blackhole::record_t &record, const int level) {
+	return attributes::trace::bit() || record.severity() >= level;
 }
 
 std::unique_ptr<dnet_logger> make_file_logger(const std::string &path, dnet_log_level level) {
@@ -110,19 +111,19 @@ std::string to_hex_string(uint64_t value) {
 }
 
 trace_scope::trace_scope(uint64_t trace_id, bool trace_bit) {
-	dnet_node_set_trace_id(trace_id, trace_bit);
+	dnet_logger_set_trace_id(trace_id, trace_bit);
 }
 
 trace_scope::~trace_scope() {
-	dnet_node_unset_trace_id();
+	dnet_logger_unset_trace_id();
 }
 
 backend_scope::backend_scope(int backend_id) {
-	dnet_node_set_backend_id(backend_id);
+	dnet_logger_set_backend_id(backend_id);
 }
 
 backend_scope::~backend_scope() {
-	dnet_node_unset_backend_id();
+	dnet_logger_unset_backend_id();
 }
 
 static blackhole::attribute_list make_view(const blackhole::attributes_t &attributes) {
@@ -172,44 +173,36 @@ dnet_logger *wrapper_t::inner_logger() {
 
 dnet_logger *wrapper_t::base_logger() {
 	auto wrapper = dynamic_cast<wrapper_t *>(inner_logger());
-	if (wrapper) {
+	if (wrapper)
 		return wrapper->base_logger();
-	}
 
 	return inner_logger();
 }
 
 trace_wrapper_t::trace_wrapper_t(std::unique_ptr<dnet_logger> logger)
-: wrapper_t(std::move(logger)) {}
+: wrapper_t{std::move(logger)} {}
 
 blackhole::attributes_t trace_wrapper_t::attributes() {
-	if (trace::current().trace_id) {
-		// should be replaced by plain trace::current().trace_id when blackhole will
-		// remove used attributes from ... list
-		return {{"trace_id", to_hex_string(trace::current().trace_id)}};
-	}
-
-	return {};
+	// should be replaced by plain trace::id() when blackhole gets mapping
+	// and cocaine start to specify trace_id as uint64_t
+	return attributes::trace::id() ? blackhole::attributes_t{{"trace_id", to_hex_string(attributes::trace::id())}}
+	                               : blackhole::attributes_t{};
 }
 
 pool_wrapper_t::pool_wrapper_t(std::unique_ptr<dnet_logger> logger)
-: wrapper_t(std::move(logger)) {}
+: wrapper_t{std::move(logger)} {}
 
 blackhole::attributes_t pool_wrapper_t::attributes() {
-	return !pool_id().empty() ? blackhole::attributes_t{{"pool", pool_id()}}
+	return !attributes::pool_id().empty() ? blackhole::attributes_t{{"pool", attributes::pool_id()}}
 	                                      : blackhole::attributes_t{};
 }
 
 backend_wrapper_t::backend_wrapper_t(std::unique_ptr<dnet_logger> logger)
-: wrapper_t(std::move(logger)) {}
+: wrapper_t{std::move(logger)} {}
 
 blackhole::attributes_t backend_wrapper_t::attributes() {
-	blackhole::attributes_t attributes;
-	if (backend::current().id != -1) {
-		attributes.emplace_back("backend_id", backend::current().id);
-	}
-
-	return attributes;
+	return (attributes::backend_id() != -1) ? blackhole::attributes_t{{"backend_id", attributes::backend_id()}}
+	                                        : blackhole::attributes_t{};
 }
 
 dnet_logger *get_base_logger(dnet_logger *logger) {
@@ -222,32 +215,32 @@ dnet_logger *get_base_logger(dnet_logger *logger) {
 
 }} /* namespace ioremap::elliptics */
 
-void dnet_node_set_trace_id(uint64_t trace_id, int trace_bit) {
-	ioremap::elliptics::trace::push(trace_id, !!trace_bit);
+void dnet_logger_set_trace_id(uint64_t trace_id, int trace_bit) {
+	ioremap::elliptics::attributes::trace::push(trace_id, !!trace_bit);
 }
 
-void dnet_node_unset_trace_id() {
-	ioremap::elliptics::trace::pop();
+void dnet_logger_unset_trace_id() {
+	ioremap::elliptics::attributes::trace::pop();
 }
 
-uint64_t dnet_node_get_trace_bit() {
-	return ioremap::elliptics::trace::current().trace_bit ? (1ll << 63) : 0;
+uint64_t dnet_logger_get_trace_bit() {
+	return ioremap::elliptics::attributes::trace::bit() ? (1ll << 63) : 0;
 }
 
-void dnet_node_set_backend_id(int backend_id) {
-	ioremap::elliptics::backend::current() = {backend_id};
+void dnet_logger_set_backend_id(int backend_id) {
+	ioremap::elliptics::attributes::backend_id() = backend_id;
 }
 
-void dnet_node_unset_backend_id() {
-	ioremap::elliptics::backend::current() = {-1};
+void dnet_logger_unset_backend_id() {
+	ioremap::elliptics::attributes::backend_id() = -1;
 }
 
 void dnet_logger_set_pool_id(const char *pool_id) {
-	ioremap::elliptics::pool_id() = pool_id;
+	ioremap::elliptics::attributes::pool_id() = pool_id;
 }
 
 void dnet_logger_unset_pool_id() {
-	ioremap::elliptics::pool_id().clear();
+	ioremap::elliptics::attributes::pool_id().clear();
 }
 
 dnet_logger *dnet_node_get_logger(struct dnet_node* node) {
@@ -255,12 +248,11 @@ dnet_logger *dnet_node_get_logger(struct dnet_node* node) {
 }
 
 enum dnet_log_level dnet_node_get_verbosity(struct dnet_node *n) {
-	using namespace ioremap::elliptics::config;
 	if (!n || !n->config_data) {
 		return DNET_LOG_DEBUG;
 	}
 
-	return static_cast<config_data *>(n->config_data)->logger_level;
+	return dnet_node_get_config_data(n)->logger_level;
 }
 
 static const std::array<std::string, 5> severity_names = {{"debug", "notice", "info", "warning", "error"}};
