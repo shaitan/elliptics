@@ -52,8 +52,7 @@ monitor *get_monitor(struct dnet_node *n) {
 }
 
 monitor_config* get_monitor_config(struct dnet_node *n) {
-	const auto& data = *static_cast<const ioremap::elliptics::config::config_data *>(n->config_data);
-	return data.monitor_config.get();
+	return dnet_node_get_config_data(n)->monitor_config.get();
 }
 
 std::unique_ptr<monitor_config> monitor_config::parse(const kora::config_t &monitor) {
@@ -70,9 +69,8 @@ std::unique_ptr<monitor_config> monitor_config::parse(const kora::config_t &moni
 		cfg->has_top = (cfg->top_length > 0) && (cfg->events_size > 0) && (cfg->period_in_seconds > 0);
 	}
 
-	if (monitor.has("handystats")) {
+	if (monitor.has("handystats"))
 		cfg->handystats = kora::to_json(monitor.underlying_object());
-	}
 	return cfg;
 }
 

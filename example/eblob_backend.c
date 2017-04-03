@@ -1619,7 +1619,10 @@ static void dnet_blob_config_cleanup(struct dnet_config_backend *b)
 		eblob_backend_cleanup(c);
 
 	free(c->data.file);
+	c->data.file = NULL;
+
 	free(c->data.chunks_dir);
+	c->data.chunks_dir = NULL;
 }
 
 static void dnet_blob_set_verbosity(struct dnet_config_backend *b, enum dnet_log_level level) {

@@ -28,7 +28,7 @@
 
 #include "rapidjson/document.h"
 
-#include "../library/elliptics.h"
+#include "library/elliptics.h"
 
 #include "monitor.h"
 #include "stat_provider.hpp"
@@ -187,20 +187,6 @@ public:
 	typedef std::shared_ptr<top_stats> top_stats_ptr;
 	top_stats_ptr get_top_stats() const { return m_top_stats; }
 private:
-	/*!
-	 * \internal
-	 * Fills \a stat_value by usefull vm statistics and returns it
-	 * \a allocator - document allocator that is required by rapidjson
-	 */
-	rapidjson::Value& vm_report(rapidjson::Value &stat_value,
-	                            rapidjson::Document::AllocatorType &allocator);
-
-	rapidjson::Value& proc_io_report(rapidjson::Value &stat_value,
-	                                 rapidjson::Document::AllocatorType &allocator);
-
-	rapidjson::Value& proc_stat(rapidjson::Value &stat_value,
-	                            rapidjson::Document::AllocatorType &allocator);
-
 	/*!
 	 * \internal
 	 *

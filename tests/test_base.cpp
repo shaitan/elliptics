@@ -1,7 +1,7 @@
 #define TEST_DO_NOT_INCLUDE_PLACEHOLDERS
 
 #include "test_base.hpp"
-#include "../example/common.h"
+#include "example/common.h"
 
 #include "library/logger.hpp"
 

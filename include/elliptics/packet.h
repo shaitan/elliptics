@@ -105,7 +105,7 @@ enum dnet_commands {
 #define DNET_MONITOR_CACHE		(1<<0)				/* cache statistics */
 #define DNET_MONITOR_IO			(1<<1)				/* IO queue statistics */
 #define DNET_MONITOR_COMMANDS		(1<<2)				/* commands statistics */
-#define DNET_MONITOR_UNUSED		(1<<3)
+#define DNET_MONITOR_UNUSED		(1<<3)				/* deprecated category, should not be used */
 #define DNET_MONITOR_BACKEND		(1<<4)				/* backend statistics */
 #define DNET_MONITOR_STATS		(1<<5)				/* statistics gathered by handystats */
 #define DNET_MONITOR_PROCFS		(1<<6)				/* virtual memory statistics */

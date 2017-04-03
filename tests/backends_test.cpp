@@ -14,7 +14,7 @@
  */
 
 #include "test_base.hpp"
-#include "../library/elliptics.h"
+#include "library/elliptics.h"
 #include <algorithm>
 
 #include <kora/dynamic.hpp>
