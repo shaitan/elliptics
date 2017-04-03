@@ -59,7 +59,7 @@ static blackhole::root_logger_t make_logger(config_data *data) {
 
 	const auto &level = data->logger_level;
 	root.filter([&level](const blackhole::record_t &record) {
-		return log_filter(record, level);
+		return log_filter(record.severity(), level);
 	});
 	return root;
 }
