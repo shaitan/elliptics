@@ -135,7 +135,6 @@ int dnet_io_pools_manager::detach(const std::string &pool_id) {
 		m_pools.erase(pool_it);
 	}
 
-	DNET_LOG_INFO(m_node, "dnet_io_pools_manager::detach(pool_id: {}): finished", pool_id);
 	return 0;
 }
 
@@ -421,7 +420,7 @@ static int dnet_backend_create(struct dnet_node *node, uint32_t backend_id) {
 static int dnet_cmd_backend_control_dangerous(struct dnet_net_state *st, struct dnet_cmd *cmd, void *data) {
 	int err = 0;
 	struct dnet_node *node = st->n;
-	auto *control = reinterpret_cast<struct dnet_backend_control *>(data);
+	auto control = reinterpret_cast<struct dnet_backend_control *>(data);
 
 	if (dnet_backend_command(control->command) == DNET_BACKEND_ENABLE) {
 		err = dnet_backend_create(node, control->backend_id);
