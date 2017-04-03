@@ -244,7 +244,7 @@ void dnet_trans_destroy(struct dnet_trans *t)
 	if (!t)
 		return;
 
-	dnet_node_set_trace_id(t->cmd.trace_id, t->cmd.flags & DNET_FLAGS_TRACE_BIT);
+	dnet_logger_set_trace_id(t->cmd.trace_id, t->cmd.flags & DNET_FLAGS_TRACE_BIT);
 
 	gettimeofday(&tv, NULL);
 	diff = 1000000 * (tv.tv_sec - t->start.tv_sec) + (tv.tv_usec - t->start.tv_usec);
@@ -312,7 +312,7 @@ void dnet_trans_destroy(struct dnet_trans *t)
 	dnet_state_put(t->st);
 	dnet_state_put(t->orig);
 
-	dnet_node_unset_trace_id();
+	dnet_logger_unset_trace_id();
 	free(t);
 }
 
@@ -462,13 +462,13 @@ void dnet_trans_clean_list(struct list_head *head, int error)
 		t->cmd.flags &= ~DNET_FLAGS_REPLY;
 		t->cmd.status = error;
 
-		dnet_node_set_trace_id(t->cmd.trace_id, t->cmd.flags & DNET_FLAGS_TRACE_BIT);
+		dnet_logger_set_trace_id(t->cmd.trace_id, t->cmd.flags & DNET_FLAGS_TRACE_BIT);
 		if (t->complete) {
 			t->complete(dnet_state_addr(t->st), &t->cmd, t->priv);
 		}
 
 		dnet_trans_put(t);
-		dnet_node_unset_trace_id();
+		dnet_logger_unset_trace_id();
 	}
 }
 
@@ -554,7 +554,7 @@ int dnet_trans_iterate_move_transaction(struct dnet_net_state *st, struct list_h
 
 		// TODO: We may use dnet_log_record_set_request_id here,
 		// but blackhole currently has higher priority for scoped attributes =(
-		dnet_node_set_trace_id(t->cmd.trace_id, t->cmd.flags & DNET_FLAGS_TRACE_BIT);
+		dnet_logger_set_trace_id(t->cmd.trace_id, t->cmd.flags & DNET_FLAGS_TRACE_BIT);
 
 		dnet_log(st->n, DNET_LOG_ERROR, "%s: %s: TIMEOUT/need-exit %s, "
 				"need-exit: %d, started: %s.%06lu",
@@ -590,7 +590,7 @@ int dnet_trans_iterate_move_transaction(struct dnet_net_state *st, struct list_h
 		}
 
 		list_add_tail(&t->trans_list_entry, head);
-		dnet_node_unset_trace_id();
+		dnet_logger_unset_trace_id();
 
 		pthread_mutex_unlock(&st->trans_lock);
 	}

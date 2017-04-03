@@ -1338,7 +1338,7 @@ int dnet_send_request(struct dnet_net_state *st, struct dnet_io_req *r)
 
 	if (1) {
 		struct dnet_cmd *cmd = r->header ? r->header : r->data;
-		dnet_node_set_trace_id(cmd->trace_id, cmd->flags & DNET_FLAGS_TRACE_BIT);
+		dnet_logger_set_trace_id(cmd->trace_id, cmd->flags & DNET_FLAGS_TRACE_BIT);
 		dnet_log(st->n, st->send_offset == 0 ? DNET_LOG_NOTICE : DNET_LOG_DEBUG,
 		         "%s: %s: sending trans: %lld -> %s/%d: size: %llu, cflags: %s, start-sent: %zd/%zd",
 		         dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), (unsigned long long)cmd->trans,
@@ -1391,7 +1391,7 @@ err_out_exit:
 		         dnet_addr_string(&st->addr), cmd->backend_id, (unsigned long long)cmd->size,
 		         dnet_flags_dump_cflags(cmd->flags), st->send_offset, total_size);
 	}
-	dnet_node_unset_trace_id();
+	dnet_logger_unset_trace_id();
 
 	if (total_size > sizeof(struct dnet_cmd)) {
 		cork = 0;

@@ -1569,7 +1569,7 @@ static int dnet_blob_config_init(struct dnet_config_backend *b, enum dnet_log_le
 	if (err)
 		goto err_out_last_read_lock_destroy;
 
-	eblob_set_trace_id_function(&dnet_node_get_trace_bit);
+	eblob_set_trace_id_function(&dnet_logger_get_trace_bit);
 
 	c->vm_total = st.vm_total * st.vm_total * 1024 * 1024;
 
