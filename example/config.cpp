@@ -279,7 +279,7 @@ extern "C" struct dnet_node *dnet_parse_config(const char *file, int mon) {
 	config_data *data = NULL;
 
 	try {
-		data = new config_data{file};
+		data = new(std::nothrow) config_data{file};
 		if (!data)
 			throw std::bad_alloc();
 
