@@ -799,7 +799,7 @@ void slru_cache_t::life_check(void) {
 				TIMER_SCOPE("life_check.sync_iterate");
 				HANDY_GAUGE_SET("slru_cache.life_check.sync_iterate.element_count",
 				                elements_for_sync.size());
-				auto pool = dnet_backend_get_pool(m_node, m_backend.backend_id());
+				auto pool = m_backend.io_pool();
 				for (data_t *elem : elements_for_sync) {
 					if (m_clear_occured)
 						break;

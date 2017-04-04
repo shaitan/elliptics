@@ -1281,6 +1281,7 @@ static int dnet_cmd_bulk_read(struct dnet_backend *backend,
 	uint64_t count = 0;
 	uint64_t i;
 	int use_oplock;
+	struct dnet_io_pool *pool = NULL;
 	struct dnet_id lock_id = { .group_id = cmd->id.group_id };
 
 	struct dnet_cmd read_cmd = *cmd;
@@ -1288,6 +1289,8 @@ static int dnet_cmd_bulk_read(struct dnet_backend *backend,
 	read_cmd.cmd = DNET_CMD_READ;
 	read_cmd.flags |= DNET_FLAGS_MORE;
 	read_cmd.backend_id = dnet_backend_get_backend_id(backend);
+
+	pool = dnet_backend_get_pool(st->n, read_cmd.backend_id);
 
 	dnet_convert_io_attr(io);
 	count = io->size / sizeof(struct dnet_io_attr);
@@ -1304,7 +1307,7 @@ static int dnet_cmd_bulk_read(struct dnet_backend *backend,
 					!dnet_id_cmp_str((const unsigned char *)&ios[i].id, (const unsigned char *)&cmd->id.id);
 		if (use_oplock) {
 			memcpy(&lock_id.id, &ios[i].id, DNET_ID_SIZE);
-			dnet_oplock(dnet_backend_get_pool(st->n, read_cmd.backend_id), &lock_id);
+			dnet_oplock(pool, &lock_id);
 		}
 
 		ret = dnet_process_cmd_raw(st, &read_cmd, &ios[i], 1, cmd_stats->queue_time);
@@ -1312,7 +1315,7 @@ static int dnet_cmd_bulk_read(struct dnet_backend *backend,
 			dnet_dump_id(&cmd->id), (int) i, (int) count, ret);
 
 		if (use_oplock) {
-			dnet_opunlock(dnet_backend_get_pool(st->n, read_cmd.backend_id), &lock_id);
+			dnet_opunlock(pool, &lock_id);
 		}
 
 		if (!ret)
