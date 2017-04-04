@@ -49,7 +49,7 @@ void dnet_request_queue::push_request(dnet_io_req *req)
 
 dnet_io_req *dnet_request_queue::pop_request(dnet_work_io *wio, const char *thread_stat_id)
 {
-	auto r = [&, this] () -> dnet_io_req * {
+	auto r = [&]() {
 		std::unique_lock<std::mutex> lock(m_queue_mutex);
 
 		auto r = take_request(wio, thread_stat_id);
@@ -68,7 +68,7 @@ dnet_io_req *dnet_request_queue::pop_request(dnet_work_io *wio, const char *thre
 		}
 
 		return r;
-	} ();
+	}();
 
 	if (!r)
 		return nullptr;
@@ -81,7 +81,7 @@ dnet_io_req *dnet_request_queue::pop_request(dnet_work_io *wio, const char *thre
 	auto cmd = static_cast<dnet_cmd *>(r->header);
 	auto st = r->st;
 	auto node = st->n;
-	const auto timeout = [&node, &cmd]() -> uint64_t {
+	const auto timeout = [&]() -> uint64_t {
 		// ignore timeout for replies and commands with DNET_FLAGS_NO_QUEUE_TIMEOUT;
 		if (cmd->flags & (DNET_FLAGS_NO_QUEUE_TIMEOUT | DNET_FLAGS_REPLY))
 			return 0;
@@ -91,7 +91,7 @@ dnet_io_req *dnet_request_queue::pop_request(dnet_work_io *wio, const char *thre
 
 		return dnet_backend_get_queue_timeout(node, cmd->backend_id);
 	}();
-	const auto expired = [&r, timeout, &st]() {
+	const auto expired = [&]() {
 		if (!timeout)
 			return false;
 
