@@ -128,13 +128,6 @@ void add_provider(struct dnet_node *n, stat_provider *provider, const std::strin
 		delete provider;
 }
 
-void remove_provider(dnet_node *n, const std::string &name)
-{
-	auto real_monitor = get_monitor(n);
-	if (real_monitor)
-		real_monitor->get_statistics().remove_provider(name);
-}
-
 static void init_io_stat_provider(struct dnet_node *n) {
 	try {
 		add_provider(n, new io_stat_provider(n), "io");
@@ -216,10 +209,6 @@ void dnet_monitor_exit(struct dnet_node *n) {
 		n->monitor = NULL;
 		delete real_monitor;
 	}
-}
-
-void dnet_monitor_remove_provider(struct dnet_node *n, const char *name) {
-	ioremap::monitor::remove_provider(n, std::string(name));
 }
 
 void dnet_monitor_stats_update(struct dnet_node *n,

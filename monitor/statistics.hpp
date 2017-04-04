@@ -182,7 +182,6 @@ public:
 	 * external statistics provider
 	 */
 	void add_provider(stat_provider *stat, const std::string &name);
-	void remove_provider(const std::string &name);
 
 	typedef std::shared_ptr<top_stats> top_stats_ptr;
 	top_stats_ptr get_top_stats() const { return m_top_stats; }

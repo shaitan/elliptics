@@ -202,12 +202,6 @@ void statistics::add_provider(stat_provider *stat, const std::string &name)
 	m_stat_providers.insert(make_pair(name, std::shared_ptr<stat_provider>(stat)));
 }
 
-void statistics::remove_provider(const std::string &name)
-{
-	std::unique_lock<std::mutex> guard(m_provider_mutex);
-	m_stat_providers.erase(name);
-}
-
 inline std::string convert_report(const rapidjson::Document &report)
 {
 	rapidjson::StringBuffer buffer;
