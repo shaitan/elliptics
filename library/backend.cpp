@@ -1303,7 +1303,11 @@ struct dnet_io_pool *dnet_backend_get_pool(struct dnet_node *node, uint32_t back
 	if (!node || !node->io || !node->io->backends_manager)
 		return nullptr;
 
-	return node->io->backends_manager->get(backend_id)->io_pool();
+	auto backend = node->io->backends_manager->get(backend_id);
+	if (!backend)
+		return nullptr;
+
+	return backend->io_pool();
 }
 
 uint64_t dnet_backend_get_queue_timeout(struct dnet_node *node, ssize_t backend_id) {
