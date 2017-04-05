@@ -1557,10 +1557,6 @@ int blob_bulk_read_new(struct eblob_backend_config *c, void *state, struct dnet_
 	if (!backend)
 		return -ENOTSUP;
 
-	boost::shared_lock<boost::shared_mutex> guard(backend->state_mutex());
-	if (backend->state() != DNET_BACKEND_ENABLED)
-		return -ENOTSUP;
-
 	auto pool = backend->io_pool();
 	if (!pool) {
 		DNET_LOG_ERROR(c->blog, "EBLOB: {}: couldn't find pool for backend_id: {}",
