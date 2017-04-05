@@ -58,5 +58,8 @@ void dnet_backend_command_stats_update(struct dnet_backend *backend,
                                        int handled_in_cache,
                                        int err,
                                        long diff) {
+	if (!backend)
+		return;
+
 	backend->command_stats().command_counter(cmd->cmd, cmd->trans, err, handled_in_cache, size, diff);
 }

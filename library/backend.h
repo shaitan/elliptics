@@ -228,8 +228,12 @@ void __attribute__((weak)) dnet_backends_destroy(struct dnet_node *node);
 int dnet_backends_init_all(struct dnet_node *n);
 // deinitialize all backends
 void dnet_backends_cleanup_all(struct dnet_node *n);
-// return backend with @backend_id. Return nullptr if there is no backend with @backend_id
-struct dnet_backend *dnet_backends_get_backend(struct dnet_node *node, uint32_t backend_id);
+/* find and return a backend with @backend_id with locking its state_mutex, so it should be unlocked after use.
+ * If there is no backend with @backend_id or the backend isn't in DNET_BACKEND_ENABLED state, it will return nullptr.
+ */
+struct dnet_backend *dnet_backends_get_backend_locked(struct dnet_node *node, uint32_t backend_id);
+// unlock backend's state_mutex previously locked
+void dnet_backend_unlock_state(struct dnet_backend *backend);
 
 // handle DNET_CMD_BACKEND_CONTROL
 int dnet_cmd_backend_control(struct dnet_net_state *st, struct dnet_cmd *cmd, void *data);

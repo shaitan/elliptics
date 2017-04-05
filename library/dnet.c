@@ -1526,7 +1526,7 @@ static int dnet_process_cmd_with_backend_raw(struct dnet_net_state *st,
 
 	gettimeofday(&start, NULL);
 
-	backend = dnet_backends_get_backend(n, cmd->backend_id);
+	backend = dnet_backends_get_backend_locked(n, cmd->backend_id);
 	if (!backend)
 		return -ENOTSUP;
 
@@ -1654,6 +1654,8 @@ static int dnet_process_cmd_with_backend_raw(struct dnet_net_state *st,
 
 	dnet_backend_command_stats_update(backend, cmd, cmd_stats->size, cmd_stats->handled_in_cache, err,
 	                                  cmd_stats->handle_time);
+
+	dnet_backend_unlock_state(backend);
 	return err;
 }
 

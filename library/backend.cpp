@@ -318,6 +318,13 @@ void dnet_backend_sleep_delay(struct dnet_backend *backend) {
 	std::this_thread::sleep_for(std::chrono::milliseconds(backend->delay()));
 }
 
+void dnet_backend_unlock_state(struct dnet_backend *backend) {
+	if (!backend)
+		return;
+
+	backend->state_mutex().unlock_shared();
+}
+
 int dnet_backends_init_all(struct dnet_node *node) {
 	if (!node || !node->io || !node->io->backends_manager)
 		return -EINVAL;
@@ -1295,8 +1302,19 @@ void dnet_backends_destroy(struct dnet_node *node) {
 	delete node->io->pools_manager;
 }
 
-struct dnet_backend *dnet_backends_get_backend(struct dnet_node *node, uint32_t backend_id) {
-	return node->io->backends_manager->get(backend_id).get();
+struct dnet_backend *dnet_backends_get_backend_locked(struct dnet_node *node, uint32_t backend_id) {
+	auto backend = node->io->backends_manager->get(backend_id);
+	if (!backend)
+		return nullptr;
+
+	boost::shared_lock<boost::shared_mutex> guard(backend->state_mutex());
+	if (backend->state() != DNET_BACKEND_ENABLED)
+		return nullptr;
+
+	// leave shared lock on backend's state_mutex to prevent changing backend's state while backend is in use
+	guard.release();
+
+	return backend.get();
 }
 
 struct dnet_io_pool *dnet_backend_get_pool(struct dnet_node *node, uint32_t backend_id) {

@@ -1552,12 +1552,22 @@ int blob_bulk_read_new(struct eblob_backend_config *c, void *state, struct dnet_
 
 	auto st = reinterpret_cast<dnet_net_state *>(state);
 	const int backend_id = c->data.stat_id;
-	auto pool = dnet_backend_get_pool(st->n, backend_id);
+
+	auto backend = st->n->io->backends_manager->get(backend_id);
+	if (!backend)
+		return -ENOTSUP;
+
+	boost::shared_lock<boost::shared_mutex> guard(backend->state_mutex());
+	if (backend->state() != DNET_BACKEND_ENABLED)
+		return -ENOTSUP;
+
+	auto pool = backend->io_pool();
 	if (!pool) {
 		DNET_LOG_ERROR(c->blog, "EBLOB: {}: couldn't find pool for backend_id: {}",
 			       __func__, backend_id);
 		return -EINVAL;
 	}
+
 
 	dnet_bulk_read_request bulk_request;
 	deserialize(data_pointer::from_raw(data, cmd->size), bulk_request);
@@ -1596,9 +1606,8 @@ int blob_bulk_read_new(struct eblob_backend_config *c, void *state, struct dnet_
 		gettimeofday(&end, nullptr);
 		read_stats.handle_time = DIFF(start, end);
 
-		auto backend = dnet_backends_get_backend(st->n, backend_id);
-		dnet_backend_command_stats_update(backend, &cmd_copy, read_stats.size, 0 /*handled_in_cache*/, err,
-		                                  read_stats.handle_time);
+		backend->command_stats().command_counter(cmd_copy.cmd, cmd_copy.trans, err, /*handled_in_cache*/ 0,
+		                                         read_stats.size, read_stats.handle_time);
 	}
 
 	return 0;
