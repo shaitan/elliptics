@@ -214,7 +214,7 @@ data_pointer local_session::lookup(const dnet_cmd &tmp_cmd, int *errp)
 	cmd.size = 0;
 	cmd.backend_id = m_backend.backend_id();
 
-	*errp = dnet_process_cmd_raw(m_state, &cmd, NULL, 0, 0);
+	*errp = dnet_process_cmd_raw(m_state, &cmd, nullptr, 0, 0);
 
 	if (*errp)
 		return data_pointer();

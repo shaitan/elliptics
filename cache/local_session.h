@@ -53,7 +53,7 @@ public:
 	int remove_new(const struct dnet_id &id, const ioremap::elliptics::dnet_remove_request &request);
 
 private:
-	void clear_queue(int *errp = NULL);
+	void clear_queue(int *errp = nullptr);
 
 	dnet_backend &m_backend;
 	dnet_net_state *m_state;
