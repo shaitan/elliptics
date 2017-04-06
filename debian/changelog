@@ -1,3 +1,22 @@
+elliptics (2.27.2.0~beta) unstable; urgency=medium
+
+  * backends: shareable io pools
+  * logger: refactoring attributes and functions names
+  * logger: add trace_scope ctor from session
+  * logger: small refactoring & cleanup
+  * refactoring: remove unused code
+  * use uint32_t for backend_id
+  * config: cleanup code
+  * cleanup code
+  * fixup: monitor
+  * fixup: check backend's absence
+  * fixup: shared lock backend's state_mutex to handle request
+  * fixup: NULL -> nullptr
+  * fixup: fix deadlock
+  * fixup: add io pools tests with delayed backend
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Thu, 06 Apr 2017 10:22:16 +0300
+
 elliptics (2.27.1.1) unstable; urgency=medium
 
   * new bulk_read command
