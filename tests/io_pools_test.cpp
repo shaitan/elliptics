@@ -26,6 +26,10 @@ nodes_data::ptr configure_test_setup(const std::string &path) {
 	return start_nodes(config);
 }
 
+static uint32_t backend_to_group(uint32_t backend_id) {
+	return 1000 + backend_id;
+}
+
 static void enable_backend(ioremap::elliptics::newapi::session &s, const nodes_data *setup, uint32_t backend_id) {
 	auto remote = setup->nodes.front().remote();
 	ELLIPTICS_REQUIRE(async, s.enable_backend(remote, backend_id));
@@ -80,7 +84,7 @@ static void check_statistics(ioremap::elliptics::newapi::session &s,
 		BOOST_REQUIRE_EQUAL(status.as_object()["state"].as_uint(),
 		                    enabled ? DNET_BACKEND_ENABLED : DNET_BACKEND_DISABLED);
 		BOOST_REQUIRE_EQUAL(status.as_object()["pool_id"].as_string(), enabled ? pool_id : "");
-		BOOST_REQUIRE_EQUAL(status.as_object()["group"].as_uint(), 1000 + backend_id);
+		BOOST_REQUIRE_EQUAL(status.as_object()["group"].as_uint(), backend_to_group(backend_id));
 
 		if (!enabled) {
 			BOOST_REQUIRE(backend.as_object().find("io") == backend.as_object().end());
@@ -174,7 +178,7 @@ static void add_backends_to_config(const nodes_data *setup,
 		backend["backend_id"] = backend_id;
 		backend["history"] = prefix + "/history";
 		backend["data"] = prefix + "/blob";
-		backend["group"] = 1000 + backend_id;
+		backend["group"] = backend_to_group(backend_id);
 		if (!pool_id.empty())
 			backend["pool_id"] = pool_id;
 		backends.as_array().emplace_back(std::move(backend));
@@ -255,12 +259,82 @@ static void test_two_backends(ioremap::elliptics::newapi::session &s,
 	setup->nodes.front().config().write(setup->nodes.front().config_path());
 }
 
+static void test_backends_with_delay(ioremap::elliptics::newapi::session &s, const nodes_data *setup) {
+	two_backends_array backends = {std::make_tuple(1, "pool"), std::make_tuple(2, "pool")};
+	const auto delayed_backend_id = std::get<0>(backends[0]);
+	const auto normal_backend_id = std::get<0>(backends[1]);
+
+	auto read_from_backend = [&](uint32_t backend_id) {
+		const int group = backend_to_group(backend_id);
+		auto read_session = s.clone();
+		read_session.set_groups({group});
+		read_session.set_timeout(1);
+		return read_session.read_data({"non-existent-key"}, 0, 0);
+	};
+
+	// add 2 backends with a shared pool to config
+	add_backends_to_config(setup, {backends[0], backends[1]});
+
+	// enable both backend
+	enable_backend(s, setup, std::get<0>(backends[0]));
+	enable_backend(s, setup, std::get<0>(backends[1]));
+
+	// check that both backends are enabled
+	check_statistics(s, {backends[0], backends[1]}, {});
+
+	// set 2 second delay to first backend
+	s.set_delay(setup->nodes.front().remote(), delayed_backend_id, 2000).wait();
+
+	{ // check delay
+		auto async = read_from_backend(delayed_backend_id);
+		async.wait();
+		BOOST_REQUIRE_EQUAL(async.error().code(), -ETIMEDOUT);
+	}
+
+	{ // asynchronously send command to both backends and check that second backend will not timeout
+		auto delayed_async = read_from_backend(delayed_backend_id);
+		auto normal_async = read_from_backend(normal_backend_id);
+		delayed_async.wait();
+		normal_async.wait();
+		BOOST_REQUIRE_EQUAL(delayed_async.error().code(), -ETIMEDOUT);
+		BOOST_REQUIRE_EQUAL(normal_async.error().code(), -ENOENT);
+	}
+
+	{ // asynchronously send bulk_read to delayed backend, remove it and check that removing waits bulk_read's
+	  // completion
+		auto read_session = s.clone();
+		read_session.set_timeout(1);
+		// generate ids for bulk read
+		auto ids = [&]() {
+			dnet_id id;
+			read_session.transform("non-existent-key", id);
+			id.group_id = backend_to_group(delayed_backend_id);
+			return std::vector<dnet_id>(1000, id); // use one key 1000 times
+		}();
+		auto delayed_async = read_session.bulk_read(ids);
+		remove_backend(s, setup, std::get<0>(backends[0]));
+		// remove_backend should wait bulk_read completion, so when it is completed
+		// bulk_read should also be completed.
+		BOOST_REQUIRE(delayed_async.ready());
+	}
+
+	// remove the remaining backend
+	remove_backend(s, setup, std::get<0>(backends[1]));
+	// check original state of statistics
+	check_statistics(s, {}, {});
+
+	// revert on-disk config to original one
+	setup->nodes.front().config().write(setup->nodes.front().config_path());
+}
+
 bool register_tests(const nodes_data *setup) {
 	auto n = setup->node->get_native();
 
+	// Test node without enabled backends after start-up
 	ELLIPTICS_TEST_CASE(test_empy_node, use_session(n));
 
 	// Test node with one backend
+
 	// one backend with individual pool
 	ELLIPTICS_TEST_CASE(test_one_backend, use_session(n), setup, std::make_tuple(1, ""));
 	// one backend with shared pool
@@ -271,18 +345,15 @@ bool register_tests(const nodes_data *setup) {
 	// two backends with one shared pool
 	ELLIPTICS_TEST_CASE(test_two_backends, use_session(n), setup,
 	                    two_backends_array{std::make_tuple(1, "bla"), std::make_tuple(2, "bla")});
-	// two backends with two shared pool
+	// two backends with two different shared pool
 	ELLIPTICS_TEST_CASE(test_two_backends, use_session(n), setup,
 	                    two_backends_array{std::make_tuple(1, "bla1"), std::make_tuple(2, "bla2")});
 	// one backend with shared pool and one with individual
 	ELLIPTICS_TEST_CASE(test_two_backends, use_session(n), setup,
 	                    two_backends_array{std::make_tuple(1, "bla1"), std::make_tuple(2, "")});
 
-	// TODO(shaitan): test start/stop node with enabled/disabled backends at start
-
-	// TODO(shaitan): check via sending read/write/remove, backend_status etc. commands
-
-	// TODO(shaitan): test affecting backend's delay on other backends which share the same pool
+	// test affecting backend's delay on other backends which share the same pool
+	ELLIPTICS_TEST_CASE(test_backends_with_delay, use_session(n), setup);
 
 	return true;
 }
