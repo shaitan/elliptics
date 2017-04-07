@@ -14,7 +14,7 @@
  */
 
 #include "test_base.hpp"
-#include "../library/elliptics.h"
+#include "library/elliptics.h"
 #include <algorithm>
 
 #define BOOST_TEST_NO_MAIN

@@ -1,32 +1,30 @@
 #include "elliptics.h"
+#include "backend.h"
+#include "example/config.hpp"
 
-int dnet_get_backend_ids(const dnet_backend_info_manager *backends, size_t **backend_ids, size_t *num_backend_ids)
-{
-	if (!backends)
-		return -EINVAL;
+uint64_t dnet_node_get_queue_timeout(struct dnet_node *node) {
+	if (!node->config_data)
+		return 0;
 
-	auto config_backends = backends->get_all_backends();
-	*num_backend_ids = config_backends.size();
-	*backend_ids = reinterpret_cast<size_t *>(malloc(*num_backend_ids * sizeof(size_t)));
-	if (!*backend_ids)
-		return -ENOMEM;
-
-	for (size_t i = 0; i < *num_backend_ids; ++i) {
-		(*backend_ids)[i] = config_backends[i]->backend_id;
-	}
-
-	return 0;
+	return dnet_node_get_config_data(node)->queue_timeout;
 }
 
-struct dnet_backend_io *dnet_get_backend_io(struct dnet_io *io, size_t backend_id)
-{
-	struct dnet_backend_io *backend_io = nullptr;
+struct dnet_work_pool_place *dnet_backend_get_place(struct dnet_node *node, ssize_t backend_id, int nonblocking) {
+	if (!node->io)
+		return nullptr;
 
-	pthread_rwlock_rdlock(&io->backends_lock);
-	if (backend_id < io->backends_count) {
-		backend_io = io->backends[backend_id];
+	if (node->io->backends_manager && backend_id >= 0) {
+		auto pool = dnet_backend_get_pool(node, backend_id);
+		if (pool) {
+			auto place = nonblocking ? &pool->recv_pool_nb : &pool->recv_pool;
+			pthread_mutex_lock(&place->lock);
+			if (place->pool)
+				return place;
+			pthread_mutex_unlock(&place->lock);
+		}
 	}
-	pthread_rwlock_unlock(&io->backends_lock);
 
-	return backend_io;
+	auto place = nonblocking ? &node->io->pool.recv_pool_nb : &node->io->pool.recv_pool;
+	pthread_mutex_lock(&place->lock);
+	return place;
 }

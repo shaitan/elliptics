@@ -33,40 +33,6 @@ struct dnet_config;
 /*!
  * \internal
  *
- * Raw statistics provider which can be used from c code
- */
-struct stat_provider_raw {
-
-	/*!
-	 * \internal
-	 *
-	 * User-defined private data for provider
-	 */
-	void		*stat_private;
-
-	/*!
-	 * \internal
-	 *
-	 * Callback which returns current statistics of provider in json format
-	 * It will be called only when was requested for statistics
-	 * \a priv - user-defined private data for provider
-	 * \a categories - categories which statistics should be included to json
-	 */
-	const char*	(* json) (void *priv, uint64_t categories);
-
-	/*!
-	 * \internal
-	 *
-	 * Callback for stopping and clearing provider's data.
-	 * It will be called once when the provider is no longer required
-	 * \a priv - user-defined private data for provider
-	 */
-	void		(* stop) (void *priv);
-};
-
-/*!
- * \internal
- *
  * Initializes monitoring with specified configuration
  * If monitor would be successfully initialized
  * then n->monitor will contain pointer to it and
@@ -80,20 +46,6 @@ int dnet_monitor_init(struct dnet_node *n, struct dnet_config *cfg);
  * Unitializes monitor and resets n->monitor to 0
  */
 void dnet_monitor_exit(struct dnet_node *n);
-
-/*!
- * \internal
- *
- * Adds to \a monitor raw statistics provider \a stat
- * with \a name to the provider list
- */
-void dnet_monitor_add_provider(struct dnet_node *n, struct stat_provider_raw stat, const char *name);
-
-/*!
- * \internal
- * Removes statistics provider by \a name from \a monitor.
- */
-void dnet_monitor_remove_provider(struct dnet_node *n, const char *name);
 
 /*!
  * \internal

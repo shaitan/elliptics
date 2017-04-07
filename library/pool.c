@@ -17,6 +17,9 @@
  * along with Elliptics.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
+
 #include <sys/stat.h>
 #include <netinet/in.h>
 
@@ -27,11 +30,13 @@
 #include <signal.h>
 
 #include "elliptics.h"
+#include "backend.h"
 #include "elliptics/interface.h"
 #include "monitor/monitor.h"
 #include "monitor/measure_points.h"
 #include "request_queue.h"
 #include "library/logger.hpp"
+#include "library/backend.h"
 
 static char *dnet_work_io_mode_string[] = {
 	[DNET_WORK_IO_MODE_BLOCKING] = "BLOCKING",
@@ -47,8 +52,7 @@ static char *dnet_work_io_mode_str(int mode)
 	return dnet_work_io_mode_string[mode];
 }
 
-static void dnet_work_pool_stop(struct dnet_work_pool_place *place)
-{
+void dnet_work_pool_stop(struct dnet_work_pool_place *place) {
 	int i;
 	struct dnet_work_io *wio;
 
@@ -89,7 +93,7 @@ static void dnet_work_pool_cleanup(struct dnet_work_pool_place *place)
 
 	pthread_mutex_destroy(&place->pool->lock);
 
-	dnet_request_queue_destroy(place->pool->request_queue);
+	dnet_request_queue_destroy(place->pool);
 
 	free(place->pool->wio_list);
 	free(place->pool);
@@ -157,7 +161,7 @@ err_out_io_threads:
 	return err;
 }
 
-static int dnet_work_pool_place_init(struct dnet_work_pool_place *pool)
+int dnet_work_pool_place_init(struct dnet_work_pool_place *pool)
 {
 	int err;
 	memset(pool, 0, sizeof(struct dnet_work_pool_place));
@@ -172,14 +176,17 @@ err_out_exit:
 	return err;
 }
 
-static void dnet_work_pool_place_cleanup(struct dnet_work_pool_place *pool)
+void dnet_work_pool_place_cleanup(struct dnet_work_pool_place *pool)
 {
 	pthread_mutex_destroy(&pool->lock);
 }
 
-int dnet_work_pool_alloc(struct dnet_work_pool_place *place, struct dnet_node *n,
-	struct dnet_backend_io *io, int num, int mode, void *(* process)(void *))
-{
+int dnet_work_pool_alloc(struct dnet_work_pool_place *place,
+                         struct dnet_node *n,
+                         int num,
+                         int mode,
+                         const char *pool_id,
+                         void *(*process)(void *)) {
 	int err;
 	struct dnet_work_pool *pool;
 
@@ -200,9 +207,10 @@ int dnet_work_pool_alloc(struct dnet_work_pool_place *place, struct dnet_node *n
 	pool->num = 0;
 	pool->mode = mode;
 	pool->n = n;
-	pool->io = io;
 
-	pool->request_queue = dnet_request_queue_create(n, io);
+	strncpy(pool->pool_id, pool_id, sizeof(pool->pool_id));
+
+	pool->request_queue = dnet_request_queue_create();
 	if (!pool->request_queue) {
 		err = -ENOMEM;
 		goto err_out_mutex_destroy;
@@ -251,11 +259,7 @@ static inline void make_thread_stat_id(char *buffer, int size, struct dnet_work_
 	 dnet_work_io_mode_str() provides mode names in uppercase.
 	*/
 	const char *mode_marker = ((pool->mode == DNET_WORK_IO_MODE_BLOCKING) ? "blocking" : "nonblocking");
-	if (pool->io) {
-		snprintf(buffer, size - 1, "%zu.%s", pool->io->backend_id, mode_marker);
-	} else {
-		snprintf(buffer, size - 1, "sys.%s", mode_marker);
-	}
+	snprintf(buffer, size - 1, "%s.%s", pool->pool_id, mode_marker);
 }
 
 static void dnet_update_trans_timestamp_network(struct dnet_io_req *r)
@@ -286,11 +290,8 @@ static void dnet_update_trans_timestamp_network(struct dnet_io_req *r)
 
 void dnet_schedule_io(struct dnet_node *n, struct dnet_io_req *r)
 {
-	struct dnet_backend_io *backend_io = NULL;
 	struct dnet_work_pool_place *place = NULL;
-	struct dnet_work_pool_place *backend_place = NULL;
 	struct dnet_work_pool *pool = NULL;
-	struct dnet_io_pool *io_pool = &n->io->pool;
 	struct dnet_cmd *cmd = r->header;
 	int nonblocking = !!(cmd->flags & DNET_FLAGS_NOLOCK);
 	ssize_t backend_id = -1;
@@ -318,44 +319,13 @@ void dnet_schedule_io(struct dnet_node *n, struct dnet_io_req *r)
 
 	dnet_update_trans_timestamp_network(r);
 
-	if (cmd->flags & DNET_FLAGS_DIRECT_BACKEND)
+	if (cmd->flags & DNET_FLAGS_DIRECT_BACKEND) {
 		backend_id = cmd->backend_id;
-	else if (dnet_cmd_needs_backend(cmd->cmd))
+	} else if (dnet_cmd_needs_backend(cmd->cmd)) {
 		backend_id = dnet_state_search_backend(n, &cmd->id);
-
-	if (backend_id >= 0) {
-		backend_io = dnet_get_backend_io(n->io, backend_id);
 	}
 
-	if (backend_io) {
-		io_pool = &backend_io->pool;
-		if (nonblocking) {
-			place = &io_pool->recv_pool_nb;
-		} else {
-			place = &io_pool->recv_pool;
-		}
-
-		if (place) {
-			pthread_mutex_lock(&place->lock);
-			if (!place->pool) {
-				pthread_mutex_unlock(&place->lock);
-				io_pool = &n->io->pool;
-				place = NULL;
-			}
-		}
-	}
-
-	backend_place = place;
-
-	if (place == NULL) {
-		if (nonblocking) {
-			place = &io_pool->recv_pool_nb;
-		} else {
-			place = &io_pool->recv_pool;
-		}
-
-		pthread_mutex_lock(&place->lock);
-	}
+	place = dnet_backend_get_place(n, backend_id, nonblocking);
 
 	pool = place->pool;
 
@@ -363,17 +333,11 @@ void dnet_schedule_io(struct dnet_node *n, struct dnet_io_req *r)
 
 	// If we are processing the command we should update cmd->backend_id to actual one
 	if (!(cmd->flags & DNET_FLAGS_REPLY)) {
-		if (pool->io)
-			cmd->backend_id = pool->io->backend_id;
-		else
-			cmd->backend_id = -1;
+		cmd->backend_id = backend_id >= 0 ? backend_id : -1;
 	}
 
-	dnet_log(n, DNET_LOG_DEBUG, "%s: %s: backend_id: %zd, place: %p, backend_place: %p, "
-			"backend_place->pool->backend_id: %zd, cmd->backend_id: %d",
-		dnet_state_dump_addr(r->st), dnet_dump_id(r->header), backend_id, place, backend_place,
-		backend_place && backend_place->pool->io ? (ssize_t)backend_place->pool->io->backend_id : (ssize_t)-1,
-		cmd->backend_id);
+	dnet_log(n, DNET_LOG_DEBUG, "%s: %s: backend_id: %zd, place: %p, cmd->backend_id: %d",
+	         dnet_state_dump_addr(r->st), dnet_dump_id(r->header), backend_id, place, cmd->backend_id);
 
 	dnet_push_request(pool, r);
 
@@ -412,7 +376,7 @@ static int dnet_process_recv_single(struct dnet_net_state *st)
 	uint64_t size;
 	int err;
 
-	dnet_node_set_trace_id(st->rcv_cmd.trace_id, st->rcv_cmd.flags & DNET_FLAGS_TRACE_BIT);
+	dnet_logger_set_trace_id(st->rcv_cmd.trace_id, st->rcv_cmd.flags & DNET_FLAGS_TRACE_BIT);
 again:
 	/*
 	 * Reading command first.
@@ -445,8 +409,8 @@ again:
 			goto out;
 		}
 
-		dnet_node_unset_trace_id();
-		dnet_node_set_trace_id(st->rcv_cmd.trace_id, st->rcv_cmd.flags & DNET_FLAGS_TRACE_BIT);
+		dnet_logger_unset_trace_id();
+		dnet_logger_set_trace_id(st->rcv_cmd.trace_id, st->rcv_cmd.flags & DNET_FLAGS_TRACE_BIT);
 
 		if ((st->rcv_flags & DNET_IO_CMD) && (st->rcv_offset == 0)) {
 			gettimeofday(&st->rcv_start_tv, NULL);
@@ -508,14 +472,14 @@ again:
 	r->st = dnet_state_get(st);
 
 	dnet_schedule_io(n, r);
-	dnet_node_unset_trace_id();
+	dnet_logger_unset_trace_id();
 	return 0;
 
 out:
 	if (err != -EAGAIN && err != -EINTR)
 		dnet_schedule_command(st);
 
-	dnet_node_unset_trace_id();
+	dnet_logger_unset_trace_id();
 	return err;
 }
 
@@ -840,8 +804,7 @@ static void dnet_check_work_pool_place(struct dnet_work_pool_place *place, uint6
 	pthread_mutex_unlock(&place->lock);
 }
 
-static void dnet_check_io_pool(struct dnet_io_pool *io, uint64_t *queue_size, uint64_t *threads_count)
-{
+void dnet_check_io_pool(struct dnet_io_pool *io, uint64_t *queue_size, uint64_t *threads_count) {
 	dnet_check_work_pool_place(&io->recv_pool, queue_size, threads_count);
 	dnet_check_work_pool_place(&io->recv_pool_nb, queue_size, threads_count);
 }
@@ -850,19 +813,11 @@ static int dnet_check_io(struct dnet_io *io)
 {
 	uint64_t queue_size = 0;
 	uint64_t threads_count = 0;
-	size_t i;
 
 	dnet_check_io_pool(&io->pool, &queue_size, &threads_count);
 
-	pthread_rwlock_rdlock(&io->backends_lock);
-	if (io->backends) {
-		for (i = 0; i < io->backends_count; ++i) {
-			if (io->backends[i]) {
-				dnet_check_io_pool(&io->backends[i]->pool, &queue_size, &threads_count);
-			}
-		}
-	}
-	pthread_rwlock_unlock(&io->backends_lock);
+	if (io->pools_manager)
+		dnet_io_pools_check(io->pools_manager, &queue_size, &threads_count);
 
 	if (queue_size <= threads_count * 1000)
 		return 1;
@@ -904,6 +859,7 @@ static void *dnet_io_process_network(void *data_)
 	struct timeval prev_tv, curr_tv;
 
 	dnet_set_name("dnet_net");
+	dnet_logger_set_pool_id("net");
 
 	dnet_log(n, DNET_LOG_NOTICE, "started net pool");
 
@@ -1021,6 +977,7 @@ static void *dnet_io_process_network(void *data_)
 
 err_out_exit:
 	dnet_log(n, DNET_LOG_NOTICE, "finished net pool");
+	dnet_logger_unset_pool_id();
 	return &n->need_exit;
 }
 
@@ -1040,34 +997,26 @@ static void dnet_io_cleanup_states(struct dnet_node *n)
 	n->st = NULL;
 }
 
-void *dnet_io_process(void *data_)
-{
+void *dnet_io_process(void *data_) {
 	struct dnet_work_io *wio = data_;
 	struct dnet_work_pool *pool = wio->pool;
 	struct dnet_node *n = pool->n;
 	struct dnet_net_state *st;
 	struct dnet_io_req *r;
-	struct dnet_cmd *cmd;
+	struct dnet_cmd *cmd = NULL;
 	int nonblocking = (pool->mode == DNET_WORK_IO_MODE_NONBLOCKING);
 	char thread_stat_id[255];
 
-	if (pool->io) {
-		dnet_set_name("dnet_%sio_%zu", nonblocking ? "nb_" : "", pool->io->backend_id);
-	} else {
-		dnet_set_name("dnet_%sio", nonblocking ? "nb_" : "");
-	}
+	dnet_set_name("dnet_%sio_%s", nonblocking ? "nb_" : "", pool->pool_id);
 
 	make_thread_stat_id(thread_stat_id, sizeof(thread_stat_id), pool);
 
-	if (pool->io) {
-		dnet_node_set_backend_id(pool->io->backend_id);
-	}
+	dnet_logger_set_pool_id(pool->pool_id);
 
-	dnet_log(n, DNET_LOG_NOTICE, "started io thread: #%d, nonblocking: %d, backend: %zd",
-		wio->thread_index, nonblocking, pool->io ? (ssize_t)pool->io->backend_id : -1);
+	dnet_log(n, DNET_LOG_NOTICE, "started io thread: #%d, nonblocking: %d, pool: %s", wio->thread_index,
+	         nonblocking, pool->pool_id);
 
-
-	while (!n->need_exit && (!pool->io || !pool->io->need_exit)) {
+	while (!n->need_exit && !pool->need_exit) {
 		r = dnet_pop_request(wio, thread_stat_id);
 		if (!r)
 			continue;
@@ -1079,30 +1028,34 @@ void *dnet_io_process(void *data_)
 		st = r->st;
 		cmd = r->header;
 
-		dnet_node_set_trace_id(cmd->trace_id, cmd->flags & DNET_FLAGS_TRACE_BIT);
+		dnet_logger_set_backend_id(cmd->backend_id);
+		dnet_logger_set_trace_id(cmd->trace_id, cmd->flags & DNET_FLAGS_TRACE_BIT);
 
-		dnet_log(n, DNET_LOG_DEBUG, "%s: %s: got IO event: %p: cmd: %s, hsize: %zu, dsize: %zu, mode: %s, backend_id: %zd, queue_time: %ld usecs",
-			dnet_state_dump_addr(st), dnet_dump_id(r->header), r, dnet_cmd_string(cmd->cmd), r->hsize, r->dsize, dnet_work_io_mode_str(pool->mode),
-			pool->io ? (ssize_t)pool->io->backend_id : (ssize_t)-1, (r->time.tv_sec * 1000000 + r->time.tv_usec));
+		dnet_log(n, DNET_LOG_DEBUG, "%s: %s: got IO event: %p: cmd: %s, hsize: %zu, dsize: %zu, mode: %s, "
+		                            "backend_id: %d, queue_time: %ld usecs",
+		         dnet_state_dump_addr(st), dnet_dump_id(r->header), r, dnet_cmd_string(cmd->cmd), r->hsize,
+		         r->dsize, dnet_work_io_mode_str(pool->mode), cmd->backend_id,
+		         (r->time.tv_sec * 1000000 + r->time.tv_usec));
 
-		dnet_process_recv(pool->io, st, r);
+		dnet_process_recv(st, r);
 
-		dnet_log(n, DNET_LOG_DEBUG, "%s: %s: processed IO event: %p, cmd: %s",
-			dnet_state_dump_addr(st), dnet_dump_id(r->header), r, dnet_cmd_string(cmd->cmd));
-
-		dnet_node_unset_trace_id();
+		dnet_log(n, DNET_LOG_DEBUG, "%s: %s: processed IO event: %p, cmd: %s", dnet_state_dump_addr(st),
+		         dnet_dump_id(r->header), r, dnet_cmd_string(cmd->cmd));
 
 		dnet_release_request(wio, r);
 		dnet_io_req_free(r);
 		dnet_state_put(st);
 
+		dnet_logger_unset_trace_id();
+		dnet_logger_unset_backend_id();
+
 		FORMATTED(HANDY_COUNTER_DECREMENT, ("pool.%s.active_threads", thread_stat_id), 1);
 	}
 
-	dnet_log(n, DNET_LOG_NOTICE, "finished io thread: #%d, nonblocking: %d, backend: %zd",
-		wio->thread_index, pool->mode == DNET_WORK_IO_MODE_NONBLOCKING, pool->io ? (ssize_t)pool->io->backend_id : -1);
+	dnet_log(n, DNET_LOG_NOTICE, "finished io thread: #%d, nonblocking: %d, pool: %s", wio->thread_index,
+	         pool->mode == DNET_WORK_IO_MODE_NONBLOCKING, pool->pool_id);
 
-	dnet_node_unset_backend_id();
+	dnet_logger_unset_pool_id();
 
 	return NULL;
 }
@@ -1131,12 +1084,6 @@ int dnet_io_init(struct dnet_node *n, struct dnet_config *cfg)
 		goto err_out_free_mutex;
 	}
 
-	err = pthread_rwlock_init(&n->io->backends_lock, NULL);
-	if (err) {
-		err = -err;
-		goto err_out_free_cond;
-	}
-
 	list_stat_init(&n->io->output_stats);
 
 	n->io->net_thread_num = cfg->net_thread_num;
@@ -1145,10 +1092,11 @@ int dnet_io_init(struct dnet_node *n, struct dnet_config *cfg)
 
 	err = dnet_work_pool_place_init(&n->io->pool.recv_pool);
 	if (err) {
-		goto err_out_free_backends_lock;
+		goto err_out_free_cond;
 	}
 
-	err = dnet_work_pool_alloc(&n->io->pool.recv_pool, n, NULL, cfg->io_thread_num, DNET_WORK_IO_MODE_BLOCKING, dnet_io_process);
+	err = dnet_work_pool_alloc(&n->io->pool.recv_pool, n, cfg->io_thread_num, DNET_WORK_IO_MODE_BLOCKING, "sys",
+	                           dnet_io_process);
 	if (err) {
 		goto err_out_cleanup_recv_place;
 	}
@@ -1158,7 +1106,8 @@ int dnet_io_init(struct dnet_node *n, struct dnet_config *cfg)
 		goto err_out_free_recv_pool;
 	}
 
-	err = dnet_work_pool_alloc(&n->io->pool.recv_pool_nb, n, NULL, cfg->nonblocking_io_thread_num, DNET_WORK_IO_MODE_NONBLOCKING, dnet_io_process);
+	err = dnet_work_pool_alloc(&n->io->pool.recv_pool_nb, n, cfg->nonblocking_io_thread_num,
+	                           DNET_WORK_IO_MODE_NONBLOCKING, "sys", dnet_io_process);
 	if (err) {
 		goto err_out_cleanup_recv_place_nb;
 	}
@@ -1204,8 +1153,6 @@ err_out_free_recv_pool:
 	dnet_work_pool_exit(&n->io->pool.recv_pool);
 err_out_cleanup_recv_place:
 	dnet_work_pool_place_cleanup(&n->io->pool.recv_pool);
-err_out_free_backends_lock:
-	pthread_rwlock_destroy(&n->io->backends_lock);
 err_out_free_cond:
 	pthread_cond_destroy(&n->io->full_wait);
 err_out_free_mutex:
@@ -1217,147 +1164,11 @@ err_out_exit:
 	return err;
 }
 
-int dnet_server_backend_init(struct dnet_node *n, size_t backend_id)
-{
-	int err;
-	const size_t new_count = backend_id + 1;
-	struct dnet_backend_io **backends_tmp;
-	struct dnet_backend_io *io;
-
-	pthread_rwlock_wrlock(&n->io->backends_lock);
-	if (new_count > n->io->backends_count || !n->io->backends[backend_id]) {
-		io = calloc(1, sizeof(struct dnet_backend_io));
-		if (!io) {
-			err = -ENOMEM;
-			goto err_out_unlock;
-		}
-
-		io->backend_id = backend_id;
-
-		err = dnet_work_pool_place_init(&io->pool.recv_pool);
-		if (err) {
-			goto err_out_free;
-		}
-
-		err = dnet_work_pool_place_init(&io->pool.recv_pool_nb);
-		if (err) {
-			dnet_work_pool_place_cleanup(&io->pool.recv_pool);
-			goto err_out_free;
-		}
-
-		if (new_count > n->io->backends_count) {
-			backends_tmp = realloc(n->io->backends, new_count * sizeof(struct dnet_backend_io *));
-			if (backends_tmp) {
-				memset(backends_tmp + n->io->backends_count, 0,
-				       (new_count - n->io->backends_count) * sizeof(struct dnet_backend_io *));
-				n->io->backends = backends_tmp;
-				n->io->backends_count = new_count;
-			} else {
-				err = -ENOMEM;
-				goto err_out_free;
-			}
-		}
-
-		n->io->backends[backend_id] = io;
-	}
-	pthread_rwlock_unlock(&n->io->backends_lock);
-
-	return 0;
-
-err_out_free:
-	free(io);
-err_out_unlock:
-	pthread_rwlock_unlock(&n->io->backends_lock);
-	return err;
-}
-
-int dnet_server_io_init(struct dnet_node *n)
-{
-	int err;
-	size_t j = 0, k = 0;
-	size_t *backend_ids, num_backend_ids;
-	size_t backends_count;
-
-        err = dnet_get_backend_ids(n->config_data->backends, &backend_ids, &num_backend_ids);
-	if (err) {
-		goto err_out_exit;
-	}
-
-	backends_count = backend_ids[0];
-	for (j = 1; j < num_backend_ids; ++j) {
-		if (backend_ids[j] > backends_count)
-			backends_count = backend_ids[j];
-	}
-	++backends_count;
-
-	n->io->backends_count = backends_count;
-	n->io->backends = calloc(backends_count, sizeof(struct dnet_backend_io *));
-	if (!n->io->backends) {
-		err = -ENOMEM;
-		goto err_out_free_backend_ids;
-	}
-
-	for (j = 0; j < num_backend_ids; ++j) {
-		struct dnet_backend_io *io = calloc(1, sizeof(struct dnet_backend_io));
-		if (!io) {
-			err = -ENOMEM;
-			goto err_out_free_backends_io;
-		}
-
-		io->backend_id = backend_ids[j];
-
-		err = dnet_work_pool_place_init(&io->pool.recv_pool);
-		if (err) {
-			free(io);
-			goto err_out_free_backends_io;
-		}
-
-		err = dnet_work_pool_place_init(&io->pool.recv_pool_nb);
-		if (err) {
-			free(io);
-			dnet_work_pool_place_cleanup(&io->pool.recv_pool);
-			goto err_out_free_backends_io;
-		}
-
-		n->io->backends[io->backend_id] = io;
-	}
-
-	free(backend_ids);
-	return 0;
-
-err_out_free_backends_io:
-	for (k = 0; k < j; ++k) {
-		struct dnet_backend_io *backend_io = n->io->backends[backend_ids[k]];
-		backend_io->need_exit = 1;
-	}
-	for (k = 0; k < j; ++k) {
-		struct dnet_backend_io *backend_io = n->io->backends[backend_ids[k]];
-		dnet_work_pool_exit(&backend_io->pool.recv_pool);
-		dnet_work_pool_exit(&backend_io->pool.recv_pool_nb);
-		free(backend_io);
-	}
-	free(n->io->backends);
-	n->io->backends = NULL;
-err_out_free_backend_ids:
-	free(backend_ids);
-err_out_exit:
-	return err;
-}
-
-void dnet_io_stop(struct dnet_node *n)
-{
+void dnet_io_stop(struct dnet_node *n) {
 	struct dnet_io *io = n->io;
 	int i;
-	size_t j;
 
 	dnet_set_need_exit(n);
-
-	for (j = 0; j < n->io->backends_count; ++j) {
-		struct dnet_backend_io *backend_io = n->io->backends[j];
-		if (backend_io) {
-			backend_io->need_exit = 1;
-		}
-	}
 
 	for (i = 0; i < io->net_thread_num; ++i) {
 		pthread_join(io->net[i].tid, NULL);
@@ -1366,22 +1177,11 @@ void dnet_io_stop(struct dnet_node *n)
 
 	dnet_work_pool_stop(&io->pool.recv_pool_nb);
 	dnet_work_pool_stop(&io->pool.recv_pool);
-
-	for (j = 0; j < io->backends_count; ++j) {
-		struct dnet_backend_io *backend_io = io->backends[j];
-		if (backend_io) {
-			if (backend_io->pool.recv_pool.pool)
-				dnet_work_pool_stop(&backend_io->pool.recv_pool);
-			if (backend_io->pool.recv_pool_nb.pool)
-				dnet_work_pool_stop(&backend_io->pool.recv_pool_nb);
-		}
-	}
 }
 
 void dnet_io_cleanup(struct dnet_node *n)
 {
 	struct dnet_io *io = n->io;
-	size_t i;
 
 	dnet_work_pool_cleanup(&io->pool.recv_pool_nb);
 	dnet_work_pool_place_cleanup(&io->pool.recv_pool_nb);
@@ -1389,22 +1189,8 @@ void dnet_io_cleanup(struct dnet_node *n)
 	dnet_work_pool_cleanup(&io->pool.recv_pool);
 	dnet_work_pool_place_cleanup(&io->pool.recv_pool);
 
-	for (i = 0; i < io->backends_count; ++i) {
-		struct dnet_backend_io *backend_io = io->backends[i];
-		if (backend_io) {
-			if (backend_io->pool.recv_pool.pool)
-				dnet_work_pool_cleanup(&backend_io->pool.recv_pool);
-			if (backend_io->pool.recv_pool_nb.pool)
-				dnet_work_pool_cleanup(&backend_io->pool.recv_pool_nb);
-			dnet_work_pool_place_cleanup(&backend_io->pool.recv_pool_nb);
-			dnet_work_pool_place_cleanup(&backend_io->pool.recv_pool);
-
-			free(backend_io);
-			io->backends[i] = NULL;
-		}
-	}
-	free(io->backends);
-	io->backends = NULL;
+	if (io->backends_manager || io->pools_manager)
+		dnet_backends_destroy(n);
 
 	dnet_io_cleanup_states(n);
 

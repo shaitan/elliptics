@@ -17,68 +17,34 @@
  * along with Elliptics.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-
 #include "config.hpp"
 
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/socket.h>
-#include <sys/time.h>
-#include <sys/syscall.h>
-
-#include <ctype.h>
-#include <fcntl.h>
-#include <errno.h>
 #include <malloc.h>
-#include <signal.h>
-#include <stdarg.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <syslog.h>
-#include <time.h>
-#include <unistd.h>
 
-#include <algorithm>
-#include <fstream>
+#include <unordered_set>
 
-#include "elliptics/packet.h"
-#include "elliptics/interface.h"
-#include "elliptics/backends.h"
-#include "elliptics/error.hpp"
-#include "elliptics/session.hpp"
-
-#include "library/elliptics.h"
-#include "monitor/monitor.h"
-#include "monitor/monitor.hpp"
-#include "cache/cache.hpp"
-
-#include <boost/lexical_cast.hpp>
-
-#include <type_traits>
-
-#include <blackhole/registry.hpp>
 #include <blackhole/config/json.hpp>
+#include <blackhole/registry.hpp>
+#include <blackhole/record.hpp>
+#include <blackhole/root.hpp>
+#include <blackhole/wrapper.hpp>
+
+#include <kora/config.hpp>
 
 #include "common.h"
 
+#include "elliptics/session.hpp"
+#include "library/backend.h"
+#include "library/logger.hpp"
+#include "monitor/monitor.hpp"
+
 namespace ioremap { namespace elliptics { namespace config {
 
-extern "C" dnet_config_data *dnet_config_data_create()
-{
-	config_data *data = new config_data;
+extern "C" void dnet_config_data_destroy(struct dnet_config_data *config) {
+	if (!config)
+		return;
 
-	memset(static_cast<dnet_config_data *>(data), 0, sizeof(dnet_config_data));
-
-	data->backends = &data->backends_guard;
-	data->destroy_config_data = dnet_config_data_destroy;
-
-	return data;
-}
-
-extern "C" void dnet_config_data_destroy(dnet_config_data *public_data)
-{
-	config_data *data = static_cast<config_data *>(public_data);
+	auto data = static_cast<config_data *>(config);
 
 	free(data->cfg_addrs);
 
@@ -86,22 +52,20 @@ extern "C" void dnet_config_data_destroy(dnet_config_data *public_data)
 }
 
 static blackhole::root_logger_t make_logger(config_data *data) {
-	auto &level = data->logger_level;
+	auto root = blackhole::registry::configured()
+	                    ->builder<blackhole::config::json_t>(std::istringstream{data->logger_value})
+	                    .build("core");
 
-	auto log = blackhole::registry::configured()
-		->builder<blackhole::config::json_t>(std::istringstream{data->logger_value})
-		.build("core");
-
-	blackhole::root_logger_t root{std::move(log)};
+	const auto &level = data->logger_level;
 	root.filter([&level](const blackhole::record_t &record) {
-		return log_filter(record, level);
+		return log_filter(record.severity(), level);
 	});
 	return root;
 }
 
 static void parse_logger(config_data *data, const kora::config_t &logger) {
-	const auto level = logger.at("level", std::string{"info"});
 	try {
+		const auto level = logger.at<std::string>("level", "info");
 		data->logger_level = dnet_log_parse_level(level.c_str());
 	} catch (std::exception &e) {
 		throw config_error() << "failed to parse log level: " << e.what();
@@ -114,15 +78,16 @@ static void parse_logger(config_data *data, const kora::config_t &logger) {
 	}
 
 	try {
-		data->root_logger =
-		        std::unique_ptr<blackhole::root_logger_t>(new blackhole::root_logger_t(make_logger(data)));
+		data->root_logger.reset(new blackhole::root_logger_t(make_logger(data)));
 
-		std::unique_ptr<dnet_logger> wrapper{
-		        new blackhole::wrapper_t(*data->root_logger, {{"source", "elliptics"}})};
+		data->logger.reset([&data] {
+			std::unique_ptr<dnet_logger> base_wrapper{
+			        new blackhole::wrapper_t(*data->root_logger, {{"source", "elliptics"}})};
 
-		std::unique_ptr<dnet_logger> trace_wrapper(new trace_wrapper_t(std::move(wrapper)));
-
-		data->logger.reset(new backend_wrapper_t(std::move(trace_wrapper)));
+			std::unique_ptr<dnet_logger> trace_wrapper{new trace_wrapper_t{std::move(base_wrapper)}};
+			std::unique_ptr<dnet_logger> pool_wrapper{new pool_wrapper_t{std::move(trace_wrapper)}};
+			return new backend_wrapper_t(std::move(pool_wrapper));
+		}());
 
 		data->cfg_state.log = data->logger.get();
 	} catch (std::exception &e) {
@@ -135,13 +100,11 @@ struct dnet_addr_wrap {
 	int			addr_group;
 };
 
-static bool dnet_addr_wrap_less_than(const dnet_addr_wrap &w1, const dnet_addr_wrap &w2)
-{
+static bool dnet_addr_wrap_less_than(const dnet_addr_wrap &w1, const dnet_addr_wrap &w2) {
 	return w1.addr_group < w2.addr_group;
 }
 
-static void dnet_set_addr(config_data *data, const std::vector<std::string> &addresses)
-{
+static void dnet_set_addr(config_data *data, const std::vector<std::string> &addresses) {
 	if (addresses.empty())
 		return;
 
@@ -159,9 +122,8 @@ static void dnet_set_addr(config_data *data, const std::vector<std::string> &add
 			size_t group_index = address.find_first_of('-', delim_index);
 
 			if (group_index != std::string::npos) {
-				std::string group_str = address.substr(group_index + 1);
 				try {
-					group = boost::lexical_cast<int>(group_str);
+					group = stoi(address.substr(group_index + 1));
 				} catch (std::exception &exc) {
 					throw config_error() << "address group parse error: " << exc.what();
 				}
@@ -177,8 +139,8 @@ static void dnet_set_addr(config_data *data, const std::vector<std::string> &add
 			int err = dnet_parse_addr(address_copy.data(), &port, &family);
 
 			if (err) {
-				throw config_error() << *it << ": failed to parse address: " << strerror(-err)
-					<< ", " << boost::lexical_cast<std::string>(err);
+				throw config_error() << *it << ": failed to parse address: " << strerror(-err) << ", "
+				                     << err;
 			}
 
 			data->cfg_state.port = port;
@@ -193,14 +155,14 @@ static void dnet_set_addr(config_data *data, const std::vector<std::string> &add
 			err = dnet_fill_addr(&wrap.addr, address_copy.data(), port, SOCK_STREAM, IPPROTO_TCP);
 
 			if (err) {
-				throw config_error() << *it << ": could not resolve address: " << strerror(-err)
-					<< ", " << boost::lexical_cast<std::string>(err);
+				throw config_error() << *it << ": could not resolve address: " << strerror(-err) << ", "
+				                     << err;
 			}
 
 			wraps.push_back(wrap);
 		} catch (std::exception &exc) {
-			throw config_error() << "'options.address[" << std::distance(addresses.begin(), it)
-				<< "]', " << exc.what();
+			throw config_error() << "'options.address[" << std::distance(addresses.begin(), it) << "]', "
+			                     << exc.what();
 		}
 	}
 
@@ -211,14 +173,14 @@ static void dnet_set_addr(config_data *data, const std::vector<std::string> &add
 		if (!data->cfg_addrs)
 			throw std::bad_alloc();
 
-		for (size_t i = 0; i < wraps.size(); ++i)
+		for (size_t i = 0; i < wraps.size(); ++i) {
 			data->cfg_addrs[i] = wraps[i].addr;
+		}
 		data->cfg_addr_num = wraps.size();
 	}
 }
 
-static int dnet_set_malloc_options(config_data *data, unsigned long long value)
-{
+static int dnet_set_malloc_options(config_data *data, unsigned long long value) {
 	int err, thr = value;
 
 	err = mallopt(M_MMAP_THRESHOLD, thr);
@@ -232,14 +194,13 @@ static int dnet_set_malloc_options(config_data *data, unsigned long long value)
 }
 
 uint64_t parse_queue_timeout(const kora::config_t &options) {
-	if (!options.has("queue_timeout")) {
+	if (!options.has("queue_timeout"))
 		return 0;
-	}
 
 	const auto timeout = options.at<std::string>("queue_timeout");
 	const uint64_t queue_timeout = strtoul(timeout.c_str(), NULL, 0);
 
-	const auto scale = [&timeout] () {
+	const auto scale = [&timeout]() {
 		constexpr uint64_t microsecond = 1;
 		constexpr uint64_t millisecond = 1000 * microsecond;
 		constexpr uint64_t second = 1000 * millisecond;
@@ -248,7 +209,7 @@ uint64_t parse_queue_timeout(const kora::config_t &options) {
 		constexpr uint64_t day = 24 * hour;
 		constexpr uint64_t week = 7 * day;
 
-		auto check = [&timeout] (const std::string &name) {
+		auto check = [&timeout](const std::string &name) {
 			return timeout.find(name) != std::string::npos;
 		};
 
@@ -266,11 +227,9 @@ uint64_t parse_queue_timeout(const kora::config_t &options) {
 	return queue_timeout * scale;
 }
 
-void parse_options(config_data *data, const kora::config_t &options)
-{
-	if (options.has("mallopt_mmap_threshold")) {
+static void parse_options(config_data *data, const kora::config_t &options) {
+	if (options.has("mallopt_mmap_threshold"))
 		dnet_set_malloc_options(data, options.at<int>("mallopt_mmap_threshold"));
-	}
 
 	data->cfg_state.wait_timeout = options.at("wait_timeout", 0u);
 	data->cfg_state.check_timeout = options.at("check_timeout", 0l);
@@ -300,10 +259,8 @@ void parse_options(config_data *data, const kora::config_t &options)
 		}
 	}
 
-	if (options.has("monitor")) {
-		const auto monitor = options["monitor"];
-		data->monitor_config = ioremap::monitor::monitor_config::parse(monitor);
-	}
+	if (options.has("monitor"))
+		data->monitor_config = ioremap::monitor::monitor_config::parse(options["monitor"]);
 
 	if (options.has("handystats_config")) {
 		data->cfg_state.handystats_config = strdup(options.at<std::string>("handystats_config").c_str());
@@ -311,71 +268,22 @@ void parse_options(config_data *data, const kora::config_t &options)
 			throw std::bad_alloc();
 	}
 
-	if (options.has("cache")) {
-		const auto cache = options["cache"];
-		data->cache_config = ioremap::cache::cache_config::parse(cache);
-	}
+	if (options.has("cache"))
+		data->cache_config = ioremap::cache::cache_config::parse(options["cache"]);
 
 	data->queue_timeout = parse_queue_timeout(options);
 }
 
-std::shared_ptr<dnet_backend_info>
-dnet_parse_backend(config_data *data, uint32_t backend_id, const kora::config_t &backend) {
-	auto info = std::make_shared<dnet_backend_info>(*data->logger->inner_logger(), backend_id);
-
-	info->enable_at_start = backend.at<bool>("enable", true);
-	info->read_only_at_start = backend.at<bool>("read_only", false);
-	info->state = DNET_BACKEND_DISABLED;
-	info->history = backend.at("history", std::string());
-
-	if (info->enable_at_start) {
-		// It's parsed to check configuration at start
-		// It will be reparsed again at backend's initialization anyway
-		info->parse(data, backend);
-	}
-
-	return info;
-}
-
-void parse_backends(config_data *data, const kora::config_t &backends)
-{
-	std::set<uint32_t> backends_ids;
-	auto config_backends = data->backends;
-
-	for (size_t index = 0; index < backends.size(); ++index) {
-		const auto backend = backends[index];
-		const uint32_t backend_id = backend.at<uint32_t>("backend_id");
-
-		// Check if this is first backend with such backend_id
-		if (!backends_ids.insert(backend_id).second) {
-			throw ioremap::elliptics::config::config_error()
-				<< backend["backend_id"].path()
-				<< " duplicates one of previous backend_id";
-		}
-
-		if (!config_backends->get_backend(backend_id)) {
-			auto info = dnet_parse_backend(data, backend_id, backend);
-			if (info) {
-				config_backends->add_backend(info);
-			}
-		}
-	}
-}
-
-extern "C" struct dnet_node *dnet_parse_config(const char *file, int mon)
-{
+extern "C" struct dnet_node *dnet_parse_config(const char *file, int mon) {
 	dnet_node *node = NULL;
 	config_data *data = NULL;
 
 	try {
-		data = static_cast<config_data *>(dnet_config_data_create());
+		data = new(std::nothrow) config_data{file};
 		if (!data)
 			throw std::bad_alloc();
 
-		data->config_path = file;
-
-		auto parser = data->parse_config();
-		const auto root = parser->root();
+		const auto root = data->parse_config()->root();
 		const auto logger = root["logger"];
 		const auto options = root["options"];
 		const auto backends = root["backends"];
@@ -386,7 +294,7 @@ extern "C" struct dnet_node *dnet_parse_config(const char *file, int mon)
 
 		parse_logger(data, logger);
 		parse_options(data, options);
-		parse_backends(data, backends);
+		data->parse_backends(backends);
 
 		if (data->daemon_mode && !mon)
 			dnet_redirect_std_stream_to_dev_null();
@@ -398,9 +306,11 @@ extern "C" struct dnet_node *dnet_parse_config(const char *file, int mon)
 		if (!node)
 			throw std::runtime_error("failed to create node");
 
-		static_assert(sizeof(dnet_addr) == sizeof(address), "Size of dnet_addr and size of address must be equal");
-		if (data->remotes.size() != 0) {
-			int err = dnet_add_state(node, reinterpret_cast<const dnet_addr *>(data->remotes.data()), data->remotes.size(), 0);
+		static_assert(sizeof(dnet_addr) == sizeof(address),
+		              "Size of dnet_addr and size of address must be equal");
+		if (!data->remotes.empty()) {
+			const int err = dnet_add_state(node, reinterpret_cast<const dnet_addr *>(data->remotes.data()),
+			                               data->remotes.size(), 0);
 			if (err < 0)
 				DNET_LOG_WARNING(node->log, "Failed to connect to remote nodes: {}", err);
 		}
@@ -425,63 +335,114 @@ extern "C" struct dnet_node *dnet_parse_config(const char *file, int mon)
 		}
 	}
 
-	if (node)
+	if (node) {
 		dnet_server_node_destroy(node);
-	else if (data)
+	} else if (data) {
 		dnet_config_data_destroy(data);
+	}
 
 	return NULL;
 }
 
-extern "C" int dnet_node_reset_log(struct dnet_node *n)
-{
-	if (!n || !n->config_data || dnet_need_exit(n)) {
+extern "C" int dnet_node_reset_log(struct dnet_node *n) {
+	if (!n || !n->config_data || dnet_need_exit(n))
 		return -EINVAL;
-	}
 
-	static_cast<config_data *>(n->config_data)->reset_logger();
+	dnet_node_get_config_data(n)->reset_logger();
 	return 0;
 }
 
-extern "C" int dnet_node_set_verbosity(struct dnet_node *n, enum dnet_log_level level) {
-	if (level < 0 || level > DNET_LOG_ERROR) {
+extern "C" int dnet_node_set_verbosity(struct dnet_node *node, enum dnet_log_level level) {
+	if (level < 0 || level > DNET_LOG_ERROR)
 		return -EINVAL;
-	}
 
-	if (!n || !n->config_data || dnet_need_exit(n)) {
+	if (!node || !node->config_data || dnet_need_exit(node))
 		return -EINVAL;
-	}
 
-	static_cast<config_data *>(n->config_data)->logger_level = level;
-	n->config_data->backends->set_verbosity((dnet_log_level)level);
+	dnet_node_get_config_data(node)->logger_level = level;
+	node->io->backends_manager->set_verbosity(level);
 	return 0;
 }
 
-config_data::config_data() {
-	dnet_empty_time(&config_timestamp);
+static io_pool_config parse_io_pool_config(const config_data &data, const kora::config_t &config) {
+	return {config.at("io_thread_num", data.cfg_state.io_thread_num),
+	        config.at("nonblocking_io_thread_num", data.cfg_state.nonblocking_io_thread_num)};
+}
+
+static uint64_t parse_queue_timeout(const config_data &data, const kora::config_t &config) {
+	return config.has("queue_timeout") ? config::parse_queue_timeout(config) : data.queue_timeout;
+}
+
+static dnet_config_backend &get_config_backend(const kora::config_t &config) {
+	static const std::unordered_map<std::string, dnet_config_backend *> backends = {
+	        {"blob", dnet_eblob_backend_info()}};
+
+	auto it = backends.find(config.at<std::string>("type"));
+	if (it == backends.end())
+		throw ioremap::elliptics::config::config_error() << config["type"].path() << " is unknown backend";
+
+	return *it->second;
+}
+
+static boost::optional<cache::cache_config> parse_cache_config(const config_data &data, const kora::config_t &config) {
+	using cache::cache_config;
+	return config.has("cache") ? cache_config::parse(config["cache"]) : data.cache_config;
+}
+
+backend_config::backend_config(const config_data &data, const kora::config_t &config)
+: raw_config{kora::to_json(config.underlying_object())}
+, backend_id{config.at<uint32_t>("backend_id")}
+, group_id{config.at<uint32_t>("group")}
+, history{config.at<std::string>("history")}
+, enable_at_start{config.at<bool>("enable", true)}
+, read_only_at_start{config.at<bool>("read_only", false)}
+, pool_id{config.at<std::string>("pool_id", "")}
+, pool_config(parse_io_pool_config(data, config))
+, queue_timeout{parse_queue_timeout(data, config)}
+, cache_config{parse_cache_config(data, config)}
+, config_backend(get_config_backend(config))
+, config_backend_buffer(config_backend.size, '\0') {
+	config_backend.data = config_backend_buffer.data();
+	for (int i = 0; i < config_backend.num; ++i) {
+		const auto &entry = config_backend.ent[i];
+		if (!config.has(entry.key))
+			continue;
+
+		const auto value = [&]() {
+			std::ostringstream stream;
+			stream << config[entry.key];
+			return stream.str();
+		}();
+
+		entry.callback(&config_backend, entry.key, value.data());
+	}
+}
+
+config_data::config_data(std::string path)
+: m_config_path(std::move(path)) {
+	memset(static_cast<dnet_config_data *>(this), 0, sizeof(dnet_config_data));
+	dnet_empty_time(&m_config_timestamp);
 }
 
 std::shared_ptr<kora::config_parser_t> config_data::parse_config() {
 	struct stat st;
-	dnet_time ts;
 	memset(&st, 0, sizeof(st));
-	if (stat(config_path.c_str(), &st) != 0) {
-		int err = -errno;
-		throw config_error() << "failed to get stat of config file'" << config_path << "': " << strerror(-err);
+	if (stat(m_config_path.c_str(), &st) != 0) {
+		const int err = -errno;
+		throw config_error() << "failed to get stat of config file'" << m_config_path
+		                     << "': " << strerror(-err);
 	}
 
-	ts.tsec = st.st_mtime;
-	ts.tnsec = 0;
+	dnet_time ts{/*tsec*/ (uint64_t)st.st_mtime, /*tnsec*/ 0};
 
-	std::unique_lock<std::mutex> locker(parser_mutex);
-	if (dnet_time_is_empty(&config_timestamp) ||
-	    dnet_time_before(&config_timestamp, &ts)) {
-		config_timestamp = ts;
-		parser = std::make_shared<kora::config_parser_t>();
-		parser->open(config_path);
-		return parser;
+	std::unique_lock<std::mutex> locker(m_parser_mutex);
+	if (dnet_time_is_empty(&m_config_timestamp) || dnet_time_before(&m_config_timestamp, &ts)) {
+		m_config_timestamp = ts;
+		m_parser = std::make_shared<kora::config_parser_t>();
+		m_parser->open(m_config_path);
+		return m_parser;
 	} else {
-		return parser;
+		return m_parser;
 	}
 }
 
@@ -491,4 +452,54 @@ void config_data::reset_logger() {
 	DNET_LOG_INFO(logger, "logger has been reset");
 }
 
-} } } // namespace ioremap::elliptics::config
+std::shared_ptr<backend_config> config_data::get_backend_config(uint32_t backend_id) {
+	auto root = parse_config()->root();
+	if (!root.has("backends"))
+		return nullptr;
+
+	const auto config = root["backends"];
+	for (size_t index = 0; index < config.size(); ++index) {
+		if (config[index].at<uint32_t>("backend_id") == backend_id)
+			return std::make_shared<backend_config>(*this, config[index]);
+	}
+
+	return nullptr;
+}
+
+io_pool_config config_data::get_io_pool_config(const std::string &pool_id) {
+	const io_pool_config default_config = {cfg_state.io_thread_num, cfg_state.nonblocking_io_thread_num};
+
+	const auto &root = parse_config()->root();
+	if (!root.has("options"))
+		return default_config;
+
+	const auto &options = root["options"];
+	if (!options.has("io_pools"))
+		return default_config;
+
+	const auto &io_pools = options["io_pools"];
+	if (!io_pools.has(pool_id))
+		return default_config;
+
+	return parse_io_pool_config(*this, io_pools[pool_id]);
+}
+
+void config_data::parse_backends(const kora::config_t &config) {
+	std::unordered_set<uint32_t> backend_ids;
+	backend_ids.reserve(config.size());
+	backends.reserve(config.size());
+	for (size_t index = 0; index < config.size(); ++index) {
+		const auto &backend = config[index];
+		const uint32_t backend_id = backend.at<uint32_t>("backend_id");
+
+		// check backends' uniqueness
+		if (!backend_ids.emplace(backend_id).second) {
+			throw ioremap::elliptics::config::config_error() << backend["backend_id"].path()
+			                                                 << " duplicates one of previous backend_id";
+		}
+
+		backends.emplace_back(std::make_shared<backend_config>(*this, backend));
+	}
+}
+
+}}} // namespace ioremap::elliptics::config

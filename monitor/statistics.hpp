@@ -28,7 +28,7 @@
 
 #include "rapidjson/document.h"
 
-#include "../library/elliptics.h"
+#include "library/elliptics.h"
 
 #include "monitor.h"
 #include "stat_provider.hpp"
@@ -38,47 +38,6 @@
 namespace ioremap { namespace monitor {
 
 class monitor;
-
-/*!
- * \internal
- *
- * Raw provide which wraps C provider for using in statistics
- */
-class raw_provider : public stat_provider {
-public:
-
-	/*!
-	 * \internal
-	 *
-	 * Constructor: initializes provider by C provider \a stat
-	 */
-	raw_provider(stat_provider_raw stat)
-	: m_stat(stat)
-	{}
-
-	/*!
-	 * \internal
-	 *
-	 * Destructor: calls stopping C provider
-	 */
-	virtual ~raw_provider() {
-		m_stat.stop(m_stat.stat_private);
-	}
-
-	/*!
-	 * \internal
-	 *
-	 * Returns json string of the real provider statistics
-	 * \a categories - categories which statistics should be included to json
-	 */
-	virtual std::string json(uint64_t categories) const {
-		auto json = m_stat.json(m_stat.stat_private, categories);
-		return json ? json : std::string();
-	}
-
-private:
-	stat_provider_raw	m_stat;
-};
 
 struct base_counter {
 	uint64_t successes;
@@ -138,6 +97,8 @@ class command_stats {
 public:
 	command_stats();
 
+	void clear();
+
 	/*!
 	 * Adds executed command properties to different command statistics
 	 * \a cmd - identifier of the command
@@ -154,8 +115,9 @@ public:
 	 * Fills \a a stat_value by commands statistics and returns it
 	 * \a allocator - document allocator that is required by rapidjson
 	 */
-	rapidjson::Value& commands_report(dnet_node *node, rapidjson::Value &stat_value,
-	                                  rapidjson::Document::AllocatorType &allocator) const;
+	void commands_report(dnet_node *node,
+	                     rapidjson::Value &stat_value,
+	                     rapidjson::Document::AllocatorType &allocator) const;
 
 private:
 	/*!
@@ -220,25 +182,10 @@ public:
 	 * external statistics provider
 	 */
 	void add_provider(stat_provider *stat, const std::string &name);
-	void remove_provider(const std::string &name);
 
 	typedef std::shared_ptr<top_stats> top_stats_ptr;
 	top_stats_ptr get_top_stats() const { return m_top_stats; }
 private:
-	/*!
-	 * \internal
-	 * Fills \a stat_value by usefull vm statistics and returns it
-	 * \a allocator - document allocator that is required by rapidjson
-	 */
-	rapidjson::Value& vm_report(rapidjson::Value &stat_value,
-	                            rapidjson::Document::AllocatorType &allocator);
-
-	rapidjson::Value& proc_io_report(rapidjson::Value &stat_value,
-	                                 rapidjson::Document::AllocatorType &allocator);
-
-	rapidjson::Value& proc_stat(rapidjson::Value &stat_value,
-	                            rapidjson::Document::AllocatorType &allocator);
-
 	/*!
 	 * \internal
 	 *

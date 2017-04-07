@@ -21,6 +21,8 @@
 #include <inttypes.h>
 #include <condition_variable>
 
+#include <blackhole/wrapper.hpp>
+
 #include "example/eblob_backend.h"
 
 #include "elliptics/packet.h"
@@ -1000,11 +1002,11 @@ static iterator_callback make_iterator_server_send_callback(eblob_backend_config
 		data_pointer json, data;
 
 		const int backend_id = c->data.stat_id;
-		auto backend_io = dnet_get_backend_io(st->n->io, backend_id);
+		auto pool = dnet_backend_get_pool(st->n, backend_id);
 
 		dnet_id id;
 		dnet_setup_id(&id, cmd->id.group_id, info->key.id);
-		dnet_oplock_guard oplock_guard{backend_io, &id};
+		dnet_oplock_guard oplock_guard{pool, &id};
 
 		if (info->jhdr.size) {
 			json = data_pointer::allocate(info->jhdr.size);
@@ -1550,12 +1552,18 @@ int blob_bulk_read_new(struct eblob_backend_config *c, void *state, struct dnet_
 
 	auto st = reinterpret_cast<dnet_net_state *>(state);
 	const int backend_id = c->data.stat_id;
-	auto backend_io = dnet_get_backend_io(st->n->io, backend_id);
-	if (!backend_io) {
-		DNET_LOG_ERROR(c->blog, "EBLOB: {}: couldn't find backend_io for backend_id: {}",
+
+	auto backend = st->n->io->backends_manager->get(backend_id);
+	if (!backend)
+		return -ENOTSUP;
+
+	auto pool = backend->io_pool();
+	if (!pool) {
+		DNET_LOG_ERROR(c->blog, "EBLOB: {}: couldn't find pool for backend_id: {}",
 			       __func__, backend_id);
 		return -EINVAL;
 	}
+
 
 	dnet_bulk_read_request bulk_request;
 	deserialize(data_pointer::from_raw(data, cmd->size), bulk_request);
@@ -1581,7 +1589,7 @@ int blob_bulk_read_new(struct eblob_backend_config *c, void *state, struct dnet_
 
 		const bool last_read = i >= (num_keys - 1);
 		{
-			dnet_oplock_guard oplock_guard{backend_io, &cmd_copy.id};
+			dnet_oplock_guard oplock_guard{pool, &cmd_copy.id};
 			err = blob_read_new_impl(c, state, &cmd_copy, &read_stats, request, last_read);
 		}
 		if (err) {
@@ -1594,8 +1602,8 @@ int blob_bulk_read_new(struct eblob_backend_config *c, void *state, struct dnet_
 		gettimeofday(&end, nullptr);
 		read_stats.handle_time = DIFF(start, end);
 
-		dnet_backend_command_stats_update(nullptr, backend_io, &cmd_copy, read_stats.size, 0, err,
-						  read_stats.handle_time);
+		backend->command_stats().command_counter(cmd_copy.cmd, cmd_copy.trans, err, /*handled_in_cache*/ 0,
+		                                         read_stats.size, read_stats.handle_time);
 	}
 
 	return 0;

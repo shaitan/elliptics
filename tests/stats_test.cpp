@@ -14,8 +14,8 @@
  */
 
 #include "test_base.hpp"
-#include "../monitor/event_stats.hpp"
-#include "../monitor/monitor.hpp"
+#include "monitor/event_stats.hpp"
+#include "monitor/monitor.hpp"
 
 #define BOOST_TEST_NO_MAIN
 #define BOOST_TEST_ALTERNATIVE_INIT_API

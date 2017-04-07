@@ -18,6 +18,8 @@
 #include "library/logger.hpp"
 #include <algorithm>
 
+#include <blackhole/attribute.hpp>
+
 #define BOOST_TEST_NO_MAIN
 #define BOOST_TEST_ALTERNATIVE_INIT_API
 #include <boost/test/included/unit_test.hpp>

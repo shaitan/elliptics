@@ -17,6 +17,9 @@
  * along with Elliptics.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
+
 #include <sys/epoll.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -326,57 +329,6 @@ void dnet_io_req_free(struct dnet_io_req *r)
 	free(r);
 }
 
-static int dnet_wait(struct dnet_net_state *st, unsigned int events, long timeout)
-{
-	struct pollfd pfd;
-	int err;
-
-	pfd.fd = st->read_s;
-	pfd.revents = 0;
-	pfd.events = events;
-
-	err = poll(&pfd, 1, timeout);
-	if (err < 0) {
-		if (errno == EAGAIN || errno == EINTR) {
-			err = -EAGAIN;
-			goto out_exit;
-		}
-
-		dnet_log(st->n, DNET_LOG_ERROR, "Failed to wait for descriptor: err: %d, socket: %d.",
-				err, st->read_s);
-		err = -errno;
-		goto out_exit;
-	}
-
-	if (err == 0) {
-		err = -EAGAIN;
-		goto out_exit;
-	}
-
-	if (pfd.revents & (POLLRDHUP | POLLERR | POLLHUP | POLLNVAL)) {
-		dnet_log(st->n, DNET_LOG_ERROR, "Connection reset by peer: sock: %d, revents: 0x%x.",
-			st->read_s, pfd.revents);
-		err = -ECONNRESET;
-		goto out_exit;
-	}
-
-	if (pfd.revents & events) {
-		err = 0;
-		goto out_exit;
-	}
-
-	dnet_log(st->n, DNET_LOG_ERROR, "Socket reported error: sock: %d, revents: 0x%x.",
-			st->read_s, pfd.revents);
-	err = -EINVAL;
-out_exit:
-	if (st->n->need_exit || st->__need_exit) {
-		dnet_log(st->n, DNET_LOG_ERROR, "Need to exit: node: %d, state: %d.", st->n->need_exit, st->__need_exit);
-		err = -EIO;
-	}
-
-	return err;
-}
-
 ssize_t dnet_send_nolock(struct dnet_net_state *st, void *data, uint64_t size)
 {
 	ssize_t err = 0;
@@ -522,43 +474,6 @@ err_out_put:
 	return err;
 }
 
-int dnet_recv(struct dnet_net_state *st, void *data, unsigned int size)
-{
-	int err;
-	int wait = st->n->wait_ts.tv_sec;
-
-	while (size) {
-		err = dnet_wait(st, POLLIN, 1000);
-		if (err < 0) {
-			if (err == -EAGAIN) {
-				if (--wait > 0)
-					continue;
-
-				err = -ETIMEDOUT;
-			}
-			return err;
-		}
-
-		err = recv(st->read_s, data, size, MSG_DONTWAIT);
-		if (err < 0) {
-			DNET_ERROR(st->n, "Failed to recv packet: size: %u", size);
-			return err;
-		}
-
-		if (err == 0) {
-			dnet_log(st->n, DNET_LOG_ERROR, "dnet_recv: peer %s has disconnected.",
-					dnet_addr_string(&st->addr));
-			return -ECONNRESET;
-		}
-
-		data += err;
-		size -= err;
-		wait = st->n->wait_ts.tv_sec;
-	}
-
-	return 0;
-}
-
 int dnet_add_reconnect_state(struct dnet_node *n, const struct dnet_addr *addr, unsigned int join_state)
 {
 	struct dnet_addr_storage *a, *it;
@@ -662,7 +577,7 @@ static int dnet_process_control(struct dnet_net_state *st, struct dnet_cmd *cmd,
 	}
 }
 
-int dnet_process_recv(struct dnet_backend_io *backend, struct dnet_net_state *st, struct dnet_io_req *r)
+int dnet_process_recv(struct dnet_net_state *st, struct dnet_io_req *r)
 {
 	int err = 0;
 	struct dnet_node *n = st->n;
@@ -773,7 +688,7 @@ int dnet_process_recv(struct dnet_backend_io *backend, struct dnet_net_state *st
 		dnet_state_put(forward_state);
 
 		HANDY_COUNTER_INCREMENT("io.cmds", 1);
-		err = dnet_process_cmd_raw(backend, st, cmd, r->data, 0, r->time.tv_sec * 1000000 + r->time.tv_usec);
+		err = dnet_process_cmd_raw(st, cmd, r->data, 0, r->time.tv_sec * 1000000 + r->time.tv_usec);
 	} else {
 		if (!forward_state) {
 			err = -ENXIO;
@@ -1335,7 +1250,7 @@ int dnet_send_request(struct dnet_net_state *st, struct dnet_io_req *r)
 
 	if (1) {
 		struct dnet_cmd *cmd = r->header ? r->header : r->data;
-		dnet_node_set_trace_id(cmd->trace_id, cmd->flags & DNET_FLAGS_TRACE_BIT);
+		dnet_logger_set_trace_id(cmd->trace_id, cmd->flags & DNET_FLAGS_TRACE_BIT);
 		dnet_log(st->n, st->send_offset == 0 ? DNET_LOG_NOTICE : DNET_LOG_DEBUG,
 		         "%s: %s: sending trans: %lld -> %s/%d: size: %llu, cflags: %s, start-sent: %zd/%zd",
 		         dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), (unsigned long long)cmd->trans,
@@ -1388,7 +1303,7 @@ err_out_exit:
 		         dnet_addr_string(&st->addr), cmd->backend_id, (unsigned long long)cmd->size,
 		         dnet_flags_dump_cflags(cmd->flags), st->send_offset, total_size);
 	}
-	dnet_node_unset_trace_id();
+	dnet_logger_unset_trace_id();
 
 	if (total_size > sizeof(struct dnet_cmd)) {
 		cork = 0;

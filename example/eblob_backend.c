@@ -1569,7 +1569,7 @@ static int dnet_blob_config_init(struct dnet_config_backend *b, enum dnet_log_le
 	if (err)
 		goto err_out_last_read_lock_destroy;
 
-	eblob_set_trace_id_function(&dnet_node_get_trace_bit);
+	eblob_set_trace_id_function(&dnet_logger_get_trace_bit);
 
 	c->vm_total = st.vm_total * st.vm_total * 1024 * 1024;
 
@@ -1619,7 +1619,10 @@ static void dnet_blob_config_cleanup(struct dnet_config_backend *b)
 		eblob_backend_cleanup(c);
 
 	free(c->data.file);
+	c->data.file = NULL;
+
 	free(c->data.chunks_dir);
+	c->data.chunks_dir = NULL;
 }
 
 static void dnet_blob_set_verbosity(struct dnet_config_backend *b, enum dnet_log_level level) {

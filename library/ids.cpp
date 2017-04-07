@@ -13,6 +13,9 @@
  * GNU Lesser General Public License for more details.
  */
 
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
+
 #include <fcntl.h>
 
 #include <vector>
@@ -22,12 +25,15 @@
 #include "elliptics.h"
 #include "elliptics/interface.h"
 
-#include "../include/elliptics/session.hpp"
+#include "elliptics/session.hpp"
 
-int dnet_ids_update(struct dnet_node *n, int update_local, const char *file, struct dnet_addr *cfg_addrs, size_t backend_id)
-{
+int dnet_ids_update(struct dnet_node *n,
+                    int update_local,
+                    const char *file,
+                    struct dnet_addr *cfg_addrs,
+                    uint32_t backend_id) {
 	char remote_id[1024];
-	sprintf(remote_id, "elliptics_node_ids_%s_%zu", dnet_addr_string(cfg_addrs), backend_id);
+	sprintf(remote_id, "elliptics_node_ids_%s_%" PRIu32, dnet_addr_string(cfg_addrs), backend_id);
 
 	ioremap::elliptics::session session(n);
 

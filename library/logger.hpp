@@ -4,18 +4,21 @@
 
 #ifdef __cplusplus
 #include <atomic>
-#include <blackhole/record.hpp>
 #include <blackhole/extensions/facade.hpp>
 
 namespace ioremap { namespace elliptics {
 
-class wrapper_t: public dnet_logger {
+class wrapper_t : public dnet_logger {
 public:
 	wrapper_t(std::unique_ptr<dnet_logger> logger);
 
 	virtual void log(blackhole::severity_t severity, const blackhole::message_t &message);
-	virtual void log(blackhole::severity_t severity, const blackhole::message_t &message, blackhole::attribute_pack &pack);
-	virtual void log(blackhole::severity_t severity, const blackhole::lazy_message_t &message, blackhole::attribute_pack &pack);
+	virtual void log(blackhole::severity_t severity,
+	                 const blackhole::message_t &message,
+	                 blackhole::attribute_pack &pack);
+	virtual void log(blackhole::severity_t severity,
+	                 const blackhole::lazy_message_t &message,
+	                 blackhole::attribute_pack &pack);
 
 	blackhole::scope::manager_t &manager();
 
@@ -23,17 +26,24 @@ public:
 
 	dnet_logger *inner_logger();
 	dnet_logger *base_logger();
+
 private:
 	std::unique_ptr<dnet_logger> m_inner;
 };
 
-class trace_wrapper_t: public wrapper_t {
+class trace_wrapper_t : public wrapper_t {
 public:
 	trace_wrapper_t(std::unique_ptr<dnet_logger> logger);
 	virtual blackhole::attributes_t attributes();
 };
 
-class backend_wrapper_t: public wrapper_t {
+class pool_wrapper_t : public wrapper_t {
+public:
+	pool_wrapper_t(std::unique_ptr<dnet_logger> logger);
+	virtual blackhole::attributes_t attributes();
+};
+
+class backend_wrapper_t : public wrapper_t {
 public:
 	backend_wrapper_t(std::unique_ptr<dnet_logger> logger);
 	virtual blackhole::attributes_t attributes();
@@ -41,10 +51,12 @@ public:
 
 dnet_logger *get_base_logger(dnet_logger *logger);
 
-bool log_filter(const blackhole::record_t &record, int level);
+bool log_filter(const int severity, const int level);
 
+class session;
 struct trace_scope {
 	explicit trace_scope(uint64_t trace_id, bool trace_bit);
+	explicit trace_scope(const session &s);
 	~trace_scope();
 };
 
@@ -54,22 +66,24 @@ struct backend_scope {
 };
 
 std::string to_hex_string(uint64_t value);
-
 }} /* namespace ioremap::elliptics */
 
 extern "C"{
 #endif // __cplusplus
 
-void dnet_node_set_trace_id(uint64_t trace_id, int trace_bit);
-void dnet_node_unset_trace_id();
+void dnet_logger_set_trace_id(uint64_t trace_id, int trace_bit);
+void dnet_logger_unset_trace_id();
 
-uint64_t dnet_node_get_trace_bit();
+uint64_t dnet_logger_get_trace_bit();
 
-void dnet_node_set_backend_id(int backend_id);
-void dnet_node_unset_backend_id();
+void dnet_logger_set_backend_id(int backend_id);
+void dnet_logger_unset_backend_id();
+
+void dnet_logger_set_pool_id(const char *pool_id);
+void dnet_logger_unset_pool_id();
 
 void dnet_log_raw(dnet_logger *logger, enum dnet_log_level level, const char *format, ...)
-    __attribute__((format(printf, 3, 4)));
+        __attribute__((format(printf, 3, 4)));
 
 dnet_logger *dnet_node_get_logger(struct dnet_node *node);
 
@@ -102,7 +116,7 @@ template <class T> inline blackhole::logger_facade<dnet_logger> make_facade(T &&
 
 #define DNET_LOG(__node__, __severity__, ...)								\
 	do {												\
-		if (dnet_node_get_trace_bit() ||							\
+		if (dnet_logger_get_trace_bit() ||							\
 		    (enum dnet_log_level)(__severity__) >= dnet_node_get_verbosity(__node__)) { 	\
 			DNET_LOG_RAW(dnet_node_get_logger(__node__), __severity__, __VA_ARGS__);	\
 		}											\

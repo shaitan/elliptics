@@ -1,7 +1,7 @@
 #define TEST_DO_NOT_INCLUDE_PLACEHOLDERS
 
 #include "test_base.hpp"
-#include "../example/common.h"
+#include "example/common.h"
 
 #include "library/logger.hpp"
 
@@ -318,7 +318,7 @@ struct json_value_visitor : public boost::static_visitor<>
 	}
 };
 
-void server_config::write(const std::string &path) {
+void server_config::write(const std::string &path) const {
 	rapidjson::MemoryPoolAllocator<> allocator;
 
 	rapidjson::Value sevmap;

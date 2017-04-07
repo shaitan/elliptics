@@ -20,7 +20,7 @@
 #ifndef __DNET_STAT_PROVIDER_HPP
 #define __DNET_STAT_PROVIDER_HPP
 
-#include <string>
+#include "rapidjson/document.h"
 
 namespace ioremap { namespace monitor {
 
@@ -40,7 +40,9 @@ public:
 	 * Returns json string of the real provider statistics
 	 * \a categories - categories which statistics should be included to json
 	 */
-	virtual std::string json(uint64_t categories) const = 0;
+	virtual void statistics(uint64_t categories,
+	                        rapidjson::Value &value,
+	                        rapidjson::Document::AllocatorType &allocator) const = 0;
 
 	/*!
 	 * \internal

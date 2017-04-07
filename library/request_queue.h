@@ -28,7 +28,7 @@ public:
 	/*!
 	 * Constructor: initializes internal state properly
 	 */
-	dnet_request_queue(bool has_backend, uint64_t timeout);
+	dnet_request_queue();
 	/*!
 	 * Destructor: frees all dnet_locks_entry objects in /a m_lock_pool and destroys all requests in /a m_queue
 	 */
@@ -62,6 +62,11 @@ public:
 	 */
 	size_t size() const;
 
+	/*!
+	 * Notify all waiters (threads)
+	 */
+	void notify_all();
+
 private:
 	/*
 	 * Returns first available request with non-locked key from /a m_queue and saves request's key into /a m_locked_keys
@@ -86,7 +91,6 @@ private:
 	std::condition_variable m_queue_wait;
 
 	std::atomic_size_t m_queue_size;
-	uint64_t m_timeout;
 
 	typedef std::unordered_map<dnet_id, dnet_locks_entry *, size_t(*)(const dnet_id&), bool(*)(const dnet_id&, const dnet_id&)> locked_keys_t;
 	locked_keys_t m_locked_keys;
@@ -97,14 +101,14 @@ private:
 class dnet_oplock_guard
 {
 public:
-	dnet_oplock_guard(struct dnet_backend_io *backend_io, const struct dnet_id *id);
+	dnet_oplock_guard(struct dnet_io_pool *pool, const struct dnet_id *id);
 	~dnet_oplock_guard();
 
 	void lock();
 	void unlock();
 
 private:
-	struct dnet_backend_io *m_backend_io;
+	struct dnet_io_pool *m_pool;
 	const struct dnet_id *m_id;
 	bool m_locked;
 };
@@ -112,8 +116,8 @@ private:
 extern "C" {
 #endif // __cplusplus
 
-void *dnet_request_queue_create(struct dnet_node *n, const struct dnet_backend_io *backend);
-void dnet_request_queue_destroy(void *queue);
+void *dnet_request_queue_create();
+void dnet_request_queue_destroy(struct dnet_work_pool *pool);
 
 void dnet_push_request(struct dnet_work_pool *pool, struct dnet_io_req *req);
 struct dnet_io_req *dnet_pop_request(struct dnet_work_io *wio, const char *thread_stat_id);
@@ -121,8 +125,8 @@ void dnet_release_request(struct dnet_work_io *wio, const struct dnet_io_req *re
 
 size_t dnet_get_pool_queue_size(struct dnet_work_pool *pool);
 
-void dnet_oplock(struct dnet_backend_io *backend, const struct dnet_id *id);
-void dnet_opunlock(struct dnet_backend_io *backend, const struct dnet_id *id);
+void dnet_oplock(struct dnet_io_pool *pool, const struct dnet_id *id);
+void dnet_opunlock(struct dnet_io_pool *pool, const struct dnet_id *id);
 
 #ifdef __cplusplus
 } // extern "C"

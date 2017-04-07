@@ -19,6 +19,8 @@
 
 #include "statistics.hpp"
 
+#include <blackhole/attribute.hpp>
+
 #include "monitor.hpp"
 #include "cache/cache.hpp"
 #include "elliptics/backends.h"
@@ -38,15 +40,17 @@
 namespace ioremap { namespace monitor {
 
 static void ext_stat_json(const ext_counter &ext_stat,
-		rapidjson::Value &stat_value, rapidjson::Document::AllocatorType &allocator) {
+                          rapidjson::Value &stat_value,
+                          rapidjson::Document::AllocatorType &allocator) {
 	stat_value.AddMember("successes", ext_stat.counter.successes, allocator);
 	stat_value.AddMember("failures", ext_stat.counter.failures, allocator);
 	stat_value.AddMember("size", ext_stat.size, allocator);
 	stat_value.AddMember("time", ext_stat.time, allocator);
 }
 
-static void source_stat_json(const source_counter &source_stat, rapidjson::Value &stat_value,
-		rapidjson::Document::AllocatorType &allocator) {
+static void source_stat_json(const source_counter &source_stat,
+                             rapidjson::Value &stat_value,
+                             rapidjson::Document::AllocatorType &allocator) {
 	rapidjson::Value outside_stat(rapidjson::kObjectType);
 	ext_stat_json(source_stat.outside, outside_stat, allocator);
 	stat_value.AddMember("outside", outside_stat, allocator);
@@ -127,9 +131,12 @@ static void clients_stat_json(dnet_node *n, rapidjson::Value &stat_value,
 	pthread_mutex_unlock(&n->state_lock);
 }
 
-
 command_stats::command_stats()
-: m_cmd_stats(__DNET_CMD_MAX) {
+: m_cmd_stats(__DNET_CMD_MAX) {}
+
+void command_stats::clear() {
+	std::unique_lock<std::mutex> guard(m_cmd_stats_mutex);
+	memset(m_cmd_stats.data(), 0, sizeof(m_cmd_stats.front()) * m_cmd_stats.size());
 }
 
 void command_stats::command_counter(const int orig_cmd,
@@ -154,10 +161,11 @@ void command_stats::command_counter(const int orig_cmd,
 	source.time += time;
 }
 
-rapidjson::Value& command_stats::commands_report(dnet_node *node, rapidjson::Value &stat_value,
-		rapidjson::Document::AllocatorType &allocator) const {
+void command_stats::commands_report(dnet_node *node,
+                                    rapidjson::Value &stat_value,
+                                    rapidjson::Document::AllocatorType &allocator) const {
 	std::unique_lock<std::mutex> guard(m_cmd_stats_mutex);
-	std::vector<command_counters> tmp_stats = m_cmd_stats;
+	auto tmp_stats = m_cmd_stats;
 	guard.unlock();
 
 	for (int i = 1; i < __DNET_CMD_MAX; ++i) {
@@ -167,10 +175,7 @@ rapidjson::Value& command_stats::commands_report(dnet_node *node, rapidjson::Val
 			stat_value.AddMember(dnet_cmd_string(i), allocator, cmd_stat, allocator);
 		}
 	}
-
-	return stat_value;
 }
-
 
 void statistics::command_counter(const int cmd,
                                  const uint64_t trans,
@@ -195,12 +200,6 @@ void statistics::add_provider(stat_provider *stat, const std::string &name)
 {
 	std::unique_lock<std::mutex> guard(m_provider_mutex);
 	m_stat_providers.insert(make_pair(name, std::shared_ptr<stat_provider>(stat)));
-}
-
-void statistics::remove_provider(const std::string &name)
-{
-	std::unique_lock<std::mutex> guard(m_provider_mutex);
-	m_stat_providers.erase(name);
 }
 
 inline std::string convert_report(const rapidjson::Document &report)
@@ -228,6 +227,7 @@ std::string statistics::report(uint64_t categories)
 	report.AddMember("string_timestamp", dnet_print_time(&time), allocator);
 
 	report.AddMember("monitor_status", "enabled", allocator);
+	report.AddMember("categories", categories, allocator);
 
 	if (categories & DNET_MONITOR_COMMANDS) {
 		rapidjson::Value commands_value(rapidjson::kObjectType);
@@ -251,16 +251,13 @@ std::string statistics::report(uint64_t categories)
 	}
 
 	std::unique_lock<std::mutex> guard(m_provider_mutex);
-	for (auto it = m_stat_providers.cbegin(), end = m_stat_providers.cend(); it != end; ++it) {
-		auto json = it->second->json(categories);
-		if (json.empty())
-			continue;
-		rapidjson::Document value_doc(&allocator);
-		value_doc.Parse<0>(json.c_str());
-		report.AddMember(it->first.c_str(),
-		                 allocator,
-		                 static_cast<rapidjson::Value&>(value_doc),
-		                 allocator);
+	for (auto &item : m_stat_providers) {
+		const auto &provider_name = item.first;
+		const auto &provider = item.second;
+
+		rapidjson::Value value;
+		provider->statistics(categories, value, allocator);
+		report.AddMember(provider_name.c_str(), allocator, value, allocator);
 	}
 
 	DNET_LOG_DEBUG(m_monitor.node(), "monitor: finished generating json statistics for categories: {:x}",

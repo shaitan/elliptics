@@ -19,9 +19,6 @@
 
 #include "top.hpp"
 
-#include "rapidjson/document.h"
-#include "rapidjson/writer.h"
-#include "rapidjson/stringbuffer.h"
 #include "elliptics/interface.h"
 
 namespace ioremap { namespace monitor {
@@ -60,13 +57,13 @@ static void fill_top_stat(const key_stat_event &key_event,
 	stat_array.PushBack(key_stat, allocator);
 }
 
-std::string top_provider::json(uint64_t categories) const {
+void top_provider::statistics(uint64_t categories,
+                              rapidjson::Value &value,
+                              rapidjson::Document::AllocatorType &allocator) const {
 	if (!(categories & DNET_MONITOR_TOP))
-		return std::string();
+		return;
 
-	rapidjson::Document doc;
-	doc.SetObject();
-	auto &allocator = doc.GetAllocator();
+	value.SetObject();
 
 	std::vector<key_stat_event> top_size_keys;
 	auto& event_stats = m_top_stats->get_stats();
@@ -80,14 +77,9 @@ std::string top_provider::json(uint64_t categories) const {
 		fill_top_stat(key_stat, stat_array, allocator);
 	}
 
-	doc.AddMember("top_result_limit", m_top_stats->get_top_length(), allocator);
-	doc.AddMember("period_in_seconds", m_top_stats->get_period(), allocator);
-	doc.AddMember("top_by_size", stat_array, allocator);
-
-	rapidjson::StringBuffer buffer;
-	rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
-	doc.Accept(writer);
-	return buffer.GetString();
+	value.AddMember("top_result_limit", m_top_stats->get_top_length(), allocator);
+	value.AddMember("period_in_seconds", m_top_stats->get_period(), allocator);
+	value.AddMember("top_by_size", stat_array, allocator);
 }
 
 }} /* namespace ioremap::monitor */
