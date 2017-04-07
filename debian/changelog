@@ -1,3 +1,19 @@
+elliptics (2.27.2.0) unstable; urgency=medium
+
+  * cleanup code
+  * config: cleanup code
+  * use uint32_t for backend_id
+  * refactoring: remove unused code
+  * logger: small refactoring & cleanup
+  * logger: add trace_scope ctor from session
+  * logger: refactoring attributes and functions names
+  * backends: shareable io pools
+  * server send: small memory optimization
+  * new bulk_read race fix
+  * new bulk_read in python binding
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Fri, 07 Apr 2017 17:18:39 +0300
+
 elliptics (2.27.1.1) unstable; urgency=medium
 
   * new bulk_read command

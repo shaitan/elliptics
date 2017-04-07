@@ -3,7 +3,7 @@
 
 Summary:	Distributed hash table storage
 Name:		elliptics
-Version:	2.27.1.1
+Version:	2.27.2.0
 Release:	1%{?dist}
 
 License:	GPLv2+
@@ -131,6 +131,19 @@ rm -rf %{buildroot}
 
 
 %changelog
+* Fri Apr 07 2017 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.2.0
+- cleanup code
+- config: cleanup code
+- use uint32_t for backend_id
+- refactoring: remove unused code
+- logger: small refactoring & cleanup
+- logger: add trace_scope ctor from session
+- logger: refactoring attributes and functions names
+- backends: shareable io pools
+- server send: small memory optimization
+- new bulk_read race fix
+- new bulk_read in python binding
+
 * Thu Mar 16 2017 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.1.1
 - new bulk_read command
 - monitor: small refactoring
