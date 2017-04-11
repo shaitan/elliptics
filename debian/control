@@ -63,7 +63,7 @@ Description: Distributed hash table storage (debug files)
 
 Package: elliptics-dev
 Architecture: any
-Depends: elliptics-client2.27 (= ${Source-Version})
+Depends: ${shlibs:Depends}, ${misc:Depends}, elliptics-client2.27 (= ${Source-Version})
 Suggests: eblob (>= 0.23.11),
           libkora-util1 (= 1.1.0-rc1),
 Description: Distributed hash table storage (includes)
