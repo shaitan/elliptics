@@ -3,7 +3,7 @@
 
 Summary:	Distributed hash table storage
 Name:		elliptics
-Version:	2.27.2.0
+Version:	2.27.2.1
 Release:	1%{?dist}
 
 License:	GPLv2+
@@ -131,6 +131,9 @@ rm -rf %{buildroot}
 
 
 %changelog
+* Tue Apr 11 2017 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.2.1
+- debian: add shlibs:Depends, misc:Depends to elliptics-dev package
+
 * Fri Apr 07 2017 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.2.0
 - cleanup code
 - config: cleanup code
