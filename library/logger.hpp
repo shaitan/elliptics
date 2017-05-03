@@ -74,8 +74,6 @@ extern "C"{
 void dnet_logger_set_trace_id(uint64_t trace_id, int trace_bit);
 void dnet_logger_unset_trace_id();
 
-uint64_t dnet_logger_get_trace_bit();
-
 void dnet_logger_set_backend_id(int backend_id);
 void dnet_logger_unset_backend_id();
 
