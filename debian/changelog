@@ -1,3 +1,10 @@
+elliptics (2.27.2.2) unstable; urgency=medium
+
+  * depends: update handystats version to >= 1.11.4
+  * Move dnet_logger_get_trace_bit() to public header
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Wed, 31 May 2017 16:50:51 +0300
+
 elliptics (2.27.2.1) unstable; urgency=medium
 
   * debian: add shlibs:Depends, misc:Depends to elliptics-dev package

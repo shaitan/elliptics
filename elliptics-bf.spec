@@ -3,7 +3,7 @@
 
 Summary:	Distributed hash table storage
 Name:		elliptics
-Version:	2.27.2.1
+Version:	2.27.2.2
 Release:	1%{?dist}
 
 License:	GPLv2+
@@ -17,7 +17,7 @@ BuildRequires:	eblob-devel >= 0.23.11
 BuildRequires:  libblackhole-devel = 1.3.0
 BuildRequires:	libev-devel libtool-ltdl-devel
 BuildRequires:	cmake msgpack-devel python-msgpack
-BuildRequires:	handystats >= 1.11.0
+BuildRequires:	handystats >= 1.11.4
 
 %define boost_ver %{nil}
 
@@ -131,6 +131,10 @@ rm -rf %{buildroot}
 
 
 %changelog
+* Wed May 31 2017 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.2.2
+- depends: update handystats version to >= 1.11.4
+- Move dnet_logger_get_trace_bit() to public header
+
 * Tue Apr 11 2017 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.2.1
 - debian: add shlibs:Depends, misc:Depends to elliptics-dev package
 
