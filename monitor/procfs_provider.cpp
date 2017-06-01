@@ -19,6 +19,11 @@
 
 #include "procfs_provider.hpp"
 
+#include <linux/ethtool.h>
+#include <linux/sockios.h>
+#include <net/if.h>
+#include <sys/ioctl.h>
+
 #include <blackhole/attribute.hpp>
 
 #include "rapidjson/document.h"
@@ -122,6 +127,7 @@ struct net_stat {
 struct net_interface_stat {
 	struct net_stat rx;
 	struct net_stat tx;
+	int32_t speed;
 };
 
 static int fill_proc_net_stat(dnet_node *n, std::map<std::string, net_interface_stat> &st)
@@ -130,6 +136,10 @@ static int fill_proc_net_stat(dnet_node *n, std::map<std::string, net_interface_
 	net_interface_stat net_stat;
 	FILE *f;
 	int err = 0;
+	struct ifreq ifr;
+	struct ethtool_cmd ecmd;
+	ecmd.cmd = ETHTOOL_GSET;
+
 
 	f = fopen("/proc/net/dev", "r");
 	if (!f) {
@@ -162,6 +172,18 @@ static int fill_proc_net_stat(dnet_node *n, std::map<std::string, net_interface_
 		}
 
 		buf[strlen(buf)-1] = '\0'; // erase ':' after interface name
+		net_stat.speed = [&] () -> int32_t {
+			memset(&ifr, 0, sizeof(ifr));
+			strcpy(ifr.ifr_name, buf);
+			ifr.ifr_data = (caddr_t)&ecmd;
+			if (ioctl(n->st->accept_s, SIOCETHTOOL, &ifr) == -1) {
+				DNET_LOG_ERROR(n, "Cannot get settings for device: {}: {} [{}]", buf,
+				               strerror(errno), errno);
+				return SPEED_UNKNOWN;
+			}
+			return ethtool_cmd_speed(&ecmd);
+		} ();
+
 		st.insert(std::make_pair(buf, net_stat));
 	}
 
@@ -288,6 +310,8 @@ static void fill_net(dnet_node *node,
 
 			fill_net_stat("receive", ns.rx, stat, allocator);
 			fill_net_stat("transmit", ns.tx, stat, allocator);
+
+			stat.AddMember("speed", ns.speed, allocator);
 
 			dev_stat.AddMember(name.c_str(), allocator, stat, allocator);
 		}
