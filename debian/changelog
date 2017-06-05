@@ -1,3 +1,9 @@
+elliptics (2.27.2.3) unstable; urgency=medium
+
+  * stats: add interfaces' speed to procfs/net
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Mon, 05 Jun 2017 10:52:36 +0300
+
 elliptics (2.27.2.2) unstable; urgency=medium
 
   * depends: update handystats version to >= 1.11.4

@@ -3,7 +3,7 @@
 
 Summary:	Distributed hash table storage
 Name:		elliptics
-Version:	2.27.2.2
+Version:	2.27.2.3
 Release:	1%{?dist}
 
 License:	GPLv2+
@@ -131,6 +131,9 @@ rm -rf %{buildroot}
 
 
 %changelog
+* Mon Jun 05 2017 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.2.3
+- stats: add interfaces' speed to procfs/net
+
 * Wed May 31 2017 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.2.2
 - depends: update handystats version to >= 1.11.4
 - Move dnet_logger_get_trace_bit() to public header
