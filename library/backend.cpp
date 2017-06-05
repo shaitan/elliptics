@@ -622,8 +622,10 @@ int dnet_backend::enable() {
 	}
 
 	auto config = dnet_node_get_config_data(m_node)->get_backend_config(m_config->backend_id);
-	if (!config)
-		return -ENOENT;
+	if (!config) {
+		DNET_LOG_ERROR(m_node, "dnet_backend::enable(): backend_id: {}, backend's config not found");
+		return fail(-ENOENT);
+	}
 
 	m_config = std::move(config);
 
