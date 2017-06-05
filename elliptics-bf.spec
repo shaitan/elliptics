@@ -3,7 +3,7 @@
 
 Summary:	Distributed hash table storage
 Name:		elliptics
-Version:	2.27.2.3
+Version:	2.27.2.4
 Release:	1%{?dist}
 
 License:	GPLv2+
@@ -131,6 +131,9 @@ rm -rf %{buildroot}
 
 
 %changelog
+* Mon Jun 05 2017 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.2.4
+- backends: reset backend's state in case of error
+
 * Mon Jun 05 2017 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.2.3
 - stats: add interfaces' speed to procfs/net
 
