@@ -3,7 +3,7 @@
 
 Summary:	Distributed hash table storage
 Name:		elliptics
-Version:	2.27.2.4
+Version:	2.27.2.5
 Release:	1%{?dist}
 
 License:	GPLv2+
@@ -131,6 +131,9 @@ rm -rf %{buildroot}
 
 
 %changelog
+* Wed Jun 07 2017 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.2.5
+- python: pass remotes as is in elliptics.create_node
+
 * Mon Jun 05 2017 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.2.4
 - backends: reset backend's state in case of error
 
