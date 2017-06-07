@@ -80,7 +80,7 @@ def create_node(elog=None, log_file='/dev/stderr', log_level=log_level.error,
         cfg.net_thread_num = net_thread_num
     n = Node(elog, cfg)
     try:
-        n.add_remotes(map(Address.from_host_port_family, remotes))
+        n.add_remotes(remotes)
     except:
         pass
     return n
