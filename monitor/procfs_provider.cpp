@@ -173,15 +173,15 @@ static int fill_proc_net_stat(dnet_node *n, std::map<std::string, net_interface_
 
 		buf[strlen(buf)-1] = '\0'; // erase ':' after interface name
 		net_stat.speed = [&] () -> int32_t {
-			memset(&ifr, 0, sizeof(ifr));
-			strcpy(ifr.ifr_name, buf);
-			ifr.ifr_data = (caddr_t)&ecmd;
-			if (ioctl(n->st->accept_s, SIOCETHTOOL, &ifr) == -1) {
-				DNET_LOG_ERROR(n, "Cannot get settings for device: {}: {} [{}]", buf,
-				               strerror(errno), errno);
+			// memset(&ifr, 0, sizeof(ifr));
+			// strcpy(ifr.ifr_name, buf);
+			// ifr.ifr_data = (caddr_t)&ecmd;
+			// if (ioctl(n->st->accept_s, SIOCETHTOOL, &ifr) == -1) {
+			// 	DNET_LOG_ERROR(n, "Cannot get settings for device: {}: {} [{}]", buf,
+			// 	               strerror(errno), errno);
 				return SPEED_UNKNOWN;
-			}
-			return ethtool_cmd_speed(&ecmd);
+			// }
+			// return ethtool_cmd_speed(&ecmd);
 		} ();
 
 		st.insert(std::make_pair(buf, net_stat));
