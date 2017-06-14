@@ -901,9 +901,10 @@ static void dnet_process_socket(const dnet_connect_state_ptr &state, epoll_event
 		socket->s = -1;
 
 		if (!st) {
-			DNET_LOG_ERROR(
-			        state->node, "Could not create state: {}, backends-num: {}, addr-num: {}, idx: {}",
-			        dnet_addr_string(&socket->addr), id_container->backends_count, cnt->addr_num, idx);
+			DNET_LOG_ERROR(state->node,
+			               "Could not create state: {}, backends-num: {}, addr-num: {}, idx: {}, err: {}",
+			               dnet_addr_string(&socket->addr), id_container->backends_count, cnt->addr_num,
+			               idx, err);
 
 			/* socket is closed already */
 			dnet_fail_socket(state, socket, err, false);
