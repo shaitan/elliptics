@@ -297,21 +297,25 @@ void dnet_schedule_io(struct dnet_node *n, struct dnet_io_req *r)
 	ssize_t backend_id = -1;
 	char thread_stat_id[255];
 
+	int log_level = DNET_LOG_INFO;
+	if (cmd->cmd == DNET_CMD_ITERATOR || cmd->cmd == DNET_CMD_ITERATOR_NEW)
+		log_level = DNET_LOG_DEBUG;
+
 	if (cmd->size > 0) {
-		dnet_log(r->st->n, DNET_LOG_INFO, "%s: %s: RECV cmd: %s, cmd-size: %" PRIu64
-		                                  ", nonblocking: %d, cflags: %s, trans: %" PRIu64 ", %s",
+		dnet_log(r->st->n, log_level, "%s: %s: RECV cmd: %s, cmd-size: %" PRIu64
+		                              ", nonblocking: %d, cflags: %s, trans: %" PRIu64 ", %s",
 		         dnet_state_dump_addr(r->st), dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), cmd->size,
 		         nonblocking, dnet_flags_dump_cflags(cmd->flags), cmd->trans, dnet_state_dump_recv_time(r->st));
 	} else if ((cmd->size == 0) && !(cmd->flags & DNET_FLAGS_MORE) && (cmd->flags & DNET_FLAGS_REPLY)) {
-		dnet_log(r->st->n, DNET_LOG_INFO,
+		dnet_log(r->st->n, log_level,
 		         "%s: %s: RECV ACK cmd: %s, nonblocking: %d, cflags: %s, trans: %" PRIu64 ", %s",
 		         dnet_state_dump_addr(r->st), dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), nonblocking,
 		         dnet_flags_dump_cflags(cmd->flags), cmd->trans, dnet_state_dump_recv_time(r->st));
 	} else {
 		int reply = !!(cmd->flags & DNET_FLAGS_REPLY);
 
-		dnet_log(r->st->n, DNET_LOG_INFO, "%s: %s: RECV cmd: %s, cmd-size: %" PRIu64
-		                                  ", nonblocking: %d, cflags: %s, trans: %" PRIu64 ", reply: %d, %s",
+		dnet_log(r->st->n, log_level, "%s: %s: RECV cmd: %s, cmd-size: %" PRIu64
+		                              ", nonblocking: %d, cflags: %s, trans: %" PRIu64 ", reply: %d, %s",
 		         dnet_state_dump_addr(r->st), dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), cmd->size,
 		         nonblocking, dnet_flags_dump_cflags(cmd->flags), cmd->trans, reply,
 		         dnet_state_dump_recv_time(r->st));
