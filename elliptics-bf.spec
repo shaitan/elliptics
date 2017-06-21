@@ -3,7 +3,7 @@
 
 Summary:	Distributed hash table storage
 Name:		elliptics
-Version:	2.27.2.5
+Version:	2.27.2.6
 Release:	1%{?dist}
 
 License:	GPLv2+
@@ -131,6 +131,10 @@ rm -rf %{buildroot}
 
 
 %changelog
+* Wed Jun 21 2017 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.2.6
+- Move 'RECV cmd' logs for iterator to DEBUG level
+- logs: add err to 'Could not create state' message
+
 * Wed Jun 07 2017 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.2.5
 - python: pass remotes as is in elliptics.create_node
 

@@ -1,3 +1,10 @@
+elliptics (2.27.2.6) unstable; urgency=medium
+
+  * Move 'RECV cmd' logs for iterator to DEBUG level
+  * logs: add err to 'Could not create state' message
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Wed, 21 Jun 2017 18:50:12 +0300
+
 elliptics (2.27.2.5) unstable; urgency=medium
 
   * python: pass remotes as is in elliptics.create_node
