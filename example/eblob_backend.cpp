@@ -136,7 +136,6 @@ int blob_file_info_new(eblob_backend_config *c, void *state, dnet_cmd *cmd) {
 
 	std::string filename;
 	err = dnet_get_filename(wc.data_fd, filename);
-
 	if (err) {
 		DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-file-info-new: dnet_get_filename: fd: {}:  failed: {} [{}]",
 		               dnet_dump_id(&cmd->id), wc.data_fd, strerror(-err), err);
@@ -150,22 +149,45 @@ int blob_file_info_new(eblob_backend_config *c, void *state, dnet_cmd *cmd) {
 	memset(&jhdr, 0, sizeof(jhdr));
 
 	if (wc.flags & BLOB_DISK_CTL_EXTHDR) {
-		if (wc.total_data_size < sizeof(ehdr))
-			return -ERANGE;
+		if (wc.total_data_size < sizeof(ehdr)) {
+			err = -ERANGE;
+			DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-file-info-new: invalid record: total_data_size({}) < "
+			                        "ehdr({}) : {} [{}]",
+			               dnet_dump_id(&cmd->id), wc.total_data_size, sizeof(ehdr), strerror(-err), err);
+			return err;
+		}
 
 		err = dnet_ext_hdr_read(&ehdr, wc.data_fd, wc.data_offset);
-		if (err)
+		if (err) {
+			DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-file-info-new: failed to read ext header: {} [{}]",
+			               dnet_dump_id(&cmd->id), strerror(-err), err);
 			return err;
+		}
 
-		if (wc.total_data_size < sizeof(ehdr) + ehdr.size)
-			return -ERANGE;
+		if (wc.total_data_size < sizeof(ehdr) + ehdr.size) {
+			err = -ERANGE;
+			DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-file-info-new: invalid record: total_data_size({}) < "
+			                        "ehdr({}) + json_header({}) = {} : {} [{}]",
+			               dnet_dump_id(&cmd->id), wc.total_data_size, sizeof(ehdr), ehdr.size,
+			               sizeof(ehdr) + ehdr.size, strerror(-err), err);
+			return err;
+		}
 
 		err = dnet_read_json_header(wc.data_fd, wc.data_offset + sizeof(ehdr), ehdr.size, &jhdr);
-		if(err)
+		if(err) {
+			DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-file-info-new: failed to read json header: {} [{}]",
+			               dnet_dump_id(&cmd->id), strerror(-err), err);
 			return err;
+		}
 
-		if (wc.total_data_size < sizeof(ehdr) + ehdr.size + jhdr.capacity)
-			return -ERANGE;
+		if (wc.total_data_size < sizeof(ehdr) + ehdr.size + jhdr.capacity) {
+			err = -ERANGE;
+			DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-file-info-new: invalid record: total_data_size({}) < "
+			                        "ehdr({}) + json_header({}) + json capacity({}) = {} : {} [{}]",
+			               dnet_dump_id(&cmd->id), wc.total_data_size, sizeof(ehdr), ehdr.size,
+			               jhdr.capacity, sizeof(ehdr) + ehdr.size + jhdr.capacity, strerror(-err), err);
+			return err;
+		}
 
 		wc.size -= sizeof(ehdr) + ehdr.size + jhdr.capacity;
 		// wc.total_data_size -= sizeof(ehdr);
@@ -283,8 +305,12 @@ int blob_del_new(eblob_backend_config *c, dnet_cmd *cmd, void *data) {
 	return err;
 }
 
-static int blob_read_new_impl(eblob_backend_config *c, void *state, dnet_cmd *cmd, dnet_cmd_stats *cmd_stats,
-			      const ioremap::elliptics::dnet_read_request &request, bool last_read) {
+static int blob_read_new_impl(eblob_backend_config *c,
+                              void *state,
+                              dnet_cmd *cmd,
+                              dnet_cmd_stats *cmd_stats,
+                              const ioremap::elliptics::dnet_read_request &request,
+                              bool last_read) {
 	using namespace ioremap::elliptics;
 
 	eblob_backend *b = c->eblob;
@@ -318,22 +344,47 @@ static int blob_read_new_impl(eblob_backend_config *c, void *state, dnet_cmd *cm
 	uint64_t record_offset = 0;
 
 	if (wc.flags & BLOB_DISK_CTL_EXTHDR) {
-		if (wc.total_data_size < sizeof(ehdr))
-			return -ERANGE;
+		if (wc.total_data_size < sizeof(ehdr)) {
+			err = -ERANGE;
+			DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-read-new: {}: invalid record: total_data_size({}) < "
+			                        "ehdr({}) : {} [{}]",
+			               dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), wc.total_data_size,
+			               sizeof(ehdr), strerror(-err), err);
+			return err;
+		}
 
 		err = dnet_ext_hdr_read(&ehdr, wc.data_fd, wc.data_offset);
-		if (err)
+		if (err) {
+			DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-read-new: {}: failed to read ext header : {} [{}]",
+			               dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), strerror(-err), err);
 			return err;
+		}
 
-		if (wc.total_data_size < sizeof(ehdr) + ehdr.size)
-			return -ERANGE;
+		if (wc.total_data_size < sizeof(ehdr) + ehdr.size) {
+			err = -ERANGE;
+			DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-read-new: {}: invalid record: total_data_size({}) < "
+			                        "ehdr({}) + json header({}) = {} : {} [{}]",
+			               dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), wc.total_data_size,
+			               sizeof(ehdr), ehdr.size, sizeof(ehdr) + ehdr.size, strerror(-err), err);
+			return err;
+		}
 
 		err = dnet_read_json_header(wc.data_fd, wc.data_offset + sizeof(ehdr), ehdr.size, &jhdr);
-		if (err)
+		if (err) {
+			DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-read-new: {}: failed to read json header : {} [{}]",
+			               dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), strerror(-err), err);
 			return err;
+		}
 
-		if (wc.total_data_size < sizeof(ehdr) + ehdr.size + jhdr.capacity)
-			return -ERANGE;
+		if (wc.total_data_size < sizeof(ehdr) + ehdr.size + jhdr.capacity) {
+			err = -ERANGE;
+			DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-read-new: {}: invalid record: total_data_size({}) < "
+			                        "ehdr({}) + json header({}) + json capacity({}) = {} : {} [{}]",
+			               dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), wc.total_data_size,
+			               sizeof(ehdr), ehdr.size, jhdr.capacity, sizeof(ehdr) + ehdr.size + jhdr.capacity,
+			               strerror(-err), err);
+			return err;
+		}
 
 		wc.size -= sizeof(ehdr) + ehdr.size;
 		wc.data_offset += sizeof(ehdr) + ehdr.size;
@@ -380,8 +431,14 @@ static int blob_read_new_impl(eblob_backend_config *c, void *state, dnet_cmd *cm
 		data_size = wc.size - jhdr.capacity;
 		data_offset = wc.data_offset + jhdr.capacity;
 
-		if (request.data_offset >= data_size)
-			return -E2BIG;
+		if (request.data_offset >= data_size) {
+			err = -E2BIG;
+			DNET_LOG_ERROR(c->blog,
+			               "{}: EBLOB: blob-read-new: {}: requested offset({}) >= data_size({}): {} [{}]",
+			               dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), request.data_offset,
+			               data_size, strerror(-err), err);
+			return err;
+		}
 
 		data_size -= request.data_offset;
 		data_offset += request.data_offset;
@@ -1470,6 +1527,8 @@ int blob_send_new(struct eblob_backend_config *c, void *state, struct dnet_cmd *
 		if (wc.flags & BLOB_DISK_CTL_EXTHDR) {
 			err = dnet_ext_hdr_read(&info->ehdr, info->fd, offset);
 			if (err) {
+				DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob_send_new: failed to read ext header: {} [{}]",
+				               dnet_dump_id_str(key.id), strerror(-err), err);
 				if ((err = send_fail_reply(err))) {
 					break;
 				}
@@ -1481,7 +1540,11 @@ int blob_send_new(struct eblob_backend_config *c, void *state, struct dnet_cmd *
 			if (size >= sizeof(info->ehdr)) {
 				size -= sizeof(info->ehdr);
 			} else if (size) {
-				if ((err = send_fail_reply(-EINVAL))) {
+				err = -ERANGE;
+				DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob_send_new: invalid record: total_data_size({}) "
+				                        "< ehdr({}): {} [{}]",
+				               dnet_dump_id_str(key.id), size, sizeof(info->ehdr), strerror(-err), err);
+				if ((err = send_fail_reply(err))) {
 					break;
 				}
 				continue;
@@ -1490,6 +1553,8 @@ int blob_send_new(struct eblob_backend_config *c, void *state, struct dnet_cmd *
 			if (info->ehdr.size) {
 				err = dnet_read_json_header(info->fd, offset, info->ehdr.size, &info->jhdr);
 				if (err) {
+					DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob_send_new: failed to read json header: {} [{}]",
+					               dnet_dump_id_str(key.id), strerror(-err), err);
 					if ((err = send_fail_reply(err))) {
 						break;
 					}
@@ -1502,7 +1567,13 @@ int blob_send_new(struct eblob_backend_config *c, void *state, struct dnet_cmd *
 			if (size >= info->ehdr.size) {
 				size -= info->ehdr.size;
 			} else if (size) {
-				if ((err = send_fail_reply(-EINVAL))) {
+				err = -ERANGE;
+				DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob_send_new: invalid record: total_data_size({}) "
+				                        "< ehdr({}) + json header({}) = {}: {} [{}]",
+				               dnet_dump_id_str(key.id), wc.total_data_size, sizeof(info->ehdr),
+				               info->ehdr.size, sizeof(info->ehdr) + info->ehdr.size, strerror(-err),
+				               err);
+				if ((err = send_fail_reply(err))) {
 					break;
 				}
 				continue;
@@ -1512,7 +1583,13 @@ int blob_send_new(struct eblob_backend_config *c, void *state, struct dnet_cmd *
 		if (size >= info->jhdr.capacity) {
 			info->data_size = size - info->jhdr.capacity;
 		} else if (size) {
-			if ((err = send_fail_reply(-EINVAL))) {
+			err = -ERANGE;
+			DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob_send_new: invalid record: total_data_size({}) "
+			                        "< ehdr({}) + json header({}) + json capacity({}) = {}: {} [{}]",
+			               dnet_dump_id_str(key.id), wc.total_data_size, sizeof(info->ehdr),
+			               info->jhdr.capacity, info->ehdr.size,
+			               sizeof(info->ehdr) + info->ehdr.size + info->jhdr.capacity, strerror(-err), err);
+			if ((err = send_fail_reply(err))) {
 				break;
 			}
 			continue;
