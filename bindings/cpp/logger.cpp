@@ -12,6 +12,7 @@
 #include <blackhole/logger.hpp>
 #include <blackhole/record.hpp>
 #include <blackhole/root.hpp>
+#include <blackhole/sink/asynchronous.hpp>
 #include <blackhole/sink/file.hpp>
 
 #include "example/config.hpp"
@@ -85,13 +86,17 @@ std::unique_ptr<dnet_logger> make_file_logger(const std::string &path, dnet_log_
 	};
 
 	std::vector<std::unique_ptr<blackhole::handler_t>> handlers;
-	handlers.push_back(
+	handlers.emplace_back(
 		blackhole::builder<blackhole::handler::blocking_t>()
 			.set(blackhole::builder<blackhole::formatter::string_t>(pattern)
 				.mapping(sevmap)
 				.build())
-			.add(blackhole::builder<blackhole::sink::file_t>(path)
-				.flush_every(1)
+			.add(blackhole::builder<blackhole::sink::asynchronous_t>(
+				blackhole::builder<blackhole::sink::file_t>(path)
+					.flush_every(1)
+					.build())
+				.factor(20)
+				.wait()
 				.build())
 			.build()
 	);
