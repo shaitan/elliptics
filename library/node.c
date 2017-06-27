@@ -773,7 +773,9 @@ struct dnet_node *dnet_node_create(struct dnet_config *cfg)
 		n->log = cfg->log;
 	}
 
-	DNET_INFO(n, "Elliptics starts, flags: %s", dnet_flags_dump_cfgflags(n->flags));
+	DNET_INFO(n, "Elliptics v%d.%d.%d.%d starts, flags: %s", CONFIG_ELLIPTICS_VERSION_0,
+	          CONFIG_ELLIPTICS_VERSION_1, CONFIG_ELLIPTICS_VERSION_2, CONFIG_ELLIPTICS_VERSION_3,
+	          dnet_flags_dump_cfgflags(n->flags));
 
 	if (!n->wait_ts.tv_sec) {
 		n->wait_ts.tv_sec = DNET_DEFAULT_WAIT_TIMEOUT_SEC;
