@@ -3,7 +3,7 @@
 
 Summary:	Distributed hash table storage
 Name:		elliptics
-Version:	2.27.2.6
+Version:	2.27.2.7
 Release:	1%{?dist}
 
 License:	GPLv2+
@@ -131,6 +131,12 @@ rm -rf %{buildroot}
 
 
 %changelog
+* Thu Jun 29 2017 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.2.7
+- add data_- and json_- csum_time to 'blob-read-new' log
+- create logger with asynchronous sink by make_file_logger
+- add version to 'Elliptics starts' log
+- add error logs when it is failed to read record's headers
+
 * Wed Jun 21 2017 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.2.6
 - Move 'RECV cmd' logs for iterator to DEBUG level
 - logs: add err to 'Could not create state' message
