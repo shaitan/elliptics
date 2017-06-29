@@ -392,17 +392,22 @@ static int blob_read_new_impl(eblob_backend_config *c,
 	}
 
 	data_pointer json;
+	uint64_t json_csum_time = 0;
 
-	auto verify_checksum = [&, wc] (uint64_t offset, uint64_t size) mutable {
+	auto verify_checksum = [&, wc] (uint64_t offset, uint64_t size, uint64_t &csum_time) mutable {
 		if (request.ioflags & DNET_IO_FLAGS_NOCSUM)
 			return 0;
 		wc.offset = offset;
 		wc.size = size;
-		return eblob_verify_checksum(b, &key, &wc);
+		const auto start = std::chrono::high_resolution_clock::now();
+		const auto ret = eblob_verify_checksum(b, &key, &wc);
+		const auto end = std::chrono::high_resolution_clock::now();
+		csum_time = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+		return ret;
 	};
 
 	if (request.read_flags & DNET_READ_FLAGS_JSON && jhdr.size) {
-		err = verify_checksum(record_offset, jhdr.size);
+		err = verify_checksum(record_offset, jhdr.size, json_csum_time);
 		if (err) {
 			DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-read-new: {}: failed to verify checksum for "
 			                        "json: fd: {}, offset: {}, size: {}: {} [{}]",
@@ -426,6 +431,7 @@ static int blob_read_new_impl(eblob_backend_config *c,
 
 	uint64_t data_size = 0;
 	uint64_t data_offset = 0;
+	uint64_t data_csum_time = 0;
 
 	if (request.read_flags & DNET_READ_FLAGS_DATA) {
 		data_size = wc.size - jhdr.capacity;
@@ -448,7 +454,7 @@ static int blob_read_new_impl(eblob_backend_config *c,
 		    request.data_size < data_size)
 			data_size = request.data_size;
 
-		err = verify_checksum(record_offset + jhdr.capacity, data_size);
+		err = verify_checksum(record_offset + jhdr.capacity, data_size, data_csum_time);
 		if (err) {
 			DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-read-new: {}: failed to verify checksum for "
 			                        "data: offset: {}, size: {}: {} [{}]",
@@ -496,8 +502,8 @@ static int blob_read_new_impl(eblob_backend_config *c,
 		return err;
 	}
 
-	DNET_LOG_INFO(c->blog, "{}: EBLOB: blob-read-new: fd: {}, json_size: {}, data_size: {}", dnet_dump_id(&cmd->id),
-	              wc.data_fd, json.size(), data_size);
+	DNET_LOG_INFO(c->blog, "{}: EBLOB: blob-read-new: json_size: {}, data_size: {}, json_csum_time: {} usecs, data_csum_time: {} usecs",
+	              dnet_dump_id(&cmd->id), json.size(), data_size, json_csum_time, data_csum_time);
 
 	return 0;
 }
