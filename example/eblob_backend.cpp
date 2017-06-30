@@ -784,8 +784,9 @@ int blob_write_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *da
 		return err;
 	}
 
-	DNET_LOG_INFO(c->blog, "{}: EBLOB: blob-write-new: fd: {}, json_size: {}, data_size: {}",
-	              dnet_dump_id(&cmd->id), wc.data_fd, jhdr.size, wc.size - jhdr.capacity);
+	DNET_LOG_INFO(c->blog, "{}: EBLOB: blob-write-new: ioflags: {}, json_size: {}, data_size: {}",
+	              dnet_dump_id(&cmd->id), dnet_flags_dump_ioflags(request.ioflags), jhdr.size,
+	              wc.size - jhdr.capacity);
 
 	return 0;
 }
