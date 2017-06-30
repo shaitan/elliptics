@@ -3,7 +3,7 @@
 
 Summary:	Distributed hash table storage
 Name:		elliptics
-Version:	2.27.2.7
+Version:	2.27.2.8
 Release:	1%{?dist}
 
 License:	GPLv2+
@@ -131,6 +131,9 @@ rm -rf %{buildroot}
 
 
 %changelog
+* Fri Jun 30 2017 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.2.8
+- replace fd by ioflags in `blob-write-new:` log
+
 * Thu Jun 29 2017 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.2.7
 - add data_- and json_- csum_time to 'blob-read-new' log
 - create logger with asynchronous sink by make_file_logger
