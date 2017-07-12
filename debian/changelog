@@ -1,3 +1,11 @@
+elliptics (2.27.2.9) unstable; urgency=medium
+
+  * Update handystats to >= 1.11.6
+  * do not reinterpret_cast nullptr
+  * Do not reset stalled net_state in dnet_io_process_network
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Wed, 12 Jul 2017 17:50:48 +0300
+
 elliptics (2.27.2.8) unstable; urgency=medium
 
   * replace fd by ioflags in `blob-write-new:` log

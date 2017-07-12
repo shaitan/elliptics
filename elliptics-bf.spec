@@ -3,7 +3,7 @@
 
 Summary:	Distributed hash table storage
 Name:		elliptics
-Version:	2.27.2.8
+Version:	2.27.2.9
 Release:	1%{?dist}
 
 License:	GPLv2+
@@ -131,6 +131,11 @@ rm -rf %{buildroot}
 
 
 %changelog
+* Wed Jul 12 2017 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.2.9
+- Update handystats to >= 1.11.6
+- do not reinterpret_cast nullptr
+- Do not reset stalled net_state in dnet_io_process_network
+
 * Fri Jun 30 2017 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.2.8
 - replace fd by ioflags in `blob-write-new:` log
 
