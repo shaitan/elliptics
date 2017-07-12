@@ -20,7 +20,7 @@ Build-Depends: cdbs,
                python-virtualenv,
                msgpack-python | python-msgpack,
                eblob (>= 0.23.11),
-               handystats (>= 1.11.4),
+               handystats (>= 1.11.6),
                libkora-util-dev (= 1.1.0-rc1),
                blackhole-dev (>= 1.7.0-1),
 Standards-Version: 3.8.0
@@ -33,7 +33,7 @@ Depends: ${shlibs:Depends},
          ${misc:Depends},
          eblob (>= 0.23.11),
          elliptics-client2.27 (= ${Source-Version}),
-         handystats (>= 1.11.4),
+         handystats (>= 1.11.6),
          libkora-util1 (= 1.1.0-rc1),
          libblackhole1 (>= 1.7.0-1)
 Replaces: elliptics-2.10
@@ -47,7 +47,7 @@ Depends: ${shlibs:Depends},
          ${misc:Depends},
          ${python:Depends},
          msgpack-python | python-msgpack,
-         handystats (>= 1.11.4),
+         handystats (>= 1.11.6),
          libblackhole1 (>= 1.7.0-1),
 Replaces: elliptics-client
 Description: Distributed hash table storage (client library)
