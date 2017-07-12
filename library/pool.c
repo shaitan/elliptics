@@ -926,7 +926,7 @@ static void *dnet_io_process_network(void *data_)
 			if (err == 0)
 				continue;
 
-			if ((err < 0 && err != -EAGAIN) || st->stall >= n->stall_count) {
+			if (err < 0 && err != -EAGAIN) {
 				char addr_str[128] = "<unknown>";
 				if (n->addr_num) {
 					dnet_addr_string_raw(&n->addrs[0], addr_str, sizeof(addr_str));
