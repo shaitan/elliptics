@@ -181,7 +181,7 @@ dnet_io_req *dnet_request_queue::take_request(dnet_work_io *wio, const char *thr
 			locked_keys_t::iterator it_lock;
 			bool inserted;
 			std::tie(it_lock, inserted) =
-				m_locked_keys.emplace(cmd->id, reinterpret_cast<dnet_locks_entry *>(nullptr));
+				m_locked_keys.emplace(cmd->id, nullptr);
 			if (inserted) {
 				auto lock_entry = take_lock_entry(wio);
 				it_lock->second = lock_entry;
