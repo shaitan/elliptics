@@ -314,6 +314,11 @@ static int dnet_io_req_queue(struct dnet_net_state *st, struct dnet_io_req *orig
 		dnet_schedule_send(st);
 	pthread_mutex_unlock(&st->send_lock);
 
+	pthread_mutex_lock(&st->n->io->full_lock);
+	list_stat_size_increase(&st->n->io->output_stats, 1);
+	pthread_mutex_unlock(&st->n->io->full_lock);
+	HANDY_COUNTER_INCREMENT("io.output.queue.size", 1);
+
 err_out_exit:
 	return err;
 }
@@ -1196,11 +1201,18 @@ int dnet_node_state_num(struct dnet_node *n)
 static void dnet_state_send_clean(struct dnet_net_state *st)
 {
 	struct dnet_io_req *r, *tmp;
+	uint64_t count = 0;
 
 	list_for_each_entry_safe(r, tmp, &st->send_list, req_entry) {
 		list_del(&r->req_entry);
 		dnet_io_req_free(r);
+		++count;
 	}
+
+	pthread_mutex_lock(&st->n->io->full_lock);
+	list_stat_size_decrease(&st->n->io->output_stats, count);
+	pthread_mutex_unlock(&st->n->io->full_lock);
+	HANDY_COUNTER_DECREMENT("io.output.queue.size", count);
 }
 
 void dnet_state_destroy(struct dnet_net_state *st)

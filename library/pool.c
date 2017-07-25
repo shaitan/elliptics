@@ -712,10 +712,6 @@ static int dnet_schedule_network_io(struct dnet_net_state *st, int send)
 	if (send) {
 		ev.events = EPOLLOUT;
 		fd = st->write_s;
-		pthread_mutex_lock(&st->n->io->full_lock);
-		list_stat_size_increase(&st->n->io->output_stats, 1);
-		pthread_mutex_unlock(&st->n->io->full_lock);
-		HANDY_COUNTER_INCREMENT("io.output.queue.size", 1);
 
 		ev.data.ptr = &st->write_data;
 	} else {
