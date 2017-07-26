@@ -442,7 +442,7 @@ static int dnet_cmd_backend_control_dangerous(struct dnet_net_state *st, struct 
 	if (!backend) {
 		DNET_LOG_ERROR(node, "backend_control: there is no such backend: {}, state: {}", control->backend_id,
 		               dnet_state_dump_addr(st));
-		return -EINVAL;
+		return -ENOENT;
 	}
 
 	if (cmd->size != sizeof(dnet_backend_control) + control->ids_count * sizeof(dnet_raw_id)) {
