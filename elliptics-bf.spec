@@ -3,7 +3,7 @@
 
 Summary:	Distributed hash table storage
 Name:		elliptics
-Version:	2.27.2.9
+Version:	2.27.2.10
 Release:	1%{?dist}
 
 License:	GPLv2+
@@ -131,6 +131,10 @@ rm -rf %{buildroot}
 
 
 %changelog
+* Wed Jul 26 2017 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.2.10
+- Return -ENOENT if a backend is not found
+- fix 'io.output.queue.size' statistic
+
 * Wed Jul 12 2017 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.2.9
 - Update handystats to >= 1.11.6
 - do not reinterpret_cast nullptr
