@@ -32,7 +32,7 @@ Architecture: any
 Depends: ${shlibs:Depends},
          ${misc:Depends},
          eblob (>= 0.23.11),
-         elliptics-client2.27 (= ${Source-Version}),
+         elliptics-client (= ${Source-Version}),
          handystats (>= 1.11.6),
          libkora-util1 (= 1.1.0-rc1),
          libblackhole1 (>= 1.7.0-1)
@@ -41,7 +41,7 @@ Provides: elliptics-2.10
 Description: Distributed hash table storage
  Elliptics network is a fault tolerant distributed hash table object storage.
 
-Package: elliptics-client2.27
+Package: elliptics-client
 Architecture: any
 Depends: ${shlibs:Depends},
          ${misc:Depends},
@@ -55,7 +55,7 @@ Description: Distributed hash table storage (client library)
 
 Package: elliptics-dbg
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, elliptics (= ${Source-Version}) | elliptics-client2.27 (= ${Source-Version})
+Depends: ${shlibs:Depends}, ${misc:Depends}, elliptics (= ${Source-Version}) | elliptics-client (= ${Source-Version})
 Replaces: elliptics-dbg-2.10
 Provides: elliptics-dbg-2.10
 Description: Distributed hash table storage (debug files)
@@ -63,7 +63,7 @@ Description: Distributed hash table storage (debug files)
 
 Package: elliptics-dev
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, elliptics-client2.27 (= ${Source-Version})
+Depends: ${shlibs:Depends}, ${misc:Depends}, elliptics-client (= ${Source-Version})
 Suggests: eblob (>= 0.23.11),
           libkora-util1 (= 1.1.0-rc1),
 Description: Distributed hash table storage (includes)
