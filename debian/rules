@@ -13,7 +13,9 @@ DEB_CMAKE_EXTRA_FLAGS := -DCMAKE_BUILD_TYPE=RelWithDebInfo
 
 DEB_DH_STRIP_ARGS := --dbg-package=elliptics-dbg
 DEB_DH_MAKESHLIBS_ARGS_elliptics := -V "elliptics (>= $(ELLIPTICS_VERSION)), elliptics (<< $(ELLIPTICS_NEXT_VERSION))"
-DEB_DH_MAKESHLIBS_ARGS_elliptics-client2.27 := -V "elliptics-client2.27 (>= $(ELLIPTICS_VERSION)), elliptics-client2.27 (<< $(ELLIPTICS_NEXT_VERSION))"
+DEB_DH_MAKESHLIBS_ARGS_elliptics-client2.27 := -V \
+	"elliptics-client2.27 (>= $(ELLIPTICS_VERSION)) | elliptics-client (>= $(ELLIPTICS_VERSION)), \
+	 elliptics-client2.27 (<< $(ELLIPTICS_NEXT_VERSION)) | elliptics-client (<< $(ELLIPTICS_NEXT_VERSION))"
 DEB_COMPRESS_EXCLUDE := .conf
 DEB_MAKE_CHECK_TARGET=test
 
