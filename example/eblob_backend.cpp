@@ -335,6 +335,18 @@ static int blob_read_new_impl(eblob_backend_config *c,
 		return err;
 	}
 
+	auto verify_checksum = [&, wc] (uint64_t offset, uint64_t size, uint64_t &csum_time) mutable {
+		if (request.ioflags & DNET_IO_FLAGS_NOCSUM)
+			return 0;
+		wc.offset = offset;
+		wc.size = size;
+		const auto start = std::chrono::high_resolution_clock::now();
+		const auto ret = eblob_verify_checksum(b, &key, &wc);
+		const auto end = std::chrono::high_resolution_clock::now();
+		csum_time = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+		return ret;
+	};
+
 	dnet_ext_list_hdr ehdr;
 	memset(&ehdr, 0, sizeof(ehdr));
 
@@ -342,6 +354,7 @@ static int blob_read_new_impl(eblob_backend_config *c,
 	memset(&jhdr, 0, sizeof(jhdr));
 
 	uint64_t record_offset = 0;
+	uint64_t headers_csum_time = 0;
 
 	if (wc.flags & BLOB_DISK_CTL_EXTHDR) {
 		if (wc.total_data_size < sizeof(ehdr)) {
@@ -386,6 +399,20 @@ static int blob_read_new_impl(eblob_backend_config *c,
 			return err;
 		}
 
+		/* verify headers' checksum only if the record has chunked checksum, otherwise
+		 * it is too heavy operation.
+		 */
+		if (wc.flags & BLOB_DISK_CTL_CHUNKED_CSUM) {
+			err = verify_checksum(0, sizeof(ehdr) + ehdr.size, headers_csum_time);
+			if (err) {
+				DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-read-new: {}: failed to verify checksum for headers: "
+				                        "fd: {}, offset: {}, size: {}: {} [{}]",
+				               dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), wc.data_fd, wc.offset,
+				               wc.size, strerror(-err), err);
+				return err;
+			}
+		}
+
 		wc.size -= sizeof(ehdr) + ehdr.size;
 		wc.data_offset += sizeof(ehdr) + ehdr.size;
 		record_offset += sizeof(ehdr) + ehdr.size;
@@ -393,18 +420,6 @@ static int blob_read_new_impl(eblob_backend_config *c,
 
 	data_pointer json;
 	uint64_t json_csum_time = 0;
-
-	auto verify_checksum = [&, wc] (uint64_t offset, uint64_t size, uint64_t &csum_time) mutable {
-		if (request.ioflags & DNET_IO_FLAGS_NOCSUM)
-			return 0;
-		wc.offset = offset;
-		wc.size = size;
-		const auto start = std::chrono::high_resolution_clock::now();
-		const auto ret = eblob_verify_checksum(b, &key, &wc);
-		const auto end = std::chrono::high_resolution_clock::now();
-		csum_time = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-		return ret;
-	};
 
 	if (request.read_flags & DNET_READ_FLAGS_JSON && jhdr.size) {
 		err = verify_checksum(record_offset, jhdr.size, json_csum_time);
@@ -502,8 +517,10 @@ static int blob_read_new_impl(eblob_backend_config *c,
 		return err;
 	}
 
-	DNET_LOG_INFO(c->blog, "{}: EBLOB: blob-read-new: json_size: {}, data_size: {}, json_csum_time: {} usecs, data_csum_time: {} usecs",
-	              dnet_dump_id(&cmd->id), json.size(), data_size, json_csum_time, data_csum_time);
+	DNET_LOG_INFO(c->blog, "{}: EBLOB: blob-read-new: json_size: {}, data_size: {}, headers_csum_time: {} usecs, "
+	                       "json_csum_time: {} usecs, data_csum_time: {} usecs",
+	              dnet_dump_id(&cmd->id), json.size(), data_size, headers_csum_time, json_csum_time,
+	              data_csum_time);
 
 	return 0;
 }
