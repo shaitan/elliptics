@@ -874,8 +874,9 @@ void write_and_corrupt_record(ioremap::elliptics::newapi::session &s, const iore
 
 void write_and_corrupt_json(ioremap::elliptics::newapi::session &s, const ioremap::elliptics::key &key,
                             const std::string &json, uint64_t json_capacity,
-                            const std::string &data, uint64_t data_capacity) {
-	write_and_corrupt_record(s, key, json, json_capacity, data, data_capacity, 0);
+                            const std::string &data, uint64_t data_capacity,
+                            uint64_t injection_offset=0) {
+	write_and_corrupt_record(s, key, json, json_capacity, data, data_capacity, injection_offset);
 }
 
 void write_and_corrupt_data(ioremap::elliptics::newapi::session &s, const ioremap::elliptics::key &key,
@@ -996,7 +997,8 @@ void test_read_data_with_corrupted_json_with_big_capacity(const ioremap::ellipti
 	}
 	)json"};
 
-	write_and_corrupt_json(s, key, json, 1<<20, data, 0);
+	write_and_corrupt_json(s, key, json, 2 << 20 /*json_capacity*/, data, 0 /*data_capacity */,
+	                       1 << 20 /*injection_offset*/);
 
 	auto async = s.read_data(key, 0, 0);
 	BOOST_REQUIRE_EQUAL(async.get().size(), 1);
@@ -1014,11 +1016,11 @@ void test_read_data_with_corrupted_data(const ioremap::elliptics::newapi::sessio
 	s.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
 	s.set_filter(ioremap::elliptics::filters::all_with_ack);
 
-	static const std::string key{"test_read_data_with_corrupted_json key"};
-	static const std::string data{"test_read_data_with_corrupted_json data"};
+	static const std::string key{"test_read_data_with_corrupted_data key"};
+	static const std::string data{"test_read_data_with_corrupted_data data"};
 	static const std::string json{R"json(
 	{
-		"key": "test_read_data_with_corrupted_json json"
+		"key": "test_read_data_with_corrupted_data json"
 	}
 	)json"};
 
@@ -1047,15 +1049,18 @@ void test_read_data_part_with_corrupted_first_data(const ioremap::elliptics::new
 	s.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
 	s.set_filter(ioremap::elliptics::filters::all_with_ack);
 
-	static const std::string key{"test_read_data_with_corrupted_json key"};
-	static const std::string data = make_data({"test_read_first_data_with_corrupted_first_data"}, 2<<20);
+	static const std::string key{"test_read_data_part_with_corrupted_first_data key"};
+	static const std::string data = make_data({"test_read_first_data_with_corrupted_first_data"}, 2 << 20);
 	static const std::string json{R"json(
 	{
-		"key": "test_read_data_with_corrupted_json json"
+		"key": "test_read_data_part_with_corrupted_first_data json"
 	}
 	)json"};
 
-	write_and_corrupt_record(s, key, json, 0, data, 0, json.size());
+	std::cout << "data: " << data.size() << std::endl;
+
+	write_and_corrupt_record(s, key, json, 1 << 20 /*json_capacity*/, data, 0 /*data_capacity*/,
+	                         1 << 20 /*injection_offset*/);
 
 	auto async = s.read_data(key, 0, 0);
 	BOOST_REQUIRE_EQUAL(async.get().size(), 1);
@@ -1063,12 +1068,12 @@ void test_read_data_part_with_corrupted_first_data(const ioremap::elliptics::new
 	auto result = async.get()[0];
 	BOOST_REQUIRE_EQUAL(result.status(), -EILSEQ);
 
-	async = s.read_data(key, 1<<20, 100);
+	async = s.read_data(key, 1 << 20, 100);
 	BOOST_REQUIRE_EQUAL(async.get().size(), 1);
 
 	result = async.get()[0];
 	BOOST_REQUIRE_EQUAL(result.status(), 0);
-	const auto data_part = data.substr(1<<20, 100);
+	const auto data_part = data.substr(1 << 20, 100);
 	BOOST_REQUIRE_EQUAL(result.data().to_string(), data_part);
 }
 
@@ -1080,11 +1085,11 @@ void test_read_data_part_with_corrupted_second_data(const ioremap::elliptics::ne
 	s.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
 	s.set_filter(ioremap::elliptics::filters::all_with_ack);
 
-	static const std::string key{"test_read_data_with_corrupted_json key"};
+	static const std::string key{"test_read_data_part_with_corrupted_second_data key"};
 	static const std::string data = make_data({"test_read_first_data_with_corrupted_first_data"}, 2<<20);
 	static const std::string json{R"json(
 	{
-		"key": "test_read_data_with_corrupted_json json"
+		"key": "test_read_data_part_with_corrupted_second_data json"
 	}
 	)json"};
 
