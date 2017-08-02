@@ -1,3 +1,11 @@
+elliptics (2.27.2.11) unstable; urgency=medium
+
+  * update test with corrupted data
+  * verify checksum for headers on read
+  * Add elliptics-client alternative to shlibs args
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Wed, 02 Aug 2017 17:18:24 +0300
+
 elliptics (2.27.2.10) unstable; urgency=medium
 
   * Return -ENOENT if a backend is not found

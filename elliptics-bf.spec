@@ -3,7 +3,7 @@
 
 Summary:	Distributed hash table storage
 Name:		elliptics
-Version:	2.27.2.10
+Version:	2.27.2.11
 Release:	1%{?dist}
 
 License:	GPLv2+
@@ -131,6 +131,11 @@ rm -rf %{buildroot}
 
 
 %changelog
+* Wed Aug 02 2017 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.2.11
+- update test with corrupted data
+- verify checksum for headers on read
+- Add elliptics-client alternative to shlibs args
+
 * Wed Jul 26 2017 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.2.10
 - Return -ENOENT if a backend is not found
 - fix 'io.output.queue.size' statistic
