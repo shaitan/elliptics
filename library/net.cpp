@@ -36,6 +36,8 @@
 
 #include <blackhole/attribute.hpp>
 
+#include "bindings/cpp/timer.hpp"
+
 #include "elliptics.h"
 #include "elliptics/packet.h"
 #include "elliptics/interface.h"
@@ -1047,9 +1049,7 @@ static int dnet_socket_connect(dnet_node *node, dnet_addr_socket_set &original_l
 		size_t ready_num;
 		epoll_event events[num];
 
-		timeval start, end;
-
-		gettimeofday(&start, NULL);
+		ioremap::elliptics::util::steady_timer timer;
 
 		err = epoll_wait(state->epollfd, events, num, timeout);
 		if (err < 0) {
@@ -1068,9 +1068,7 @@ static int dnet_socket_connect(dnet_node *node, dnet_addr_socket_set &original_l
 			dnet_process_socket(state, events[i]);
 		}
 
-		gettimeofday(&end, NULL);
-
-		timeout -= (end.tv_sec - start.tv_sec) * 1000 + (end.tv_usec - start.tv_usec) / 1000;
+		timeout -= timer.get_ms();
 
 		/*
 		 * This is a small hack.

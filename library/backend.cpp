@@ -8,6 +8,8 @@
 
 #include "bindings/cpp/functional_p.h"
 #include "bindings/cpp/session_internals.hpp"
+#include "bindings/cpp/timer.hpp"
+
 #include "cache/cache.hpp"
 #include "example/config.hpp"
 #include "library/logger.hpp"
@@ -283,19 +285,6 @@ err_out_close:
 	close(fd);
 err_out_exit:
 	return nullptr;
-}
-
-static const char *elapsed(const dnet_time &start) {
-	static __thread char buffer[64];
-	dnet_time end;
-	dnet_current_time(&end);
-
-	const unsigned long long nano = 1000 * 1000 * 1000;
-
-	const unsigned long long delta = (end.tsec - start.tsec) * nano + end.tnsec - start.tnsec;
-
-	snprintf(buffer, sizeof(buffer), "%lld.%06lld secs", delta / nano, (delta % nano) / 1000);
-	return buffer;
 }
 
 
@@ -610,14 +599,13 @@ int dnet_backend::enable() {
 		return err;
 	};
 
-	dnet_time start;
-	dnet_current_time(&start);
+	ioremap::elliptics::util::steady_timer timer;
 
 	int err = change_state(DNET_BACKEND_ACTIVATING);
 	if (err) {
 		DNET_LOG_ERROR(m_node, "dnet_backend::enable(): backend: {}, trying to activate not disabled backend, "
 		                       "elapsed: {}: {} [{}]",
-		               m_config->backend_id, elapsed(start), strerror(-err), err);
+		               m_config->backend_id, timer.get_us(), strerror(-err), err);
 		return err;
 	}
 
@@ -640,7 +628,7 @@ int dnet_backend::enable() {
 	if (err) {
 		DNET_LOG_ERROR(m_node, "dnet_backend::enable(): backend: {}, failed to init backend, "
 		                       "elapsed: {}: {} [{}]",
-		               m_config->backend_id, elapsed(start), strerror(-err), err);
+		               m_config->backend_id, timer.get_us(), strerror(-err), err);
 		return fail(err);
 	}
 
@@ -657,7 +645,7 @@ int dnet_backend::enable() {
 	if (!m_pool) {
 		DNET_LOG_ERROR(m_node, "dnet_backend::enable(): backend: {}, failed to attach backend to io_pool, "
 		                       "elapsed: {}: {} [{}]",
-		               m_config->backend_id, elapsed(start), strerror(-err), err);
+		               m_config->backend_id, timer.get_us(), strerror(-err), err);
 		m_config->config_backend.cleanup(&m_config->config_backend);
 		return fail(err);
 	}
@@ -671,7 +659,7 @@ int dnet_backend::enable() {
 			err = -ENOMEM;
 			DNET_LOG_ERROR(m_node, "dnet_backend::enable(): backend: {}, failed to create cache, "
 			                       "elapsed: {}: {} [{}]",
-			               m_config->backend_id, elapsed(start), strerror(-err), err);
+			               m_config->backend_id, timer.get_us(), strerror(-err), err);
 			m_config->config_backend.cleanup(&m_config->config_backend);
 			return fail(err);
 		}
@@ -684,7 +672,7 @@ int dnet_backend::enable() {
 		err = -EINVAL;
 		DNET_LOG_ERROR(m_node, "dnet_backend::enable(): backend: {}, history path: {}, failed to initialize "
 		                       "ids, elapsed: {}: {} [{}]",
-		               m_config->backend_id, m_config->history, elapsed(start), strerror(-err), err);
+		               m_config->backend_id, m_config->history, timer.get_us(), strerror(-err), err);
 		m_config->config_backend.cleanup(&m_config->config_backend);
 		return fail(err);
 	}
@@ -695,13 +683,13 @@ int dnet_backend::enable() {
 	if (err) {
 		DNET_LOG_ERROR(m_node, "dnet_backend::enable(): backend: {}, failed to add backend to route list, "
 		                       "elapsed: {}: {} [{}]",
-		               m_config->backend_id, elapsed(start), strerror(-err), err);
+		               m_config->backend_id, timer.get_us(), strerror(-err), err);
 		m_config->config_backend.cleanup(&m_config->config_backend);
 		return fail(err);
 	}
 
 	DNET_LOG_INFO(m_node, "dnet_backend::enable(): backend: {}, initialized, elapsed: {}", m_config->backend_id,
-	              elapsed(start));
+	              timer.get_us());
 
 	change_state(DNET_BACKEND_ENABLED);
 	dnet_current_time(&m_last_start);
