@@ -182,41 +182,6 @@ class MonitorStatsChecker:
             else:
                 check_command(commands[command])
 
-    def __check_io_histograms_stat(self):
-        '''full check of io histograms statistics in json'''
-        def check_column(json):
-            '''checks one column of histograms'''
-            assert json["<500 usecs"] >= 0
-            assert json["<5000 usecs"] >= 0
-            assert json["<100000 usecs"] >= 0
-            assert json[">100000 usecs"] >= 0
-
-        def check_one_snapshot(snapshot):
-            '''splits snapshot on collumns and checks it.'''
-            check_column(snapshot["<100 bytes"])
-            check_column(snapshot["<500 bytes"])
-            check_column(snapshot["<1000 bytes"])
-            check_column(snapshot[">1000 bytes"])
-
-        def check_snapshots(json):
-            '''checks all snapshots'''
-            check_one_snapshot(json['last_snapshot'])
-            for snapshot in json['snapshots']:
-                check_one_snapshot(snapshot)
-
-        def check_histogram(json):
-            '''checks different histograms of command'''
-            check_snapshots(json['disk'])
-            check_snapshots(json['cache'])
-            check_snapshots(json['disk_internal'])
-            check_snapshots(json['cache_internal'])
-
-        histograms = self.json_stat['histogram']
-        check_histogram(histograms['read'])
-        check_histogram(histograms['write'])
-        check_histogram(histograms['indx_update'])
-        check_histogram(histograms['indx_internal'])
-
     def __check_backend_stat(self):
         '''full check of backend statistics in json'''
         self.__check_backends_common()

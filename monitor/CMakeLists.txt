@@ -2,7 +2,6 @@ ADD_LIBRARY(elliptics_monitor STATIC
             monitor.cpp
             server.cpp
             statistics.cpp
-            histogram.cpp
             io_stat_provider.cpp
             backends_stat_provider.cpp
             procfs_provider.cpp
