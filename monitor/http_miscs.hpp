@@ -36,7 +36,6 @@ const std::string list = R"(<html>
 		GET <a href='/cache'>/cache</a> - Retrieves statistics about cache<br/>
 		GET <a href='/io'>/io</a> - Retrieves statistics about io statistics<br/>
 		GET <a href='/commands'>/commands</a> - Retrieves statistics about commands<br/>
-		GET <a href='/io_histograms'>/io_histograms</a> - Retrieves statistics about io histograms<br/>
 		GET <a href='/backend'>/backend</a> - Retrieves statistics about backend<br/>
 		GET <a href='/stats'>/stats</a> - Retrieves in-process runtime statistics<br/>
 		GET <a href='/procfs'>/procfs</a> - Retrieves system statistics about process<br/>
