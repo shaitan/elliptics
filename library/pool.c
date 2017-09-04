@@ -296,29 +296,31 @@ void dnet_schedule_io(struct dnet_node *n, struct dnet_io_req *r)
 	int nonblocking = !!(cmd->flags & DNET_FLAGS_NOLOCK);
 	ssize_t backend_id = -1;
 	char thread_stat_id[255];
-
 	int log_level = DNET_LOG_INFO;
+	const long recv_time = DIFF_TIMESPEC(r->st->rcv_start_ts, r->st->rcv_finish_ts);
+
 	if (cmd->cmd == DNET_CMD_ITERATOR || cmd->cmd == DNET_CMD_ITERATOR_NEW)
 		log_level = DNET_LOG_DEBUG;
 
 	if (cmd->size > 0) {
 		dnet_log(r->st->n, log_level, "%s: %s: RECV cmd: %s, cmd-size: %" PRIu64
-		                              ", nonblocking: %d, cflags: %s, trans: %" PRIu64 ", %s",
+		                              ", nonblocking: %d, cflags: %s, trans: %" PRIu64 ", recv-time: %ld usecs",
 		         dnet_state_dump_addr(r->st), dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), cmd->size,
-		         nonblocking, dnet_flags_dump_cflags(cmd->flags), cmd->trans, dnet_state_dump_recv_time(r->st));
+		         nonblocking, dnet_flags_dump_cflags(cmd->flags), cmd->trans, recv_time);
 	} else if ((cmd->size == 0) && !(cmd->flags & DNET_FLAGS_MORE) && (cmd->flags & DNET_FLAGS_REPLY)) {
-		dnet_log(r->st->n, log_level,
-		         "%s: %s: RECV ACK cmd: %s, nonblocking: %d, cflags: %s, trans: %" PRIu64 ", %s",
+		dnet_log(r->st->n, log_level, "%s: %s: RECV ACK cmd: %s, nonblocking: %d, cflags: %s, trans: %" PRIu64
+		                              ", recv-time: %ld usecs",
 		         dnet_state_dump_addr(r->st), dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), nonblocking,
-		         dnet_flags_dump_cflags(cmd->flags), cmd->trans, dnet_state_dump_recv_time(r->st));
+		         dnet_flags_dump_cflags(cmd->flags), cmd->trans, recv_time);
 	} else {
 		int reply = !!(cmd->flags & DNET_FLAGS_REPLY);
 
 		dnet_log(r->st->n, log_level, "%s: %s: RECV cmd: %s, cmd-size: %" PRIu64
-		                              ", nonblocking: %d, cflags: %s, trans: %" PRIu64 ", reply: %d, %s",
+		                              ", nonblocking: %d, cflags: %s, trans: %" PRIu64
+		                              ", reply: %d, recv-time: %ld usecs",
 		         dnet_state_dump_addr(r->st), dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), cmd->size,
 		         nonblocking, dnet_flags_dump_cflags(cmd->flags), cmd->trans, reply,
-		         dnet_state_dump_recv_time(r->st));
+		         recv_time);
 	}
 
 	dnet_update_trans_timestamp_network(r);
@@ -417,7 +419,7 @@ again:
 		dnet_logger_set_trace_id(st->rcv_cmd.trace_id, st->rcv_cmd.flags & DNET_FLAGS_TRACE_BIT);
 
 		if ((st->rcv_flags & DNET_IO_CMD) && (st->rcv_offset == 0)) {
-			gettimeofday(&st->rcv_start_tv, NULL);
+			clock_gettime(CLOCK_MONOTONIC_RAW, &st->rcv_start_ts);
 		}
 
 		st->rcv_offset += err;
@@ -469,7 +471,7 @@ again:
 
 	r = st->rcv_data;
 	st->rcv_data = NULL;
-	gettimeofday(&st->rcv_finish_tv, NULL);
+	clock_gettime(CLOCK_MONOTONIC_RAW, &st->rcv_finish_ts);
 
 	dnet_schedule_command(st);
 
@@ -856,7 +858,7 @@ static void *dnet_io_process_network(void *data_)
 	int err = 0;
 	int num_events = 0;
 	int i = 0;
-	struct timeval prev_tv, curr_tv;
+	struct timespec prev_ts, curr_ts;
 
 	dnet_set_name("dnet_net");
 	dnet_logger_set_pool_id("net");
@@ -869,7 +871,7 @@ static void *dnet_io_process_network(void *data_)
 	}
 
 	// get current timestamp for future outputting "Net pool is suspended..." logging
-	gettimeofday(&prev_tv, NULL);
+	clock_gettime(CLOCK_MONOTONIC_RAW, &prev_ts);
 
 	while (!n->need_exit) {
 		// check if epoll possibly has more events to process then evs_size
@@ -952,19 +954,18 @@ static void *dnet_io_process_network(void *data_)
 
 		// wait condition variable if no data has been sent and io pool queues are still full
 		if (tmp == 0 && !dnet_check_io(n->io)) {
-			gettimeofday(&curr_tv, NULL);
+			clock_gettime(CLOCK_MONOTONIC_RAW, &curr_ts);
 			// print log only if previous log was written more then 1 seconds ago
-			if ((curr_tv.tv_sec - prev_tv.tv_sec) > 1) {
+			if ((curr_ts.tv_sec - prev_ts.tv_sec) > 1) {
 				dnet_log(n, DNET_LOG_INFO, "Net pool is suspended because io pool queues is full");
-				prev_tv = curr_tv;
+				prev_ts = curr_ts;
 			}
 			// wait condition variable - io queues has a free slot or some socket has something to send
 			pthread_mutex_lock(&n->io->full_lock);
 			n->io->blocked = 1;
 			while (!n->need_exit && !dnet_check_io(n->io)) {
-				gettimeofday(&curr_tv, NULL);
-				ts.tv_sec = curr_tv.tv_sec + 1;
-				ts.tv_nsec = curr_tv.tv_usec * 1000;
+				clock_gettime(CLOCK_REALTIME, &ts);
+				ts.tv_sec += 1;
 				if (pthread_cond_timedwait(&n->io->full_wait, &n->io->full_lock, &ts) == 0)
 					break;
 			}
@@ -1032,10 +1033,9 @@ void *dnet_io_process(void *data_) {
 		dnet_logger_set_trace_id(cmd->trace_id, cmd->flags & DNET_FLAGS_TRACE_BIT);
 
 		dnet_log(n, DNET_LOG_DEBUG, "%s: %s: got IO event: %p: cmd: %s, hsize: %zu, dsize: %zu, mode: %s, "
-		                            "backend_id: %d, queue_time: %ld usecs",
+		                            "backend_id: %d, queue_time: %lu usecs",
 		         dnet_state_dump_addr(st), dnet_dump_id(r->header), r, dnet_cmd_string(cmd->cmd), r->hsize,
-		         r->dsize, dnet_work_io_mode_str(pool->mode), cmd->backend_id,
-		         (r->time.tv_sec * 1000000 + r->time.tv_usec));
+		         r->dsize, dnet_work_io_mode_str(pool->mode), cmd->backend_id, r->queue_time);
 
 		dnet_process_recv(st, r);
 

@@ -292,8 +292,8 @@ static int dnet_io_req_queue(struct dnet_net_state *st, struct dnet_io_req *orig
 			goto err_out_exit;
 		}
 
-		gettimeofday(&st->rcv_start_tv, NULL);
-		st->rcv_finish_tv = st->rcv_start_tv;
+		clock_gettime(CLOCK_MONOTONIC_RAW, &st->rcv_start_ts);
+		st->rcv_finish_ts = st->rcv_start_ts;
 
 		r->st = dnet_state_get(st);
 		dnet_schedule_io(st->n, r);
@@ -306,6 +306,8 @@ static int dnet_io_req_queue(struct dnet_net_state *st, struct dnet_io_req *orig
 		err = -ENOMEM;
 		goto err_out_exit;
 	}
+
+	clock_gettime(CLOCK_MONOTONIC_RAW, &r->queue_start_ts);
 
 	pthread_mutex_lock(&st->send_lock);
 	list_add_tail(&r->req_entry, &st->send_list);
@@ -437,10 +439,10 @@ ssize_t dnet_send_fd(struct dnet_net_state *st, void *header, uint64_t hsize,
 
 void dnet_trans_update_timestamp(struct dnet_trans *t)
 {
-	gettimeofday(&t->time, NULL);
+	clock_gettime(CLOCK_MONOTONIC_RAW, &t->time_ts);
 
-	t->time.tv_sec += t->wait_ts.tv_sec;
-	t->time.tv_usec += t->wait_ts.tv_nsec / 1000;
+	t->time_ts.tv_sec += t->wait_ts.tv_sec;
+	t->time_ts.tv_nsec += t->wait_ts.tv_nsec;
 }
 
 int dnet_trans_send(struct dnet_trans *t, struct dnet_io_req *req)
@@ -648,11 +650,11 @@ int dnet_process_recv(struct dnet_net_state *st, struct dnet_io_req *r)
 				}
 
 				if (st && !(flags & DNET_FLAGS_MORE)) {
-					struct timeval tv;
+					struct timespec ts;
 					long diff;
 
-					gettimeofday(&tv, NULL);
-					diff = (tv.tv_sec - t->start.tv_sec) * 1000000 + (tv.tv_usec - t->start.tv_usec);
+					clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
+					diff = DIFF_TIMESPEC(t->start_ts, ts);
 
 					dnet_update_backend_weight(st, cmd, ioflags, diff);
 				}
@@ -693,7 +695,7 @@ int dnet_process_recv(struct dnet_net_state *st, struct dnet_io_req *r)
 		dnet_state_put(forward_state);
 
 		HANDY_COUNTER_INCREMENT("io.cmds", 1);
-		err = dnet_process_cmd_raw(st, cmd, r->data, 0, r->time.tv_sec * 1000000 + r->time.tv_usec);
+		err = dnet_process_cmd_raw(st, cmd, r->data, 0, r->queue_time);
 	} else {
 		if (!forward_state) {
 			err = -ENXIO;
@@ -1260,14 +1262,21 @@ int dnet_send_request(struct dnet_net_state *st, struct dnet_io_req *r)
 		setsockopt(st->write_s, IPPROTO_TCP, TCP_CORK, &cork, 4);
 	}
 
+	if (st->send_offset == 0) {
+		clock_gettime(CLOCK_MONOTONIC_RAW, &st->send_start_ts);
+		r->queue_time = DIFF_TIMESPEC(r->queue_start_ts, st->send_start_ts);
+	}
+
 	if (1) {
 		struct dnet_cmd *cmd = r->header ? r->header : r->data;
+		const enum dnet_log_level level = st->send_offset == 0 ? DNET_LOG_NOTICE : DNET_LOG_DEBUG;
+
 		dnet_logger_set_trace_id(cmd->trace_id, cmd->flags & DNET_FLAGS_TRACE_BIT);
-		dnet_log(st->n, st->send_offset == 0 ? DNET_LOG_NOTICE : DNET_LOG_DEBUG,
-		         "%s: %s: sending trans: %lld -> %s/%d: size: %llu, cflags: %s, start-sent: %zd/%zd",
+		dnet_log(st->n, level, "%s: %s: sending trans: %lld -> %s/%d: size: %llu, cflags: %s, start-sent: "
+		                       "%zd/%zd, send-queue-time: %lu usecs",
 		         dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), (unsigned long long)cmd->trans,
 		         dnet_addr_string(&st->addr), cmd->backend_id, (unsigned long long)cmd->size,
-		         dnet_flags_dump_cflags(cmd->flags), st->send_offset, total_size);
+		         dnet_flags_dump_cflags(cmd->flags), st->send_offset, total_size, r->queue_time);
 	}
 
 	if (r->hsize && r->header && st->send_offset < r->hsize) {
@@ -1306,14 +1315,20 @@ err_out_exit:
 	if (1) {
 		struct dnet_cmd *cmd = r->header ? r->header : r->data;
 		enum dnet_log_level level = DNET_LOG_DEBUG;
+		struct timespec ts;
+		unsigned long send_time;
+
+		clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
+		send_time = DIFF_TIMESPEC(st->send_start_ts, ts);
+
 		if (st->send_offset == total_size) {
 			level = !(cmd->flags & DNET_FLAGS_MORE) ? DNET_LOG_INFO : DNET_LOG_NOTICE;
 		}
-		dnet_log(st->n, level,
-		         "%s: %s: sending trans: %lld -> %s/%d: size: %llu, cflags: %s, finish-sent: %zd/%zd",
+		dnet_log(st->n, level, "%s: %s: sending trans: %lld -> %s/%d: size: %llu, cflags: %s, finish-sent: "
+		                       "%zd/%zd, send-queue-time: %lu usecs, send-time: %lu usecs",
 		         dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), (unsigned long long)cmd->trans,
 		         dnet_addr_string(&st->addr), cmd->backend_id, (unsigned long long)cmd->size,
-		         dnet_flags_dump_cflags(cmd->flags), st->send_offset, total_size);
+		         dnet_flags_dump_cflags(cmd->flags), st->send_offset, total_size, r->queue_time, send_time);
 	}
 	dnet_logger_unset_trace_id();
 
@@ -1328,7 +1343,7 @@ err_out_exit:
 	 * We do not destroy request here, it is postponed to caller.
 	 * Function can be called without lock - default call path from network processing thread and dnet_process_send_single()
 	 * or under st->send_lock, if queue was empty and dnet_send*() caller directly invoked this function from dnet_io_req_queue()
-	 * instead of queueing.
+	 * instead of queuing.
 	 */
 	if (st->send_offset == total_size) {
 		int nodelay = 1;

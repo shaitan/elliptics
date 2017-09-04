@@ -9,6 +9,7 @@
 #include "bindings/cpp/callback_p.h"
 #include "bindings/cpp/node_p.hpp"
 #include "bindings/cpp/session_internals.hpp"
+#include "bindings/cpp/timer.hpp"
 
 #include "library/protocol.hpp"
 #include "library/common.hpp"
@@ -16,21 +17,6 @@
 #include "bindings/cpp/functional_p.h"
 
 namespace ioremap { namespace elliptics { namespace newapi {
-
-class timer {
-public:
-	timer() {
-		gettimeofday(&point, nullptr);
-	}
-
-	unsigned long long elapsed() {
-		struct timeval curr;
-		gettimeofday(&curr, nullptr);
-		return (curr.tv_sec - point.tv_sec) * 1000000 + curr.tv_usec - point.tv_usec;
-	}
-private:
-	struct timeval point;
-};
 
 session::session(const node &n) : elliptics::session(n) {
 }
@@ -242,7 +228,7 @@ private:
 		DNET_LOG_INFO(m_log, "{}: {}: finished: groups: {}, trans: {}, status: {}, json-size: {}, data-size: "
 		                     "{}, total_time: {}",
 		              dnet_dump_id_str(m_key.id().id), dnet_cmd_string(DNET_CMD_READ_NEW), groups, trans,
-		              status, jsons, datas, m_timer.elapsed());
+		              status, jsons, datas, m_timer.get_us());
 	}
 
 	std::tuple<std::string, std::string, std::string, std::string, std::string> dump_responses() const {
@@ -280,7 +266,7 @@ private:
 		return std::make_tuple(groups, status, json, data, trans);
 	}
 
-	timer m_timer;
+	util::steady_timer m_timer;
 	key m_key;
 	session m_session;
 	async_result_handler<read_result_entry> m_handler;
@@ -422,7 +408,7 @@ private:
 		DNET_LOG_INFO(m_log, "{}: {}: finished: groups: {}, trans: {}, status: {}, json-size: {}, data-size: "
 		                     "{}, total_time: {}",
 		              dnet_dump_id_str(m_key.id().id), dnet_cmd_string(DNET_CMD_WRITE_NEW), groups, trans,
-		              status, jsons, datas, m_timer.elapsed());
+		              status, jsons, datas, m_timer.get_us());
 	}
 
 	std::tuple<std::string, std::string, std::string, std::string, std::string> dump_responses() const {
@@ -460,7 +446,7 @@ private:
 		return std::make_tuple(groups, status, json, data, trans);
 	}
 
-	timer m_timer;
+	util::steady_timer m_timer;
 	key m_key;
 	session m_session;
 	async_result_handler<write_result_entry> m_handler;

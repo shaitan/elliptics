@@ -35,6 +35,8 @@
 #include "library/request_queue.h"
 #include "library/logger.hpp"
 
+#include "bindings/cpp/timer.hpp"
+
 #include "rapidjson/document.h"
 #include "rapidjson/writer.h"
 #include "rapidjson/stringbuffer.h"
@@ -935,7 +937,7 @@ public:
 	: m_batch_size{MINIMAL_BATCH_SIZE}
 	, m_bytes_pending{0}
 	, m_bytes_processed{0}
-	, m_need_start_time{true} {
+	, m_need_restart_timer{true} {
 	}
 
 	/*!
@@ -950,9 +952,9 @@ public:
 		}
 		m_bytes_pending += bytes;
 
-		if (m_need_start_time) {
-			gettimeofday(&m_batch_start_time, nullptr);
-			m_need_start_time = false;
+		if (m_need_restart_timer) {
+			m_batch_timer.restart();
+			m_need_restart_timer = false;
 		}
 	}
 
@@ -969,17 +971,13 @@ public:
 		if (m_bytes_processed >= m_batch_size) {
 			m_bytes_processed -= m_batch_size;
 
-			struct timeval tv, tv_elapsed;
-			gettimeofday(&tv, nullptr);
-			timersub(&tv, &m_batch_start_time, &tv_elapsed);
-			const int elapsed = static_cast<int>(tv_elapsed.tv_sec * 1000 + tv_elapsed.tv_usec / 1000);
-			if (elapsed < BATCH_TIMEOUT_MSEC) {
+			if (m_batch_timer.get_ms() < BATCH_TIMEOUT_MSEC) {
 				m_batch_size *= 2;
 			} else {
 				m_batch_size = std::max(m_batch_size / 2, MINIMAL_BATCH_SIZE);
 			}
 
-			m_need_start_time = true;
+			m_need_restart_timer = true;
 		}
 
 		m_bytes_pending -= bytes;
@@ -1019,8 +1017,8 @@ private:
 	 * whether it was processed within this timeout or not
 	 */
 	const int BATCH_TIMEOUT_MSEC = 1000;
-	struct timeval m_batch_start_time;
-	bool m_need_start_time;
+	ioremap::elliptics::util::steady_timer m_batch_timer;
+	bool m_need_restart_timer;
 
 	std::mutex m_mutex;
 	std::condition_variable m_cond;
@@ -1676,14 +1674,14 @@ int blob_bulk_read_new(struct eblob_backend_config *c, void *state, struct dnet_
 	request.data_offset = request.data_size = 0;
 	request.deadline = bulk_request.deadline;
 
-	struct timeval start, end;
+	ioremap::elliptics::util::steady_timer timer;
 	struct dnet_cmd_stats orig_stats(*cmd_stats);
 
 	cmd->flags &= ~DNET_FLAGS_NEED_ACK;
 	struct dnet_cmd cmd_copy(*cmd);
 	const auto num_keys = bulk_request.keys.size();
 	for (size_t i = 0; i < num_keys; ++i) {
-		gettimeofday(&start, nullptr);
+		timer.restart();
 		cmd_copy.id = bulk_request.keys[i];
 
 		auto read_stats = orig_stats;
@@ -1700,8 +1698,7 @@ int blob_bulk_read_new(struct eblob_backend_config *c, void *state, struct dnet_
 		cmd_copy.cmd = DNET_CMD_READ_NEW;
 		cmd_stats->size += read_stats.size;
 
-		gettimeofday(&end, nullptr);
-		read_stats.handle_time = DIFF(start, end);
+		read_stats.handle_time = timer.get_us();
 
 		backend->command_stats().command_counter(cmd_copy.cmd, cmd_copy.trans, err, /*handled_in_cache*/ 0,
 		                                         read_stats.size, read_stats.handle_time);

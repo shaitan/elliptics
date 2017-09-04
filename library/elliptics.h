@@ -74,7 +74,8 @@ struct dnet_io_req {
 	off_t			local_offset;
 	size_t			fsize;
 
-	struct timeval		time;
+	struct timespec		queue_start_ts;
+	unsigned long		queue_time;
 };
 
 #define ELLIPTICS_PROTOCOL_VERSION_0 2
@@ -147,14 +148,15 @@ struct dnet_net_state
 	uint64_t		rcv_offset;
 	uint64_t		rcv_end;
 	unsigned int		rcv_flags;
-	struct timeval		rcv_start_tv;
-	struct timeval		rcv_finish_tv;
+	struct timespec		rcv_start_ts;
+	struct timespec		rcv_finish_ts;
 	void			*rcv_data;
 
 	int			epoll_fd;
 	size_t			send_offset;
 	pthread_mutex_t		send_lock;
 	struct list_head	send_list;
+	struct timespec		send_start_ts;
 	/*
 	 * Condition variable to wait when send_queue_size reaches high
 	 * watermark
@@ -674,7 +676,8 @@ struct dnet_trans
 	/* is used when checking thread moves transaction out of the above trees because of timeout */
 	struct list_head		trans_list_entry;
 
-	struct timeval			time, start;
+	struct timespec			start_ts;
+	struct timespec			time_ts;
 	struct timespec			wait_ts;
 
 	struct dnet_net_state		*orig; /* only for forward */
