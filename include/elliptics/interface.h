@@ -496,8 +496,6 @@ static inline const char *dnet_state_dump_addr(struct dnet_net_state *st)
 	return dnet_addr_string(dnet_state_addr(st));
 }
 
-const char *dnet_state_dump_recv_time(struct dnet_net_state *st);
-
 static inline const char *dnet_print_time(const struct dnet_time *t)
 {
 	char str[64];

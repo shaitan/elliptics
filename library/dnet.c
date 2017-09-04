@@ -372,7 +372,7 @@ static int dnet_iterator_callback_send(void *priv, void *data, uint64_t dsize, i
 struct dnet_iterator_server_send_write_private {
 	atomic_t			refcnt;
 	struct dnet_server_send_ctl	*send;
-	struct timeval			start;
+	struct timespec			start;
 	uint64_t			dsize;
 	char				data[0];
 };
@@ -468,11 +468,11 @@ err_out_send:
 
 			if (!err && !re->status) {
 				long usec;
-				struct timeval tv;
+				struct timespec ts;
 
-				gettimeofday(&tv, NULL);
+				clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
 
-				usec = (tv.tv_sec - wp->start.tv_sec) * 1000000 + (tv.tv_usec - wp->start.tv_usec);
+				usec = DIFF_TIMESPEC(wp->start, ts);
 
 				/*
 				 * Maximum number of bytes written into the wire and not yet acknowledged.
@@ -734,7 +734,7 @@ int dnet_server_send_write(struct dnet_server_send_ctl *send,
 
 	atomic_init(&wp->refcnt, send->group_num);
 	wp->send = send;
-	gettimeofday(&wp->start, NULL);
+	clock_gettime(CLOCK_MONOTONIC_RAW, &wp->start);
 
 	// it is in CPU byte order, it will have to be converted to LE before sending response to client
 	memcpy(wp->data, re, dsize);
@@ -1521,10 +1521,10 @@ static int dnet_process_cmd_with_backend_raw(struct dnet_net_state *st,
 	int err = 0;
 	struct dnet_node *n = st->n;
 	struct dnet_io_attr *io = NULL;
-	struct timeval start, end;
+	struct timespec start, end;
 	struct dnet_backend *backend = NULL;
 
-	gettimeofday(&start, NULL);
+	clock_gettime(CLOCK_MONOTONIC_RAW, &start);
 
 	backend = dnet_backends_get_backend_locked(n, cmd->backend_id);
 	if (!backend)
@@ -1634,8 +1634,8 @@ static int dnet_process_cmd_with_backend_raw(struct dnet_net_state *st,
 		break;
 	}
 
-	gettimeofday(&end, NULL);
-	cmd_stats->handle_time = DIFF(start, end);
+	clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+	cmd_stats->handle_time = DIFF_TIMESPEC(start, end);
 
 	/* If there was any error - send ACK to notify client with error code and destroy transaction */
 	if (err)
@@ -1669,7 +1669,7 @@ int dnet_process_cmd_raw(struct dnet_net_state *st,
 	struct dnet_node *n = st->n;
 	const unsigned long long tid = cmd->trans;
 	struct dnet_io_attr *io = NULL;
-	struct timeval start, end;
+	struct timespec start, end;
 
 	struct dnet_cmd_stats cmd_stats;
 
@@ -1679,14 +1679,14 @@ int dnet_process_cmd_raw(struct dnet_net_state *st,
 	HANDY_TIMER_SCOPE(recursive ? "io.cmd_recursive" : "io.cmd");
 	FORMATTED(HANDY_TIMER_SCOPE, ("io.cmd%s.%s", (recursive ? "_recursive" : ""), dnet_cmd_string(cmd->cmd)));
 
-	gettimeofday(&start, NULL);
+	clock_gettime(CLOCK_MONOTONIC_RAW, &start);
 
 	err = dnet_process_cmd_without_backend_raw(st, cmd, data, &cmd_stats);
 	if (err == -ENOTSUP)
 		err = dnet_process_cmd_with_backend_raw(st, cmd, data, &cmd_stats);
 
-	gettimeofday(&end, NULL);
-	cmd_stats.handle_time = DIFF(start, end);
+	clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+	cmd_stats.handle_time = DIFF_TIMESPEC(start, end);
 
 	switch (cmd->cmd) {
 		case DNET_CMD_READ:
@@ -1759,7 +1759,7 @@ int dnet_send_read_data(void *state, struct dnet_cmd *cmd, struct dnet_io_attr *
 	int hsize = sizeof(struct dnet_cmd) + sizeof(struct dnet_io_attr);
 	int err;
 	long csum_time, send_time, total_time;
-	struct timeval start_tv, csum_tv, send_tv;
+	struct timespec start_ts, csum_ts, send_ts;
 
 	/*
 	 * A simple hack to forbid read reply sending.
@@ -1770,7 +1770,7 @@ int dnet_send_read_data(void *state, struct dnet_cmd *cmd, struct dnet_io_attr *
 	if (io->flags & DNET_IO_FLAGS_SKIP_SENDING)
 		return 0;
 
-	gettimeofday(&start_tv, NULL);
+	clock_gettime(CLOCK_MONOTONIC_RAW, &start_ts);
 
 	c = calloc(1, hsize);
 	if (!c) {
@@ -1809,18 +1809,18 @@ int dnet_send_read_data(void *state, struct dnet_cmd *cmd, struct dnet_io_attr *
 			goto err_out_free;
 	}
 
-	gettimeofday(&csum_tv, NULL);
+	clock_gettime(CLOCK_MONOTONIC_RAW, &csum_ts);
 
 	if (data)
 		err = dnet_send_data(st, c, hsize, data, rio->size);
 	else
 		err = dnet_send_fd(st, c, hsize, fd, offset, rio->size, on_exit);
 
-	gettimeofday(&send_tv, NULL);
+	clock_gettime(CLOCK_MONOTONIC_RAW, &send_ts);
 
-	csum_time = DIFF(start_tv, csum_tv);
-	send_time = DIFF(csum_tv, send_tv);
-	total_time = DIFF(start_tv, send_tv);
+	csum_time = DIFF_TIMESPEC(start_ts, csum_ts);
+	send_time = DIFF_TIMESPEC(csum_ts, send_ts);
+	total_time = DIFF_TIMESPEC(start_ts, send_ts);
 
 	dnet_log(n, DNET_LOG_INFO, "%s: %s: reply: cflags: %s, %s, csum-time: %ld, send-time: %ld, total-time: %ld usecs.",
 			dnet_dump_id(&c->id), dnet_cmd_string(c->cmd),

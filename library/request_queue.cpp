@@ -37,7 +37,7 @@ dnet_request_queue::~dnet_request_queue()
 
 void dnet_request_queue::push_request(dnet_io_req *req)
 {
-	gettimeofday(&req->time, NULL);
+	clock_gettime(CLOCK_MONOTONIC_RAW, &req->queue_start_ts);
 
 	{
 		std::unique_lock<std::mutex> lock(m_queue_mutex);
@@ -62,9 +62,9 @@ dnet_io_req *dnet_request_queue::pop_request(dnet_work_io *wio, const char *thre
 			list_del_init(&r->req_entry);
 			--m_queue_size;
 
-			timeval tv;
-			gettimeofday(&tv, nullptr);
-			timersub(&tv, &r->time, &r->time);
+			timespec ts;
+			clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
+			r->queue_time = DIFF_TIMESPEC(r->queue_start_ts, ts);
 		}
 
 		return r;
@@ -98,7 +98,7 @@ dnet_io_req *dnet_request_queue::pop_request(dnet_work_io *wio, const char *thre
 		if (st->__need_exit)
 			return true;
 
-		return (r->time.tv_sec * 1000000 + r->time.tv_usec) > timeout;
+		return r->queue_time > timeout;
 	}();
 
 	if (!expired)
@@ -112,8 +112,7 @@ dnet_io_req *dnet_request_queue::pop_request(dnet_work_io *wio, const char *thre
 		DNET_LOG_ERROR(node, "{}: {}: client: {}: drop request: trans: {}, cflags: {}, "
 		                     "queue_time: {} usecs, timeout: {} usecs, need_exit: {}",
 		               dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), dnet_state_dump_addr(r->st),
-		               cmd->trans, dnet_flags_dump_cflags(cmd->flags),
-		               (r->time.tv_sec * 1000000 + r->time.tv_usec), timeout, st->__need_exit);
+		               cmd->trans, dnet_flags_dump_cflags(cmd->flags), r->queue_time, timeout, st->__need_exit);
 	}
 	pthread_cond_broadcast(&node->io->full_wait);
 

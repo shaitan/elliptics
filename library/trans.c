@@ -116,16 +116,16 @@ int dnet_trans_insert_nolock(struct dnet_net_state *st, struct dnet_trans *a)
  */
 static inline int dnet_trans_cmp_timer(struct dnet_trans *trans2, struct dnet_trans *trans1)
 {
-	struct timeval *t1 = &trans1->time;
-	struct timeval *t2 = &trans2->time;
+	struct timespec *t1 = &trans1->time_ts;
+	struct timespec *t2 = &trans2->time_ts;
 
 	if (t1->tv_sec > t2->tv_sec)
 		return 1;
 	if (t1->tv_sec < t2->tv_sec)
 		return -1;
-	if (t1->tv_usec > t2->tv_usec)
+	if (t1->tv_nsec > t2->tv_nsec)
 		return 1;
-	if (t1->tv_usec < t2->tv_usec)
+	if (t1->tv_nsec < t2->tv_nsec)
 		return -1;
 
 	return dnet_trans_cmp(trans2->trans, trans1->trans);
@@ -227,7 +227,7 @@ struct dnet_trans *dnet_trans_alloc(struct dnet_node *n, uint64_t size)
 	atomic_init(&t->refcnt, 1);
 	INIT_LIST_HEAD(&t->trans_list_entry);
 
-	gettimeofday(&t->start, NULL);
+	clock_gettime(CLOCK_MONOTONIC_RAW, &t->start_ts);
 
 	return t;
 
@@ -238,7 +238,7 @@ err_out_exit:
 void dnet_trans_destroy(struct dnet_trans *t)
 {
 	struct dnet_net_state *st = NULL;
-	struct timeval tv;
+	struct timespec ts;
 	long diff;
 
 	if (!t)
@@ -246,8 +246,8 @@ void dnet_trans_destroy(struct dnet_trans *t)
 
 	dnet_logger_set_trace_id(t->cmd.trace_id, t->cmd.flags & DNET_FLAGS_TRACE_BIT);
 
-	gettimeofday(&tv, NULL);
-	diff = 1000000 * (tv.tv_sec - t->start.tv_sec) + (tv.tv_usec - t->start.tv_usec);
+	clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
+	diff = DIFF_TIMESPEC(t->start_ts, ts);
 
 	if (t->st && t->st->n) {
 		st = t->st;
@@ -270,9 +270,7 @@ void dnet_trans_destroy(struct dnet_trans *t)
 	}
 
 	if (st && st->n && t->command != 0) {
-		char str[64];
 		char io_buf[1024] = "";
-		struct tm tm;
 
 		if (t->cmd.status != -ETIMEDOUT) {
 			if (st->stall) {
@@ -282,9 +280,6 @@ void dnet_trans_destroy(struct dnet_trans *t)
 
 			st->stall = 0;
 		}
-
-		localtime_r((time_t *)&t->start.tv_sec, &tm);
-		strftime(str, sizeof(str), "%F %R:%S", &tm);
 
 		if ((t->command == DNET_CMD_READ || t->command == DNET_CMD_WRITE) &&
 		    (t->alloc_size >= sizeof(struct dnet_cmd) + sizeof(struct dnet_io_attr))) {
@@ -299,13 +294,12 @@ void dnet_trans_destroy(struct dnet_trans *t)
 		}
 
 		dnet_log(st->n, DNET_LOG_INFO, "%s: %s: destruction %s, stall: %d, "
-				"time: %ld, started: %s.%06lu, cached status: %d%s",
+				"time: %ld, cached status: %d%s",
 			dnet_dump_id(&t->cmd.id),
 			dnet_cmd_string(t->cmd.cmd),
 			dnet_print_trans(t),
 			t->st->stall,
 			diff,
-			str, t->start.tv_usec,
 			t->cmd.status, io_buf);
 	}
 
@@ -513,12 +507,11 @@ int dnet_trans_iterate_move_transaction(struct dnet_net_state *st, struct list_h
 {
 	struct dnet_trans *t;
 	struct rb_node *rb_node;
-	struct timeval tv;
+	struct timespec ts;
 	int trans_moved = 0;
-	char str[64];
-	struct tm tm;
+	long diff = 0;
 
-	gettimeofday(&tv, NULL);
+	clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
 
 	while (1) {
 		/* lock is being locked/unlocked to get a chance for IO thread to process other transactions
@@ -536,10 +529,10 @@ int dnet_trans_iterate_move_transaction(struct dnet_net_state *st, struct list_h
 		t = rb_entry(rb_node, struct dnet_trans, timer_entry);
 		if (!st->__need_exit) {
 			int has_timeouted;
-			if (t->time.tv_sec < tv.tv_sec) {
+			if (t->time_ts.tv_sec < ts.tv_sec) {
 				has_timeouted = 1;
-			} else if (t->time.tv_sec == tv.tv_sec) {
-				has_timeouted = (t->time.tv_usec <= tv.tv_usec);
+			} else if (t->time_ts.tv_sec == ts.tv_sec) {
+				has_timeouted = (t->time_ts.tv_nsec <= ts.tv_nsec);
 			} else {
 				has_timeouted = 0;
 			}
@@ -549,19 +542,18 @@ int dnet_trans_iterate_move_transaction(struct dnet_net_state *st, struct list_h
 			}
 		}
 
-		localtime_r((time_t *)&t->start.tv_sec, &tm);
-		strftime(str, sizeof(str), "%F %R:%S", &tm);
+		diff = DIFF_TIMESPEC(t->start_ts, ts);
 
 		// TODO: We may use dnet_log_record_set_request_id here,
 		// but blackhole currently has higher priority for scoped attributes =(
 		dnet_logger_set_trace_id(t->cmd.trace_id, t->cmd.flags & DNET_FLAGS_TRACE_BIT);
 
 		dnet_log(st->n, DNET_LOG_ERROR, "%s: %s: TIMEOUT/need-exit %s, "
-				"need-exit: %d, started: %s.%06lu",
+				"need-exit: %d, time: %ld",
 				dnet_dump_id(&t->cmd.id), dnet_cmd_string(t->cmd.cmd),
 				dnet_print_trans(t),
 				st->__need_exit,
-				str, t->start.tv_usec);
+				diff);
 
 		trans_moved++;
 
@@ -582,11 +574,11 @@ int dnet_trans_iterate_move_transaction(struct dnet_net_state *st, struct list_h
 			list_del(&t->trans_list_entry);
 			dnet_log(st->n, DNET_LOG_ERROR, "%s: %s: TIMEOUT/need-exit: stall %s, "
 					"it was moved into some timeout list, but yet it exists in timer tree, "
-					"need-exit: %d, started: %s.%06lu",
+					"need-exit: %d, time: %ld",
 					dnet_dump_id(&t->cmd.id), dnet_cmd_string(t->cmd.cmd),
 					dnet_print_trans(t),
 					st->__need_exit,
-					str, t->start.tv_usec);
+					diff);
 		}
 
 		list_add_tail(&t->trans_list_entry, head);
@@ -737,7 +729,7 @@ static void *dnet_reconnect_process(void *data)
 {
 	struct dnet_node *n = data;
 	long i, timeout;
-	struct timeval tv1, tv2;
+	struct timespec ts1, ts2;
 
 	dnet_set_name("dnet_reconnect");
 
@@ -748,15 +740,15 @@ static void *dnet_reconnect_process(void *data)
 			n->check_timeout, n->check_timeout);
 
 	while (!n->need_exit) {
-		gettimeofday(&tv1, NULL);
+		clock_gettime(CLOCK_MONOTONIC_RAW, &ts1);
 
 		dnet_log(n, DNET_LOG_INFO, "Started reconnection process");
 		dnet_reconnect_and_check_route_table(n);
 		dnet_log(n, DNET_LOG_INFO, "Finished reconnection process");
 
-		gettimeofday(&tv2, NULL);
+		clock_gettime(CLOCK_MONOTONIC_RAW, &ts2);
 
-		timeout = n->check_timeout - (tv2.tv_sec - tv1.tv_sec);
+		timeout = n->check_timeout - (ts2.tv_sec - ts1.tv_sec);
 
 		for (i=0; i<timeout; ++i) {
 			if (n->need_exit)

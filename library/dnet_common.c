@@ -412,25 +412,6 @@ struct dnet_addr *dnet_state_addr(struct dnet_net_state *st)
 	return &st->addr;
 }
 
-const char *dnet_state_dump_recv_time(struct dnet_net_state *st) {
-	char start_str[64], finish_str[64];
-	struct tm start_tm, finish_tm;
-
-	localtime_r((time_t *)&st->rcv_start_tv.tv_sec, &start_tm);
-	strftime(start_str, sizeof(start_str), "%F %R:%S", &start_tm);
-
-	localtime_r((time_t *)&st->rcv_finish_tv.tv_sec, &finish_tm);
-	strftime(finish_str, sizeof(finish_str), "%F %R:%S", &finish_tm);
-
-	long recv_time = DIFF(st->rcv_start_tv, st->rcv_finish_tv);
-
-	static __thread char __recv_time[256];
-	snprintf(__recv_time, sizeof(__recv_time), "recv-start: %s.%06ld, recv-finish: %s.%06ld, recv-time: %ld usecs",
-	         start_str, st->rcv_start_tv.tv_usec, finish_str, st->rcv_finish_tv.tv_usec, recv_time);
-
-	return __recv_time;
-}
-
 int dnet_version_compare(struct dnet_net_state *st, int *version)
 {
 	size_t i;
@@ -460,10 +441,10 @@ int dnet_request_cmd(struct dnet_session *s, struct dnet_trans_control *ctl)
 	struct dnet_idc *idc;
 	struct rb_node *it;
 	struct dnet_group *g;
-	struct timeval start, end;
+	struct timespec start, end;
 	long diff;
 
-	gettimeofday(&start, NULL);
+	clock_gettime(CLOCK_MONOTONIC_RAW, &start);
 
 	pthread_mutex_lock(&n->state_lock);
 	for (it = rb_first(&n->group_root); it; it = rb_next(it)) {
@@ -486,8 +467,8 @@ int dnet_request_cmd(struct dnet_session *s, struct dnet_trans_control *ctl)
 	}
 	pthread_mutex_unlock(&n->state_lock);
 
-	gettimeofday(&end, NULL);
-	diff = (end.tv_sec - start.tv_sec) * 1000000 + end.tv_usec - start.tv_usec;
+	clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+	diff = DIFF_TIMESPEC(start, end);
 	dnet_log(n, DNET_LOG_NOTICE, "request cmd: %s: %ld usecs, num: %d", dnet_cmd_string(ctl->cmd), diff, num);
 
 	return num;

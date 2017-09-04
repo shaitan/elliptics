@@ -332,13 +332,13 @@ int dnet_idc_update_backend(struct dnet_net_state *st, struct dnet_backend_ids *
 	struct dnet_idc *idc;
 	struct dnet_group *g;
 	int err = -ENOMEM, i, num;
-	struct timeval start, end;
+	struct timespec start, end;
 	long diff;
 	struct dnet_raw_id *ids = backend->ids;
 	int id_num = backend->ids_count;
 	int group_id = backend->group_id;
 
-	gettimeofday(&start, NULL);
+	clock_gettime(CLOCK_MONOTONIC_RAW, &start);
 
 	const int remove_backend = (backend->flags & DNET_BACKEND_DISABLE);
 
@@ -431,9 +431,8 @@ int dnet_idc_update_backend(struct dnet_net_state *st, struct dnet_backend_ids *
 
 	pthread_mutex_unlock(&n->state_lock);
 
-	gettimeofday(&end, NULL);
-	diff = (end.tv_sec - start.tv_sec) * 1000000 + end.tv_usec - start.tv_usec;
-
+	clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+	diff = DIFF_TIMESPEC(start, end);
 	DNET_NOTICE(n, "Initialized group: %d, total ids: %d, added ids: %d, received ids: %d, "
 	               "state: %s, backend: %d, idc: %p, time-took: %ld usecs",
 	            g->group_id, g->id_num, num, id_num, dnet_state_dump_addr(st), backend->backend_id, idc, diff);
@@ -446,8 +445,8 @@ err_out_unlock:
 	pthread_mutex_unlock(&n->state_lock);
 	free(idc);
 err_out_exit:
-	gettimeofday(&end, NULL);
-	diff = (end.tv_sec - start.tv_sec) * 1000000 + end.tv_usec - start.tv_usec;
+	clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+	diff = DIFF_TIMESPEC(start, end);
 	DNET_ERROR(n, "Failed to initialize group %d with %d ids, state: %s, backend: %d, err: %d: %ld usecs", group_id,
 	           id_num, dnet_state_dump_addr(st), backend->backend_id, err, diff);
 	return err;
