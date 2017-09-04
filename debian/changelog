@@ -1,3 +1,12 @@
+elliptics (2.27.2.12) unstable; urgency=medium
+
+  * Use monotonic time instead of system
+  * util: use common timer instead of pair of gettimeofday
+  * Update backend's weight only by positive timings
+  * stats: finally get rid of histograms
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Mon, 04 Sep 2017 13:10:41 +0300
+
 elliptics (2.27.2.11) unstable; urgency=medium
 
   * update test with corrupted data

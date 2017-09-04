@@ -3,7 +3,7 @@
 
 Summary:	Distributed hash table storage
 Name:		elliptics
-Version:	2.27.2.11
+Version:	2.27.2.12
 Release:	1%{?dist}
 
 License:	GPLv2+
@@ -131,6 +131,12 @@ rm -rf %{buildroot}
 
 
 %changelog
+* Mon Sep 04 2017 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.2.12
+- Use monotonic time instead of system
+- util: use common timer instead of pair of gettimeofday
+- Update backend's weight only by positive timings
+- stats: finally get rid of histograms
+
 * Wed Aug 02 2017 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.2.11
 - update test with corrupted data
 - verify checksum for headers on read
