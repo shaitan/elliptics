@@ -353,11 +353,57 @@ void test_read_keys_error(const ioremap::elliptics::newapi::session &session, co
 	}
 }
 
-void test_chunked_server_send(const ioremap::elliptics::newapi::session &session, const std::vector<TestKey> &keys,
-			      int src_group, const std::vector<int> &dst_groups, size_t chunk_size) {
+void test_remove_keys(const ioremap::elliptics::newapi::session &session,
+                      const std::vector<TestKey> &keys,
+                      const std::vector<int> &groups) {
+	for (const auto &group_id : groups) {
+		std::vector<ioremap::elliptics::async_remove_result> results;
+		auto s = session.clone();
+		s.set_filter(ioremap::elliptics::filters::all_with_ack);
+		s.set_trace_id(rand());
+		s.set_groups({group_id});
+		for (const auto &k : keys) {
+			results.emplace_back(s.remove(k.id));
+		}
+
+		for (auto &result : results) {
+			BOOST_REQUIRE_EQUAL(result.get().size(), 1);
+
+			BOOST_REQUIRE_EQUAL(result.get()[0].status(), 0);
+		}
+	}
+}
+
+void test_make_groups_readonly(const ioremap::elliptics::newapi::session &session,
+                               const std::vector<int> &groups,
+                               bool readonly) {
+	std::vector<ioremap::elliptics::async_backend_control_result> results;
+
+	auto s = session.clone();
+	for (const auto &group_id : groups) {
+		for (const auto &route : s.get_routes()) {
+			if (route.group_id == group_id) {
+				auto async = readonly ? s.make_readonly(route.addr, route.backend_id)
+				                      : s.make_writable(route.addr, route.backend_id);
+
+				BOOST_REQUIRE_EQUAL(async.get().size(), 1);
+				BOOST_REQUIRE_EQUAL(async.get()[0].status(), 0);
+				break;
+			}
+		}
+	}
+}
+
+void test_chunked_server_send(const ioremap::elliptics::newapi::session &session,
+                              const std::vector<TestKey> &keys,
+                              int src_group,
+                              const std::vector<int> &dst_groups,
+                              size_t chunk_size,
+                              int status) {
 	auto s = session.clone();
 	s.set_trace_id(rand());
 	s.set_groups({src_group});
+	s.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
 
 	std::vector<std::string> key_ids;
 	key_ids.reserve(keys.size());
@@ -371,7 +417,7 @@ void test_chunked_server_send(const ioremap::elliptics::newapi::session &session
 
 	size_t counter = 0;
 	for (const auto &result : async) {
-		BOOST_REQUIRE_EQUAL(result.status(), 0);
+		BOOST_REQUIRE_EQUAL(result.status(), status);
 		++counter;
 	}
 	BOOST_REQUIRE_EQUAL(keys.size(), counter);
@@ -480,13 +526,21 @@ bool register_tests(const nodes_data *setup) {
 	ELLIPTICS_TEST_CASE(test_read_keys, use_session(n), keys, std::vector<int>({constants::src_group}));
 	ELLIPTICS_TEST_CASE(test_read_keys_error, use_session(n), keys, constants::dst_groups, -ENOENT);
 
-	ELLIPTICS_TEST_CASE(test_chunked_server_send, use_session(n), keys,
-			    constants::src_group, constants::dst_groups, chunk_size);
+	ELLIPTICS_TEST_CASE(test_chunked_server_send, use_session(n), keys, constants::src_group, constants::dst_groups,
+	                    chunk_size, 0);
 
 	std::vector<int> all_groups = constants::dst_groups;
 	all_groups.emplace_back(constants::src_group);
 
 	ELLIPTICS_TEST_CASE(test_read_keys, use_session(n), keys, all_groups);
+
+	ELLIPTICS_TEST_CASE(test_remove_keys, use_session(n), keys, constants::dst_groups);
+	ELLIPTICS_TEST_CASE(test_make_groups_readonly, use_session(n), constants::dst_groups, true);
+
+	ELLIPTICS_TEST_CASE(test_chunked_server_send, use_session(n), keys, constants::src_group, constants::dst_groups,
+	                    chunk_size, -EROFS);
+
+	ELLIPTICS_TEST_CASE(test_make_groups_readonly, use_session(n), constants::dst_groups, false);
 
 	return true;
 }

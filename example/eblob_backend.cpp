@@ -1034,7 +1034,7 @@ static iterator_callback make_iterator_server_send_callback(eblob_backend_config
                                                             std::atomic<uint64_t> &counter,
                                                             const fail_reply_callback &send_fail_reply) {
 	using namespace ioremap::elliptics;
-	return [=, &request, &counter, &monitor, &send_fail_reply] (std::shared_ptr<iterated_key_info> info) -> int {
+	return [=, &request, &counter, &monitor] (std::shared_ptr<iterated_key_info> info) -> int {
 		if (st->__need_exit) {
 			DNET_LOG_ERROR(c->blog, "EBLOB: Interrupting server_send: peer has been disconnected");
 			return -EINTR;
@@ -1067,6 +1067,7 @@ static iterator_callback make_iterator_server_send_callback(eblob_backend_config
 
 		newapi::session session(st->n);
 		session.set_exceptions_policy(session::no_exceptions);
+		session.set_filter(filters::all_final);
 		session.set_trace_id(cmd->trace_id);
 		session.set_trace_bit(!!(cmd->flags & DNET_FLAGS_TRACE_BIT));
 		session.set_groups(request.groups);
