@@ -3,7 +3,7 @@
 
 Summary:	Distributed hash table storage
 Name:		elliptics
-Version:	2.27.2.12
+Version:	2.27.2.13
 Release:	1%{?dist}
 
 License:	GPLv2+
@@ -131,6 +131,9 @@ rm -rf %{buildroot}
 
 
 %changelog
+* Fri Sep 08 2017 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.2.13
+- server-send: do not ignore failed writes
+
 * Mon Sep 04 2017 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.2.12
 - Use monotonic time instead of system
 - util: use common timer instead of pair of gettimeofday

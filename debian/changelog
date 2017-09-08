@@ -1,3 +1,9 @@
+elliptics (2.27.2.13) unstable; urgency=medium
+
+  * server-send: do not ignore failed writes
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Fri, 08 Sep 2017 10:37:29 +0300
+
 elliptics (2.27.2.12) unstable; urgency=medium
 
   * Use monotonic time instead of system
