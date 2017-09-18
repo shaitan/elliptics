@@ -1696,12 +1696,11 @@ int blob_bulk_read_new(struct eblob_backend_config *c, void *state, struct dnet_
 			cmd_copy.status = err;
 			dnet_send_reply(st, &cmd_copy, nullptr, 0, last_read ? 0 : 1);
 		}
-		cmd_copy.cmd = DNET_CMD_READ_NEW;
 		cmd_stats->size += read_stats.size;
 
 		read_stats.handle_time = timer.get_us();
 
-		backend->command_stats().command_counter(cmd_copy.cmd, cmd_copy.trans, err, /*handled_in_cache*/ 0,
+		backend->command_stats().command_counter(DNET_CMD_READ_NEW, cmd_copy.trans, err, /*handled_in_cache*/ 0,
 		                                         read_stats.size, read_stats.handle_time);
 	}
 
