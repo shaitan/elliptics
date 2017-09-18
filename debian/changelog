@@ -1,3 +1,10 @@
+elliptics (2.27.2.14) unstable; urgency=medium
+
+  * fix sending bulk_read response as DNET_CMD_READ_NEW
+  * fix bulk_read with non-unique keys
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Mon, 18 Sep 2017 19:24:23 +0300
+
 elliptics (2.27.2.13) unstable; urgency=medium
 
   * server-send: do not ignore failed writes

@@ -3,7 +3,7 @@
 
 Summary:	Distributed hash table storage
 Name:		elliptics
-Version:	2.27.2.13
+Version:	2.27.2.14
 Release:	1%{?dist}
 
 License:	GPLv2+
@@ -131,6 +131,10 @@ rm -rf %{buildroot}
 
 
 %changelog
+* Mon Sep 18 2017 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.2.14
+- fix sending bulk_read response as DNET_CMD_READ_NEW
+- fix bulk_read with non-unique keys
+
 * Fri Sep 08 2017 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.2.13
 - server-send: do not ignore failed writes
 
