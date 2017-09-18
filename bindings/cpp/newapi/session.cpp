@@ -872,17 +872,21 @@ private:
 			return;
 		}
 
-		auto it = std::lower_bound(m_keys.begin(), m_keys.end(), cmd->id);
-
 		bool found = false;
-		if (it != m_keys.end()) {
-			const auto index = std::distance(m_keys.begin(), it);
-			if (dnet_id_cmp(&cmd->id, &m_keys[index]) == 0) {
-				m_handler.process(resp);
+		for (auto it = std::lower_bound(m_keys.begin(), m_keys.end(), cmd->id); it != m_keys.end(); ++it) {
+			if (dnet_id_cmp(&cmd->id, &*it) != 0)
+				break;
 
-				m_key_responses[index] = true;
-				found = true;
-			}
+			const auto index = std::distance(m_keys.begin(), it);
+
+			if (m_key_responses[index])
+				continue;
+
+			m_handler.process(resp);
+
+			m_key_responses[index] = true;
+			found = true;
+			break;
 		}
 
 		if (!found) {
