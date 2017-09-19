@@ -72,32 +72,47 @@ bool log_filter(const int severity, const int level) {
 	return attributes::trace::bit() || severity >= level;
 }
 
-std::unique_ptr<dnet_logger> make_file_logger(const std::string &path, dnet_log_level level) {
-	static const std::string pattern =
-	        "{timestamp:l} {trace_id:{0:default}0>16}/{thread:d}/{process} {severity}: {message}, attrs: [{...}]";
+static std::unique_ptr<dnet_logger> make_logger(const std::string &path, dnet_log_level level, bool watched) {
+	auto formatter = [&]() {
+		static const std::string pattern = "{timestamp:l} {trace_id:{0:default}0>16}/{thread:d}/{process} "
+		                                   "{severity}: {message}, attrs: [{...}]";
 
-	static auto sevmap = [](std::size_t severity, const std::string &spec, blackhole::writer_t &writer) {
-		static const std::array<const char *, 5> mapping = {{"DEBUG", "NOTICE", "INFO", "WARNING", "ERROR"}};
-		if (severity < mapping.size()) {
-			writer.write(spec, mapping[severity]);
-		} else {
-			writer.write(spec, severity);
-		}
-	};
+		static auto sevmap = [](std::size_t severity, const std::string &spec, blackhole::writer_t &writer) {
+			static const std::array<const char *, 5> mapping = {
+			        {"DEBUG", "NOTICE", "INFO", "WARNING", "ERROR"}};
+			if (severity < mapping.size()) {
+				writer.write(spec, mapping[severity]);
+			} else {
+				writer.write(spec, severity);
+			}
+		};
+
+		blackhole::builder<blackhole::formatter::string_t> builder(pattern);
+		builder.mapping(sevmap);
+		return std::move(builder).build();
+
+	}();
+
+	auto file_sink = [&]() {
+		blackhole::builder<blackhole::sink::file_t> builder(path);
+		builder.flush_every(1);
+		if (watched)
+			builder.rotate_checking_stat();
+		return std::move(builder).build();
+	}();
+
+	auto async_sink = [&]() {
+		blackhole::builder<blackhole::sink::asynchronous_t> builder(std::move(file_sink));
+		builder.factor(20);
+		builder.wait();
+		return std::move(builder).build();
+	}();
 
 	std::vector<std::unique_ptr<blackhole::handler_t>> handlers;
 	handlers.emplace_back(
 		blackhole::builder<blackhole::handler::blocking_t>()
-			.set(blackhole::builder<blackhole::formatter::string_t>(pattern)
-				.mapping(sevmap)
-				.build())
-			.add(blackhole::builder<blackhole::sink::asynchronous_t>(
-				blackhole::builder<blackhole::sink::file_t>(path)
-					.flush_every(1)
-					.build())
-				.factor(20)
-				.wait()
-				.build())
+			.set(std::move(formatter))
+			.add(std::move(async_sink))
 			.build()
 	);
 
@@ -108,6 +123,16 @@ std::unique_ptr<dnet_logger> make_file_logger(const std::string &path, dnet_log_
 	});
 
 	return std::move(logger);
+}
+
+
+std::unique_ptr<dnet_logger> make_file_logger(const std::string &path, dnet_log_level level) {
+	return std::move(make_logger(path, level, false));
+}
+
+
+std::unique_ptr<dnet_logger> make_watched_logger(const std::string &path, dnet_log_level level) {
+	return std::move(make_logger(path, level, true));
 }
 
 std::string to_hex_string(uint64_t value) {
