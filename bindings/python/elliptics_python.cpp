@@ -14,21 +14,9 @@
  * GNU Lesser General Public License for more details.
  */
 
-#include <netdb.h>
-#include <boost/python.hpp>
-#include <boost/python/object.hpp>
-#include <boost/python/list.hpp>
-#include <boost/python/dict.hpp>
-#include <boost/python/stl_iterator.hpp>
-
 #include <blackhole/wrapper.hpp>
 
 #include <elliptics/cppdef.h>
-
-#include <map>
-#include <queue>
-#include <mutex>
-#include <condition_variable>
 
 #include "elliptics_id.h"
 #include "async_result.h"
