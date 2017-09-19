@@ -132,8 +132,9 @@ dnet_config& dnet_config_config(dnet_config &config) {
 
 class elliptics_file_logger {
 public:
-	elliptics_file_logger(const char *file, int level)
-	: m_logger(make_file_logger(file, dnet_log_level(level))) {}
+	elliptics_file_logger(const std::string &file, int level, bool watched = false)
+	: m_logger(watched ? make_watched_logger(file, dnet_log_level(level))
+	                   : make_file_logger(file, dnet_log_level(level))) {}
 
 	std::unique_ptr<dnet_logger> get_logger() {
 		return std::unique_ptr<dnet_logger>(new blackhole::wrapper_t(*m_logger, {}));
@@ -269,9 +270,9 @@ BOOST_PYTHON_MODULE(core)
 	bp::register_exception_translator<error>(error_translator);
 	bp::register_exception_translator<std::ios_base::failure>(ios_base_failure_translator);
 
-	bp::class_<elliptics_file_logger, boost::noncopyable> file_logger_class(
+	bp::class_<elliptics_file_logger, boost::noncopyable>(
 		"Logger", "File logger for using inside Elliptics client library",
-		bp::init<const char *, int>(bp::args("log_file", "log_level"),
+		bp::init<const std::string &, int, bp::optional<bool>>(bp::args("log_file", "log_level", "watched"),
 		    "__init__(self, filename, log_level)\n"
 		    "    Initializes file logger by the specified file and level of verbosity\n\n"
 		    "    logger = elliptics.Logger(\"/dev/stderr\", elliptics.log_level.debug)"));
