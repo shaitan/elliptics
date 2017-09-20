@@ -15,6 +15,7 @@
 
 import errno
 import logging
+import logging.handlers
 import os
 import sys
 import threading
@@ -445,7 +446,7 @@ def recover(ctx):
 
     stats.timer('recover', 'started')
     node = elliptics_create_node(address=ctx.address,
-                                 elog=elliptics.Logger(ctx.log_file, int(ctx.log_level)),
+                                 elog=elliptics.Logger(ctx.log_file, int(ctx.log_level), True),
                                  wait_timeout=ctx.wait_timeout,
                                  flags=elliptics.config_flags.no_route_list,
                                  net_thread_num=4,
@@ -525,7 +526,7 @@ if __name__ == '__main__':
 
         # FIXME: It may be inappropriate to use one log for both
         # elliptics library and python app, esp. in presence of auto-rotation
-        fh = logging.FileHandler(ctx.log_file)
+        fh = logging.handlers.WatchedFileHandler(ctx.log_file)
         fh.setFormatter(formatter)
         fh.setLevel(convert_elliptics_log_level(ctx.log_level))
         log.addHandler(fh)
@@ -574,7 +575,7 @@ if __name__ == '__main__':
                          .format(options.wait_timeout, repr(e), traceback.format_exc()))
 
     log.debug("Creating logger")
-    elog = elliptics.Logger(ctx.log_file, int(ctx.log_level))
+    elog = elliptics.Logger(ctx.log_file, int(ctx.log_level), True)
 
     result = recover(ctx)
 

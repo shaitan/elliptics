@@ -81,7 +81,7 @@ def process_node_backend(ctx, address, backend_id, group, ranges):
         stats = ctx.stats['node_{0}/{1}'.format(address, backend_id)]
         stats.timer('process', 'started')
 
-        elog = elliptics.Logger(ctx.log_file, int(ctx.log_level))
+        elog = elliptics.Logger(ctx.log_file, int(ctx.log_level), True)
         node = elliptics_create_node(address=ctx.address,
                                      elog=elog,
                                      wait_timeout=ctx.wait_timeout,
@@ -413,7 +413,7 @@ def dump_process_group((ctx, group)):
         if group not in ctx.routes.groups():
             log.error("Group: {0} is not presented in route list".format(group))
             return False
-        elog = elliptics.Logger(ctx.log_file, int(ctx.log_level))
+        elog = elliptics.Logger(ctx.log_file, int(ctx.log_level), True)
         node = elliptics_create_node(address=ctx.address,
                                      elog=elog,
                                      wait_timeout=ctx.wait_timeout,

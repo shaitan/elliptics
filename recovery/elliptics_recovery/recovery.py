@@ -60,7 +60,7 @@ def get_routes(ctx):
     log.debug('Requesting routes')
 
     log.debug("Creating logger")
-    elog = elliptics.Logger(ctx.log_file, int(ctx.log_level))
+    elog = elliptics.Logger(ctx.log_file, int(ctx.log_level), True)
 
     log.debug("Creating node")
     node = elliptics_create_node(address=ctx.address,
@@ -153,7 +153,7 @@ def main(options, args):
 
         # FIXME: It may be inappropriate to use one log for both
         # elliptics library and python app, esp. in presence of auto-rotation
-        fh = logging.FileHandler(ctx.log_file)
+        fh = logging.handlers.WatchedFileHandler(ctx.log_file)
         fh.setFormatter(formatter)
         fh.setLevel(convert_elliptics_log_level(ctx.log_level))
         log.addHandler(fh)
