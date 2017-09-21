@@ -34,7 +34,7 @@ log = logging.getLogger(__name__)
 
 def iterate_node(arg):
     ctx, address, backend_id, ranges = arg
-    elog = elliptics.Logger(ctx.log_file, int(ctx.log_level))
+    elog = elliptics.Logger(ctx.log_file, int(ctx.log_level), True)
     stats = ctx.stats["iterate"][str(address)][str(backend_id)]
     stats_cmd = ctx.stats['commands']
     stats.timer('process', 'started')
@@ -277,6 +277,7 @@ def process_uncommitted(ctx, results):
 
     node = elliptics.create_node(log_file=ctx.log_file,
                                  log_level=int(ctx.log_level),
+                                 log_watched=True,
                                  wait_timeout=ctx.wait_timeout,
                                  flags=elliptics.config_flags.no_route_list,
                                  net_thread_num=1,
@@ -532,7 +533,7 @@ def lookup_keys(ctx):
     stats = ctx.stats["lookup"]
     stats_cmd = ctx.stats['commands']
     stats.timer('process', 'started')
-    elog = elliptics.Logger(ctx.log_file, int(ctx.log_level))
+    elog = elliptics.Logger(ctx.log_file, int(ctx.log_level), True)
     node = elliptics_create_node(address=ctx.address,
                                  elog=elog,
                                  wait_timeout=ctx.wait_timeout,

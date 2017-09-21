@@ -16,6 +16,7 @@ typedef blackhole::logger_t dnet_logger;
 
 namespace ioremap { namespace elliptics {
 std::unique_ptr<dnet_logger> make_file_logger(const std::string &path, dnet_log_level level);
+std::unique_ptr<dnet_logger> make_watched_logger(const std::string &path, dnet_log_level level);
 }} /* namespace ioremap::elliptics */
 
 extern "C" {

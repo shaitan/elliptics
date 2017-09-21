@@ -67,9 +67,10 @@ wrap_address([CallbackResultEntry,
 def create_node(elog=None, log_file='/dev/stderr', log_level=log_level.error,
                 cfg=None, wait_timeout=3600, check_timeout=60,
                 flags=0, io_thread_num=1, net_thread_num=1,
-                nonblocking_io_thread_num=1, remotes=[]):
+                nonblocking_io_thread_num=1, remotes=[], log_watched=False):
     if not elog:
-        elog = Logger(log_file, log_level)
+        elog = Logger(log_file, log_level, log_watched)
+
     if not cfg:
         cfg = Config()
         cfg.wait_timeout = wait_timeout
@@ -78,6 +79,7 @@ def create_node(elog=None, log_file='/dev/stderr', log_level=log_level.error,
         cfg.io_thread_num = io_thread_num
         cfg.nonblocking_io_thread_num = nonblocking_io_thread_num
         cfg.net_thread_num = net_thread_num
+
     n = Node(elog, cfg)
     try:
         n.add_remotes(remotes)
