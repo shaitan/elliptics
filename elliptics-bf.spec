@@ -3,7 +3,7 @@
 
 Summary:	Distributed hash table storage
 Name:		elliptics
-Version:	2.27.2.14
+Version:	2.27.3.0
 Release:	1%{?dist}
 
 License:	GPLv2+
@@ -131,6 +131,16 @@ rm -rf %{buildroot}
 
 
 %changelog
+* Mon Sep 25 2017 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.3.0
+- cleanup
+- cache: fix race
+- pytest: fix test fail
+- recovery: use watched logger
+- python: add optional argument to elliptics.Logger and elliptics.create_node
+- remove useless includes
+- add `make_watched_logger()` helper
+- update blackhole version in depencies
+
 * Mon Sep 18 2017 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.2.14
 - fix sending bulk_read response as DNET_CMD_READ_NEW
 - fix bulk_read with non-unique keys

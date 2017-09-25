@@ -1,3 +1,16 @@
+elliptics (2.27.3.0) unstable; urgency=medium
+
+  * cleanup
+  * cache: fix race
+  * pytest: fix test fail
+  * recovery: use watched logger
+  * python: add optional argument to elliptics.Logger and elliptics.create_node
+  * remove useless includes
+  * add `make_watched_logger()` helper
+  * update blackhole version in depencies
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Mon, 25 Sep 2017 21:15:34 +0300
+
 elliptics (2.27.2.14) unstable; urgency=medium
 
   * fix sending bulk_read response as DNET_CMD_READ_NEW
