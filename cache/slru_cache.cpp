@@ -131,7 +131,7 @@ write_response_t slru_cache_t::write(dnet_net_state *st, dnet_cmd *cmd, const wr
 
 		// Create empty data for code simplifying
 		if (!it) {
-			it = create_data(id, 0, 0, remove_from_disk && !append);
+			it = create_data(id, nullptr, 0, remove_from_disk && !append);
 			new_page = true;
 			if (append) {
 				it->set_only_append(true);
@@ -252,7 +252,7 @@ read_response_t slru_cache_t::read(const unsigned char *id, uint64_t ioflags) {
 	TIMER_STOP("read.lock");
 
 	TIMER_START("read.find");
-	data_t* it = m_treap.find(id);
+	auto it = m_treap.find(id);
 	TIMER_STOP("read.find");
 
 	if (it && it->only_append()) {
@@ -590,12 +590,30 @@ data_t *slru_cache_t::populate_from_disk(elliptics_unique_lock<std::mutex> &guar
 	dnet_empty_time(&timestamp);
 
 	TIMER_START("populate_from_disk.local_read");
-	ioremap::elliptics::data_pointer data = sess.read(raw_id, &user_flags, &timestamp, err);
+	auto data = sess.read(raw_id, &user_flags, &timestamp, err);
 	TIMER_STOP("populate_from_disk.local_read");
 
 	TIMER_START("populate_from_disk.lock");
 	guard.lock();
 	TIMER_STOP("populate_from_disk.lock");
+	{
+		auto it = m_treap.find(id);
+		if (it) {
+			// some data for @id was written while sess.read().
+			if (!it->only_append()) {
+				/* if it wasn't appends, we can use it instead of read data because it can be either
+				 * the same or newer version of data.
+				 */
+				return it;
+			}
+			/* we can't use appends as is, we can't append appends to read data since it can be
+			 * out-dated, we can't do anything here. We can only drop appends and place read data to cache.
+			 * It means: DO NOT USE NONBLOCKING READS AND BLOCKING OR NON* WRITE-APPENDS, IT CAN LEAD
+			 * TO PARTIAL DATA LOSS.
+			 */
+			erase_element(it);
+		}
+	}
 
 	if (*err == 0) {
 		auto it = create_data(id, reinterpret_cast<char *>(data.data()), data.size(), remove_from_disk);

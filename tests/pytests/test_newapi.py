@@ -1,7 +1,7 @@
 import elliptics
 
-import json
 import errno
+import json
 
 import pytest
 
@@ -99,7 +99,7 @@ def test_session_timestamps(simple_node):
     data = 'some data'
 
     data_ts = elliptics.Time.now()
-    json_ts = elliptics.Time.now()
+    json_ts = elliptics.Time(data_ts.tsec, data_ts.tnsec + 1)
     assert json_ts > data_ts
 
     assert session.timestamp is None
