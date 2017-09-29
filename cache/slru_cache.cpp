@@ -131,7 +131,8 @@ write_response_t slru_cache_t::write(dnet_net_state *st, dnet_cmd *cmd, const wr
 
 		// Create empty data for code simplifying
 		if (!it) {
-			it = create_data(id, nullptr, 0, remove_from_disk && !append);
+			it = create_data(id, ioremap::elliptics::data_pointer{}, ioremap::elliptics::data_pointer{},
+			                 remove_from_disk && !append);
 			new_page = true;
 			if (append) {
 				it->set_only_append(true);
@@ -498,15 +499,17 @@ void slru_cache_t::sync_if_required(data_t* it, elliptics_unique_lock<std::mutex
 		memcpy(id.id, it->id().id, DNET_ID_SIZE);
 
 		bool only_append = it->only_append();
-		std::string data = *it->data();
 		uint64_t user_flags = it->user_flags();
-		dnet_time timestamp = it->timestamp();
+		auto json = it->json();
+		const auto &json_timestamp = it->json_timestamp();
+		auto data = it->data();
+		const auto &timestamp = it->timestamp();
 
 		guard.unlock();
 
 		// sync_element uses local_session which always uses DNET_FLAGS_NOLOCK
 		if (it->is_syncing()) {
-			sync_element(id, only_append, data, user_flags, timestamp);
+			sync_element(id, only_append, user_flags, *json, json_timestamp, *data, timestamp);
 			it->set_sync_state(data_t::sync_state_t::ERASE_PHASE);
 		}
 
@@ -553,12 +556,15 @@ void slru_cache_t::move_data_between_pages(const unsigned char *id,
 	}
 }
 
-data_t* slru_cache_t::create_data(const unsigned char *id, const char *data, size_t size, bool remove_from_disk) {
+data_t *slru_cache_t::create_data(const unsigned char *id,
+                                  const ioremap::elliptics::data_pointer &json,
+                                  const ioremap::elliptics::data_pointer &data,
+                                  bool remove_from_disk) {
 	TIMER_SCOPE("create_data");
 
 	size_t last_page_number = m_cache_pages_number - 1;
 
-	data_t *raw = new data_t(id, 0, data, size, remove_from_disk);
+	data_t *raw = new data_t(id, 0, json, data, remove_from_disk);
 
 	insert_data_into_page(id, last_page_number, raw);
 
@@ -586,11 +592,13 @@ data_t *slru_cache_t::populate_from_disk(elliptics_unique_lock<std::mutex> &guar
 	memcpy(raw_id.id, id, DNET_ID_SIZE);
 
 	uint64_t user_flags = 0;
-	dnet_time timestamp;
-	dnet_empty_time(&timestamp);
+	dnet_time json_ts, data_ts;
+	dnet_empty_time(&json_ts);
+	dnet_empty_time(&data_ts);
+	ioremap::elliptics::data_pointer json, data;
 
 	TIMER_START("populate_from_disk.local_read");
-	auto data = sess.read(raw_id, &user_flags, &timestamp, err);
+	*err = sess.read(raw_id, &user_flags, &json, &json_ts, &data, &data_ts);
 	TIMER_STOP("populate_from_disk.local_read");
 
 	TIMER_START("populate_from_disk.lock");
@@ -616,9 +624,10 @@ data_t *slru_cache_t::populate_from_disk(elliptics_unique_lock<std::mutex> &guar
 	}
 
 	if (*err == 0) {
-		auto it = create_data(id, reinterpret_cast<char *>(data.data()), data.size(), remove_from_disk);
+		auto it = create_data(id, json, data, remove_from_disk);
 		it->set_user_flags(user_flags);
-		it->set_timestamp(timestamp);
+		it->set_json_timestamp(json_ts);
+		it->set_timestamp(data_ts);
 
 		return it;
 	}
@@ -706,15 +715,17 @@ void slru_cache_t::erase_element(data_t *obj) {
 
 void slru_cache_t::sync_element(const dnet_id &raw,
                                 bool after_append,
-                                const std::string &data,
                                 uint64_t user_flags,
-                                const dnet_time &timestamp) {
+                                const std::string &json,
+                                const dnet_time &json_ts,
+                                const std::string &data,
+                                const dnet_time &data_ts) {
 	HANDY_TIMER_SCOPE("slru_cache.sync_element");
 
 	local_session sess(m_backend, m_node);
 	sess.set_ioflags(DNET_IO_FLAGS_NOCACHE | (after_append ? DNET_IO_FLAGS_APPEND : 0));
 
-	int err = sess.write(raw, data.data(), data.size(), user_flags, timestamp);
+	int err = sess.write(raw, user_flags, json, json_ts, data, data_ts);
 	const auto level = err ? DNET_LOG_ERROR : DNET_LOG_DEBUG;
 	DNET_LOG(m_node, level, "{}: CACHE: forced to sync to disk, err: {}", dnet_dump_id_str(raw.id), err);
 }
@@ -724,7 +735,8 @@ void slru_cache_t::sync_element(data_t *obj) {
 	memset(&raw, 0, sizeof(struct dnet_id));
 	memcpy(raw.id, obj->id().id, DNET_ID_SIZE);
 
-	sync_element(raw, obj->only_append(), *obj->data(), obj->user_flags(), obj->timestamp());
+	sync_element(raw, obj->only_append(), obj->user_flags(), *obj->json(), obj->json_timestamp(), *obj->data(),
+	             obj->timestamp());
 }
 
 void slru_cache_t::sync_after_append(elliptics_unique_lock<std::mutex> &guard, bool lock_guard, data_t *obj) {
@@ -830,8 +842,8 @@ void slru_cache_t::life_check(void) {
 
 					// sync_element uses local_session which always uses DNET_FLAGS_NOLOCK
 					if (elem->is_syncing()) {
-						sync_element(id, elem->only_append(), *elem->data(),
-						             elem->user_flags(), elem->timestamp());
+						sync_element(id, elem->only_append(), elem->user_flags(), *elem->json(),
+						             elem->json_timestamp(), *elem->data(), elem->timestamp());
 						elem->set_sync_state(data_t::sync_state_t::ERASE_PHASE);
 					}
 

@@ -93,7 +93,11 @@ public:
 		dnet_empty_time(&m_timestamp);
 	}
 
-	data_t(const unsigned char *id, size_t lifetime, const char *data, size_t size, bool remove_from_disk)
+	data_t(const unsigned char *id,
+	       size_t lifetime,
+	       const ioremap::elliptics::data_pointer &json,
+	       const ioremap::elliptics::data_pointer &data,
+	       bool remove_from_disk)
 	: m_lifetime(0)
 	, m_synctime(0)
 	, m_json_timestamp{0, 0}
@@ -103,9 +107,8 @@ public:
 	, m_only_append(false)
 	, m_removed_from_page(true)
 	, m_sync_state(sync_state_t::NOT_SYNCING)
-	, m_data(std::make_shared<std::string>(data, size))
-	, m_json(std::make_shared<std::string>())
-	{
+	, m_data(std::make_shared<std::string>(data.to_string()))
+	, m_json(std::make_shared<std::string>(json.to_string())) {
 		memcpy(m_id.id, id, DNET_ID_SIZE);
 		dnet_empty_time(&m_timestamp);
 

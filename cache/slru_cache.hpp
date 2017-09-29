@@ -90,7 +90,10 @@ private:
 	                             size_t destination_page_number,
 	                             data_t *data);
 
-	data_t* create_data(const unsigned char *id, const char *data, size_t size, bool remove_from_disk);
+	data_t *create_data(const unsigned char *id,
+	                    const ioremap::elliptics::data_pointer &json,
+	                    const ioremap::elliptics::data_pointer &data,
+	                    bool remove_from_disk);
 
 	data_t *populate_from_disk(elliptics_unique_lock<std::mutex> &guard,
 	                           const unsigned char *id,
@@ -105,9 +108,11 @@ private:
 
 	void sync_element(const dnet_id &raw,
 	                  bool after_append,
-	                  const std::string &data,
 	                  uint64_t user_flags,
-	                  const dnet_time &timestamp);
+	                  const std::string &json,
+	                  const dnet_time &json_ts,
+	                  const std::string &data,
+	                  const dnet_time &data_ts);
 
 	void sync_element(data_t *obj);
 

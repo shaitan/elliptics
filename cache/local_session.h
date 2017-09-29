@@ -42,10 +42,22 @@ public:
 
 	ioremap::elliptics::data_pointer read(const dnet_id &id, int *errp);
 	ioremap::elliptics::data_pointer read(const dnet_id &id, uint64_t *user_flags, dnet_time *timestamp, int *errp);
+	int read(const dnet_id &id,
+	         uint64_t *user_flags,
+	         ioremap::elliptics::data_pointer *json,
+	         dnet_time *json_ts,
+	         ioremap::elliptics::data_pointer *data,
+	         dnet_time *data_ts);
 
 	int write(const dnet_id &id, const ioremap::elliptics::data_pointer &data);
 	int write(const dnet_id &id, const char *data, size_t size);
 	int write(const dnet_id &id, const char *data, size_t size, uint64_t user_flags, const dnet_time &timestamp);
+	int write(const dnet_id &id,
+	          uint64_t user_flags,
+	          const std::string &json,
+	          const dnet_time &json_ts,
+	          const std::string &data,
+	          const dnet_time &data_ts);
 
 	ioremap::elliptics::data_pointer lookup(const dnet_cmd &cmd, int *errp);
 
