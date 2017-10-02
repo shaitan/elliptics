@@ -401,7 +401,7 @@ static int dnet_cmd_cache_io_read_new(struct cache_manager *cache,
 	}
 
 	if (request.read_flags & DNET_READ_FLAGS_DATA) {
-		if (request.data_offset >= raw_data->size())
+		if (request.data_offset && request.data_offset >= raw_data->size())
 			return -E2BIG;
 
 		uint64_t data_size = raw_data->size() - request.data_offset;

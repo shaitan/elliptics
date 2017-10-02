@@ -137,7 +137,7 @@ int local_session::read(const dnet_id &id,
 
 				if (r->data) {
 					result = data_pointer::copy(r->data, r->dsize);
-				} else {
+				} else if (response.read_data_size) {
 					result = data_pointer::allocate(response.read_data_size);
 					const ssize_t err = dnet_read_ll(r->fd, result.data<char>(), result.size(),
 					                                 r->local_offset);
@@ -145,6 +145,8 @@ int local_session::read(const dnet_id &id,
 						clear_queue();
 						return err;
 					}
+				} else {
+					result = data_pointer();
 				}
 
 				clear_queue();

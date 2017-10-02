@@ -454,7 +454,7 @@ static int blob_read_new_impl(eblob_backend_config *c,
 		data_size = wc.size - jhdr.capacity;
 		data_offset = wc.data_offset + jhdr.capacity;
 
-		if (request.data_offset >= data_size) {
+		if (request.data_offset && request.data_offset >= data_size) {
 			err = -E2BIG;
 			DNET_LOG_ERROR(c->blog,
 			               "{}: EBLOB: blob-read-new: {}: requested offset({}) >= data_size({}): {} [{}]",
@@ -467,8 +467,7 @@ static int blob_read_new_impl(eblob_backend_config *c,
 		data_offset += request.data_offset;
 		record_offset += request.data_offset;
 
-		if (request.data_size &&
-		    request.data_size < data_size)
+		if (request.data_size && request.data_size < data_size)
 			data_size = request.data_size;
 
 		err = verify_checksum(record_offset + jhdr.capacity, data_size, data_csum_time);
