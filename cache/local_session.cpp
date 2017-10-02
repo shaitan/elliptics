@@ -74,86 +74,6 @@ void local_session::set_cflags(uint64_t flags)
 	m_cflags = flags;
 }
 
-data_pointer local_session::read(const dnet_id &id, int *errp)
-{
-	return read(id, NULL, NULL, errp);
-}
-
-data_pointer local_session::read(const dnet_id &id, uint64_t *user_flags, dnet_time *timestamp, int *errp)
-{
-	dnet_io_attr io;
-	memset(&io, 0, sizeof(io));
-	dnet_empty_time(&io.timestamp);
-
-	memcpy(io.id, id.id, DNET_ID_SIZE);
-	memcpy(io.parent, id.id, DNET_ID_SIZE);
-
-	io.flags = DNET_IO_FLAGS_NOCSUM | m_ioflags;
-
-	dnet_cmd cmd;
-	memset(&cmd, 0, sizeof(cmd));
-
-	cmd.id = id;
-	cmd.cmd = DNET_CMD_READ;
-	cmd.flags |= m_cflags;
-	cmd.size = sizeof(io);
-	cmd.backend_id = m_backend.backend_id();
-
-	int err = dnet_process_cmd_raw(m_state, &cmd, &io, 0, 0);
-	if (err) {
-		clear_queue();
-		*errp = err;
-		return data_pointer();
-	}
-
-	struct dnet_io_req *r, *tmp;
-
-	list_for_each_entry_safe(r, tmp, &m_state->send_list, req_entry) {
-		DNET_LOG_DEBUG(m_state->n, "hsize: {}, dsize: {}", r->hsize, r->dsize);
-
-		dnet_cmd *req_cmd = reinterpret_cast<dnet_cmd *>(r->header ? r->header : r->data);
-
-		DNET_LOG_DEBUG(m_state->n, "entry in list, status: {}", req_cmd->status);
-
-		if (req_cmd->status) {
-			*errp = req_cmd->status;
-			clear_queue();
-			return data_pointer();
-		} else if (req_cmd->size) {
-			dnet_io_attr *req_io = reinterpret_cast<dnet_io_attr *>(req_cmd + 1);
-
-			if (user_flags)
-				*user_flags = req_io->user_flags;
-			if (timestamp)
-				*timestamp = req_io->timestamp;
-
-			DNET_LOG_DEBUG(m_state->n, "entry in list, size: {}", req_io->size);
-
-			data_pointer result;
-
-			if (r->data) {
-				result = data_pointer::copy(r->data, r->dsize);
-			} else {
-				result = data_pointer::allocate(req_io->size);
-				ssize_t read_res = pread(r->fd, result.data(), result.size(), r->local_offset);
-				if (read_res == -1) {
-					*errp = errno;
-					clear_queue();
-					return data_pointer();
-				}
-			}
-
-
-			clear_queue();
-			return result;
-		}
-	}
-
-	*errp = -ENOENT;
-	clear_queue();
-	return data_pointer();
-}
-
 int local_session::read(const dnet_id &id,
                         uint64_t *user_flags,
                         ioremap::elliptics::data_pointer *json,
@@ -236,18 +156,6 @@ int local_session::read(const dnet_id &id,
 
 	clear_queue();
 	return -ENOENT;
-}
-
-int local_session::write(const dnet_id &id, const data_pointer &data)
-{
-	return write(id, data.data<char>(), data.size());
-}
-
-int local_session::write(const dnet_id &id, const char *data, size_t size)
-{
-	dnet_time null_time;
-	dnet_empty_time(&null_time);
-	return write(id, data, size, 0, null_time);
 }
 
 int local_session::write(const dnet_id &id, const char *data, size_t size, uint64_t user_flags, const dnet_time &timestamp)
