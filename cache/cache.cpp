@@ -556,6 +556,9 @@ int dnet_cmd_cache_io(struct dnet_backend *backend,
                       struct dnet_cmd *cmd,
                       char *data,
                       struct dnet_cmd_stats *cmd_stats) {
+	if (cmd->flags & DNET_FLAGS_NOCACHE)
+		return -ENOTSUP;
+
 	auto io = [ cmd, &data ]() -> struct dnet_io_attr * {
 		switch (cmd->cmd) {
 		case DNET_CMD_WRITE:
