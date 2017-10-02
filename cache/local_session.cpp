@@ -74,36 +74,32 @@ void local_session::set_cflags(uint64_t flags)
 	m_cflags = flags;
 }
 
-data_pointer local_session::read(const dnet_id &id, int *errp)
-{
-	return read(id, NULL, NULL, errp);
-}
-
-data_pointer local_session::read(const dnet_id &id, uint64_t *user_flags, dnet_time *timestamp, int *errp)
-{
-	dnet_io_attr io;
-	memset(&io, 0, sizeof(io));
-	dnet_empty_time(&io.timestamp);
-
-	memcpy(io.id, id.id, DNET_ID_SIZE);
-	memcpy(io.parent, id.id, DNET_ID_SIZE);
-
-	io.flags = DNET_IO_FLAGS_NOCSUM | m_ioflags;
+int local_session::read(const dnet_id &id,
+                        uint64_t *user_flags,
+                        ioremap::elliptics::data_pointer *json,
+                        dnet_time *json_ts,
+                        ioremap::elliptics::data_pointer *data,
+                        dnet_time *data_ts) {
+	const uint64_t read_flags = (json ? DNET_READ_FLAGS_JSON : 0) | (data ? DNET_READ_FLAGS_DATA : 0);
+	auto packet = serialize(dnet_read_request{/*ioflags*/ m_ioflags,
+	                                          /*read_flags*/ read_flags,
+	                                          /*data_offset*/ 0,
+	                                          /*data_size*/ 0,
+	                                          /*deadline*/ dnet_time{0, 0}});
 
 	dnet_cmd cmd;
 	memset(&cmd, 0, sizeof(cmd));
 
 	cmd.id = id;
-	cmd.cmd = DNET_CMD_READ;
+	cmd.cmd = DNET_CMD_READ_NEW;
 	cmd.flags |= m_cflags;
-	cmd.size = sizeof(io);
+	cmd.size = packet.size();
 	cmd.backend_id = m_backend.backend_id();
 
-	int err = dnet_process_cmd_raw(m_state, &cmd, &io, 0, 0);
+	const int err = dnet_process_cmd_raw(m_state, &cmd, packet.data(), 0, 0);
 	if (err) {
 		clear_queue();
-		*errp = err;
-		return data_pointer();
+		return err;
 	}
 
 	struct dnet_io_req *r, *tmp;
@@ -116,54 +112,52 @@ data_pointer local_session::read(const dnet_id &id, uint64_t *user_flags, dnet_t
 		DNET_LOG_DEBUG(m_state->n, "entry in list, status: {}", req_cmd->status);
 
 		if (req_cmd->status) {
-			*errp = req_cmd->status;
 			clear_queue();
-			return data_pointer();
+			return req_cmd->status;
 		} else if (req_cmd->size) {
-			dnet_io_attr *req_io = reinterpret_cast<dnet_io_attr *>(req_cmd + 1);
+			size_t roffset = 0;
+			auto rdata = data_pointer::from_raw(req_cmd + 1, r->hsize ? r->hsize : r->dsize);
+			dnet_read_response response;
+			deserialize(rdata, response, roffset);
 
 			if (user_flags)
-				*user_flags = req_io->user_flags;
-			if (timestamp)
-				*timestamp = req_io->timestamp;
+				*user_flags = response.user_flags;
+			if (json_ts)
+				*json_ts = response.json_timestamp;
+			if (data_ts)
+				*data_ts = response.data_timestamp;
 
-			DNET_LOG_DEBUG(m_state->n, "entry in list, size: {}", req_io->size);
+			DNET_LOG_DEBUG(m_state->n, "entry in list, size: {}", req_cmd->size);
 
-			data_pointer result;
+			if (json)
+				*json = data_pointer::copy(rdata.slice(roffset, response.read_json_size));
 
-			if (r->data) {
-				result = data_pointer::copy(r->data, r->dsize);
-			} else {
-				result = data_pointer::allocate(req_io->size);
-				ssize_t read_res = pread(r->fd, result.data(), result.size(), r->local_offset);
-				if (read_res == -1) {
-					*errp = errno;
-					clear_queue();
-					return data_pointer();
+			if (data) {
+				data_pointer result;
+
+				if (r->data) {
+					result = data_pointer::copy(r->data, r->dsize);
+				} else if (response.read_data_size) {
+					result = data_pointer::allocate(response.read_data_size);
+					const ssize_t err = dnet_read_ll(r->fd, result.data<char>(), result.size(),
+					                                 r->local_offset);
+					if (err) {
+						clear_queue();
+						return err;
+					}
+				} else {
+					result = data_pointer();
 				}
+
+				clear_queue();
+				*data = std::move(result);
+				return 0;
 			}
-
-
-			clear_queue();
-			return result;
 		}
 	}
 
-	*errp = -ENOENT;
 	clear_queue();
-	return data_pointer();
-}
-
-int local_session::write(const dnet_id &id, const data_pointer &data)
-{
-	return write(id, data.data<char>(), data.size());
-}
-
-int local_session::write(const dnet_id &id, const char *data, size_t size)
-{
-	dnet_time null_time;
-	dnet_empty_time(&null_time);
-	return write(id, data, size, 0, null_time);
+	return -ENOENT;
 }
 
 int local_session::write(const dnet_id &id, const char *data, size_t size, uint64_t user_flags, const dnet_time &timestamp)
@@ -204,6 +198,51 @@ int local_session::write(const dnet_id &id, const char *data, size_t size, uint6
 
 	clear_queue(&err);
 
+	return err;
+}
+
+int local_session::write(const dnet_id &id,
+                         uint64_t user_flags,
+                         const std::string &json,
+                         const dnet_time &json_ts,
+                         const std::string &data,
+                         const dnet_time &data_ts) {
+	auto packet = serialize(dnet_write_request{
+		/*ioflags*/ m_ioflags | DNET_IO_FLAGS_PREPARE | DNET_IO_FLAGS_COMMIT | DNET_IO_FLAGS_PLAIN_WRITE,
+		/*user_flags*/ user_flags,
+		/*timestamp*/ data_ts,
+		/*json_size*/ json.size(),
+		/*json_capacity*/ json.capacity(),
+		/*json_timestamp*/ json_ts,
+		/*data_offset*/ 0,
+		/*data_size*/ data.size(),
+		/*data_capacity*/ data.size(),
+		/*data_commit_size*/ data.size(),
+		/*cache_lifetime*/ 0,
+		/*deadline*/ {0,0}
+	});
+
+
+	data_buffer buffer(packet.size() + json.size() + data.size());
+	buffer.write(packet.data(), packet.size());
+	buffer.write(json.data(), json.size());
+	buffer.write(data.data(), data.size());
+
+	DNET_LOG_DEBUG(m_state->n, "going to write size: {}", buffer.size());
+
+	data_pointer datap = std::move(buffer);
+
+	dnet_cmd cmd;
+	memset(&cmd, 0, sizeof(cmd));
+
+	cmd.id = id;
+	cmd.cmd = DNET_CMD_WRITE_NEW;
+	cmd.flags = m_cflags;
+	cmd.size = datap.size();
+	cmd.backend_id = m_backend.backend_id();
+
+	int err = dnet_process_cmd_raw(m_state, &cmd, datap.data(), 0, 0);
+	clear_queue(&err);
 	return err;
 }
 

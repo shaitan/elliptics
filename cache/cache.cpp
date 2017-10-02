@@ -401,7 +401,7 @@ static int dnet_cmd_cache_io_read_new(struct cache_manager *cache,
 	}
 
 	if (request.read_flags & DNET_READ_FLAGS_DATA) {
-		if (request.data_offset >= raw_data->size())
+		if (request.data_offset && request.data_offset >= raw_data->size())
 			return -E2BIG;
 
 		uint64_t data_size = raw_data->size() - request.data_offset;
@@ -556,6 +556,9 @@ int dnet_cmd_cache_io(struct dnet_backend *backend,
                       struct dnet_cmd *cmd,
                       char *data,
                       struct dnet_cmd_stats *cmd_stats) {
+	if (cmd->flags & DNET_FLAGS_NOCACHE)
+		return -ENOTSUP;
+
 	auto io = [ cmd, &data ]() -> struct dnet_io_attr * {
 		switch (cmd->cmd) {
 		case DNET_CMD_WRITE:
