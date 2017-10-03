@@ -1,3 +1,14 @@
+elliptics (2.27.3.1) unstable; urgency=medium
+
+  * elliptics_unique_lock refactoring and improvements
+  * Do not handle by cache commands with DNET_FLAGS_NOCACHE
+  * Add tests for reading/writing data from disk to cache via new commands
+  * Fix reading a key with non-empty json and empty data
+  * Remove unused code from local_session
+  * cache: add reading/writing data with json from cache to backend
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Tue, 03 Oct 2017 13:44:17 +0300
+
 elliptics (2.27.3.0) unstable; urgency=medium
 
   * cleanup

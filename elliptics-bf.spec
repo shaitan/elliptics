@@ -3,7 +3,7 @@
 
 Summary:	Distributed hash table storage
 Name:		elliptics
-Version:	2.27.3.0
+Version:	2.27.3.1
 Release:	1%{?dist}
 
 License:	GPLv2+
@@ -131,6 +131,14 @@ rm -rf %{buildroot}
 
 
 %changelog
+* Tue Oct 03 2017 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.3.1
+- elliptics_unique_lock refactoring and improvements
+- Do not handle by cache commands with DNET_FLAGS_NOCACHE
+- Add tests for reading/writing data from disk to cache via new commands
+- Fix reading a key with non-empty json and empty data
+- Remove unused code from local_session
+- cache: add reading/writing data with json from cache to backend
+
 * Mon Sep 25 2017 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.3.0
 - cleanup
 - cache: fix race
