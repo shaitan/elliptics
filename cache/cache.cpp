@@ -28,6 +28,7 @@
 #include "rapidjson/document.h"
 
 #include "example/config.hpp"
+#include "local_session.h"
 
 namespace ioremap { namespace cache {
 

@@ -31,8 +31,8 @@ private:
 	time_point time_point_;
 };
 
-typedef timer<std::chrono::system_clock> system_timer;
-typedef timer<std::chrono::steady_clock> steady_timer;
-typedef timer<std::chrono::high_resolution_clock> high_resolution_timer;
+using system_timer = timer<std::chrono::system_clock>;
+using steady_timer = timer<std::chrono::steady_clock>;
+using high_resolution_timer = timer<std::chrono::high_resolution_clock>;
 
 }}} /* namespace ioremap::elliptics::util */

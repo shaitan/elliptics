@@ -29,6 +29,7 @@
 #include "library/protocol.hpp"
 
 #include "monitor/measure_points.h"
+#include "local_session.h"
 
 // Cache implementation is moderately instrumented with statistics gathering
 // to provide insight into details of different cache operations.
@@ -520,14 +521,15 @@ void slru_cache_t::sync_if_required(data_t* it, elliptics_unique_lock<std::mutex
 void slru_cache_t::insert_data_into_page(const unsigned char *id, size_t page_number, data_t *data) {
 	TIMER_SCOPE("add_to_page");
 
-	elliptics_timer timer;
-	size_t size = data->size();
+	ioremap::elliptics::util::steady_timer timer;
+	const size_t size = data->size();
 
 	// Recalc used space, free enough space for new data, move object to the end of the queue
 	if (m_cache_pages_sizes[page_number] + size > m_cache_pages_max_sizes[page_number]) {
-		DNET_LOG_DEBUG(m_node, "{}: CACHE: resize called: {} ms", dnet_dump_id_str(id), timer.restart());
+		DNET_LOG_DEBUG(m_node, "{}: CACHE: resize called: {} ms", dnet_dump_id_str(id), timer.get_us());
+		timer.restart();
 		resize_page(id, page_number, size);
-		DNET_LOG_DEBUG(m_node, "{}: CACHE: resize finished: {} ms", dnet_dump_id_str(id), timer.restart());
+		DNET_LOG_DEBUG(m_node, "{}: CACHE: resize finished: {} ms", dnet_dump_id_str(id), timer.get_us());
 	}
 
 	data->set_cache_page_number(page_number);
@@ -580,9 +582,8 @@ data_t *slru_cache_t::populate_from_disk(elliptics_unique_lock<std::mutex> &guar
                                          int *err) {
 	TIMER_SCOPE("populate_from_disk");
 
-	if (guard.owns_lock()) {
+	if (guard)
 		guard.unlock();
-	}
 
 	local_session sess(m_backend, m_node);
 	sess.set_ioflags(DNET_IO_FLAGS_NOCACHE);
