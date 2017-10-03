@@ -28,12 +28,14 @@
 
 #include "library/logger.hpp"  //TODO: remove from header file, required only by elliptics_unique_lock
 
+#include "bindings/cpp/timer.hpp"
+
 #include "elliptics/packet.h"
 #include "elliptics/interface.h"
+#include "elliptics/utils.hpp"
 
 #include "rapidjson/document.h"
 
-#include "local_session.h"  //TODO: remove from header file, used only for elliptics_timer
 #include "treap.hpp"
 
 namespace ioremap { namespace elliptics {
@@ -435,11 +437,11 @@ private:
 	size_t idx(const unsigned char *id);
 };
 
-template <typename T> class elliptics_unique_lock {
+template <typename T>
+class elliptics_unique_lock {
 public:
 	elliptics_unique_lock(T &mutex, dnet_node *node, const char *format, ...) __attribute__((format(printf, 4, 5)))
-	: m_node(node)
-	{
+	: m_node(node) {
 		va_list args;
 		va_start(args, format);
 
@@ -447,59 +449,52 @@ public:
 
 		va_end(args);
 
-		long vatime = m_timer.elapsed();
+		const auto vatime = m_timer.get_ms();
 		m_guard = std::move(std::unique_lock<T>(mutex));
-		dnet_log_level level = DNET_LOG_DEBUG;
 
-		if (m_timer.elapsed() > 100)
-			level = DNET_LOG_ERROR;
+		const auto total_time = m_timer.get_ms();
+		const auto level = total_time > 100 ? DNET_LOG_ERROR : DNET_LOG_DEBUG;
 
-		if (m_timer.elapsed() > 0) {
-			DNET_LOG(m_node, level, "{}: cache lock: constructor: vatime: {}, total: {} ms", m_name,
-			         vatime, m_timer.elapsed());
-		}
+		if (total_time > 0)
+			DNET_LOG(m_node, level, "{}: cache lock: constructor: vatime: {}, total: {} ms", m_name, vatime,
+			         total_time);
 
 		m_timer.restart();
 	}
 
-	~elliptics_unique_lock()
-	{
+	~elliptics_unique_lock() {
 		if (owns_lock())
 			unlock();
 	}
 
-	bool owns_lock() const
-	{
-		return m_guard.owns_lock();
-	}
+	bool owns_lock() const noexcept { return m_guard.owns_lock(); }
 
-	void lock()
-	{
+	explicit operator bool() const noexcept { return m_guard.owns_lock(); }
+
+	void lock() {
+		const auto unlocked_time = m_timer.get_ms();
+		m_timer.restart();
 		m_guard.lock();
-		dnet_log_level level = DNET_LOG_DEBUG;
 
-		if (m_timer.elapsed() > 100)
-			level = DNET_LOG_ERROR;
+		const auto lock_time = m_timer.get_ms();
+		const auto level = lock_time > 100 ? DNET_LOG_ERROR : DNET_LOG_DEBUG;
 
-		if (m_timer.elapsed() > 0) {
-			DNET_LOG(m_node, level, "{}: cache lock: lock: {} ms", m_name, m_timer.elapsed());
-		}
+		if (lock_time > 0)
+			DNET_LOG(m_node, level, "{}: cache lock: lock: lock-time: {} ms, unlocked-time: {} ms", m_name,
+			         lock_time, unlocked_time);
 
 		m_timer.restart();
 	}
 
-	void unlock()
-	{
+	void unlock() {
 		m_guard.unlock();
 
-		dnet_log_level level = DNET_LOG_DEBUG;
+		const auto locked_time = m_timer.get_ms();
+		const auto level = locked_time > 100 ? DNET_LOG_ERROR : DNET_LOG_DEBUG;
 
-		if (m_timer.elapsed() > 100)
-			level = DNET_LOG_ERROR;
+		if (locked_time > 0)
+			DNET_LOG(m_node, level, "{}: cache lock: unlock: locked-time: {} ms", m_name, locked_time);
 
-		if (m_timer.elapsed() > 0) {
-			DNET_LOG(m_node, level, "{}: cache lock: unlock: {} ms", m_name, m_timer.elapsed());
-		}
 		m_timer.restart();
 	}
 
@@ -507,7 +502,7 @@ private:
 	std::unique_lock<T> m_guard;
 	dnet_node *m_node;
 	char m_name[256];
-	elliptics_timer m_timer;
+	ioremap::elliptics::util::steady_timer m_timer;
 };
 
 }} /* namespace ioremap::cache */
