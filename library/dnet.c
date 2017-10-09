@@ -21,28 +21,22 @@
 
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <sys/socket.h>
-#include <sys/mman.h>
-#include <sys/wait.h>
 
 #include <alloca.h>
 #include <assert.h>
-#include <ctype.h>
 #include <fcntl.h>
 #include <inttypes.h>
-#include <limits.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <time.h>
+#include <errno.h>
+#include <string.h>
 
 #include "elliptics.h"
 #include "backend.h"
 #include "request_queue.h"
 #include "route.h"
 #include "monitor/monitor.h"
-
-#include "elliptics/packet.h"
-#include "elliptics/interface.h"
 
 #include "monitor/measure_points.h"
 
