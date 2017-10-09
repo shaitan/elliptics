@@ -1677,7 +1677,7 @@ int dnet_process_cmd_raw(struct dnet_net_state *st,
 	cmd_stats.queue_time = queue_time;
 
 	HANDY_TIMER_SCOPE(recursive ? "io.cmd_recursive" : "io.cmd");
-	FORMATTED(HANDY_TIMER_SCOPE, ("io.cmd%s.%s", (recursive ? "_recursive" : ""), dnet_cmd_string(cmd->cmd)));
+	HANDY_TIMER_SCOPE(("io.cmd%s.%s", (recursive ? "_recursive" : ""), dnet_cmd_string(cmd->cmd)));
 
 	clock_gettime(CLOCK_MONOTONIC_RAW, &start);
 
@@ -1737,8 +1737,7 @@ int dnet_process_cmd_raw(struct dnet_net_state *st,
 
 	HANDY_COUNTER_INCREMENT(
 	("io.cmd%s.%d.%s.%d", (recursive ? "_recursive" : ""), cmd->backend_id, dnet_cmd_string(cmd->cmd), err), 1);
-	FORMATTED(HANDY_COUNTER_INCREMENT,
-	          ("io.cmd%s.%s.%d", (recursive ? "_recursive" : ""), dnet_cmd_string(cmd->cmd), err), 1);
+	HANDY_COUNTER_INCREMENT(("io.cmd%s.%s.%d", (recursive ? "_recursive" : ""), dnet_cmd_string(cmd->cmd), err), 1);
 
 	err = dnet_send_ack(st, cmd, err, recursive);
 
