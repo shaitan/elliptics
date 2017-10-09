@@ -1735,6 +1735,8 @@ int dnet_process_cmd_raw(struct dnet_net_state *st,
 	// we must provide real error from the backend into statistics
 	dnet_monitor_stats_update(n, cmd, err, cmd_stats.handled_in_cache, cmd_stats.size, cmd_stats.handle_time);
 
+	HANDY_COUNTER_INCREMENT(
+	("io.cmd%s.%d.%s.%d", (recursive ? "_recursive" : ""), cmd->backend_id, dnet_cmd_string(cmd->cmd), err), 1);
 	FORMATTED(HANDY_COUNTER_INCREMENT,
 	          ("io.cmd%s.%s.%d", (recursive ? "_recursive" : ""), dnet_cmd_string(cmd->cmd), err), 1);
 
