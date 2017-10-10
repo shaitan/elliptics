@@ -412,7 +412,7 @@ int dnet_idc_update_backend(struct dnet_net_state *st, struct dnet_backend_ids *
 	idc->group = g;
 	idc->backend_id = backend->backend_id;
 	idc->disk_weight = DNET_STATE_DEFAULT_WEIGHT;
-	idc->cache_weight = DNET_STATE_DEFAULT_WEIGHT;
+//	idc->cache_weight = DNET_STATE_DEFAULT_WEIGHT;
 
 	pthread_rwlock_wrlock(&st->idc_lock);
 	dnet_idc_insert_nolock(st, idc);
@@ -627,11 +627,11 @@ int dnet_get_backend_weight(struct dnet_net_state *st, int backend_id, uint32_t 
 	if (idc) {
 		err = 0;
 
-		if (ioflags & (DNET_IO_FLAGS_CACHE | DNET_IO_FLAGS_CACHE_ONLY)) {
-			*weight = idc->cache_weight;
-		} else {
+//		if (ioflags & (DNET_IO_FLAGS_CACHE | DNET_IO_FLAGS_CACHE_ONLY)) {
+//			*weight = idc->cache_weight;
+//		} else {
 			*weight = idc->disk_weight;
-		}
+//		}
 	}
 	pthread_rwlock_unlock(&st->idc_lock);
 
@@ -645,11 +645,11 @@ void dnet_set_backend_weight(struct dnet_net_state *st, int backend_id, uint32_t
 	pthread_rwlock_rdlock(&st->idc_lock);
 	idc = dnet_idc_search_backend_nolock(st, backend_id);
 	if (idc) {
-		if (ioflags & (DNET_IO_FLAGS_CACHE | DNET_IO_FLAGS_CACHE_ONLY)) {
-			idc->cache_weight = weight;
-		} else {
+//		if (ioflags & (DNET_IO_FLAGS_CACHE | DNET_IO_FLAGS_CACHE_ONLY)) {
+//			idc->cache_weight = weight;
+//		} else {
 			idc->disk_weight = weight;
-		}
+//		}
 	}
 	pthread_rwlock_unlock(&st->idc_lock);
 }
