@@ -3,7 +3,7 @@
 
 Summary:	Distributed hash table storage
 Name:		elliptics
-Version:	2.27.3.1
+Version:	2.27.3.2
 Release:	1%{?dist}
 
 License:	GPLv2+
@@ -131,6 +131,14 @@ rm -rf %{buildroot}
 
 
 %changelog
+* Wed Oct 11 2017 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.3.2
+- Cleanup includes in dnet.c
+- Use modern handystats macro for formatted metrics
+- Add statistics of handled commands per backend with statuses
+- Do not check datasort_dir availability at startup
+- log if some value from backend's config wasn't parsed
+- Disable cache_weight and use disk_weight for all read requests
+
 * Tue Oct 03 2017 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.3.1
 - elliptics_unique_lock refactoring and improvements
 - Do not handle by cache commands with DNET_FLAGS_NOCACHE

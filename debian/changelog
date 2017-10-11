@@ -1,3 +1,14 @@
+elliptics (2.27.3.2) unstable; urgency=medium
+
+  * Cleanup includes in dnet.c
+  * Use modern handystats macro for formatted metrics
+  * Add statistics of handled commands per backend with statuses
+  * Do not check datasort_dir availability at startup
+  * log if some value from backend's config wasn't parsed
+  * Disable cache_weight and use disk_weight for all read requests
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Wed, 11 Oct 2017 14:38:39 +0300
+
 elliptics (2.27.3.1) unstable; urgency=medium
 
   * elliptics_unique_lock refactoring and improvements
