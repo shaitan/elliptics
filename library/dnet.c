@@ -21,28 +21,22 @@
 
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <sys/socket.h>
-#include <sys/mman.h>
-#include <sys/wait.h>
 
 #include <alloca.h>
 #include <assert.h>
-#include <ctype.h>
 #include <fcntl.h>
 #include <inttypes.h>
-#include <limits.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <time.h>
+#include <errno.h>
+#include <string.h>
 
 #include "elliptics.h"
 #include "backend.h"
 #include "request_queue.h"
 #include "route.h"
 #include "monitor/monitor.h"
-
-#include "elliptics/packet.h"
-#include "elliptics/interface.h"
 
 #include "monitor/measure_points.h"
 
@@ -1677,7 +1671,7 @@ int dnet_process_cmd_raw(struct dnet_net_state *st,
 	cmd_stats.queue_time = queue_time;
 
 	HANDY_TIMER_SCOPE(recursive ? "io.cmd_recursive" : "io.cmd");
-	FORMATTED(HANDY_TIMER_SCOPE, ("io.cmd%s.%s", (recursive ? "_recursive" : ""), dnet_cmd_string(cmd->cmd)));
+	HANDY_TIMER_SCOPE(("io.cmd%s.%s", (recursive ? "_recursive" : ""), dnet_cmd_string(cmd->cmd)));
 
 	clock_gettime(CLOCK_MONOTONIC_RAW, &start);
 
@@ -1735,8 +1729,9 @@ int dnet_process_cmd_raw(struct dnet_net_state *st,
 	// we must provide real error from the backend into statistics
 	dnet_monitor_stats_update(n, cmd, err, cmd_stats.handled_in_cache, cmd_stats.size, cmd_stats.handle_time);
 
-	FORMATTED(HANDY_COUNTER_INCREMENT,
-	          ("io.cmd%s.%s.%d", (recursive ? "_recursive" : ""), dnet_cmd_string(cmd->cmd), err), 1);
+	HANDY_COUNTER_INCREMENT(
+	("io.cmd%s.%d.%s.%d", (recursive ? "_recursive" : ""), cmd->backend_id, dnet_cmd_string(cmd->cmd), err), 1);
+	HANDY_COUNTER_INCREMENT(("io.cmd%s.%s.%d", (recursive ? "_recursive" : ""), dnet_cmd_string(cmd->cmd), err), 1);
 
 	err = dnet_send_ack(st, cmd, err, recursive);
 
