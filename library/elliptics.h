@@ -200,7 +200,7 @@ struct dnet_idc {
 	struct list_head	group_entry;
 	struct dnet_net_state	*st;
 	int			backend_id;
-	double			disk_weight, cache_weight;
+	double			disk_weight/*, cache_weight*/;
 	struct dnet_group	*group;
 	int			id_num;
 	struct dnet_state_id	ids[];
