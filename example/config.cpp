@@ -403,6 +403,7 @@ backend_config::backend_config(const config_data &data, const kora::config_t &co
 , config_backend(get_config_backend(config))
 , config_backend_buffer(config_backend.size, '\0') {
 	config_backend.data = config_backend_buffer.data();
+	int err = 0;
 	for (int i = 0; i < config_backend.num; ++i) {
 		const auto &entry = config_backend.ent[i];
 		if (!config.has(entry.key))
@@ -414,7 +415,11 @@ backend_config::backend_config(const config_data &data, const kora::config_t &co
 			return stream.str();
 		}();
 
-		entry.callback(&config_backend, entry.key, value.data());
+		if ((err = entry.callback(&config_backend, entry.key, value.data()))) {
+			using attrs = blackhole::attribute_list;
+			DNET_LOG_ERROR(data.logger, "Failed to parse entry: {}, value: {}: {}[{}]", entry.key, value,
+			               strerror(-err), err,  attrs{{"backend_id", backend_id}});
+		}
 	}
 }
 

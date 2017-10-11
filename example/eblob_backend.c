@@ -1283,15 +1283,6 @@ static int dnet_blob_set_datasort_dir(struct dnet_config_backend *b,
 				      const char *key __unused, const char *dir)
 {
 	struct eblob_backend_config *c = b->data;
-	struct stat st;
-	int err;
-
-	err = stat(dir, &st);
-	if (err == -1)
-		return -errno;
-
-	if (!S_ISDIR(st.st_mode))
-		return -ENOTDIR;
 
 	free(c->data.chunks_dir);
 	c->data.chunks_dir = strdup(dir);
