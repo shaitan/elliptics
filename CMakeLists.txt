@@ -124,6 +124,7 @@ set(ELLIPTICS_LIBRARIES
 
 # Build parts
 add_subdirectory(cache)
+add_subdirectory(backends)
 add_subdirectory(library)
 add_subdirectory(bindings)
 add_subdirectory(monitor)
@@ -142,7 +143,6 @@ install(FILES
         include/elliptics/session.hpp
         include/elliptics/timer.hpp
         include/elliptics/utils.hpp
-        include/elliptics/backends.h
         include/elliptics/logger.hpp
         DESTINATION include/elliptics/
         )

@@ -10,7 +10,7 @@
 // TODO: replace by <blackhole/forward.hpp> but currently it leads to compile error
 #include <blackhole/root.hpp>
 
-#include "elliptics/backends.h"
+#include "backends/backends.h"
 #include "library/elliptics.h"
 
 // forward declaration

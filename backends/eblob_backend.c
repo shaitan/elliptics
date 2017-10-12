@@ -40,15 +40,16 @@
 
 #include <eblob/blob.h>
 
+#include "backends.h"
+
 #include "elliptics/packet.h"
 #include "elliptics/interface.h"
-#include "elliptics/backends.h"
 
-#include "common.h"
+#include "example/common.h"
 
 #include "monitor/measure_points.h"
 
-#include "example/eblob_backend.h"
+#include "eblob_backend.h"
 
 #include "library/elliptics.h"
 #include "library/logger.hpp"

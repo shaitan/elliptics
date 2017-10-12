@@ -21,7 +21,8 @@
 #include <blackhole/attribute.hpp>
 #include <kora/config.hpp>
 
-#include "library/backend.h"
+#include "backends/backend.h"
+
 #include "library/protocol.hpp"
 
 #include "monitor/measure_points.h"

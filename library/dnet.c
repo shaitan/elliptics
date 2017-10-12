@@ -33,10 +33,11 @@
 #include <string.h>
 
 #include "elliptics.h"
-#include "backend.h"
 #include "request_queue.h"
 #include "route.h"
 #include "monitor/monitor.h"
+
+#include "backends/backend.h"
 
 #include "monitor/measure_points.h"
 

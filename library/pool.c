@@ -30,13 +30,13 @@
 #include <signal.h>
 
 #include "elliptics.h"
-#include "backend.h"
 #include "elliptics/interface.h"
 #include "monitor/monitor.h"
 #include "monitor/measure_points.h"
 #include "request_queue.h"
 #include "library/logger.hpp"
-#include "library/backend.h"
+#include "backends/backend.h"
+
 
 static char *dnet_work_io_mode_string[] = {
 	[DNET_WORK_IO_MODE_BLOCKING] = "BLOCKING",

@@ -21,7 +21,8 @@
 
 #include <blackhole/attribute.hpp>
 
-#include "library/backend.h"
+#include "backends/backend.h"
+
 #include "library/logger.hpp"
 #include "library/protocol.hpp"
 

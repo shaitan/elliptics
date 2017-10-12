@@ -32,10 +32,11 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "backends.h"
+
 #include "elliptics/core.h"
 #include "elliptics/packet.h"
 #include "elliptics/interface.h"
-#include "elliptics/backends.h"
 #include "library/elliptics.h"
 #include "library/logger.hpp"
 

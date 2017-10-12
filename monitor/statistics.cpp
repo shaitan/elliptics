@@ -23,7 +23,6 @@
 
 #include "monitor.hpp"
 #include "cache/cache.hpp"
-#include "elliptics/backends.h"
 #include "monitor/compress.hpp"
 
 //FIXME: elliptics uses rather modified version of rapidjson

@@ -23,8 +23,9 @@
 
 #include "statistics.hpp"
 
+#include "backends/backend.h"
+
 #include "library/elliptics.h"
-#include "library/backend.h"
 #include "library/request_queue.h"
 
 #include "rapidjson/document.h"

@@ -13,16 +13,13 @@ set(TEST_ENV
 add_library(test_common STATIC
     ${CMAKE_SOURCE_DIR}/example/common.c
     ${CMAKE_SOURCE_DIR}/example/config.cpp
-    ${CMAKE_SOURCE_DIR}/example/backends.c
-    ${CMAKE_SOURCE_DIR}/example/eblob_backend.cpp
-    ${CMAKE_SOURCE_DIR}/example/eblob_backend.c
     test_base.hpp
     test_base.cpp
     test_session.hpp
     test_session.cpp
 )
 set_target_properties(test_common ${TEST_PROPERTIES})
-set(TEST_COMMON_LIBRARIES elliptics elliptics_client ${Boost_LIBRARIES})
+set(TEST_COMMON_LIBRARIES elliptics elliptics_client elliptics_backends ${Boost_LIBRARIES})
 target_link_libraries(test_common ${TEST_COMMON_LIBRARIES})
 
 #

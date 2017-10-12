@@ -1,6 +1,7 @@
 #include "elliptics.h"
-#include "backend.h"
 #include "example/config.hpp"
+
+#include "backends/backend.h"
 
 uint64_t dnet_node_get_queue_timeout(struct dnet_node *node) {
 	if (!node->config_data)

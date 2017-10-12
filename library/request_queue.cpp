@@ -2,11 +2,12 @@
 
 #include <blackhole/attribute.hpp>
 
+#include "backends/backend.h"
+
 #include "murmurhash.h"
 #include "monitor/measure_points.h"
 #include "example/config.hpp"
 #include "logger.hpp"
-#include "library/backend.h"
 
 static size_t dnet_id_hash(const dnet_id &key) {
 	return MurmurHash64A(reinterpret_cast<const char *>(&key), sizeof(key.id) + sizeof(key.group_id), 0);

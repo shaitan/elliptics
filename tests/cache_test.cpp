@@ -15,10 +15,10 @@
  */
 
 #include "test_base.hpp"
-#include "cache/cache.hpp"
-#include "library/backend.h"
 
-#include "library/backend.h"
+#include "backends/backend.h"
+
+#include "cache/cache.hpp"
 
 #include <list>
 #include <stdexcept>

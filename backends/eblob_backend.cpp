@@ -23,15 +23,17 @@
 
 #include <blackhole/wrapper.hpp>
 
-#include "example/eblob_backend.h"
+#include "eblob_backend.h"
+
+#include "backends.h"
 
 #include "elliptics/packet.h"
-#include "elliptics/backends.h"
 #include "elliptics/newapi/session.hpp"
+
+#include "backend.h"
 
 #include "library/protocol.hpp"
 #include "library/elliptics.h"
-#include "library/backend.h"
 #include "library/request_queue.h"
 #include "library/logger.hpp"
 

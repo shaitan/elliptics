@@ -3,12 +3,8 @@ set(ELLIPTICS_SRCS
     notify.c
     server.c
     route.cpp
-    backend.cpp
     ../example/config.hpp
     ../example/config.cpp
-    ../example/backends.c
-    ../example/eblob_backend.cpp
-    ../example/eblob_backend.c
     )
 
 add_library(elliptics_ids STATIC ids.cpp)
@@ -26,6 +22,7 @@ target_link_libraries(elliptics
     ${ELLIPTICS_LIBRARIES}
     ${EBLOB_LIBRARIES}
     elliptics_common
+    elliptics_backends
     elliptics_cache
     elliptics_ids
     elliptics_monitor

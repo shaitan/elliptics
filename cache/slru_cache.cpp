@@ -24,7 +24,8 @@
 
 #include <blackhole/attribute.hpp>
 
-#include "library/backend.h"
+#include "backends/backend.h"
+
 #include "library/request_queue.h"
 #include "library/protocol.hpp"
 

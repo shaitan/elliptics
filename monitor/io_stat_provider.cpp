@@ -19,7 +19,8 @@
 
 #include "io_stat_provider.hpp"
 
-#include "library/backend.h"
+#include "backends/backend.h"
+
 #include "library/elliptics.h"
 #include "library/request_queue.h"
 

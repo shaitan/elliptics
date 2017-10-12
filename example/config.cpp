@@ -31,10 +31,11 @@
 
 #include <kora/config.hpp>
 
+#include "backends/backend.h"
+
 #include "common.h"
 
 #include "elliptics/session.hpp"
-#include "library/backend.h"
 #include "library/logger.hpp"
 #include "monitor/monitor.hpp"
 

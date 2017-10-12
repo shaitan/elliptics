@@ -35,7 +35,6 @@
 #include <blackhole/attribute.hpp>
 
 #include "elliptics/cppdef.h"
-#include "elliptics/backends.h"
 #include "elliptics/logger.hpp"
 
 #include "common.h"

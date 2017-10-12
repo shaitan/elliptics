@@ -26,10 +26,11 @@
 #include <signal.h>
 
 #include "elliptics.h"
-#include "backend.h"
 #include "route.h"
 #include "elliptics/interface.h"
 #include "monitor/monitor.h"
+
+#include "backends/backend.h"
 
 #include "logger.hpp"
 #include "example/common.h"
