@@ -21,7 +21,6 @@ import traceback
 from multiprocessing import Pool
 # from memory_profiler import profile
 
-from elliptics_recovery.route import RouteList
 from elliptics_recovery.etime import Time
 from elliptics_recovery.utils.misc import elliptics_create_node, elliptics_create_session, worker_init
 from elliptics_recovery.monitor import Monitor, ALLOWED_STAT_FORMATS
@@ -73,7 +72,7 @@ def get_routes(ctx):
     session = elliptics_create_session(node=node, group=0, trace_id=ctx.trace_id)
 
     log.debug("Parsing routing table")
-    return RouteList.from_session(session)
+    return session.routes.filter_by_groups(ctx.groups)
 
 
 # @profile
@@ -314,9 +313,9 @@ def main(options, args):
         raise RuntimeError("No routes was parsed from session")
     log.debug("Total routes: {0}".format(len(ctx.routes)))
 
-    if len(ctx.groups) == 0:
-        ctx.groups = ctx.routes.groups()
-        log.info("No groups specified: using all available groups: {0}".format(ctx.groups))
+    if set(ctx.groups) != set(ctx.routes.groups()):
+        raise RuntimeError("Not all specified groups({}) are presented in route-list({})"
+                           .format(ctx.groups, ctx.routes.groups()))
 
     try:
         log.info("Creating pool of processes: %d", ctx.nprocess)
