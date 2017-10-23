@@ -1,3 +1,10 @@
+elliptics (2.27.3.3) unstable; urgency=medium
+
+  * recovery: remove old RouteList class
+  * recovery: make sure that all specified groups are presented in route-list
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Mon, 23 Oct 2017 21:39:33 +0300
+
 elliptics (2.27.3.2) unstable; urgency=medium
 
   * Cleanup includes in dnet.c

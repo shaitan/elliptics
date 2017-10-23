@@ -3,7 +3,7 @@
 
 Summary:	Distributed hash table storage
 Name:		elliptics
-Version:	2.27.3.2
+Version:	2.27.3.3
 Release:	1%{?dist}
 
 License:	GPLv2+
@@ -131,6 +131,10 @@ rm -rf %{buildroot}
 
 
 %changelog
+* Mon Oct 23 2017 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.3.3
+- recovery: remove old RouteList class
+- recovery: make sure that all specified groups are presented in route-list
+
 * Wed Oct 11 2017 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.3.2
 - Cleanup includes in dnet.c
 - Use modern handystats macro for formatted metrics
