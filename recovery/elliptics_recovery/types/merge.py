@@ -35,7 +35,6 @@ import time
 
 from ..etime import Time
 from ..utils.misc import elliptics_create_node
-from ..route import RouteList
 from ..iterator import MergeRecoveryIterator
 from ..range import IdRange
 import elliptics
@@ -125,7 +124,7 @@ def process_node_backend(ctx, address, backend_id, group, ranges):
 
 def get_ranges(ctx, group):
     ranges = dict()
-    routes = RouteList(ctx.routes.filter_by_group(group))
+    routes = ctx.routes.filter_by_group(group)
 
     ID_MIN = elliptics.Id([0] * 64, group)
     ID_MAX = elliptics.Id([255] * 64, group)
