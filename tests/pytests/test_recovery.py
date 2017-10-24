@@ -274,6 +274,24 @@ class TestRecovery:
     # timestamp of corrupted_key from second group which should be recovered to first and third group
     corrupted_timestamp2 = elliptics.Time(corrupted_timestamp.tsec + 3600, corrupted_timestamp.tnsec)
 
+    def test_dc_with_insufficient_route_list(self, servers, use_server_send):
+        """Test that recovery checks availability of all specified groups from route-list at start."""
+        previous_cwd = os.getcwd()
+        with pytest.raises(RuntimeError):
+            recovery(one_node=False,
+                     remotes=map(elliptics.Address.from_host_port_family, servers.remotes),
+                     backend_id=None,
+                     address=None,
+                     groups=[servers.groups[0], max(servers.groups) + 1],
+                     rtype=RECOVERY.DC,
+                     log_file='dc_with_insufficient_route_list.log',
+                     tmp_dir='dc_with_insufficient_route_list{}'.format(use_server_send[0]),
+                     no_meta=True,
+                     no_server_send=use_server_send[1],
+                     expected_ret_code=1)
+        os.chdir(previous_cwd)
+
+
     @pytest.mark.usefixtures("servers")
     def test_disable_backends(self, simple_node):
         '''
