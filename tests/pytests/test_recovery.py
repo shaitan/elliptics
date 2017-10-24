@@ -256,11 +256,11 @@ class TestRecovery:
     '''
     namespace = "TestRecovery"
     count = 1024
-    # keys which will be written, readed, recovered and checked by recovery tests
+    # keys which will be written, read, recovered and checked by recovery tests
     keys = map('{0}'.format, range(count))
     # at first steps datas of all keys written to first and second group would be equal to key
     datas = keys
-    # to make it simplier all keys from first and second group will be have similar timestamp
+    # to make it simpler all keys from first and second group will be have similar timestamp
     timestamp = elliptics.Time.now()
     # this data will be written to the third group
     datas2 = map('{0}.{0}'.format, keys)
@@ -273,6 +273,24 @@ class TestRecovery:
     corrupted_timestamp = elliptics.Time.now()
     # timestamp of corrupted_key from second group which should be recovered to first and third group
     corrupted_timestamp2 = elliptics.Time(corrupted_timestamp.tsec + 3600, corrupted_timestamp.tnsec)
+
+    def test_dc_with_insufficient_route_list(self, servers, use_server_send):
+        """Test that recovery checks availability of all specified groups from route-list at start."""
+        previous_cwd = os.getcwd()
+        with pytest.raises(RuntimeError):
+            recovery(one_node=False,
+                     remotes=map(elliptics.Address.from_host_port_family, servers.remotes),
+                     backend_id=None,
+                     address=None,
+                     groups=[servers.groups[0], max(servers.groups) + 1],
+                     rtype=RECOVERY.DC,
+                     log_file='dc_with_insufficient_route_list.log',
+                     tmp_dir='dc_with_insufficient_route_list{}'.format(use_server_send[0]),
+                     no_meta=True,
+                     no_server_send=use_server_send[1],
+                     expected_ret_code=1)
+        os.chdir(previous_cwd)
+
 
     @pytest.mark.usefixtures("servers")
     def test_disable_backends(self, simple_node):
@@ -611,7 +629,7 @@ class TestRecovery:
         Runs dc recovery and checks that second version of data is recovered to all groups.
         This test checks that dc recovery correctly handles corrupted key on his way:
         Group #3 which key was corrupted has a newest timestamp and recovery tries to used it at first.
-        But read fails and recovery switchs to the group #2 and recovers data from this group to groups #1 and #3.
+        But read fails and recovery switches to the group #2 and recovers data from this group to groups #1 and #3.
         '''
         session = make_session(node=simple_node,
                                test_name='TestRecovery.test_dc_corrupted_data',
@@ -1250,7 +1268,7 @@ class TestRecoveryUserFlags:
 
     def prepare_test_data(self):
         '''
-        Writes test keys with a specific user_flags and checks that operation was successfull:
+        Writes test keys with a specific user_flags and checks that operation was successful:
         1. Write test_key to test_groups with different user_flags that are not in user_flags_set.
         2. Write test_key2 with different user_flags including ones from user_flags_set.
         3. Write test_key3 with different user_flags. Replicas with user_flags from user_flags_set
