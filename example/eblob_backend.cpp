@@ -1680,7 +1680,7 @@ int blob_bulk_read_new(struct eblob_backend_config *c, void *state, struct dnet_
 	cmd->flags &= ~DNET_FLAGS_NEED_ACK;
 	struct dnet_cmd cmd_copy(*cmd);
 	const auto num_keys = bulk_request.keys.size();
-	for (size_t i = 0; i < num_keys; ++i) {
+	for (size_t i = 0; i < num_keys && !st->__need_exit; ++i) {
 		timer.restart();
 		cmd_copy.id = bulk_request.keys[i];
 
