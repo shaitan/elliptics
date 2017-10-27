@@ -1,3 +1,12 @@
+elliptics (2.27.3.4) unstable; urgency=medium
+
+  * dnet_client: add compare command
+  * Stop bulk_read when the client has gone
+  * Fix typos
+  * tests: add test_dc_with_insufficient_route_list
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Fri, 27 Oct 2017 17:15:20 +0300
+
 elliptics (2.27.3.3) unstable; urgency=medium
 
   * recovery: remove old RouteList class

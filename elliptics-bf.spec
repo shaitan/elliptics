@@ -3,7 +3,7 @@
 
 Summary:	Distributed hash table storage
 Name:		elliptics
-Version:	2.27.3.3
+Version:	2.27.3.4
 Release:	1%{?dist}
 
 License:	GPLv2+
@@ -131,6 +131,12 @@ rm -rf %{buildroot}
 
 
 %changelog
+* Fri Oct 27 2017 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.3.4
+- dnet_client: add compare command
+- Stop bulk_read when the client has gone
+- Fix typos
+- tests: add test_dc_with_insufficient_route_list
+
 * Mon Oct 23 2017 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.3.3
 - recovery: remove old RouteList class
 - recovery: make sure that all specified groups are presented in route-list
