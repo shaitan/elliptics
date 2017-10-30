@@ -3,7 +3,7 @@
 
 Summary:	Distributed hash table storage
 Name:		elliptics
-Version:	2.27.3.4
+Version:	2.27.3.5
 Release:	1%{?dist}
 
 License:	GPLv2+
@@ -131,6 +131,9 @@ rm -rf %{buildroot}
 
 
 %changelog
+* Mon Oct 30 2017 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.3.5
+- dnet_client: Make compare create tmp_dir if it doesn't exist
+
 * Fri Oct 27 2017 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.3.4
 - dnet_client: add compare command
 - Stop bulk_read when the client has gone

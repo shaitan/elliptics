@@ -1,3 +1,9 @@
+elliptics (2.27.3.5) unstable; urgency=medium
+
+  * dnet_client: Make compare create tmp_dir if it doesn't exist
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Mon, 30 Oct 2017 13:58:07 +0300
+
 elliptics (2.27.3.4) unstable; urgency=medium
 
   * dnet_client: add compare command
