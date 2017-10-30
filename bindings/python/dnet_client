@@ -940,6 +940,9 @@ def process_compare():
     if options.tmp_dir is None:
         parser.error('--tmp is not specified')
 
+    if not os.path.exists(options.tmp_dir):
+        os.makedirs(options.tmp_dir)
+
     session = create_session(parser, options, new_session=True, no_route_list=True)
     session.set_checker(elliptics.checkers.no_check)
 
