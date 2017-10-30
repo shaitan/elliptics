@@ -682,6 +682,7 @@ class Iterator(object):
                                                               elliptics.command_flags.checksum)
         self._session.set_filter(elliptics.filters.all_with_ack)
         self._lookup_session.set_filter(elliptics.filters.all_with_ack)
+        self._lookup_session.exceptions_policy = elliptics.exceptions_policy.no_exceptions
 
 
     def prepare(self):
