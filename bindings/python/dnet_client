@@ -976,7 +976,7 @@ def process_compare():
 
     def heap_push(iterator):
         try:
-            heapq.heappush((next(iterator), iterator))
+            heapq.heappush(heap, (next(iterator), iterator))
         except StopIteration:
             pass
 
