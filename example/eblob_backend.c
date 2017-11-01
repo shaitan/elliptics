@@ -1420,6 +1420,18 @@ static int dnet_blob_set_backend_id(struct dnet_config_backend *b,
 	return 0;
 }
 
+static int dnet_blob_set_bg_ioprio_class(struct dnet_config_backend *b, const char *key __unused, const char *value) {
+	struct eblob_backend_config *c = b->data;
+	c->data.bg_ioprio_class = atoi(value);
+	return 0;
+}
+
+static int dnet_blob_set_bg_ioprio_data(struct dnet_config_backend *b, const char *key __unused, const char *value) {
+	struct eblob_backend_config *c = b->data;
+	c->data.bg_ioprio_data = atoi(value);
+	return 0;
+}
+
 
 uint64_t eblob_backend_total_elements(void *priv) {
 	struct eblob_backend_config *r = priv;
@@ -1655,7 +1667,9 @@ static struct dnet_config_entry dnet_cfg_entries_blobsystem[] = {
 	{"index_block_size", dnet_blob_set_index_block_size},
 	{"index_block_bloom_length", dnet_blob_set_index_block_bloom_length},
 	{"periodic_timeout", dnet_blob_set_periodic_timeout},
-	{"backend_id", dnet_blob_set_backend_id}
+	{"backend_id", dnet_blob_set_backend_id},
+	{"bg_ioprio_class", dnet_blob_set_bg_ioprio_class},
+	{"bg_ioprio_data", dnet_blob_set_bg_ioprio_data}
 };
 
 static struct dnet_config_backend dnet_eblob_backend = {
