@@ -853,7 +853,7 @@ def analyze(groups, key_infos):
     assert all(key_info.key == key_infos[0].key for key_info in key_infos)
 
     report = ''
-    correct_infos = [key_info for key_info in key_infos if key_info >= 0]
+    correct_infos = [key_info for key_info in key_infos if key_info.status >= 0]
 
     missed = set(groups) - {key_info.group for key_info in key_infos}
     if missed:
