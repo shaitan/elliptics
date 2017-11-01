@@ -1012,6 +1012,21 @@ static int blob_defrag_stop(void *priv)
 	return eblob_stop_defrag(c->eblob);
 }
 
+static int blob_inspect_start(void *priv) {
+	struct eblob_backend_config *c = priv;
+	return eblob_start_inspect(c->eblob);
+}
+
+static int blob_inspect_stop(void *priv) {
+	struct eblob_backend_config *c = priv;
+	return eblob_stop_inspect(c->eblob);
+}
+
+static int blob_inspect_status(void *priv) {
+	struct eblob_backend_config *c = priv;
+	return eblob_inspect_status(c->eblob);
+}
+
 static int blob_send_reply(void *state, struct dnet_cmd *cmd, struct dnet_iterator_response *re, int more)
 {
 	int err;
@@ -1578,6 +1593,10 @@ static int dnet_blob_config_init(struct dnet_config_backend *b, enum dnet_log_le
 	b->cb.defrag_start = blob_defrag_start;
 	b->cb.defrag_stop = blob_defrag_stop;
 	b->cb.defrag_status = blob_defrag_status;
+
+	b->cb.inspect_start = blob_inspect_start;
+	b->cb.inspect_stop = blob_inspect_stop;
+	b->cb.inspect_status = blob_inspect_status;
 
 	return 0;
 

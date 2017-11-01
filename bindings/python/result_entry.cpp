@@ -22,6 +22,7 @@
 #include <elliptics/newapi/result_entry.hpp>
 #include <elliptics/interface.h>
 
+#include "python.hpp"
 #include "elliptics_id.h"
 #include "elliptics_time.h"
 #include "elliptics_io_attr.h"
@@ -209,6 +210,14 @@ elliptics_time dnet_backend_status_get_last_start(const dnet_backend_status &res
 
 bool dnet_backend_status_get_read_only(const dnet_backend_status &result) {
 	return bool(result.read_only);
+}
+
+defrag_state dnet_backend_status_get_defrag_state(const dnet_backend_status &result) {
+	return (defrag_state)result.defrag_state;
+}
+
+inspect_state dnet_backend_status_get_inspect_state(const dnet_backend_status &result) {
+	return (inspect_state)result.inspect_state;
 }
 
 bp::list dnet_backend_status_result_get_backends(const backend_status_result_entry &result) {
@@ -478,10 +487,11 @@ void init_result_entry() {
 	bp::class_<dnet_backend_status>("BackendStatus")
 		.add_property("backend_id", &dnet_backend_status::backend_id)
 		.add_property("state", &dnet_backend_status::state)
-		.add_property("defrag_state", &dnet_backend_status::defrag_state)
+		.add_property("defrag_state",  dnet_backend_status_get_defrag_state)
 		.add_property("last_start", dnet_backend_status_get_last_start)
 		.add_property("last_start_err", &dnet_backend_status::last_start_err)
 		.add_property("read_only", dnet_backend_status_get_read_only)
+		.add_property("inspect_state", dnet_backend_status_get_inspect_state)
 	;
 
 	bp::object newapiModule(bp::handle<>(bp::borrowed(PyImport_AddModule("core.newapi"))));

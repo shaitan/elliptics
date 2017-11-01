@@ -18,6 +18,7 @@
 
 #include <elliptics/cppdef.h>
 
+#include "python.hpp"
 #include "elliptics_id.h"
 #include "async_result.h"
 #include "result_entry.h"
@@ -28,6 +29,7 @@
 namespace bp = boost::python;
 
 namespace ioremap { namespace elliptics { namespace python {
+// TODO: rewrite enums below with enum class and move them into python.hpp
 enum elliptics_iterator_types {
 	itype_disk	= DNET_ITYPE_DISK,
 	itype_network	= DNET_ITYPE_NETWORK,
@@ -473,6 +475,26 @@ BOOST_PYTHON_MODULE(core)
 		.value("change", node_status_flags_change)
 		.value("exit", node_status_flags_exit)
 		.value("ro", node_status_flags_ro)
+	;
+
+	bp::enum_<defrag_state>("defrag_state",
+	                        "All possible states of defragmentation\n\n"
+	                        "not_started\n    Defragmentation is not started\n"
+	                        "data_sort\n    Data sort is in progress\n"
+	                        "index_sort\n    Index sort is in progress\n"
+	                        "compact\n    Compact is in progress")
+		.value("not_started", defrag_state::NOT_STARTED)
+		.value("data_sort", defrag_state::DATA_SORT)
+		.value("index_sort", defrag_state::INDEX_SORT)
+		.value("compact", defrag_state::COMPACT)
+	;
+
+	bp::enum_<inspect_state>("inspect_state",
+	                         "All possible states of inspection\n\n"
+	                         "not_started\n    Inspection is not started\n"
+	                         "in_progress\n    Inspection is in progress")
+	.value("not_started", inspect_state::NOT_STARTED)
+	.value("in_progress", inspect_state::IN_PROGRESS)
 	;
 
 	init_elliptics_id();

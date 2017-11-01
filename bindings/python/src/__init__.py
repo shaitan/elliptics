@@ -29,6 +29,9 @@ from elliptics.log import Handler
 from elliptics.id import Id
 from elliptics import newapi
 
+from elliptics.core import defrag_state
+from elliptics.core import inspect_state
+
 __author__ = "Kirill Smorodinnikov, Evgeniy Polyakov, Ruslan Nigmatullin, Alexey Ivanov"
 __copyright__ = """2008+ Copyright (c) Evgeniy Polyakov <zbr@ioremap.net>
 2012+ Copyright (c) Ruslan Nigmatullin <euroelessar@yandex.ru>

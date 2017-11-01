@@ -290,6 +290,10 @@ struct dnet_backend_callbacks {
 	int			(* defrag_start)(void *priv, enum dnet_backend_defrag_level level);
 	int			(* defrag_stop)(void *priv);
 
+	int			(* inspect_start)(void *priv);
+	int			(* inspect_stop)(void *priv);
+	int			(* inspect_status)(void *priv);
+
 	/*
 	 * Returns dir used by backend
 	 */
@@ -861,8 +865,10 @@ static inline int is_trans_destroyed(struct dnet_cmd *cmd)
 int dnet_mix_states(struct dnet_session *s, struct dnet_id *id, uint32_t ioflags, int **groupsp);
 
 char * __attribute__((weak)) dnet_cmd_string(int cmd);
+const char *dnet_backend_command_string(uint32_t cmd);
 const char *dnet_backend_state_string(uint32_t state);
 const char *dnet_backend_defrag_state_string(uint32_t state);
+const char *dnet_backend_inspect_state_string(uint32_t state);
 
 int dnet_checksum_file(struct dnet_node *n, const char *file, uint64_t offset, uint64_t size, void *csum, int csize);
 int dnet_checksum_fd(struct dnet_node *n, int fd, uint64_t offset, uint64_t size, void *csum, int csize);

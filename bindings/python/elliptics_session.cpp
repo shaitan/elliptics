@@ -483,6 +483,14 @@ public:
 		return create_result(std::move(session::stop_defrag(address(host, port, family), backend_id)));
 	}
 
+	python_backend_status_result start_inspect(const std::string &host, int port, int family, uint32_t backend_id) {
+		return create_result(std::move(session::start_inspect(address(host, port, family), backend_id)));
+	}
+
+	python_backend_status_result stop_inspect(const std::string &host, int port, int family, uint32_t backend_id) {
+		return create_result(std::move(session::stop_inspect(address(host, port, family), backend_id)));
+	}
+
 	python_backend_status_result set_backend_ids(const std::string &host, int port, int family, uint32_t backend_id, const bp::api::object &ids) {
 		std::vector<dnet_raw_id> std_ids;
 		std_ids.reserve(bp::len(ids));
@@ -1526,6 +1534,22 @@ void init_elliptics_session() {
 		     "    Returns AsyncResult which provides new status of the backend\n\n"
 		     "    new_status = session.stop_defrag(elliptics.Address.from_host_port_family(host='host.com', port=1025, family=AF_INET), 0).get()[0].backends[0]\n"
 		     "    defrag_state = new_state.defrag_state")
+
+		.def("start_inspect", &elliptics_session::start_inspect,
+		     (bp::arg("host"), bp::arg("port"), bp::arg("family"), bp::arg("backend_id")),
+		     "start_inspect(host, port, family, backend_id)\n"
+		     "    Start inspection of backend @backend_id at node addressed by @host, @port, @family\n"
+		     "    Returns AsyncResult which provides new status of the backend\n\n"
+		     "    new_status = session.start_inspect(elliptics.Address.from_host_port_family(host='host.com', port=1025, family=AF_INET), 0).get()[0].backends[0]\n"
+		     "    inspect_state = new_state.inspect_state")
+
+		.def("stop_inspect", &elliptics_session::stop_inspect,
+		     (bp::arg("host"), bp::arg("port"), bp::arg("family"), bp::arg("backend_id")),
+		     "stop_inspect(host, port, family, backend_id)\n"
+		     "    Stop inspection of backend @backend_id at node addressed by @host, @port, @family\n"
+		     "    Returns AsyncResult which provides new status of the backend\n\n"
+		     "    new_status = session.stop_inspect(elliptics.Address.from_host_port_family(host='host.com', port=1025, family=AF_INET), 0).get()[0].backends[0]\n"
+		     "    inspect_state = new_state.inspect_state")
 
 		.def("set_backend_ids", &elliptics_session::set_backend_ids,
 		     (bp::arg("host"), bp::arg("port"), bp::arg("family"), bp::arg("backend_id"), bp::arg("ids")),

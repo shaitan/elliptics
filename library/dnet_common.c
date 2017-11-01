@@ -118,6 +118,27 @@ char *dnet_cmd_string(int cmd)
 	return dnet_cmd_strings[cmd];
 }
 
+static char *dnet_backend_command_strings[] = {
+	[DNET_BACKEND_ENABLE] = "ENABLE",
+	[DNET_BACKEND_DISABLE] = "DISABLE",
+	[DNET_BACKEND_START_DEFRAG] = "START_DEFRAG",
+	[DNET_BACKEND_SET_IDS] = "SET_IDS",
+	[DNET_BACKEND_READ_ONLY] = "READ_ONLY",
+	[DNET_BACKEND_WRITEABLE] = "WRITABLE",
+	[DNET_BACKEND_CTL] = "CONTROL",
+	[DNET_BACKEND_STOP_DEFRAG] = "STOP_DEFRAG",
+	[DNET_BACKEND_REMOVE] = "REMOVE",
+	[DNET_BACKEND_START_INSPECT] = "START_INSPECT",
+	[DNET_BACKEND_STOP_INSPECT] = "STOP_INSPECT",
+};
+
+const char *dnet_backend_command_string(uint32_t cmd) {
+	if (cmd >= __DNET_BACKEND_CMD_MAX)
+		return "UNKNOWN";
+
+	return dnet_backend_command_strings[cmd];
+}
+
 const char *dnet_backend_state_string(uint32_t state)
 {
 	switch ((enum dnet_backend_state)state) {
@@ -147,6 +168,17 @@ const char *dnet_backend_defrag_state_string(uint32_t state)
 			return "compact in-progress";
 		default:
 			return "unknown";
+	}
+}
+
+const char *dnet_backend_inspect_state_string(uint32_t state) {
+	switch ((enum dnet_backend_inspect_state)state) {
+	case DNET_BACKEND_INSPECT_NOT_STARTED:
+		return "not-started";
+	case DNET_BACKEND_INSPECT_IN_PROGRESS:
+		return "inspect in-progress";
+	default:
+		return "unknown";
 	}
 }
 

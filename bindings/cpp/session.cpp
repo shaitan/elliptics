@@ -1822,6 +1822,16 @@ async_backend_control_result session::stop_defrag(const address &addr, uint32_t 
 	return update_backend_status(backend_status_params(*this, addr, backend_id, DNET_BACKEND_STOP_DEFRAG));
 }
 
+async_backend_control_result session::start_inspect(const address &addr, uint32_t backend_id) {
+	trace_scope scope{*this};
+	return update_backend_status(backend_status_params(*this, addr, backend_id, DNET_BACKEND_START_INSPECT));
+}
+
+async_backend_control_result session::stop_inspect(const address &addr, uint32_t backend_id) {
+	trace_scope scope{*this};
+	return update_backend_status(backend_status_params(*this, addr, backend_id, DNET_BACKEND_STOP_INSPECT));
+}
+
 async_backend_control_result session::set_backend_ids(const address &addr, uint32_t backend_id,
 		const std::vector<dnet_raw_id> &ids)
 {
