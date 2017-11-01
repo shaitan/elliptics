@@ -895,8 +895,7 @@ def analyze(groups, key_infos):
         report += '\tdata mismatch: %s' % {hash[:12]: groups for hash, groups in datas.iteritems()}
 
     if len(data_tss) > 1:
-        report += '\tdata timestamp mismatch: %s' % {str(elliptics.Time(ts[0], ts[1])): groups
-                                                     for ts, groups in data_tss.iteritems()}
+        report += '\tdata timestamp mismatch: %s' % {ts: groups for ts, groups in data_tss.iteritems()}
 
     # if len(jsons) > 1:
     #     report += '\tjson mismatch: %s' % {hash[:12]: groups for hash, groups in jsons.iteritems()}
