@@ -679,6 +679,15 @@ public:
 	 */
 	async_backend_control_result stop_defrag(const address &addr, uint32_t backend_id);
 
+	/*
+	 * Start background inspection at backend with @backend_id at node @addr
+	 */
+	async_backend_control_result start_inspect(const address &addr, uint32_t backend_id);
+	/*
+	 * Stop background inspection at backend with @backend_id at node @addr
+	 */
+	async_backend_control_result stop_inspect(const address &addr, uint32_t backend_id);
+
 	/*!
 	 * Updates ids which backend with @backend_id at node @addr serves.
 	 */

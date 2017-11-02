@@ -73,10 +73,17 @@ public:
 	int enable();
 	// disable (stop) backend
 	int disable();
+
 	// start defragmentation on @level
 	int start_defrag(const dnet_backend_defrag_level level);
 	// stop defragmentation
 	int stop_defrag();
+
+	// start inspection
+	int start_inspect();
+	// stop inspection
+	int stop_inspect();
+
 	// update ids ranges served by the backend
 	int set_ids(struct dnet_raw_id *ids, uint32_t ids_count);
 

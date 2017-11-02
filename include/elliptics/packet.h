@@ -122,6 +122,10 @@ enum dnet_backend_command {
 	DNET_BACKEND_CTL,		// change internal parameters like delay
 	DNET_BACKEND_STOP_DEFRAG,
 	DNET_BACKEND_REMOVE,		// stop, cleanup and forget backend
+	DNET_BACKEND_START_INSPECT,	// start background inspection
+	DNET_BACKEND_STOP_INSPECT,	// stop background inspection
+
+	__DNET_BACKEND_CMD_MAX,
 };
 
 enum dnet_backend_state {
@@ -141,6 +145,11 @@ enum dnet_backend_defrag_state {
 enum dnet_backend_defrag_level {
 	DNET_BACKEND_DEFRAG_FULL = 0,
 	DNET_BACKEND_DEFRAG_COMPACT,
+};
+
+enum dnet_backend_inspect_state {
+	DNET_BACKEND_INSPECT_NOT_STARTED,
+	DNET_BACKEND_INSPECT_IN_PROGRESS,
 };
 
 /*
@@ -669,7 +678,7 @@ struct dnet_backend_status
 	uint8_t read_only;
 	uint8_t reserved_flags[7];
 	uint32_t delay;			// delay in ms for each backend operation
-	uint32_t reserved1;
+	uint32_t inspect_state;
 	uint64_t reserved2[6];
 } __attribute__ ((packed));
 

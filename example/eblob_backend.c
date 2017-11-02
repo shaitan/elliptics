@@ -1012,6 +1012,21 @@ static int blob_defrag_stop(void *priv)
 	return eblob_stop_defrag(c->eblob);
 }
 
+static int blob_inspect_start(void *priv) {
+	struct eblob_backend_config *c = priv;
+	return eblob_start_inspect(c->eblob);
+}
+
+static int blob_inspect_stop(void *priv) {
+	struct eblob_backend_config *c = priv;
+	return eblob_stop_inspect(c->eblob);
+}
+
+static int blob_inspect_status(void *priv) {
+	struct eblob_backend_config *c = priv;
+	return eblob_inspect_status(c->eblob);
+}
+
 static int blob_send_reply(void *state, struct dnet_cmd *cmd, struct dnet_iterator_response *re, int more)
 {
 	int err;
@@ -1405,6 +1420,18 @@ static int dnet_blob_set_backend_id(struct dnet_config_backend *b,
 	return 0;
 }
 
+static int dnet_blob_set_bg_ioprio_class(struct dnet_config_backend *b, const char *key __unused, const char *value) {
+	struct eblob_backend_config *c = b->data;
+	c->data.bg_ioprio_class = atoi(value);
+	return 0;
+}
+
+static int dnet_blob_set_bg_ioprio_data(struct dnet_config_backend *b, const char *key __unused, const char *value) {
+	struct eblob_backend_config *c = b->data;
+	c->data.bg_ioprio_data = atoi(value);
+	return 0;
+}
+
 
 uint64_t eblob_backend_total_elements(void *priv) {
 	struct eblob_backend_config *r = priv;
@@ -1579,6 +1606,10 @@ static int dnet_blob_config_init(struct dnet_config_backend *b, enum dnet_log_le
 	b->cb.defrag_stop = blob_defrag_stop;
 	b->cb.defrag_status = blob_defrag_status;
 
+	b->cb.inspect_start = blob_inspect_start;
+	b->cb.inspect_stop = blob_inspect_stop;
+	b->cb.inspect_status = blob_inspect_status;
+
 	return 0;
 
 err_out_last_read_lock_destroy:
@@ -1636,7 +1667,9 @@ static struct dnet_config_entry dnet_cfg_entries_blobsystem[] = {
 	{"index_block_size", dnet_blob_set_index_block_size},
 	{"index_block_bloom_length", dnet_blob_set_index_block_bloom_length},
 	{"periodic_timeout", dnet_blob_set_periodic_timeout},
-	{"backend_id", dnet_blob_set_backend_id}
+	{"backend_id", dnet_blob_set_backend_id},
+	{"bg_ioprio_class", dnet_blob_set_bg_ioprio_class},
+	{"bg_ioprio_data", dnet_blob_set_bg_ioprio_data}
 };
 
 static struct dnet_config_backend dnet_eblob_backend = {

@@ -441,7 +441,7 @@ static int dnet_cmd_backend_control_dangerous(struct dnet_net_state *st, struct 
 	}
 
 	DNET_LOG_INFO(node, "backend_control: received BACKEND_CONTROL: backend_id: {}, command: {}, state: {}",
-	              control->backend_id, control->command, dnet_state_dump_addr(st));
+	              control->backend_id, dnet_backend_command_string(control->command), dnet_state_dump_addr(st));
 
 	switch (dnet_backend_command(control->command)) {
 	case DNET_BACKEND_ENABLE:
@@ -483,6 +483,12 @@ static int dnet_cmd_backend_control_dangerous(struct dnet_net_state *st, struct 
 	case DNET_BACKEND_CTL:
 		backend->set_delay(control->delay);
 		err = 0;
+		break;
+	case DNET_BACKEND_START_INSPECT:
+		err = backend->start_inspect();
+		break;
+	case DNET_BACKEND_STOP_INSPECT:
+		err = backend->stop_inspect();
 		break;
 	default:
 		err = -ENOTSUP;
@@ -947,6 +953,20 @@ int dnet_backend::stop_defrag() {
 	return m_callbacks.defrag_stop(m_callbacks.command_private);
 }
 
+int dnet_backend::start_inspect() {
+	if (!m_callbacks.inspect_start)
+		return -ENOTSUP;
+
+	return m_callbacks.inspect_start(m_callbacks.command_private);
+}
+
+int dnet_backend::stop_inspect() {
+	if (!m_callbacks.inspect_stop)
+		return -ENOTSUP;
+
+	return m_callbacks.inspect_stop(m_callbacks.command_private);
+}
+
 int dnet_backend::set_ids(struct dnet_raw_id *ids, uint32_t ids_count) {
 	return dnet_backend_set_ids(m_node, *this, m_config, ids, ids_count);
 }
@@ -962,6 +982,8 @@ void dnet_backend::fill_status(dnet_backend_status &status) {
 	status.last_start_err = m_last_start_err;
 	status.read_only = m_read_only;
 	status.delay = m_delay;
+	if (m_state == DNET_BACKEND_ENABLED && m_callbacks.inspect_status)
+		status.inspect_state = m_callbacks.inspect_status(m_callbacks.command_private);
 }
 
 void dnet_backend::fill_status(rapidjson::Value &value, rapidjson::Document::AllocatorType &allocator) {
@@ -978,8 +1000,8 @@ void dnet_backend::fill_status(rapidjson::Value &value, rapidjson::Document::All
 		status.AddMember("group",  m_config->group_id, allocator);
 		status.AddMember("pool_id", m_pool_id.c_str(), allocator);
 		const auto defrag_state = (m_state == DNET_BACKEND_ENABLED && m_callbacks.defrag_status)
-		                                  ? m_callbacks.defrag_status(m_callbacks.command_private)
-		                                  : 0;
+		                          ? m_callbacks.defrag_status(m_callbacks.command_private)
+		                          : DNET_BACKEND_DEFRAG_NOT_STARTED;
 		status.AddMember("defrag_state", defrag_state, allocator);
 		status.AddMember("string_defrag_state", dnet_backend_defrag_state_string(defrag_state), allocator);
 		rapidjson::Value last_start(rapidjson::kObjectType);
@@ -990,6 +1012,13 @@ void dnet_backend::fill_status(rapidjson::Value &value, rapidjson::Document::All
 		status.AddMember("last_start", last_start, allocator);
 		status.AddMember("string_last_time", dnet_print_time(&m_last_start), allocator);
 		status.AddMember("last_start_err", m_last_start_err, allocator);
+
+		// TODO(shaitan): make a request inspect status from the backend
+		const auto inspect_state = (m_state == DNET_BACKEND_ENABLED && m_callbacks.inspect_status)
+		                           ? m_callbacks.inspect_status(m_callbacks.command_private)
+		                           : DNET_BACKEND_INSPECT_NOT_STARTED;
+		status.AddMember("inspect_state", inspect_state, allocator);
+		status.AddMember("string_inspect_state", dnet_backend_inspect_state_string(inspect_state), allocator);
 	}
 	value.AddMember("status", status, allocator);
 }

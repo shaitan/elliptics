@@ -353,6 +353,7 @@ int main(int argc, char *argv[])
 						std::cout << dnet_print_time(&status->last_start) << std::endl;
 						std::cout << " last start error: " << status->last_start_err << std::endl;
 					}
+					std::cout << "    inspect state: " << dnet_backend_inspect_state_string(status->inspect_state) << std::endl;
 				}
 			} else {
 				std::cout << "status results are missed" << std::endl;

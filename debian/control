@@ -19,7 +19,7 @@ Build-Depends: cdbs,
                python-pip,
                python-virtualenv,
                msgpack-python | python-msgpack,
-               eblob (>= 0.23.11),
+               eblob (>= 0.24.0),
                handystats (>= 1.11.6),
                libkora-util-dev (= 1.1.0-rc1),
                blackhole-dev (>= 1.9.0-1),
@@ -31,7 +31,7 @@ Package: elliptics
 Architecture: any
 Depends: ${shlibs:Depends},
          ${misc:Depends},
-         eblob (>= 0.23.11),
+         eblob (>= 0.24.0),
          elliptics-client2.27 (= ${Source-Version}),
          handystats (>= 1.11.6),
          libkora-util1 (= 1.1.0-rc1),
@@ -64,7 +64,7 @@ Description: Distributed hash table storage (debug files)
 Package: elliptics-dev
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}, elliptics-client2.27 (= ${Source-Version})
-Suggests: eblob (>= 0.23.11),
+Suggests: eblob (>= 0.24.0),
           libkora-util1 (= 1.1.0-rc1),
 Description: Distributed hash table storage (includes)
  Elliptics network is a fault tolerant distributed hash table object storage.
