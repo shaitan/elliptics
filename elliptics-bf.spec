@@ -3,7 +3,7 @@
 
 Summary:	Distributed hash table storage
 Name:		elliptics
-Version:	2.27.3.5
+Version:	2.27.3.6
 Release:	1%{?dist}
 
 License:	GPLv2+
@@ -131,6 +131,12 @@ rm -rf %{buildroot}
 
 
 %changelog
+* Thu Nov 02 2017 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.3.6
+- dnet_client: fix using wrong conversion
+- dnet_client: fix missed 'status' property
+- dnet_client: fix heappush missed argument
+- dnet_client disable exceptions for lookup session
+
 * Mon Oct 30 2017 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.3.5
 - dnet_client: Make compare create tmp_dir if it doesn't exist
 
