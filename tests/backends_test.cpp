@@ -520,6 +520,71 @@ static void test_check_initial_config(session &sess) {
 	BOOST_REQUIRE_EQUAL(monitor_initial_config, config_initial_config);
 }
 
+static void test_inspect_backend(session &sess) {
+	constexpr int backend_id = 4;
+	auto &node = get_setup()->nodes.back();
+
+	{
+		auto new_sess = sess.clone();
+		new_sess.set_direct_id(node.remote(), backend_id);
+		ELLIPTICS_REQUIRE(async,
+		                  new_sess.write_data(std::string("corrupted_key"), std::string("corrupted data"), 0));
+		auto result = async.get_one();
+
+		auto fd = open(result.file_path(), O_RDWR, 0644);
+
+		BOOST_REQUIRE(fd > 0);
+		constexpr char injection[] = "inj";
+		BOOST_REQUIRE_EQUAL(pwrite(fd, injection, sizeof(injection), result.file_info()->offset),
+		                    sizeof(injection));
+
+		close(fd);
+	}
+
+	{
+		ELLIPTICS_REQUIRE(async, sess.start_inspect(node.remote(), backend_id));
+
+		auto result = async.get_one();
+		BOOST_REQUIRE(result.is_valid());
+		BOOST_REQUIRE_EQUAL(result.count(), 1);
+
+		auto status = result.backend(0);
+		BOOST_REQUIRE_EQUAL(status->backend_id, backend_id);
+		BOOST_REQUIRE_EQUAL(status->inspect_state, DNET_BACKEND_INSPECT_IN_PROGRESS);
+	}
+
+	{
+		/* wait inspection complete */
+		uint32_t inspect_state = DNET_BACKEND_INSPECT_IN_PROGRESS;
+		while (inspect_state != DNET_BACKEND_INSPECT_NOT_STARTED) {
+			ELLIPTICS_REQUIRE(async, sess.request_backends_status(node.remote()));
+			auto result = async.get_one();
+			for (uint32_t i = 0; i < result.count(); ++i) {
+				auto status = result.backend(i);
+				if (status->backend_id == backend_id) {
+					inspect_state = status->inspect_state;
+					break;
+				}
+			}
+		}
+	}
+
+	{
+		ELLIPTICS_REQUIRE(result, sess.monitor_stat(node.remote(), DNET_MONITOR_BACKEND));
+
+		auto summary_stats = [&] () {
+			std::istringstream stream(result.get().front().statistics());
+			auto monitor_statistics = kora::dynamic::read_json(stream);
+			return monitor_statistics.as_object()["backends"]
+			.as_object()[std::to_string(backend_id)]
+			.as_object()["backend"]
+			.as_object()["summary_stats"].as_object();
+		} ();
+
+		BOOST_REQUIRE_EQUAL(summary_stats["records_corrupted"], 1);
+	}
+}
+
 bool register_tests(const nodes_data *setup)
 {
 	auto n = setup->node->get_native();
@@ -540,6 +605,7 @@ bool register_tests(const nodes_data *setup)
 	ELLIPTICS_TEST_CASE(test_make_backend_writeable, use_session(n, { 0 }, 0, 0));
 	ELLIPTICS_TEST_CASE(test_change_group, use_session(n, { 0 }, 0, 0));
 	ELLIPTICS_TEST_CASE(test_check_initial_config, use_session(n, { 0 }, 0, 0));
+	ELLIPTICS_TEST_CASE(test_inspect_backend, use_session(n, { 0 }, 0, 0));
 
 	return true;
 }
