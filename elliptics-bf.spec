@@ -13,7 +13,7 @@ Source0:	%{name}-%{version}.tar.bz2
 BuildRoot:	%{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 
 BuildRequires:	python-devel
-BuildRequires:	eblob-devel >= 0.23.11
+BuildRequires:	eblob-devel >= 0.24.0
 BuildRequires:  libblackhole-devel = 1.3.0
 BuildRequires:	libev-devel libtool-ltdl-devel
 BuildRequires:	cmake msgpack-devel python-msgpack
