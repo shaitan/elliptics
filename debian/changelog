@@ -1,3 +1,12 @@
+elliptics (2.27.4.0) unstable; urgency=medium
+
+  * Add test_inspect_backend test
+  * Allow to set ioprio to backend via config
+  * Add support of eblob's background inspect
+  * eblob: update to 0.24.0
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Thu, 02 Nov 2017 18:56:33 +0300
+
 elliptics (2.27.3.6) unstable; urgency=medium
 
   * dnet_client: fix using wrong conversion

@@ -3,7 +3,7 @@
 
 Summary:	Distributed hash table storage
 Name:		elliptics
-Version:	2.27.3.6
+Version:	2.27.4.0
 Release:	1%{?dist}
 
 License:	GPLv2+
@@ -131,6 +131,12 @@ rm -rf %{buildroot}
 
 
 %changelog
+* Thu Nov 02 2017 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.4.0
+- Add test_inspect_backend test
+- Allow to set ioprio to backend via config
+- Add support of eblob's background inspect
+- eblob: update to 0.24.0
+
 * Thu Nov 02 2017 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.3.6
 - dnet_client: fix using wrong conversion
 - dnet_client: fix missed 'status' property
