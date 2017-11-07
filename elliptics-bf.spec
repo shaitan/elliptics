@@ -3,7 +3,7 @@
 
 Summary:	Distributed hash table storage
 Name:		elliptics
-Version:	2.27.4.0
+Version:	2.27.4.1
 Release:	1%{?dist}
 
 License:	GPLv2+
@@ -131,6 +131,9 @@ rm -rf %{buildroot}
 
 
 %changelog
+* Tue Nov 07 2017 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.4.1
+-  dnet_client: fix printing defrag and inspect state
+
 * Thu Nov 02 2017 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.4.0
 - Add test_inspect_backend test
 - Allow to set ioprio to backend via config
