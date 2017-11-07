@@ -122,11 +122,11 @@ def print_backend_result(options, result):
             {
                 'backend_id': backend.backend_id,
                 'state': backend.state,
-                'defrag_state': backend.defrag_state,
+                'defrag_state': int(backend.defrag_state),
                 'last_start': str(backend.last_start),
                 'last_start_err': backend.last_start_err,
                 'readonly': backend.read_only,
-                'inspect_state': backend.inspect_state,
+                'inspect_state': int(backend.inspect_state),
             } for backend in result.get()[0].backends
             if options.backend_id == -1 or options.backend_id == backend.backend_id
         ]
