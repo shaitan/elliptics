@@ -1542,7 +1542,7 @@ static enum eblob_log_levels convert_to_eblob_log(enum dnet_log_level level)
 	return EBLOB_LOG_ERROR;
 }
 
-static void dnet_eblob_log_implemenation(void *priv, int level, const char *msg)
+static void dnet_eblob_log_implementation(void *priv, int level, const char *msg)
 {
 	dnet_log_raw(priv, convert_to_dnet_log(level), "%s", msg);
 }
@@ -1563,7 +1563,7 @@ static int dnet_blob_config_init(struct dnet_config_backend *b, enum dnet_log_le
 
 	c->log.log_private = b->log;
 	c->log.log_level = convert_to_eblob_log(level);
-	c->log.log = dnet_eblob_log_implemenation;
+	c->log.log = dnet_eblob_log_implementation;
 
 	c->data.log = &c->log;
 
