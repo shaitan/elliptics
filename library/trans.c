@@ -274,7 +274,7 @@ void dnet_trans_destroy(struct dnet_trans *t)
 
 		if (t->cmd.status != -ETIMEDOUT) {
 			if (st->stall) {
-				dnet_log(st->n, DNET_LOG_INFO, "%s/%d: reseting state stall counter",
+				dnet_log(st->n, DNET_LOG_INFO, "%s/%d: resetting state stall counter",
 					 dnet_state_dump_addr(st), t->cmd.backend_id);
 			}
 
