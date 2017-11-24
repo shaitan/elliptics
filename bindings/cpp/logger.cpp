@@ -78,8 +78,8 @@ static std::unique_ptr<dnet_logger> make_logger(const std::string &path, dnet_lo
 		                                   "{severity}: {message}, attrs: [{...}]";
 
 		static auto sevmap = [](std::size_t severity, const std::string &spec, blackhole::writer_t &writer) {
-			static const std::array<const char *, 5> mapping = {
-			        {"DEBUG", "NOTICE", "INFO", "WARNING", "ERROR"}};
+			static const std::array<const char *, 6> mapping = {
+			        {"DEBUG", "NOTICE", "INFO", "WARNING", "ERROR", "ACCESS"}};
 			if (severity < mapping.size()) {
 				writer.write(spec, mapping[severity]);
 			} else {
@@ -288,7 +288,7 @@ enum dnet_log_level dnet_node_get_verbosity(struct dnet_node *n) {
 	return dnet_node_get_config_data(n)->logger_level;
 }
 
-static const std::array<std::string, 5> severity_names = {{"debug", "notice", "info", "warning", "error"}};
+static const std::array<std::string, 6> severity_names = {{"debug", "notice", "info", "warning", "error", "access"}};
 
 enum dnet_log_level dnet_log_parse_level(const char *name) {
 	auto it = std::find(severity_names.begin(), severity_names.end(), name);

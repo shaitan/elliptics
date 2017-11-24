@@ -425,11 +425,13 @@ BOOST_PYTHON_MODULE(core)
 
 	bp::enum_<int>("log_level",
 	    "Different levels of verbosity elliptics logs:\n\n"
+	     "access\n  The level contains access messages with minimum verbosity and useful information \n"
 	     "error\n    The level contains critical errors that materially affect the work\n"
 	     "warning\n    The level contains reports of the previous level and warnings that may not affect the work\n"
 	     "info\n    The level contains reports of the previous level and messages about the time of the various operations\n"
 	     "notice\n    The level is considered to be the first level of debugging\n"
 	     "debug\n    The level includes all sort of information about errors and work")
+		.value("access", DNET_LOG_ACCESS)
 		.value("error", DNET_LOG_ERROR)
 		.value("warning", DNET_LOG_WARNING)
 		.value("info", DNET_LOG_INFO)

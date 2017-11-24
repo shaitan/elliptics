@@ -44,6 +44,8 @@ def convert_elliptics_log_level(level):
         return logging.WARNING
     elif level <= elliptics.log_level.error:
         return logging.ERROR
+    elif level <= elliptics.log_level.access:
+        return logging.CRITICAL
     else:
         return logging.ERROR
 
@@ -57,40 +59,24 @@ def convert_logging_log_level(level):
         return elliptics.log_level.info
     elif level <= logging.WARNING:
         return elliptics.log_level.warning
+    elif level <= logging.ERROR:
+        return elliptics.log_level.error
     elif level <= logging.CRITICAL:
-        return elliptics.log_level.ERROR
+        return elliptics.log_level.access
     else:
         return elliptics.log_level.error
 
 
 class Handler(logging.Handler):
     def __init__(self, path, level):
-        logging.Handler.__init__(self)
-
-        if level == elliptics.log_level.error:
-            logging.Handler.setLevel(self, logging.ERROR)
-        elif level == elliptics.log_level.info:
-            logging.Handler.setLevel(self, logging.INFO)
-        elif level == elliptics.log_level.notice:
-            logging.Handler.setLevel(self, logging.INFO)
-        elif level == elliptics.log_level.debug:
-            logging.Handler.setLevel(self, logging.DEBUG)
-
+        logging.Handler.__init__(self, level=convert_elliptics_log_level(level))
         self.logger = elliptics.Logger(path, level)
 
     def get_logger(self):
         return self.logger
 
     def emit(self, record):
-        level = elliptics.log_level.error
-        if record.levelno <= logging.DEBUG:
-            level = elliptics.log_level.debug
-        elif record.levelno <= logging.INFO:
-            level = elliptics.log_level.info
-        else:
-            level = elliptics.log_level.error
-
-        self.logger.log(level, record.msg.format(*record.args))
+        self.logger.log(convert_logging_log_level(record.levelno), record.msg.format(*record.args))
 
 
 def init_logger():

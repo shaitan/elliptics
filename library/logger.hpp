@@ -108,6 +108,7 @@ template <class T> inline blackhole::logger_facade<dnet_logger> make_facade(T &&
 #define DNET_LOG_INFO(__log__, ...)	DNET_LOG(__log__, DNET_LOG_INFO, __VA_ARGS__)
 #define DNET_LOG_WARNING(__log__, ...)	DNET_LOG(__log__, DNET_LOG_WARNING, __VA_ARGS__)
 #define DNET_LOG_ERROR(__log__, ...)	DNET_LOG(__log__, DNET_LOG_ERROR, __VA_ARGS__)
+#define DNET_LOG_ACCESS(__log__, ...)	DNET_LOG(__log__, DNET_LOG_ACCESS, __VA_ARGS__)
 
 #else
 #define DNET_LOG_RAW(...)		dnet_log_raw(__VA_ARGS__)
@@ -127,6 +128,7 @@ template <class T> inline blackhole::logger_facade<dnet_logger> make_facade(T &&
 #define DNET_LOG_INFO(log, ...)		DNET_LOG_RAW(log, DNET_LOG_INFO, __VA_ARGS__)
 #define DNET_LOG_WARNING(log, ...)	DNET_LOG_RAW(log, DNET_LOG_WARNING, __VA_ARGS__)
 #define DNET_LOG_ERROR(log, ...)	DNET_LOG_RAW(log, DNET_LOG_ERROR, __VA_ARGS__)
+#define DNET_LOG_ACCESS(log, ...)	DNET_LOG_RAW(log, DNET_LOG_ACCESS, __VA_ARGS__)
 
 #define DNET_DEBUG(n, ...)	DNET_LOG(n, DNET_LOG_DEBUG, __VA_ARGS__)
 #define DNET_NOTICE(n, ...)	DNET_LOG(n, DNET_LOG_NOTICE, __VA_ARGS__)

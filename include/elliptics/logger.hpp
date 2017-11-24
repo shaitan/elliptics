@@ -5,7 +5,8 @@ enum dnet_log_level {
 	DNET_LOG_NOTICE = 1,
 	DNET_LOG_INFO = 2,
 	DNET_LOG_WARNING = 3,
-	DNET_LOG_ERROR = 4
+	DNET_LOG_ERROR = 4,
+	DNET_LOG_ACCESS = 5,
 };
 
 #ifdef __cplusplus
