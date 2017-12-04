@@ -880,6 +880,12 @@ async_write_result session::write_data(const key &id, const argument_data &file,
 
 	ctl.fd = -1;
 
+	dnet_raw_id csum;
+	dnet_digest_transform_raw(file.data(), file.size(), (char *)csum.id, sizeof(csum.id));
+
+	DNET_LOG_INFO(get_logger(), "{}: write_data sha512: {}", dnet_dump_id_str(id.id().id),
+	              dnet_dump_id_str_full(csum.id));
+
 	return write_data(ctl);
 }
 

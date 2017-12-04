@@ -201,6 +201,8 @@ static int blob_write(struct eblob_backend_config *c, void *state,
 	struct eblob_write_control wc = { .data_fd = -1 };
 	struct eblob_key key;
 	struct dnet_ext_list_hdr ehdr;
+	struct dnet_raw_id csum, ondisk_csum;
+	struct dnet_node *n = ((struct dnet_net_state*)state)->n;
 	uint64_t flags = BLOB_DISK_CTL_EXTHDR;
 	uint64_t fd_offset;
 	static const size_t ehdr_size = sizeof(struct dnet_ext_list_hdr);
@@ -363,9 +365,17 @@ static int blob_write(struct eblob_backend_config *c, void *state,
 		goto err_out_exit;
 	}
 
+	memset(&csum, 0, sizeof(csum));
+	memset(&ondisk_csum, 0, sizeof(ondisk_csum));
+	if (io->size) {
+		dnet_digest_transform_raw(data, io->size, (char *)csum.id, sizeof(csum.id));
+		dnet_checksum_fd(n, wc.data_fd, fd_offset, wc.size, ondisk_csum.id, sizeof(ondisk_csum.id));
+	}
+
 	DNET_LOG_INFO(c->blog, "%s: EBLOB: blob-write: fd: %d, offset: %" PRIu64 ", offset-within-fd: %" PRIu64
-	                       ", size: %" PRIu64,
-	              dnet_dump_id_str(io->id), wc.data_fd, wc.offset, fd_offset, wc.size);
+	                       ", size: %" PRIu64 ", sha512: %s, ondisk_sha512: %s",
+	              dnet_dump_id_str(io->id), wc.data_fd, wc.offset, fd_offset, wc.size,
+	              dnet_dump_id_str_full(csum.id), dnet_dump_id_str_full(ondisk_csum.id));
 
 err_out_exit:
 	dnet_ext_list_destroy(&elist);
