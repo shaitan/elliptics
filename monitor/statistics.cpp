@@ -242,9 +242,9 @@ std::string statistics::report(uint64_t categories)
 
 	if (categories & DNET_MONITOR_STATS) {
 #if defined(HAVE_HANDYSTATS) && !defined(HANDYSTATS_DISABLE)
-		rapidjson::Value stats_value(rapidjson::kObjectType);
-		handystats::json::fill(stats_value, allocator, *HANDY_METRICS_DUMP());
-		report.AddMember("stats", stats_value, allocator);
+		rapidjson::Document stats(&allocator);
+		stats.Parse<0>(HANDY_JSON_DUMP().c_str());
+		report.AddMember("stats", static_cast<rapidjson::Value &>(stats), allocator);
 #else
 		report.AddMember("__stats__", "stats subsystem disabled at compile time", allocator);
 #endif
