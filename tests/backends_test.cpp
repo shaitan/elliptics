@@ -569,6 +569,9 @@ static void test_inspect_backend(session &sess) {
 		}
 	}
 
+	// sleep 1s to get updated backend's statistics
+	sleep(1);
+
 	{
 		ELLIPTICS_REQUIRE(result, sess.monitor_stat(node.remote(), DNET_MONITOR_BACKEND));
 
