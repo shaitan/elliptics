@@ -97,7 +97,6 @@ public:
 };
 
 typedef lookup_result_entry write_result_entry;
-typedef callback_result_entry remove_result_entry;
 
 typedef async_result<lookup_result_entry> async_lookup_result;
 typedef std::vector<lookup_result_entry> sync_lookup_result;
