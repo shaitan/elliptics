@@ -85,6 +85,9 @@ void dnet_log_raw(dnet_logger *logger, enum dnet_log_level level, const char *fo
 
 dnet_logger *dnet_node_get_logger(struct dnet_node *node);
 
+/* Write access-log for transaction @t. */
+void dnet_trans_log(struct dnet_node *node, struct dnet_trans *t);
+
 #ifdef __cplusplus
 } // extern "C"
 

@@ -628,6 +628,11 @@ int dnet_process_recv(struct dnet_net_state *st, struct dnet_io_req *r)
 			goto err_out_exit;
 		}
 
+		++t->stats.recv_replies;
+		t->stats.recv_size += r->hsize + r->dsize + r->fsize;
+		t->stats.recv_queue_time += r->queue_time;
+		t->stats.recv_time += r->recv_time;
+
 		if (t->complete) {
 			if (t->command == DNET_CMD_READ || t->command == DNET_CMD_READ_NEW) {
 				uint64_t ioflags = 0;
@@ -1255,6 +1260,7 @@ int dnet_send_request(struct dnet_net_state *st, struct dnet_io_req *r)
 	int err = 0;
 	size_t offset = st->send_offset;
 	const size_t total_size = r->dsize + r->hsize + r->fsize;
+	uint64_t send_time = 0;
 
 	if (total_size > sizeof(struct dnet_cmd)) {
 		/* Use TCP_CORK to send headers and packet body in one piece */
@@ -1316,7 +1322,6 @@ err_out_exit:
 		struct dnet_cmd *cmd = r->header ? r->header : r->data;
 		enum dnet_log_level level = DNET_LOG_DEBUG;
 		struct timespec ts;
-		unsigned long send_time;
 
 		clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
 		send_time = DIFF_TIMESPEC(st->send_start_ts, ts);
@@ -1348,6 +1353,21 @@ err_out_exit:
 	if (st->send_offset == total_size) {
 		int nodelay = 1;
 		setsockopt(st->write_s, IPPROTO_TCP, TCP_NODELAY, &nodelay, 4);
+	}
+
+	if (1) {
+		struct dnet_cmd *cmd = r->header ? r->header : r->data;
+		if (!(cmd->flags & DNET_FLAGS_REPLY)) {
+			struct dnet_trans *t = NULL;
+			pthread_mutex_lock(&st->trans_lock);
+			t = dnet_trans_search(st, cmd->trans);
+			if (t) {
+				t->stats.send_queue_time = r->queue_time;
+				t->stats.send_time = send_time;
+			}
+			pthread_mutex_unlock(&st->trans_lock);
+			dnet_trans_put(t);
+		}
 	}
 
 	return err;

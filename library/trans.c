@@ -238,16 +238,11 @@ err_out_exit:
 void dnet_trans_destroy(struct dnet_trans *t)
 {
 	struct dnet_net_state *st = NULL;
-	struct timespec ts;
-	long diff;
 
 	if (!t)
 		return;
 
-	dnet_logger_set_trace_id(t->cmd.trace_id, t->cmd.flags & DNET_FLAGS_TRACE_BIT);
-
-	clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
-	diff = DIFF_TIMESPEC(t->start_ts, ts);
+	dnet_logger_set_trace_id(t->cmd.trace_id, !!(t->cmd.flags & DNET_FLAGS_TRACE_BIT));
 
 	if (t->st && t->st->n) {
 		st = t->st;
@@ -269,9 +264,7 @@ void dnet_trans_destroy(struct dnet_trans *t)
 		t->complete(t->st ? dnet_state_addr(t->st) : NULL, &t->cmd, t->priv);
 	}
 
-	if (st && st->n && t->command != 0) {
-		char io_buf[1024] = "";
-
+	if (st && st->n && t->command) {
 		if (t->cmd.status != -ETIMEDOUT) {
 			if (st->stall) {
 				dnet_log(st->n, DNET_LOG_INFO, "%s/%d: resetting state stall counter",
@@ -281,26 +274,7 @@ void dnet_trans_destroy(struct dnet_trans *t)
 			st->stall = 0;
 		}
 
-		if ((t->command == DNET_CMD_READ || t->command == DNET_CMD_WRITE) &&
-		    (t->alloc_size >= sizeof(struct dnet_cmd) + sizeof(struct dnet_io_attr))) {
-			struct dnet_cmd *local_cmd = (struct dnet_cmd *)(t + 1);
-			struct dnet_io_attr *local_io = (struct dnet_io_attr *)(local_cmd + 1);
-			double backend_weight = 0.;
-
-			dnet_get_backend_weight(st, t->cmd.backend_id, local_io->flags, &backend_weight);
-
-			snprintf(io_buf, sizeof(io_buf), ", weight: %f, %s",
-			         backend_weight, dnet_print_io(local_io));
-		}
-
-		dnet_log(st->n, DNET_LOG_INFO, "%s: %s: destruction %s, stall: %d, "
-				"time: %ld, cached status: %d%s",
-			dnet_dump_id(&t->cmd.id),
-			dnet_cmd_string(t->cmd.cmd),
-			dnet_print_trans(t),
-			t->st->stall,
-			diff,
-			t->cmd.status, io_buf);
+		dnet_trans_log(st->n, t);
 	}
 
 	dnet_state_put(t->st);

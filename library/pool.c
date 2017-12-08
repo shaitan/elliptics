@@ -297,7 +297,7 @@ void dnet_schedule_io(struct dnet_node *n, struct dnet_io_req *r)
 	ssize_t backend_id = -1;
 	char thread_stat_id[255];
 	int log_level = DNET_LOG_INFO;
-	const long recv_time = DIFF_TIMESPEC(r->st->rcv_start_ts, r->st->rcv_finish_ts);
+	r->recv_time = DIFF_TIMESPEC(r->st->rcv_start_ts, r->st->rcv_finish_ts);
 
 	if (cmd->cmd == DNET_CMD_ITERATOR || cmd->cmd == DNET_CMD_ITERATOR_NEW)
 		log_level = DNET_LOG_DEBUG;
@@ -306,12 +306,12 @@ void dnet_schedule_io(struct dnet_node *n, struct dnet_io_req *r)
 		dnet_log(r->st->n, log_level, "%s: %s: RECV cmd: %s, cmd-size: %" PRIu64
 		                              ", nonblocking: %d, cflags: %s, trans: %" PRIu64 ", recv-time: %ld usecs",
 		         dnet_state_dump_addr(r->st), dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), cmd->size,
-		         nonblocking, dnet_flags_dump_cflags(cmd->flags), cmd->trans, recv_time);
+		         nonblocking, dnet_flags_dump_cflags(cmd->flags), cmd->trans, r->recv_time);
 	} else if ((cmd->size == 0) && !(cmd->flags & DNET_FLAGS_MORE) && (cmd->flags & DNET_FLAGS_REPLY)) {
 		dnet_log(r->st->n, log_level, "%s: %s: RECV ACK cmd: %s, nonblocking: %d, cflags: %s, trans: %" PRIu64
 		                              ", recv-time: %ld usecs",
 		         dnet_state_dump_addr(r->st), dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), nonblocking,
-		         dnet_flags_dump_cflags(cmd->flags), cmd->trans, recv_time);
+		         dnet_flags_dump_cflags(cmd->flags), cmd->trans, r->recv_time);
 	} else {
 		int reply = !!(cmd->flags & DNET_FLAGS_REPLY);
 
@@ -319,8 +319,7 @@ void dnet_schedule_io(struct dnet_node *n, struct dnet_io_req *r)
 		                              ", nonblocking: %d, cflags: %s, trans: %" PRIu64
 		                              ", reply: %d, recv-time: %ld usecs",
 		         dnet_state_dump_addr(r->st), dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), cmd->size,
-		         nonblocking, dnet_flags_dump_cflags(cmd->flags), cmd->trans, reply,
-		         recv_time);
+		         nonblocking, dnet_flags_dump_cflags(cmd->flags), cmd->trans, reply,  r->recv_time);
 	}
 
 	dnet_update_trans_timestamp_network(r);
