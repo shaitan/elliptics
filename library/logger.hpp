@@ -4,6 +4,8 @@
 
 #ifdef __cplusplus
 #include <atomic>
+#include <unordered_map>
+#include <unordered_set>
 #include <blackhole/extensions/facade.hpp>
 
 namespace ioremap { namespace elliptics {
@@ -67,6 +69,62 @@ struct backend_scope {
 
 std::string to_hex_string(uint64_t value);
 }} /* namespace ioremap::elliptics */
+
+namespace std {
+
+template<typename T>
+ostream &operator<<(ostream &os, const vector<T> &vector) {
+	os << "[";
+	bool first = true;
+	for (const auto &item: vector) {
+		if (!first)
+			os << ", ";
+		first = false;
+		os << item;
+	}
+	return os << "]";
+}
+
+template<typename T1, typename T2>
+ostream &operator<<(ostream &os, const vector<pair<T1, T2>> &vector) {
+	os << "{";
+	bool first = true;
+	for (const auto &item: vector) {
+		if (!first)
+			os << ", ";
+		first = false;
+		os << std::get<0>(item) << ": " << std::get<1>(item);
+	}
+	return os << "}";
+}
+
+template<typename T>
+ostream &operator<<(ostream &os, const unordered_set<T> &set) {
+	os << "[";
+	bool first = true;
+	for (const auto &item: set) {
+		if (!first)
+			os << ", ";
+		first = false;
+		os << item;
+	}
+	return os << "]";
+}
+
+template<typename T1, typename T2>
+ostream &operator<<(ostream &os, const unordered_map<T1, T2> &map) {
+	os << "{";
+	bool first = true;
+	for (const auto &item: map) {
+		if (!first)
+			os << ", ";
+		first = false;
+		os << std::get<0>(item) << ": " << std::get<1>(item);
+	}
+	return os << "}";
+}
+
+} /* namespace std */
 
 extern "C"{
 #endif // __cplusplus
