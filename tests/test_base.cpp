@@ -328,6 +328,7 @@ void server_config::write(const std::string &path) const {
 	sevmap.PushBack("INFO", allocator);
 	sevmap.PushBack("WARNING", allocator);
 	sevmap.PushBack("ERROR", allocator);
+	sevmap.PushBack("ACCESS", allocator);
 
 	rapidjson::Value formatter;
 	formatter.SetObject();

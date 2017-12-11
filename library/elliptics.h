@@ -75,7 +75,8 @@ struct dnet_io_req {
 	size_t			fsize;
 
 	struct timespec		queue_start_ts;
-	unsigned long		queue_time;
+	uint64_t		queue_time;
+	uint64_t		recv_time;
 };
 
 #define ELLIPTICS_PROTOCOL_VERSION_0 2
@@ -668,6 +669,15 @@ enum dnet_join_state {
 
 int __attribute__((weak)) dnet_state_join(struct dnet_net_state *st);
 
+struct dnet_trans_stats {
+	uint64_t	send_time;		/* cumulative time spent on sending a request */
+	uint64_t	send_queue_time;	/* time the request spent in send queue */
+	size_t		recv_replies;		/* number of received replies */
+	uint64_t	recv_size;		/* cumulative size of all received replies */
+	uint64_t	recv_queue_time;	/* cumulative time spent by all received replies in io queue */
+	uint64_t	recv_time;		/* cumulative time spent on receiving all replies */
+};
+
 struct dnet_trans
 {
 	struct rb_node			trans_entry;
@@ -696,6 +706,8 @@ struct dnet_trans
 	int				(* complete)(struct dnet_addr *addr,
 						     struct dnet_cmd *cmd,
 						     void *priv);
+
+	struct dnet_trans_stats		stats;
 };
 
 void dnet_trans_destroy(struct dnet_trans *t);

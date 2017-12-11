@@ -92,21 +92,87 @@ uint64_t session::get_cache_lifetime() const
 	return dnet_session_get_cache_lifetime(m_data->session_ptr);
 }
 
-class lookup_handler: public multigroup_handler<lookup_handler, lookup_result_entry> {
-public:
-	lookup_handler(const session &s, const async_lookup_result &result,
-	               std::vector<int> &&groups, const dnet_trans_control &control)
+class lookup_handler : public std::enable_shared_from_this<lookup_handler> {
+private:
+	class inner_handler : public multigroup_handler<lookup_handler, lookup_result_entry> {
+	public:
+		inner_handler(const session &s,
+		              const async_lookup_result &result,
+		              std::vector<int> &&groups,
+		              const dnet_trans_control &control)
 		: parent_type(s, result, std::move(groups))
 		, m_control(control) {
+		}
+
+	protected:
+		async_generic_result send_to_next_group() override {
+			m_control.id.group_id = current_group();
+			return send_to_single_state(m_sess, m_control);
+		}
+
+	private:
+		dnet_trans_control m_control;
+	};
+
+public:
+	explicit lookup_handler(const session &session, const async_lookup_result &result, const key &key)
+	: m_key(key)
+	, m_session(session.clean_clone())
+	, m_handler(result)
+	, m_log(session.get_logger()) {
+		m_session.set_checker(session.get_checker());
+		m_handler.set_total(1);
+
+		const size_t count = m_session.get_groups().size();
+		m_responses.groups.reserve(count);
+		m_responses.statuses.reserve(count);
+		m_responses.transes.reserve(count);
 	}
 
-	async_generic_result send_to_next_group() {
-		m_control.id.group_id = current_group();
-		return send_to_single_state(m_sess, m_control);
+	void start(std::vector<int> &&groups, const transport_control &control) {
+		DNET_LOG_ACCESS(m_log, "{}: {}: started: groups: {}",
+		                dnet_dump_id_str(m_key.raw_id().id), dnet_cmd_string(control.get_native().cmd), groups);
+
+		async_lookup_result result{m_session};
+		auto handler = std::make_shared<inner_handler>(m_session, result, std::move(groups),
+		                                               control.get_native());
+		handler->set_total(m_handler.get_total());
+		handler->start();
+		result.connect(
+			std::bind(&lookup_handler::process, shared_from_this(), std::placeholders::_1),
+			std::bind(&lookup_handler::complete, shared_from_this(), std::placeholders::_1)
+		);
 	}
 
 private:
-	dnet_trans_control m_control;
+	void process(const lookup_result_entry &entry) {
+		m_handler.process(entry);
+
+		const auto *cmd = entry.command();
+		m_responses.groups.emplace_back(cmd->id.group_id);
+		m_responses.statuses.emplace_back(cmd->id.group_id, entry.status());
+		m_responses.transes.emplace_back(cmd->id.group_id, cmd->trans);
+	}
+
+	void complete(const error_info &error) {
+		m_handler.complete(error);
+
+		DNET_LOG_ACCESS(m_log, "{}: {}: finished: groups: {}, trans: {}, status: {}, total_time: {}us",
+		                dnet_dump_id_str(m_key.id().id), dnet_cmd_string(DNET_CMD_LOOKUP_NEW),
+		                m_responses.groups, m_responses.transes, m_responses.statuses, m_timer.get_us());
+	}
+
+	util::steady_timer m_timer{};
+	key m_key;
+	session m_session;
+	async_result_handler<lookup_result_entry> m_handler;
+	std::unique_ptr<dnet_logger> m_log;
+
+	struct {
+		std::vector<uint32_t> groups;
+		std::vector<std::pair<uint32_t, int>> statuses;
+		std::vector<std::pair<uint32_t, uint64_t>> transes;
+	} m_responses;
 };
 
 async_lookup_result session::lookup(const key &id) {
@@ -114,19 +180,81 @@ async_lookup_result session::lookup(const key &id) {
 	DNET_SESSION_GET_GROUPS(async_lookup_result);
 	transform(id);
 
-
 	transport_control control;
 	control.set_key(id.id());
 	control.set_command(DNET_CMD_LOOKUP_NEW);
 	control.set_cflags(get_cflags() | DNET_FLAGS_NEED_ACK);
 
 	async_lookup_result result(*this);
-	auto handler = std::make_shared<lookup_handler>(*this, result, std::move(groups), control.get_native());
-	handler->set_total(1);
-	handler->start();
-
+	auto handler = std::make_shared<lookup_handler>(*this, result, id);
+	handler->start(std::move(groups), control.get_native());
 	return result;
 }
+
+class remove_handler : public std::enable_shared_from_this<remove_handler> {
+public:
+	explicit remove_handler(const async_remove_result &result,
+	                        const session &session,
+	                        const key &key)
+	: m_key(key)
+	, m_session(session.clean_clone())
+	, m_handler(result)
+	, m_log(session.get_logger()) {
+		m_session.set_checker(session.get_checker());
+
+		const size_t count = m_session.get_groups().size();
+		m_responses.groups.reserve(count);
+		m_responses.statuses.reserve(count);
+		m_responses.transes.reserve(count);
+	}
+
+	void start(const transport_control &control, const dnet_remove_request &request) {
+		DNET_LOG_ACCESS(m_log, "{}: {}: started: groups: {}, ioflags: {}, ts: '{}",
+		                dnet_dump_id_str(m_key.id().id), dnet_cmd_string(control.get_native().cmd),
+		                m_session.get_groups(), dnet_flags_dump_ioflags(request.ioflags),
+		                dnet_print_time(&request.timestamp));
+
+		auto rr = send_to_groups(m_session, control);
+		m_handler.set_total(rr.total());
+
+		rr.connect(
+			std::bind(&remove_handler::process, shared_from_this(), std::placeholders::_1),
+			std::bind(&remove_handler::complete, shared_from_this(), std::placeholders::_1)
+		);
+	}
+
+private:
+	void process(const remove_result_entry &entry) {
+		m_handler.process(entry);
+
+		const auto *cmd = entry.command();
+		m_responses.groups.emplace_back(cmd->id.group_id);
+		m_responses.statuses.emplace_back(cmd->id.group_id, entry.status());
+		m_responses.transes.emplace_back(cmd->id.group_id, cmd->trans);
+	}
+
+	void complete(const error_info &error) {
+		m_handler.complete(error);
+
+		DNET_LOG_ACCESS(m_log, "{}: {}: finished: groups: {}, trans: {}, status: {}, total_time: {}",
+		                dnet_dump_id_str(m_key.id().id), dnet_cmd_string(DNET_CMD_DEL_NEW), m_responses.groups,
+		                m_responses.transes, m_responses.statuses, m_timer.get_us());
+	}
+
+private:
+
+	util::steady_timer m_timer{};
+	key m_key;
+	session m_session;
+	async_result_handler<remove_result_entry> m_handler;
+	std::unique_ptr<dnet_logger> m_log;
+
+	struct {
+		std::vector<uint32_t> groups;
+		std::vector<std::pair<uint32_t, int>> statuses;
+		std::vector<std::pair<uint32_t, uint64_t>> transes;
+	} m_responses;
+};
 
 async_remove_result session::remove(const key &id) {
 	trace_scope scope{*this};
@@ -144,7 +272,10 @@ async_remove_result session::remove(const key &id) {
 	control.set_cflags(get_cflags() | DNET_FLAGS_NEED_ACK);
 	control.set_data(packet.data(), packet.size());
 
-	return send_to_groups(*this, control);
+	async_remove_result result{*this};
+	auto handler = std::make_shared<remove_handler>(result, *this, id);
+	handler->start(control, request);
+	return result;
 }
 
 /* TODO: refactor read_handler/write_handler because they have a lot in common */
@@ -152,17 +283,20 @@ class read_handler : public std::enable_shared_from_this<read_handler> {
 private:
 	class inner_handler : public multigroup_handler<inner_handler, read_result_entry> {
 	public:
-		inner_handler(const session &s, const async_read_result &result,
-		              std::vector<int> &&groups, const dnet_trans_control &control,
+		inner_handler(const session &session,
+		              const async_read_result &result,
+		              std::vector<int> &&groups,
+		              const dnet_trans_control &control,
 		              const dnet_read_request &request)
-		: parent_type(s, result, std::move(groups))
+		: parent_type(session, result, std::move(groups))
 		, m_control(control) {
 			m_packet = serialize(request);
 			m_control.data = m_packet.data();
 			m_control.size = m_packet.size();
 		}
 
-		async_generic_result send_to_next_group() {
+	protected:
+		async_generic_result send_to_next_group() override {
 			m_control.id.group_id = current_group();
 			return send_to_single_state(m_sess, m_control);
 		}
@@ -172,33 +306,35 @@ private:
 		data_pointer m_packet;
 	};
 
-	struct response {
-		uint32_t group;
-		int status;
-		uint64_t json_size;
-		uint64_t data_size;
-		uint64_t trans;
-	};
-
 public:
-	explicit read_handler(const session &orig_sess, const async_read_result &result,
-	                      const key &id)
-	: m_timer()
-	, m_key(id)
-	, m_session(orig_sess.clean_clone())
+	explicit read_handler(const session &session,
+	                      const async_read_result &result,
+	                      const key &key)
+	: m_key(key)
+	, m_session(session.clean_clone())
 	, m_handler(result)
-	, m_log(orig_sess.get_logger())
-	{
-		m_session.set_checker(orig_sess.get_checker());
-		m_responses.reserve(m_session.get_groups().size());
+	, m_log(session.get_logger()) {
+		m_session.set_checker(session.get_checker());
+		m_handler.set_total(1);
+
+		const size_t count = m_session.get_groups().size();
+		m_responses.groups.reserve(count);
+		m_responses.statuses.reserve(count);
+		m_responses.json_sizes.reserve(count);
+		m_responses.data_sizes.reserve(count);
+		m_responses.transes.reserve(count);
 	}
 
 	void start(std::vector<int> &&groups, const transport_control &control, const dnet_read_request &request) {
-		m_handler.set_total(1);
+		DNET_LOG_ACCESS(m_log, "{}: {}: started: groups: {}, ioflags: {}, read-flags: {}, offset: {}, size: {}",
+		                dnet_dump_id_str(m_key.raw_id().id), dnet_cmd_string(control.get_native().cmd), groups,
+		                dnet_flags_dump_ioflags(request.ioflags), dnet_dump_read_flags(request.read_flags),
+		                request.data_offset, request.data_size);
+
 		async_read_result result(m_session);
 		auto handler = std::make_shared<inner_handler>(m_session, result, std::move(groups),
 		                                               control.get_native(), request);
-		handler->set_total(1);
+		handler->set_total(m_handler.get_total());
 		handler->start();
 		result.connect(
 			std::bind(&read_handler::process, shared_from_this(), std::placeholders::_1),
@@ -207,71 +343,40 @@ public:
 	}
 
 private:
-	void process(const ioremap::elliptics::callback_result_entry &entry) {
-		const auto &resp = callback_cast<read_result_entry>(entry);
-		m_responses.emplace_back(response{
-			resp.command()->id.group_id,
-			resp.status(),
-			resp.status() ? 0 : resp.io_info().json_size,
-			resp.status() ? 0 : resp.io_info().data_size,
-			resp.command()->trans,
-		});
+	void process(const read_result_entry &entry) {
+		m_handler.process(entry);
 
-		m_handler.process(resp);
+		const auto *cmd = entry.command();
+		m_responses.groups.emplace_back(cmd->id.group_id);
+		m_responses.statuses.emplace_back(cmd->id.group_id, entry.status());
+		m_responses.json_sizes.emplace_back(cmd->id.group_id, entry.status() ? 0 : entry.io_info().json_size);
+		m_responses.data_sizes.emplace_back(cmd->id.group_id, entry.status() ? 0 : entry.io_info().data_size);
+		m_responses.transes.emplace_back(cmd->id.group_id, cmd->trans);
 	}
 
 	void complete(const error_info &error) {
 		m_handler.complete(error);
 
-		std::string groups, status, jsons, datas, trans;
-		std::tie(groups, status, jsons, datas, trans) = dump_responses();
-		DNET_LOG_INFO(m_log, "{}: {}: finished: groups: {}, trans: {}, status: {}, json-size: {}, data-size: "
-		                     "{}, total_time: {}",
-		              dnet_dump_id_str(m_key.id().id), dnet_cmd_string(DNET_CMD_READ_NEW), groups, trans,
-		              status, jsons, datas, m_timer.get_us());
+		DNET_LOG_ACCESS(m_log, "{}: {}: finished: groups: {}, trans: {}, status: {}, json-size: {}, data-size: "
+		                       "{}, total_time: {}us",
+		                dnet_dump_id_str(m_key.id().id), dnet_cmd_string(DNET_CMD_READ_NEW), m_responses.groups,
+		                m_responses.transes, m_responses.statuses, m_responses.json_sizes,
+		                m_responses.data_sizes, m_timer.get_us());
 	}
 
-	std::tuple<std::string, std::string, std::string, std::string, std::string> dump_responses() const {
-		auto dump = [this] (const char b, const char e, const std::function<std::string(const response &)> &f) {
-			std::ostringstream str;
-			str << b;
-			for (auto it = m_responses.cbegin(); it != m_responses.cend(); ++it) {
-				if (it != m_responses.cbegin())
-					str << ", ";
-				str << f(*it);
-			}
-			str << e;
-			return str.str();
-		};
-
-		auto dump_array = [&dump] (const std::function<std::string(const response &)> &f) {
-			return dump('[', ']', f);
-		};
-
-		auto dump_pairs = [&dump] (const std::function<std::string(const response &)> &f) {
-			return dump('{', '}', [&f] (const response &r) {
-				return std::to_string(r.group) + ": " + f(r);
-			});
-		};
-
-		auto groups = dump_array([] (const response &r) {
-			return std::to_string(r.group);
-		});
-
-		auto status = dump_pairs([] (const response &r) { return std::to_string(r.status); });
-		auto json = dump_pairs([] (const response &r) { return std::to_string(r.json_size); });
-		auto data = dump_pairs([] (const response &r) { return std::to_string(r.data_size); });
-		auto trans = dump_pairs([] (const response &r) { return std::to_string(r.trans); });
-
-		return std::make_tuple(groups, status, json, data, trans);
-	}
-
-	util::steady_timer m_timer;
+	util::steady_timer m_timer{};
 	key m_key;
 	session m_session;
 	async_result_handler<read_result_entry> m_handler;
-	std::vector<response> m_responses;
 	std::unique_ptr<dnet_logger> m_log;
+
+	struct {
+		std::vector<uint32_t> groups;
+		std::vector<std::pair<uint32_t, int>> statuses;
+		std::vector<std::pair<uint32_t, uint64_t>> json_sizes;
+		std::vector<std::pair<uint32_t, uint64_t>> data_sizes;
+		std::vector<std::pair<uint32_t, uint64_t>> transes;
+	} m_responses;
 };
 
 async_read_result send_read(const session &orig_sess, const key &id, const dnet_read_request &request,
@@ -280,11 +385,6 @@ async_read_result send_read(const session &orig_sess, const key &id, const dnet_
 	control.set_key(id.id());
 	control.set_command(DNET_CMD_READ_NEW);
 	control.set_cflags(orig_sess.get_cflags() | DNET_FLAGS_NEED_ACK);
-
-	auto log = orig_sess.get_logger();
-	DNET_LOG_INFO(log, "{}: {}: started: flags: {}, read-flags: {}, offset: {}, size: {}", dnet_dump_id(&id.id()),
-	              dnet_cmd_string(control.get_native().cmd), dnet_flags_dump_ioflags(request.ioflags),
-	              dnet_dump_read_flags(request.read_flags), request.data_offset, request.data_size);
 
 	async_read_result result(orig_sess);
 	auto handler = std::make_shared<read_handler>(orig_sess, result, id);
@@ -349,35 +449,34 @@ async_read_result session::read(const key &id, uint64_t offset, uint64_t size) {
 
 /* TODO: refactor read_handler/write_handler because they have a lot in common */
 class write_handler : public std::enable_shared_from_this<write_handler> {
-private:
-	struct response {
-		uint32_t group;
-		int status;
-		uint64_t json_size;
-		uint64_t data_size;
-		uint64_t trans;
-	};
 public:
-	explicit write_handler(const async_write_result &result, const session &orig_sess,
-	                       const key &id)
-	: m_timer()
-	, m_key(id)
-	, m_session(orig_sess.clean_clone())
+	explicit write_handler(const async_write_result &result,
+	                       const session &session,
+	                       const key &key)
+	: m_key(key)
+	, m_session(session.clean_clone())
 	, m_handler(result)
-	, m_log(orig_sess.get_logger())
-	{
-		m_session.set_checker(orig_sess.get_checker());
-		m_responses.reserve(m_session.get_groups().size());
+	, m_log(session.get_logger()) {
+		m_session.set_checker(session.get_checker());
+
+		const size_t count = m_session.get_groups().size();
+		m_responses.groups.reserve(count);
+		m_responses.statuses.reserve(count);
+		m_responses.json_sizes.reserve(count);
+		m_responses.data_sizes.reserve(count);
+		m_responses.transes.reserve(count);
 	}
 
 	void start(const transport_control &control, const dnet_write_request &request) {
-		DNET_LOG_INFO(m_log, "{}: {}: started: flags: {}, ts: '{}', json: {{size: {}, capacity: {}}}, data: "
-		                     "{{offset: {}, size: {}, capacity: {}, commit-size: {}}}",
-		              dnet_dump_id(&m_key.id()), dnet_cmd_string(control.get_native().cmd),
-		              dnet_flags_dump_ioflags(request.ioflags), dnet_print_time(&request.timestamp),
-		              request.json_size, request.json_capacity, request.data_offset, request.data_size,
-		              request.data_capacity, request.data_commit_size);
-		auto rr = send_to_groups(m_session, control);
+		DNET_LOG_ACCESS(m_log, "{}: {}: started: groups: {}, ioflags: {}, "
+		                       "json: {{size: {}, capacity: {}, ts: '{}'}}, "
+		                       "data: {{offset: {}, size: {}, capacity: {}, commit-size: {}, ts: '{}'}}",
+		                dnet_dump_id_str(m_key.id().id), dnet_cmd_string(control.get_native().cmd),
+		                m_session.get_groups(), dnet_flags_dump_ioflags(request.ioflags),
+		                request.json_size, request.json_capacity, dnet_print_time(&request.json_timestamp),
+		                request.data_offset, request.data_size, request.data_capacity, request.data_commit_size,
+		                dnet_print_time(&request.timestamp));
+		auto rr = async_result_cast<write_result_entry>(m_session, send_to_groups(m_session, control));
 		m_handler.set_total(rr.total());
 
 		rr.connect(
@@ -387,71 +486,42 @@ public:
 	}
 
 private:
-	void process(const ioremap::elliptics::callback_result_entry &entry) {
-		const auto &resp = callback_cast<write_result_entry>(entry);
-		m_responses.emplace_back(response{
-			resp.command()->id.group_id,
-			resp.status(),
-			resp.status() ? 0 : resp.record_info().json_size,
-			resp.status() ? 0 : resp.record_info().data_size,
-			resp.command()->trans,
-		});
+	void process(const write_result_entry &entry) {
+		m_handler.process(entry);
 
-		m_handler.process(resp);
+		const auto *cmd = entry.command();
+		m_responses.groups.emplace_back(cmd->id.group_id);
+		m_responses.statuses.emplace_back(cmd->id.group_id, entry.status());
+		m_responses.json_sizes.emplace_back(cmd->id.group_id,
+		                                    entry.status() ? 0 : entry.record_info().json_size);
+		m_responses.data_sizes.emplace_back(cmd->id.group_id,
+		                                    entry.status() ? 0 : entry.record_info().data_size);
+		m_responses.transes.emplace_back(cmd->id.group_id, cmd->trans);
 	}
 
 	void complete(const error_info &error) {
 		m_handler.complete(error);
 
-		std::string groups, status, jsons, datas, trans;
-		std::tie(groups, status, jsons, datas, trans) = dump_responses();
-		DNET_LOG_INFO(m_log, "{}: {}: finished: groups: {}, trans: {}, status: {}, json-size: {}, data-size: "
-		                     "{}, total_time: {}",
-		              dnet_dump_id_str(m_key.id().id), dnet_cmd_string(DNET_CMD_WRITE_NEW), groups, trans,
-		              status, jsons, datas, m_timer.get_us());
+		DNET_LOG_ACCESS(m_log, "{}: {}: finished: groups: {}, trans: {}, status: {}, json-size: {}, "
+		                       "data-size: {}, total_time: {}",
+		                dnet_dump_id_str(m_key.id().id), dnet_cmd_string(DNET_CMD_WRITE_NEW),
+		                m_responses.groups, m_responses.transes, m_responses.statuses, m_responses.json_sizes,
+		                m_responses.data_sizes, m_timer.get_us());
 	}
 
-	std::tuple<std::string, std::string, std::string, std::string, std::string> dump_responses() const {
-		auto dump = [this] (const char b, const char e, const std::function<std::string(const response &)> &f) {
-			std::ostringstream str;
-			str << b;
-			for (auto it = m_responses.cbegin(); it != m_responses.cend(); ++it) {
-				if (it != m_responses.cbegin())
-					str << ", ";
-				str << f(*it);
-			}
-			str << e;
-			return str.str();
-		};
-
-		auto dump_array = [&dump] (const std::function<std::string(const response &)> &f) {
-			return dump('[', ']', f);
-		};
-
-		auto dump_pairs = [&dump] (const std::function<std::string(const response &)> &f) {
-			return dump('{', '}', [&f] (const response &r) {
-				return std::to_string(r.group) + ": " + f(r);
-			});
-		};
-
-		auto groups = dump_array([] (const response &r) {
-			return std::to_string(r.group);
-		});
-
-		auto status = dump_pairs([] (const response &r) { return std::to_string(r.status); });
-		auto json = dump_pairs([] (const response &r) { return std::to_string(r.json_size); });
-		auto data = dump_pairs([] (const response &r) { return std::to_string(r.data_size); });
-		auto trans = dump_pairs([] (const response &r) { return std::to_string(r.trans); });
-
-		return std::make_tuple(groups, status, json, data, trans);
-	}
-
-	util::steady_timer m_timer;
+	util::steady_timer m_timer{};
 	key m_key;
 	session m_session;
 	async_result_handler<write_result_entry> m_handler;
-	std::vector<response> m_responses;
 	std::unique_ptr<dnet_logger> m_log;
+
+	struct {
+		std::vector<uint32_t> groups;
+		std::vector<std::pair<uint32_t, int>> statuses;
+		std::vector<std::pair<uint32_t, uint64_t>> json_sizes;
+		std::vector<std::pair<uint32_t, uint64_t>> data_sizes;
+		std::vector<std::pair<uint32_t, uint64_t>> transes;
+	} m_responses;
 };
 
 async_write_result send_write(const session &orig_sess, const key &id, const dnet_write_request &request,
@@ -702,6 +772,71 @@ async_lookup_result session::update_json(const key &id, const argument_data &jso
 	return send_write(*this, id, request, json, "");
 }
 
+class iterator_handler : public std::enable_shared_from_this<iterator_handler> {
+public:
+	explicit iterator_handler(const async_iterator_result &result,
+	                          const session &session,
+	                          const address &address,
+	                          const uint32_t backend_id)
+	: m_session(session.clean_clone())
+	, m_handler(result)
+	, m_log(session.get_logger())
+	, m_address(address)
+	, m_backend_id(backend_id) {
+		m_session.set_direct_id(m_address, m_backend_id);
+	}
+
+	void start(const transport_control &control, const dnet_iterator_request &request) {
+		DNET_LOG_ACCESS(m_log, "{}: started: st: {}/{}, id: {}, action: {}, type: {}, iflags: {}, "
+		                       "key_ranges: {}, ts_range: '{}' - '{}', groups: {}",
+		                dnet_cmd_string(DNET_CMD_ITERATOR_NEW), m_address.to_string_with_family(), m_backend_id,
+		                request.iterator_id, request.action, request.type, request.flags,
+		                request.key_ranges.size(), dnet_print_time(&std::get<0>(request.time_range)),
+		                dnet_print_time(&std::get<1>(request.time_range)), request.groups);
+
+		auto rr = async_result_cast<iterator_result_entry>(m_session, send_to_single_state(m_session, control));
+		rr.connect(
+			std::bind(&iterator_handler::process, shared_from_this(), std::placeholders::_1),
+			std::bind(&iterator_handler::complete, shared_from_this(), std::placeholders::_1)
+		);
+	}
+
+private:
+	void process(const iterator_result_entry &entry) {
+		m_handler.process(entry);
+
+		if (entry.is_ack())
+			return;
+
+		const auto *cmd = entry.command();
+		m_responses.transes.emplace(cmd->trans);
+		auto it = m_responses.statuses.emplace(entry.status(), 1);
+		if (!it.second)
+			++it.first->second;
+	}
+
+	void complete(const error_info &error) {
+		m_handler.complete(error);
+
+		DNET_LOG_ACCESS(m_log, "{}: finished: st: {}/{}, trans: {}, status: {}, total_time: {}us",
+		                dnet_cmd_string(DNET_CMD_ITERATOR_NEW), m_address.to_string_with_family(), m_backend_id,
+		                m_responses.transes, m_responses.statuses, m_timer.get_us());
+	}
+
+private:
+	util::steady_timer m_timer;
+	session m_session;
+	async_result_handler<iterator_result_entry> m_handler;
+	std::unique_ptr<dnet_logger> m_log;
+	const address m_address;
+	const uint32_t m_backend_id;
+
+	struct {
+		std::unordered_set<uint64_t> transes;
+		std::unordered_map<int, size_t> statuses;
+	} m_responses;
+};
+
 async_iterator_result session::start_iterator(const address &addr, uint32_t backend_id,
                                               uint64_t flags,
                                               const std::vector<dnet_iterator_range> &key_ranges,
@@ -713,21 +848,24 @@ async_iterator_result session::start_iterator(const address &addr, uint32_t back
 		flags |= DNET_IFLAGS_KEY_RANGE;
 	}
 
-	auto request = serialize(dnet_iterator_request{
+	dnet_iterator_request request{
 		DNET_ITYPE_NETWORK,
 		flags,
 		key_ranges,
 		time_range,
-	});
+	};
+
+	auto packet = serialize(request);
 
 	transport_control control;
 	control.set_command(DNET_CMD_ITERATOR_NEW);
 	control.set_cflags(get_cflags() | DNET_FLAGS_NEED_ACK | DNET_FLAGS_NOLOCK);
-	control.set_data(request.data(), request.size());
+	control.set_data(packet.data(), packet.size());
 
-	auto session = clean_clone();
-	session.set_direct_id(addr, backend_id);
-	return async_result_cast<iterator_result_entry>(*this, send_to_single_state(session, control));
+	async_iterator_result result(*this);
+	auto handler = std::make_shared<iterator_handler>(result, *this, addr, backend_id);
+	handler->start(control, request);
+	return result;
 }
 
 async_iterator_result session::server_send(const std::vector<dnet_raw_id> &keys, uint64_t flags, uint64_t chunk_size,
@@ -754,60 +892,67 @@ async_iterator_result session::server_send(const std::vector<std::string> &keys,
 	return server_send(converted_keys, flags, chunk_size, src_group, dst_groups);
 }
 
-async_iterator_result session::server_send(const std::vector<key> &keys, uint64_t flags, uint64_t chunk_size,
-                                           const int src_group, const std::vector<int> &dst_groups) {
-	trace_scope scope{*this};
-	if (dst_groups.empty()) {
-		async_iterator_result result{*this};
-		async_result_handler<iterator_result_entry> handler{result};
-		handler.complete(create_error(-ENXIO, "server_send: remote groups list is empty"));
-		return result;
+class server_send_handler : public std::enable_shared_from_this<server_send_handler> {
+public:
+	explicit server_send_handler(const async_iterator_result &result,
+	                             session &session)
+	: m_session(session)
+	, m_handler(result)
+	, m_log(session.get_logger()) {
 	}
 
-	if (keys.empty()) {
-		async_iterator_result result{*this};
-		async_result_handler<iterator_result_entry> handler{result};
-		handler.complete(create_error(-ENXIO, "server_send: keys list is empty"));
-		return result;
-	}
+	void start(const std::vector<key> &keys,
+	           uint64_t flags,
+	           uint64_t chunk_size,
+	           const int src_group,
+	           const std::vector<int> &dst_groups) {
+		DNET_LOG_ACCESS(m_log, "{}: started: flags: {}, src_group: {}, dst_groups: {}, "
+		                       "chunk_size: {}, keys: {}",
+		                dnet_cmd_string(DNET_CMD_SEND_NEW), flags, src_group, dst_groups, chunk_size,
+		                keys.size());
+		if (dst_groups.empty()) {
+			m_handler.complete(create_error(-ENXIO, "server_send: remote groups list is empty"));
+			return;
+		}
 
-	struct remote {
+		if (keys.empty()) {
+			m_handler.complete(create_error(-ENXIO, "server_send: keys list is empty"));
+			return;
+		}
+
+		struct remote {
+			dnet_addr address;
+			int backend_id;
+
+			bool operator<(const remote &other) const {
+				const int cmp = dnet_addr_cmp(&address, &other.address);
+				return cmp == 0 ? (backend_id < other.backend_id) : (cmp < 0);
+			}
+		};
+
+		std::map<remote, std::vector<dnet_raw_id>> remotes_ids;
 		dnet_addr address;
 		int backend_id;
+		for (const auto &key: keys) {
+			m_session.transform(key);
+			const int err = dnet_lookup_addr(m_session.get_native(), nullptr, 0, &key.id(), src_group,
+			                                 &address, &backend_id);
+			if (err) {
+				m_handler.complete(create_error(-ENXIO,
+				                               "server_send: could not locate address & backend for "
+				                               "requested key: %d:%s",
+				                               src_group, dnet_dump_id(&key.id())));
+				return;
+			}
 
-		bool operator<(const remote &other) const {
-			const int cmp = dnet_addr_cmp(&address, &other.address);
-			return cmp == 0 ? (backend_id < other.backend_id) : (cmp < 0);
-		}
-	};
-
-	std::map<remote, std::vector<dnet_raw_id>> remotes_ids;
-
-	dnet_addr address;
-	int backend_id;
-	for (auto &key: keys) {
-		transform(key);
-		const int err = dnet_lookup_addr(get_native(), nullptr, 0, &key.id(), src_group, &address, &backend_id);
-		if (err != 0) {
-			async_iterator_result result{*this};
-			async_result_handler<iterator_result_entry> handler{result};
-			handler.complete(create_error(-ENXIO,
-			                              "server_send: could not locate address & backend for requested key: %d:%s",
-			                              src_group, dnet_dump_id(&key.id())));
-			return result;
+			remotes_ids[remote{address, backend_id}].emplace_back(key.raw_id());
 		}
 
-		remotes_ids[remote{address, backend_id}].emplace_back(key.raw_id());
-	}
-
-	std::vector<async_iterator_result> results;
-	results.reserve(remotes_ids.size());
-
-	{
-		remote remote;
-		std::vector<dnet_raw_id> ids;
+		std::vector<async_iterator_result> results;
+		results.reserve(remotes_ids.size());
 		for (auto &pair: remotes_ids) {
-			std::tie(remote, ids) = pair;
+			const auto &remote = pair.first;
+			const auto &ids = pair.second;
 
 			auto request = serialize(dnet_server_send_request{
 				ids,
@@ -821,34 +966,85 @@ async_iterator_result session::server_send(const std::vector<key> &keys, uint64_
 			control.set_cflags(DNET_FLAGS_NEED_ACK | DNET_FLAGS_NOLOCK);
 			control.set_data(request.data(), request.size());
 
-			session session = clean_clone();
+			session session = m_session.clean_clone();
 			session.set_direct_id(remote.address, remote.backend_id);
 			results.emplace_back(
-				async_result_cast<iterator_result_entry>(*this, send_to_single_state(session, control))
+				async_result_cast<iterator_result_entry>(m_session,
+				                                         send_to_single_state(session, control))
 			);
 		}
+
+		auto rr = aggregated(m_session, results);
+		m_handler.set_total(rr.total());
+
+		rr.connect(
+			std::bind(&server_send_handler::process, shared_from_this(), std::placeholders::_1),
+			std::bind(&server_send_handler::complete, shared_from_this(), std::placeholders::_1)
+		);
 	}
 
-	return aggregated(*this, results.begin(), results.end());
+private:
+	void process(const iterator_result_entry &entry) {
+		m_handler.process(entry);
+
+		const auto *cmd = entry.command();
+		m_responses.transes.emplace(cmd->trans);
+		auto it = m_responses.statuses.emplace(entry.status(), 1);
+		if (!it.second)
+			++it.first->second;
+	}
+
+	void complete(const error_info &error) {
+		m_handler.complete(error);
+
+		DNET_LOG_ACCESS(m_log, "{}: finished: trans: {}, status: {}, total_time: {}us",
+		                dnet_cmd_string(DNET_CMD_SEND_NEW), m_responses.transes, m_responses.statuses,
+		                m_timer.get_us());
+	}
+
+private:
+	util::steady_timer m_timer{};
+	session &m_session;
+	async_result_handler<iterator_result_entry> m_handler;
+	std::unique_ptr<dnet_logger> m_log;
+
+	struct {
+		std::unordered_set<uint64_t> transes;
+		std::unordered_map<int, size_t> statuses;
+	} m_responses;
+};
+
+async_iterator_result session::server_send(const std::vector<key> &keys,
+                                           uint64_t flags,
+                                           uint64_t chunk_size,
+                                           const int src_group,
+                                           const std::vector<int> &dst_groups) {
+	trace_scope scope{*this};
+
+	async_iterator_result result(*this);
+	auto handler = std::make_shared<server_send_handler>(result, *this);
+	handler->start(keys, flags, chunk_size, src_group, dst_groups);
+	return result;
 }
 
-class bulk_read_handler : public std::enable_shared_from_this<bulk_read_handler> {
+class single_bulk_read_handler : public std::enable_shared_from_this<single_bulk_read_handler> {
 public:
-	explicit bulk_read_handler(const async_read_result &result, const session &orig_sess,
-				   const dnet_addr &addr)
-	: m_session(orig_sess)
+	explicit single_bulk_read_handler(const async_read_result &result,
+	                                  const session &session,
+	                                  const dnet_addr &addr)
+	: m_session(session)
 	, m_handler(result)
-	, m_last_error(0)
 	, m_addr(addr)
-	, m_log(orig_sess.get_logger()) {
+	, m_log(session.get_logger()) {
 	}
 
 	void start(const transport_control &control, const dnet_bulk_read_request &request) {
 		DNET_LOG_NOTICE(m_log, "{}: started: address: {}, flags: {}, read_flags: {}, num_keys: {}",
-				dnet_cmd_string(control.get_native().cmd), dnet_addr_string(&m_addr),
-				dnet_flags_dump_ioflags(request.ioflags), request.read_flags, request.keys.size());
+		                dnet_cmd_string(control.get_native().cmd), dnet_addr_string(&m_addr),
+		                dnet_flags_dump_ioflags(request.ioflags), dnet_dump_read_flags(request.read_flags),
+		                request.keys.size());
 
-		auto rr = send_to_single_state(m_session, control);
+		auto rr = async_result_cast<read_result_entry>(m_session, send_to_single_state(m_session, control));
 		m_handler.set_total(rr.total());
 
 		m_keys.assign(request.keys.begin(), request.keys.end());
@@ -856,17 +1052,16 @@ public:
 		m_key_responses.resize(m_keys.size(), false);
 
 		rr.connect(
-			std::bind(&bulk_read_handler::process, shared_from_this(), std::placeholders::_1),
-			std::bind(&bulk_read_handler::complete, shared_from_this(), std::placeholders::_1)
+			std::bind(&single_bulk_read_handler::process, shared_from_this(), std::placeholders::_1),
+			std::bind(&single_bulk_read_handler::complete, shared_from_this(), std::placeholders::_1)
 		);
 	}
 
 private:
-	void process(const ioremap::elliptics::callback_result_entry &entry) {
+	void process(const read_result_entry &entry) {
 		auto cmd = entry.command();
 
-		const auto &resp = callback_cast<read_result_entry>(entry);
-		if (!resp.is_valid()) {
+		if (!entry.is_valid()) {
 			DNET_LOG_ERROR(m_log, "{}: {}: process: invalid response, status: {}",
 				       dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), cmd->status);
 			return;
@@ -882,7 +1077,7 @@ private:
 			if (m_key_responses[index])
 				continue;
 
-			m_handler.process(resp);
+			m_handler.process(entry);
 
 			m_key_responses[index] = true;
 			found = true;
@@ -922,7 +1117,7 @@ private:
 		m_handler.complete(error);
 
 		DNET_LOG_NOTICE(m_log, "{}: finished: address: {}",
-				dnet_cmd_string(DNET_CMD_BULK_READ_NEW), dnet_addr_string(&m_addr));
+		                dnet_cmd_string(DNET_CMD_BULK_READ_NEW), dnet_addr_string(&m_addr));
 	}
 
 private:
@@ -930,111 +1125,158 @@ private:
 	std::vector<bool> m_key_responses;
 	session m_session;
 	async_result_handler<read_result_entry> m_handler;
-	int m_last_error;
+	int m_last_error{0};
 	const dnet_addr m_addr;
 	std::unique_ptr<dnet_logger> m_log;
 };
 
-async_read_result send_bulk_read(session &sess, const std::vector<dnet_id> &keys, uint64_t read_flags) {
-	trace_scope scope{sess};
-
-	if (keys.empty()) {
-		async_read_result result{sess};
-		async_result_handler<read_result_entry> handler{result};
-		handler.complete(create_error(-ENXIO, "send_bulk_read: keys list is empty"));
-		return result;
+class bulk_read_handler : public std::enable_shared_from_this<bulk_read_handler> {
+public:
+	explicit bulk_read_handler(const async_read_result &result,
+	                           session &session,
+	                           const std::vector<dnet_id> &keys)
+	: m_session(session)
+	, m_handler(result)
+	, m_log(session.get_logger())
+	, m_keys(keys) {
 	}
 
-	std::vector<async_read_result> results;
+	void start(uint64_t read_flags) {
+		DNET_LOG_ACCESS(m_log, "{}: started: keys: {}, read_flags: {}, ioflags: {}",
+		                dnet_cmd_string(DNET_CMD_BULK_READ_NEW), m_keys.size(),
+		                dnet_dump_read_flags(read_flags), dnet_flags_dump_ioflags(m_session.get_ioflags()));
 
-	auto dnet_addr_comparator = [] (const dnet_addr &lhs, const dnet_addr &rhs) -> bool {
-		return dnet_addr_cmp(&lhs, &rhs) < 0;
-	};
-	std::map<dnet_addr, std::vector<dnet_id>, decltype(dnet_addr_comparator)>
-		remotes_ids(dnet_addr_comparator); // node_address -> [list of keys]
-
-	const bool has_direct_address = sess.get_cflags() & (DNET_FLAGS_DIRECT | DNET_FLAGS_DIRECT_BACKEND);
-
-	if (!has_direct_address) {
-		/* failed_result used as a container for storing responses for keys
-		 * which are not in the route table
-		 */
-		async_read_result failed_result{sess.clean_clone()};
-		async_result_handler<read_result_entry> failed_handler{failed_result};
-
-		dnet_addr address;
-		dnet_cmd cmd;
-		memset(&cmd, 0, sizeof(cmd));
-		cmd.cmd = DNET_CMD_BULK_READ_NEW;
-		cmd.trace_id = sess.get_trace_id();
-		cmd.flags = DNET_FLAGS_REPLY | DNET_FLAGS_MORE |
-			(sess.get_trace_bit() ? DNET_FLAGS_TRACE_BIT : 0);
-
-		for (const dnet_id &id : keys) {
-			const int err = dnet_lookup_addr(sess.get_native(), nullptr, 0, &id, id.group_id,
-							 &address, nullptr);
-			if (!err) {
-				remotes_ids[address].emplace_back(id);
-			} else {
-				memset(&address, 0, sizeof(address));
-				cmd.id = id;
-				cmd.status = err;
-				auto result_data = std::make_shared<ioremap::elliptics::callback_result_data>(&address,
-													      &cmd);
-				result_data->error = create_error(err, "send_bulk_read: could not locate address & "
-								       "backend for requested key: %s",
-								       dnet_dump_id(&id));
-				ioremap::elliptics::callback_result_entry entry(result_data);
-				failed_handler.process(callback_cast<read_result_entry>(entry));
-			}
+		if (m_keys.empty()) {
+			m_handler.complete(create_error(-ENXIO, "send_bulk_read: keys list is empty"));
+			return;
 		}
 
-		failed_handler.complete(error_info());
-		results.reserve(remotes_ids.size() + 1);
-		/* Adding failed_result to results vector won't affect behaviour from
-		 * the client's perspective: if there are no negative responses, then
-		 * addition of failed_result equivalent to just ignoring it.
-		 */
-		results.emplace_back(std::move(failed_result));
-	} else {
-		const auto address = sess.get_direct_address();
-		remotes_ids.emplace(address.to_raw(), keys);
-	}
-
-	dnet_time deadline;
-	dnet_current_time(&deadline);
-	deadline.tsec += sess.get_timeout();
-
-	for (auto &pair : remotes_ids) {
-		const auto &address = pair.first;
-		auto &ids = pair.second;
-
-		const dnet_bulk_read_request request{
-			std::move(ids),
-			sess.get_ioflags(),
-			read_flags,
-			deadline
+		auto dnet_addr_comparator = [] (const dnet_addr &lhs, const dnet_addr &rhs) -> bool {
+			return dnet_addr_cmp(&lhs, &rhs) < 0;
 		};
-		const auto serialized_request = serialize(request);
 
-		transport_control control;
-		control.set_command(DNET_CMD_BULK_READ_NEW);
-		control.set_cflags(sess.get_cflags() | DNET_FLAGS_NEED_ACK | DNET_FLAGS_NOLOCK);
-		control.set_data(serialized_request.data(), serialized_request.size());
+		std::map<dnet_addr, std::vector<dnet_id>, decltype(dnet_addr_comparator)> remotes_ids(
+		dnet_addr_comparator); // node_address -> [list of keys]
 
-		auto session = sess.clean_clone();
+		const bool has_direct_address = !!(m_session.get_cflags() & (DNET_FLAGS_DIRECT | DNET_FLAGS_DIRECT_BACKEND));
+
 		if (!has_direct_address) {
-			session.set_direct_id(address);
+			/* failed_result used as a container for storing responses for keys
+			 * which are not in the route table
+			 */
+			dnet_addr address;
+			dnet_cmd cmd;
+			memset(&cmd, 0, sizeof(cmd));
+			cmd.cmd = DNET_CMD_BULK_READ_NEW;
+			cmd.trace_id = m_session.get_trace_id();
+			cmd.flags = DNET_FLAGS_REPLY | DNET_FLAGS_MORE;
+			if (m_session.get_trace_bit())
+				cmd.flags |= DNET_FLAGS_TRACE_BIT;
+
+			for (const auto &id : m_keys) {
+				const int err = dnet_lookup_addr(m_session.get_native(), nullptr, 0, &id, id.group_id,
+				                                 &address, nullptr);
+				if (!err) {
+					remotes_ids[address].emplace_back(id);
+				} else {
+					memset(&address, 0, sizeof(address));
+					cmd.id = id;
+					cmd.status = err;
+					auto result_data = std::make_shared<callback_result_data>(&address, &cmd);
+					result_data->error = create_error(err,
+					                                  "send_bulk_read: could not locate address & "
+					                                  "backend for requested key: %s",
+					                                  dnet_dump_id(&id));
+					ioremap::elliptics::callback_result_entry entry(result_data);
+					process(callback_cast<read_result_entry>(entry));
+				}
+			}
+		} else {
+			const auto address = m_session.get_direct_address();
+			remotes_ids.emplace(address.to_raw(), m_keys);
 		}
 
-		async_read_result result(session);
-		auto handler = std::make_shared<bulk_read_handler>(result, session, address);
-		handler->start(control, request);
+		dnet_time deadline;
+		dnet_current_time(&deadline);
+		deadline.tsec += m_session.get_timeout();
 
-		results.emplace_back(std::move(result));
+		std::vector<async_read_result> results;
+		results.reserve(remotes_ids.size());
+
+		for (auto &pair : remotes_ids) {
+			const auto &address = pair.first;
+			auto &ids = pair.second;
+
+			const dnet_bulk_read_request request{
+				std::move(ids),
+				m_session.get_ioflags(),
+				read_flags,
+				deadline
+			};
+			const auto packet = serialize(request);
+
+			transport_control control;
+			control.set_command(DNET_CMD_BULK_READ_NEW);
+			control.set_cflags(m_session.get_cflags() | DNET_FLAGS_NEED_ACK | DNET_FLAGS_NOLOCK);
+			control.set_data(packet.data(), packet.size());
+
+			auto session = m_session.clean_clone();
+			if (!has_direct_address)
+				session.set_direct_id(address);
+
+			results.emplace_back(session);
+			auto handler = std::make_shared<single_bulk_read_handler>(results.back(), session, address);
+			handler->start(control, request);
+		}
+
+		auto rr = aggregated(m_session, results);
+		m_handler.set_total(rr.total());
+
+		rr.connect(
+			std::bind(&bulk_read_handler::process, shared_from_this(), std::placeholders::_1),
+			std::bind(&bulk_read_handler::complete, shared_from_this(), std::placeholders::_1)
+		);
 	}
 
-	return aggregated(sess, results.begin(), results.end());
+private:
+	void process(const read_result_entry &entry) {
+		m_handler.process(entry);
+
+		const auto *cmd = entry.command();
+		m_responses.transes.emplace(cmd->trans);
+		auto it = m_responses.statuses.emplace(entry.status(), 1);
+		if (!it.second)
+			++it.first->second;
+	}
+
+	void complete(const error_info &error) {
+		m_handler.complete(error);
+
+		DNET_LOG_ACCESS(m_log, "{}: finished: trans: {}, status: {}, total_time: {}us",
+		                dnet_cmd_string(DNET_CMD_BULK_READ_NEW), m_responses.transes, m_responses.statuses,
+		                m_timer.get_us());
+	}
+
+private:
+	util::steady_timer m_timer{};
+	session &m_session;
+	async_result_handler<read_result_entry> m_handler;
+	std::unique_ptr<dnet_logger> m_log;
+	const std::vector<dnet_id> m_keys;
+
+	struct {
+		std::unordered_set<uint64_t> transes;
+		std::unordered_map<int, size_t> statuses;
+	} m_responses;
+};
+
+async_read_result send_bulk_read(session &session, const std::vector<dnet_id> &keys, uint64_t read_flags) {
+	trace_scope scope{session};
+
+	async_read_result result(session);
+	auto handler = std::make_shared<bulk_read_handler>(result, session, keys);
+	handler->start(read_flags);
+	return result;
 }
 
 async_read_result session::bulk_read_json(const std::vector<dnet_id> &keys) {

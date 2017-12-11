@@ -1057,8 +1057,6 @@ void test_read_data_part_with_corrupted_first_data(const ioremap::elliptics::new
 	}
 	)json"};
 
-	std::cout << "data: " << data.size() << std::endl;
-
 	write_and_corrupt_record(s, key, json, 1 << 20 /*json_capacity*/, data, 0 /*data_capacity*/,
 	                         1 << 20 /*injection_offset*/);
 

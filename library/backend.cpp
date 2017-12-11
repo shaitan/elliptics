@@ -1190,8 +1190,7 @@ int dnet_backends_manager::init_all(bool parallel) {
 			}
 
 			if (results.size()) {
-				async_backend_control_result result =
-				        ioremap::elliptics::aggregated(sess, results.begin(), results.end());
+				auto result = ioremap::elliptics::aggregated(sess, results);
 				result.wait();
 
 				err = result.error().code();

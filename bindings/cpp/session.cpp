@@ -1112,7 +1112,7 @@ struct cas_functor : std::enable_shared_from_this<cas_functor>
 			write_results.emplace_back(std::move(result));
 		}
 
-		aggregated(write_sess, write_results.begin(), write_results.end())
+		aggregated(write_sess, write_results)
 			.connect(bind_method(shared_from_this(), &cas_functor::on_write_entry),
 				bind_method(shared_from_this(), &cas_functor::on_write_finished));
 	}
@@ -2393,7 +2393,7 @@ async_iterator_result session::server_send(const std::vector<key> &keys, uint64_
 		}
 	}
 
-	return aggregated(*this, results.begin(), results.end());
+	return aggregated(*this, results);
 }
 
 async_iterator_result session::server_send(const std::vector<dnet_raw_id> &ids, uint64_t iflags, const std::vector<int> &groups)
@@ -2471,7 +2471,7 @@ public:
 		if (!cur) {
 			DNET_LOG_DEBUG(m_logger, "BULK_READ, callback: {:p}, group: {}, id: {}, state: failed",
 			               (void *)this, group_id, dnet_dump_id(&id));
-			return aggregated(m_sess, results.begin(), results.end());
+			return aggregated(m_sess, results);
 		}
 		DNET_LOG_DEBUG(m_logger, "BULK_READ, callback: {:p}, id: {}, state: {}, backend: {}", (void *)this,
 		               dnet_dump_id(&id), dnet_state_dump_addr(cur.state()), cur.backend());
@@ -2485,7 +2485,7 @@ public:
 					DNET_LOG_DEBUG(m_logger,
 					               "BULK_READ, callback: {:p}, group: {}, id: {}, state: failed",
 					               (void *)this, group_id, dnet_dump_id(&next_id));
-					return aggregated(m_sess, results.begin(), results.end());
+					return aggregated(m_sess, results);
 				}
 				DNET_LOG_DEBUG(m_logger, "BULK_READ, callback: {:p}, id: {}, state: {}, backend: {}",
 				               (void *)this, dnet_dump_id(&next_id), dnet_state_dump_addr(next.state()),
@@ -2526,7 +2526,7 @@ public:
 		DNET_LOG_DEBUG(m_logger, "BULK_READ, callback: {:p}, group: {}, count: {}", (void *)this, group_id,
 		               count);
 
-		return aggregated(m_sess, results.begin(), results.end());
+		return aggregated(m_sess, results);
 	}
 
 	bool need_next_group(const error_info &error)
@@ -2669,7 +2669,7 @@ async_write_result session::bulk_write(const std::vector<dnet_io_attr> &ios, con
 		}
 	}
 
-	return aggregated(*this, results.begin(), results.end());
+	return aggregated(*this, results);
 }
 
 async_remove_result session::bulk_remove(const std::vector<key> &keys)
@@ -2690,7 +2690,7 @@ async_remove_result session::bulk_remove(const std::vector<key> &keys)
 		}
 	}
 
-	return aggregated(*this, results.begin(), results.end());
+	return aggregated(*this, results);
 }
 
 async_write_result session::bulk_write(const std::vector<dnet_io_attr> &ios, const std::vector<std::string> &data)

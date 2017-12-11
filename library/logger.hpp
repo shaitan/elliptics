@@ -4,6 +4,8 @@
 
 #ifdef __cplusplus
 #include <atomic>
+#include <unordered_map>
+#include <unordered_set>
 #include <blackhole/extensions/facade.hpp>
 
 namespace ioremap { namespace elliptics {
@@ -68,6 +70,62 @@ struct backend_scope {
 std::string to_hex_string(uint64_t value);
 }} /* namespace ioremap::elliptics */
 
+namespace std {
+
+template<typename T>
+ostream &operator<<(ostream &os, const vector<T> &vector) {
+	os << "[";
+	bool first = true;
+	for (const auto &item: vector) {
+		if (!first)
+			os << ", ";
+		first = false;
+		os << item;
+	}
+	return os << "]";
+}
+
+template<typename T1, typename T2>
+ostream &operator<<(ostream &os, const vector<pair<T1, T2>> &vector) {
+	os << "{";
+	bool first = true;
+	for (const auto &item: vector) {
+		if (!first)
+			os << ", ";
+		first = false;
+		os << std::get<0>(item) << ": " << std::get<1>(item);
+	}
+	return os << "}";
+}
+
+template<typename T>
+ostream &operator<<(ostream &os, const unordered_set<T> &set) {
+	os << "[";
+	bool first = true;
+	for (const auto &item: set) {
+		if (!first)
+			os << ", ";
+		first = false;
+		os << item;
+	}
+	return os << "]";
+}
+
+template<typename T1, typename T2>
+ostream &operator<<(ostream &os, const unordered_map<T1, T2> &map) {
+	os << "{";
+	bool first = true;
+	for (const auto &item: map) {
+		if (!first)
+			os << ", ";
+		first = false;
+		os << std::get<0>(item) << ": " << std::get<1>(item);
+	}
+	return os << "}";
+}
+
+} /* namespace std */
+
 extern "C"{
 #endif // __cplusplus
 
@@ -84,6 +142,9 @@ void dnet_log_raw(dnet_logger *logger, enum dnet_log_level level, const char *fo
         __attribute__((format(printf, 3, 4)));
 
 dnet_logger *dnet_node_get_logger(struct dnet_node *node);
+
+/* Write access-log for transaction @t. */
+void dnet_trans_log(struct dnet_node *node, struct dnet_trans *t);
 
 #ifdef __cplusplus
 } // extern "C"
@@ -108,6 +169,7 @@ template <class T> inline blackhole::logger_facade<dnet_logger> make_facade(T &&
 #define DNET_LOG_INFO(__log__, ...)	DNET_LOG(__log__, DNET_LOG_INFO, __VA_ARGS__)
 #define DNET_LOG_WARNING(__log__, ...)	DNET_LOG(__log__, DNET_LOG_WARNING, __VA_ARGS__)
 #define DNET_LOG_ERROR(__log__, ...)	DNET_LOG(__log__, DNET_LOG_ERROR, __VA_ARGS__)
+#define DNET_LOG_ACCESS(__log__, ...)	DNET_LOG(__log__, DNET_LOG_ACCESS, __VA_ARGS__)
 
 #else
 #define DNET_LOG_RAW(...)		dnet_log_raw(__VA_ARGS__)
@@ -127,6 +189,7 @@ template <class T> inline blackhole::logger_facade<dnet_logger> make_facade(T &&
 #define DNET_LOG_INFO(log, ...)		DNET_LOG_RAW(log, DNET_LOG_INFO, __VA_ARGS__)
 #define DNET_LOG_WARNING(log, ...)	DNET_LOG_RAW(log, DNET_LOG_WARNING, __VA_ARGS__)
 #define DNET_LOG_ERROR(log, ...)	DNET_LOG_RAW(log, DNET_LOG_ERROR, __VA_ARGS__)
+#define DNET_LOG_ACCESS(log, ...)	DNET_LOG_RAW(log, DNET_LOG_ACCESS, __VA_ARGS__)
 
 #define DNET_DEBUG(n, ...)	DNET_LOG(n, DNET_LOG_DEBUG, __VA_ARGS__)
 #define DNET_NOTICE(n, ...)	DNET_LOG(n, DNET_LOG_NOTICE, __VA_ARGS__)

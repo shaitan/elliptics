@@ -99,6 +99,11 @@ typename iterator::value_type aggregated(session &sess, iterator begin, iterator
 	return result;
 }
 
+template<typename iterable>
+typename iterable::value_type aggregated(session &s, iterable &it) {
+	return aggregated(s, std::begin(it), std::end(it));
+}
+
 } }
 
 #endif // FUNCTIONAL_P_H
