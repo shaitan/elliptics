@@ -3,7 +3,7 @@
 
 Summary:	Distributed hash table storage
 Name:		elliptics
-Version:	2.27.4.1
+Version:	2.27.5.0
 Release:	1%{?dist}
 
 License:	GPLv2+
@@ -131,6 +131,19 @@ rm -rf %{buildroot}
 
 
 %changelog
+* Mon Dec 11 2017 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.5.0
+- Refactor client code for commands from newapi
+- Simplify usage of aggregasted()
+- log: add output helpers for some stl containers
+- Remove incorrect typedef
+- log: add access log on trans destruction
+- Fix typo
+- tests: remove useless print
+- log: add 'access' log level
+- tests: sleep 1s to get updated backend's statistics
+- stats: dump stats from handystats into string
+- Fix typo
+
 * Tue Nov 07 2017 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.4.1
 -  dnet_client: fix printing defrag and inspect state
 
