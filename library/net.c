@@ -584,106 +584,114 @@ static int dnet_process_control(struct dnet_net_state *st, struct dnet_cmd *cmd,
 	}
 }
 
-int dnet_process_recv(struct dnet_net_state *st, struct dnet_io_req *r)
-{
+static int dnet_process_reply(struct dnet_net_state *st, struct dnet_io_req *r) {
+	int err = 0;
+	struct dnet_node *n = st->n;
+	struct dnet_trans *t = NULL;
+	struct dnet_cmd *cmd = r->header;
+	uint64_t tid = cmd->trans;
+	uint64_t flags = cmd->flags;
+
+	HANDY_COUNTER_INCREMENT("io.replies", 1);
+
+	pthread_mutex_lock(&st->trans_lock);
+	t = dnet_trans_search(st, tid);
+	if (t) {
+		if (!(flags & DNET_FLAGS_MORE)) {
+			dnet_trans_remove_nolock(st, t);
+		}
+
+		/*
+		 * Remove transaction for the duration of callback processing,
+		 * otherwise timeout checking thread can catch up.
+		 *
+		 * Network thread also removes transaction from the tree, but network
+		 * thread can read multiple replies and put multiple packets into the IO queue,
+		 * which if processed here. Since code below inserts transaction into the timer tree
+		 * again after its callback has been completed, someone has to remove it.
+		 *
+		 * It is safe to remove transaction multiple times, but subsequent insertion will lead to crash,
+		 * if timestamp has been updated, since it is used as a key in the timer tree.
+		 */
+		dnet_trans_remove_timer_nolock(st, t);
+	}
+	pthread_mutex_unlock(&st->trans_lock);
+
+	if (!t) {
+		dnet_log(n, DNET_LOG_ERROR, "%s: could not find transaction for reply: trans %llu",
+		         dnet_dump_id(&cmd->id), (unsigned long long)tid);
+		err = 0;
+		goto out;
+	}
+
+	++t->stats.recv_replies;
+	t->stats.recv_size += r->hsize + r->dsize + r->fsize;
+	t->stats.recv_queue_time += r->queue_time;
+	t->stats.recv_time += r->recv_time;
+
+	if (t->complete) {
+		if (t->command == DNET_CMD_READ || t->command == DNET_CMD_READ_NEW) {
+			uint64_t ioflags = 0;
+			if ((t->command == DNET_CMD_READ) &&
+			    (cmd->size >= sizeof(struct dnet_io_attr)) &&
+			    (t->alloc_size >= sizeof(struct dnet_cmd) + sizeof(struct dnet_io_attr))) {
+				struct dnet_io_attr *recv_io = (struct dnet_io_attr *)(cmd + 1);
+
+				struct dnet_cmd *local_cmd = (struct dnet_cmd *)(t + 1);
+				struct dnet_io_attr *local_io = (struct dnet_io_attr *)(local_cmd + 1);
+
+				ioflags = local_io->flags = recv_io->flags;
+				local_io->size = recv_io->size;
+				local_io->offset = recv_io->offset;
+				local_io->user_flags = recv_io->user_flags;
+				local_io->total_size = recv_io->total_size;
+				local_io->timestamp = recv_io->timestamp;
+
+				dnet_convert_io_attr(local_io);
+			}
+
+			if (st && !(flags & DNET_FLAGS_MORE)) {
+				struct timespec ts;
+				long diff;
+
+				clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
+				diff = DIFF_TIMESPEC(t->start_ts, ts);
+
+				dnet_update_backend_weight(st, cmd, ioflags, diff);
+			}
+		}
+		t->complete(dnet_state_addr(t->st), cmd, t->priv);
+	}
+
+	dnet_trans_put(t);
+	if (!(flags & DNET_FLAGS_MORE)) {
+		memcpy(&t->cmd, cmd, sizeof(struct dnet_cmd));
+		dnet_trans_put(t);
+	} else {
+		/*
+		 * Put transaction back into the end of 'timer' tree with updated timestamp.
+		 * Transaction had been removed from timer tree in @dnet_update_trans_timestamp_network() in network
+		 * thread right after whole data was read.
+		 */
+
+		pthread_mutex_lock(&st->trans_lock);
+		dnet_trans_update_timestamp(t);
+		dnet_trans_insert_timer_nolock(st, t);
+		pthread_mutex_unlock(&st->trans_lock);
+	}
+
+out:
+	return err;
+}
+
+int dnet_process_recv(struct dnet_net_state *st, struct dnet_io_req *r) {
 	int err = 0;
 	struct dnet_node *n = st->n;
 	struct dnet_net_state *forward_state = NULL;
 	struct dnet_cmd *cmd = r->header;
 
 	if (cmd->flags & DNET_FLAGS_REPLY) {
-		struct dnet_trans *t = NULL;
-		uint64_t tid = cmd->trans;
-		uint64_t flags = cmd->flags;
-
-		HANDY_COUNTER_INCREMENT("io.replies", 1);
-
-		pthread_mutex_lock(&st->trans_lock);
-		t = dnet_trans_search(st, tid);
-		if (t) {
-			if (!(flags & DNET_FLAGS_MORE)) {
-				dnet_trans_remove_nolock(st, t);
-			}
-
-			/*
-			 * Remove transaction for the duration of callback processing,
-			 * otherwise timeout checking thread can catch up.
-			 *
-			 * Network thread also removes transaction from the tree, but network
-			 * thread can read multiple replies and put multiple packets into the IO queue,
-			 * which if processed here. Since code below inserts transaction into the timer tree
-			 * again after its callback has been completed, someone has to remove it.
-			 *
-			 * It is safe to remove transaction multiple times, but subsequent insertion will lead to crash,
-			 * if timestamp has been updated, since it is used as a key in the timer tree.
-			 */
-			dnet_trans_remove_timer_nolock(st, t);
-		}
-		pthread_mutex_unlock(&st->trans_lock);
-
-		if (!t) {
-			dnet_log(n, DNET_LOG_ERROR, "%s: could not find transaction for reply: trans %llu.",
-				dnet_dump_id(&cmd->id), (unsigned long long)tid);
-			err = 0;
-			goto err_out_exit;
-		}
-
-		++t->stats.recv_replies;
-		t->stats.recv_size += r->hsize + r->dsize + r->fsize;
-		t->stats.recv_queue_time += r->queue_time;
-		t->stats.recv_time += r->recv_time;
-
-		if (t->complete) {
-			if (t->command == DNET_CMD_READ || t->command == DNET_CMD_READ_NEW) {
-				uint64_t ioflags = 0;
-				if ((t->command == DNET_CMD_READ) &&
-				    (cmd->size >= sizeof(struct dnet_io_attr)) &&
-				    (t->alloc_size >= sizeof(struct dnet_cmd) + sizeof(struct dnet_io_attr))) {
-					struct dnet_io_attr *recv_io = (struct dnet_io_attr *)(cmd + 1);
-
-					struct dnet_cmd *local_cmd = (struct dnet_cmd *)(t + 1);
-					struct dnet_io_attr *local_io = (struct dnet_io_attr *)(local_cmd + 1);
-
-					ioflags = local_io->flags = recv_io->flags;
-					local_io->size = recv_io->size;
-					local_io->offset = recv_io->offset;
-					local_io->user_flags = recv_io->user_flags;
-					local_io->total_size = recv_io->total_size;
-					local_io->timestamp = recv_io->timestamp;
-
-					dnet_convert_io_attr(local_io);
-				}
-
-				if (st && !(flags & DNET_FLAGS_MORE)) {
-					struct timespec ts;
-					long diff;
-
-					clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
-					diff = DIFF_TIMESPEC(t->start_ts, ts);
-
-					dnet_update_backend_weight(st, cmd, ioflags, diff);
-				}
-			}
-			t->complete(dnet_state_addr(t->st), cmd, t->priv);
-		}
-
-		dnet_trans_put(t);
-		if (!(flags & DNET_FLAGS_MORE)) {
-			memcpy(&t->cmd, cmd, sizeof(struct dnet_cmd));
-			dnet_trans_put(t);
-		} else {
-			/*
-			 * Put transaction back into the end of 'timer' tree with updated timestamp.
-			 * Transaction had been removed from timer tree in @dnet_update_trans_timestamp_network() in network
-			 * thread right after whole data was read.
-			 */
-
-			pthread_mutex_lock(&st->trans_lock);
-			dnet_trans_update_timestamp(t);
-			dnet_trans_insert_timer_nolock(st, t);
-			pthread_mutex_unlock(&st->trans_lock);
-		}
-
+		err = dnet_process_reply(st, r);
 		goto out;
 	}
 
@@ -702,11 +710,6 @@ int dnet_process_recv(struct dnet_net_state *st, struct dnet_io_req *r)
 		HANDY_COUNTER_INCREMENT("io.cmds", 1);
 		err = dnet_process_cmd_raw(st, cmd, r->data, 0, r->queue_time);
 	} else {
-		if (!forward_state) {
-			err = -ENXIO;
-			goto err_out_put_forward;
-		}
-
 		HANDY_COUNTER_INCREMENT("io.forwards", 1);
 		err = dnet_trans_forward(r, st, forward_state);
 		if (err)
@@ -720,7 +723,6 @@ out:
 
 err_out_put_forward:
 	dnet_state_put(forward_state);
-err_out_exit:
 	return err;
 }
 
