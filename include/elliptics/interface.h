@@ -326,7 +326,7 @@ struct dnet_config
 	long			wait_timeout;
 
 	/*
-	 * Specifies wether given node will join the network,
+	 * Specifies whether given node will join the network,
 	 * or it is a client node and its ID should not be checked
 	 * against collision with others.
 	 *
@@ -379,7 +379,7 @@ struct dnet_config
 
 	int			reserved_for_future_use_3;
 
-	uint64_t		reserved_for_future_use_4;
+	dnet_logger		*access_log;
 
 	int			send_limit;
 

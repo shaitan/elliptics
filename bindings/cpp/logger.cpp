@@ -78,8 +78,8 @@ static std::unique_ptr<dnet_logger> make_logger(const std::string &path, dnet_lo
 		                                   "{severity}: {message}, attrs: [{...}]";
 
 		static auto sevmap = [](std::size_t severity, const std::string &spec, blackhole::writer_t &writer) {
-			static const std::array<const char *, 6> mapping = {
-			        {"DEBUG", "NOTICE", "INFO", "WARNING", "ERROR", "ACCESS"}};
+			static const std::array<const char *, 5> mapping = {
+			        {"DEBUG", "NOTICE", "INFO", "WARNING", "ERROR"}};
 			if (severity < mapping.size()) {
 				writer.write(spec, mapping[severity]);
 			} else {
@@ -281,6 +281,10 @@ dnet_logger *dnet_node_get_logger(struct dnet_node* node) {
 	return node->log;
 }
 
+dnet_logger *dnet_node_get_access_logger(struct dnet_node *node) {
+	return node->access_log;
+}
+
 enum dnet_log_level dnet_node_get_verbosity(struct dnet_node *n) {
 	if (!n || !n->config_data)
 		return DNET_LOG_DEBUG;
@@ -288,7 +292,7 @@ enum dnet_log_level dnet_node_get_verbosity(struct dnet_node *n) {
 	return dnet_node_get_config_data(n)->logger_level;
 }
 
-static const std::array<std::string, 6> severity_names = {{"debug", "notice", "info", "warning", "error", "access"}};
+static const std::array<std::string, 5> severity_names = {{"debug", "notice", "info", "warning", "error"}};
 
 enum dnet_log_level dnet_log_parse_level(const char *name) {
 	auto it = std::find(severity_names.begin(), severity_names.end(), name);
@@ -336,6 +340,11 @@ void dnet_log_raw(dnet_logger *logger, dnet_log_level level, const char *format,
 	va_end(args);
 }
 
+void dnet_log_access(dnet_node *node,
+                     const blackhole::attribute_list &attributes) {
+	ioremap::elliptics::make_facade(dnet_node_get_access_logger(node)).log(DNET_LOG_INFO, "", attributes);
+}
+
 void dnet_trans_log(struct dnet_node *node, struct dnet_trans *t) {
 	// TODO(shaitan): use correct dnet_cmd for case when t->alloc_size is 0,
 	// since t->cmd contains last received headers.
@@ -349,12 +358,25 @@ void dnet_trans_log(struct dnet_node *node, struct dnet_trans *t) {
 		return DIFF_TIMESPEC(t->start_ts, ts);
 	}();
 
-	DNET_LOG_ACCESS(node, "{}: {}: destruction: trans: {}, st: {}/{}, request_size: {}, request_cflags: {}, "
-	                      "wait_ts: {}, stall: {}, send_queue_time: {}us, send_time: {}us, status: {}, "
-	                      "replies: {}, replies_size: {}, recv_time: {}us, recv_queue_time: {}us, "
-	                      "total_time: {}us",
-	                dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), t->trans, dnet_state_dump_addr(t->st),
-	                cmd->backend_id, request_size, dnet_flags_dump_cflags(cmd->flags), t->wait_ts.tv_sec,
-	                t->st->stall, t->stats.send_queue_time, t->stats.send_time, cmd->status, t->stats.recv_replies,
-	                t->stats.recv_size, t->stats.recv_time, t->stats.recv_queue_time, total_time);
+	dnet_log_access(node,
+	                {{"cmd", std::string(dnet_cmd_string(cmd->cmd))},
+	                 {"id", std::string(dnet_dump_id_str(cmd->id.id))},
+	                 {"group", cmd->id.group_id},
+	                 {"trans", t->trans},
+	                 {"st", std::string(dnet_state_dump_addr(t->st))},
+	                 {"backend_id", std::to_string(cmd->backend_id)},
+	                 {"request_size", request_size},
+	                 {"request_cflags", std::string(dnet_flags_dump_cflags(cmd->flags))},
+	                 {"wait_ts", t->wait_ts.tv_sec},
+	                 {"stall", t->st->stall},
+	                 {"send_queue_time", t->stats.send_queue_time},
+	                 {"send_time", t->stats.send_time},
+	                 {"status", cmd->status},
+	                 {"replies", t->stats.recv_replies},
+	                 {"replies_size", t->stats.recv_size},
+	                 {"recv_time", t->stats.recv_time},
+	                 {"recv_queue_time", t->stats.recv_queue_time},
+	                 {"total_time", total_time},
+	                 {"access", "transaction"},
+	});
 }

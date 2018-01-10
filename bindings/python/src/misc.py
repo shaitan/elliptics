@@ -13,13 +13,14 @@
 # GNU General Public License for more details.
 # =============================================================================
 
-from elliptics import log_level
-from elliptics import record_flags
-from elliptics.core import *
-from elliptics.node import Node
-from elliptics.route import Address
-
 import warnings
+
+from elliptics import record_flags
+from elliptics.core import CallbackResultEntry
+from elliptics.core import LookupResultEntry
+from elliptics.core import MonitorStatResultEntry
+from elliptics.core import RouteEntry
+from elliptics.route import Address
 
 warnings.simplefilter('always', PendingDeprecationWarning)
 
@@ -62,30 +63,6 @@ MonitorStatResultEntry.statistics = monitor_statistics
 wrap_address([CallbackResultEntry,
               RouteEntry
               ])
-
-
-def create_node(elog=None, log_file='/dev/stderr', log_level=log_level.error,
-                cfg=None, wait_timeout=3600, check_timeout=60,
-                flags=0, io_thread_num=1, net_thread_num=1,
-                nonblocking_io_thread_num=1, remotes=[], log_watched=False):
-    if not elog:
-        elog = Logger(log_file, log_level, log_watched)
-
-    if not cfg:
-        cfg = Config()
-        cfg.wait_timeout = wait_timeout
-        cfg.check_timeout = check_timeout
-        cfg.flags = flags
-        cfg.io_thread_num = io_thread_num
-        cfg.nonblocking_io_thread_num = nonblocking_io_thread_num
-        cfg.net_thread_num = net_thread_num
-
-    n = Node(elog, cfg)
-    try:
-        n.add_remotes(remotes)
-    except:
-        pass
-    return n
 
 
 del storage_address

@@ -485,6 +485,7 @@ struct dnet_node {
 	int			keep_idle;
 
 	dnet_logger		*log;
+	dnet_logger		*access_log;
 
 	struct timespec		wait_ts;
 

@@ -142,6 +142,7 @@ void dnet_log_raw(dnet_logger *logger, enum dnet_log_level level, const char *fo
         __attribute__((format(printf, 3, 4)));
 
 dnet_logger *dnet_node_get_logger(struct dnet_node *node);
+dnet_logger *dnet_node_get_access_logger(struct dnet_node *node);
 
 /* Write access-log for transaction @t. */
 void dnet_trans_log(struct dnet_node *node, struct dnet_trans *t);
@@ -161,6 +162,9 @@ template <class T> inline blackhole::logger_facade<dnet_logger> make_facade(T &&
 
 }} /* namespace ioremap::elliptics */
 
+void dnet_log_access(dnet_node *node,
+                     const blackhole::attribute_list &attributes);
+
 #define DNET_LOG(__log__, __severity__, ...) \
 	ioremap::elliptics::make_facade(__log__).log(__severity__, __VA_ARGS__)
 
@@ -169,7 +173,6 @@ template <class T> inline blackhole::logger_facade<dnet_logger> make_facade(T &&
 #define DNET_LOG_INFO(__log__, ...)	DNET_LOG(__log__, DNET_LOG_INFO, __VA_ARGS__)
 #define DNET_LOG_WARNING(__log__, ...)	DNET_LOG(__log__, DNET_LOG_WARNING, __VA_ARGS__)
 #define DNET_LOG_ERROR(__log__, ...)	DNET_LOG(__log__, DNET_LOG_ERROR, __VA_ARGS__)
-#define DNET_LOG_ACCESS(__log__, ...)	DNET_LOG(__log__, DNET_LOG_ACCESS, __VA_ARGS__)
 
 #else
 #define DNET_LOG_RAW(...)		dnet_log_raw(__VA_ARGS__)
@@ -189,7 +192,6 @@ template <class T> inline blackhole::logger_facade<dnet_logger> make_facade(T &&
 #define DNET_LOG_INFO(log, ...)		DNET_LOG_RAW(log, DNET_LOG_INFO, __VA_ARGS__)
 #define DNET_LOG_WARNING(log, ...)	DNET_LOG_RAW(log, DNET_LOG_WARNING, __VA_ARGS__)
 #define DNET_LOG_ERROR(log, ...)	DNET_LOG_RAW(log, DNET_LOG_ERROR, __VA_ARGS__)
-#define DNET_LOG_ACCESS(log, ...)	DNET_LOG_RAW(log, DNET_LOG_ACCESS, __VA_ARGS__)
 
 #define DNET_DEBUG(n, ...)	DNET_LOG(n, DNET_LOG_DEBUG, __VA_ARGS__)
 #define DNET_NOTICE(n, ...)	DNET_LOG(n, DNET_LOG_NOTICE, __VA_ARGS__)

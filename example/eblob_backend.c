@@ -1536,7 +1536,6 @@ static enum eblob_log_levels convert_to_eblob_log(enum dnet_log_level level)
 	case DNET_LOG_WARNING:
 		return EBLOB_LOG_ERROR;
 	case DNET_LOG_ERROR:
-	case DNET_LOG_ACCESS:
 		return EBLOB_LOG_ERROR;
 	}
 

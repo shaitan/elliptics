@@ -149,9 +149,11 @@ public:
 	std::string					logger_value;
 	std::atomic<dnet_log_level>			logger_level;
 	// root logger is needed for re-opening log file
-	std::unique_ptr<blackhole::root_logger_t>	root_logger;
+	std::unique_ptr<blackhole::root_logger_t>	root_holder;
+	std::unique_ptr<blackhole::root_logger_t>	access_holder;
 	// common logger is used by default for all logs
 	std::unique_ptr<backend_wrapper_t>		logger;
+	std::unique_ptr<backend_wrapper_t>		access_logger;
 	// addresses of remote nodes
 	std::vector<address>				remotes;
 	boost::optional<cache::cache_config>		cache_config;

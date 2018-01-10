@@ -23,36 +23,42 @@
 namespace ioremap { namespace elliptics {
 
 class node_data {
-	public:
-		node_data(std::unique_ptr<dnet_logger> logger)
-		: node_ptr(NULL)
-		, logger(new trace_wrapper_t(std::move(logger)))
-		, destroy_node(true) {}
+public:
+	node_data(std::unique_ptr<dnet_logger> logger, std::unique_ptr<dnet_logger> access_logger_)
+	: node_ptr(NULL)
+	, logger(new trace_wrapper_t(std::move(logger)))
+	, access_logger(nullptr)
+	, destroy_node(true) {
+		if (access_logger_)
+			access_logger.reset(new trace_wrapper_t(std::move(access_logger)));
+	}
 
-		~node_data()
-		{
-			if (destroy_node && node_ptr)
-				dnet_node_destroy(node_ptr);
-		}
+	~node_data() {
+		if (destroy_node && node_ptr)
+			dnet_node_destroy(node_ptr);
+	}
 
-		struct dnet_node	*node_ptr;
-		std::unique_ptr<trace_wrapper_t> logger;
-		bool			destroy_node;
+	struct dnet_node *node_ptr;
+	std::unique_ptr<trace_wrapper_t> logger;
+	std::unique_ptr<trace_wrapper_t> access_logger;
+	bool destroy_node;
 };
 
-class session_data
-{
-	public:
-		session_data(const node &n);
-		session_data(dnet_node *node);
-		session_data(session_data &other);
-		~session_data();
+class session_data {
+public:
+	session_data(const node &n);
 
-		struct dnet_session	*session_ptr;
-		result_filter		filter;
-		result_checker		checker;
-		result_error_handler	error_handler;
-		uint32_t		policy;
+	session_data(dnet_node *node);
+
+	session_data(session_data &other);
+
+	~session_data();
+
+	struct dnet_session *session_ptr;
+	result_filter filter;
+	result_checker checker;
+	result_error_handler error_handler;
+	uint32_t policy;
 };
 
 }} // namespace ioremap::elliptics

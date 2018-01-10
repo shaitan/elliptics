@@ -24,6 +24,11 @@ formatter = logging.Formatter(
     datefmt='%F %R:%S')
 
 
+class Logger(elliptics.core.Logger):
+    def __init__(self, file, log_level, watched=False, tskv=False):
+        super(Logger, self).__init__(file, log_level, watched, tskv)
+
+
 def logged_class(klass):
     """
     This decorator adds 'log' method to passed class
@@ -44,8 +49,6 @@ def convert_elliptics_log_level(level):
         return logging.WARNING
     elif level <= elliptics.log_level.error:
         return logging.ERROR
-    elif level <= elliptics.log_level.access:
-        return logging.CRITICAL
     else:
         return logging.ERROR
 
@@ -59,10 +62,8 @@ def convert_logging_log_level(level):
         return elliptics.log_level.info
     elif level <= logging.WARNING:
         return elliptics.log_level.warning
-    elif level <= logging.ERROR:
-        return elliptics.log_level.error
     elif level <= logging.CRITICAL:
-        return elliptics.log_level.access
+        return elliptics.log_level.error
     else:
         return elliptics.log_level.error
 

@@ -11,6 +11,7 @@
 #include "bindings/cpp/session_internals.hpp"
 #include "bindings/cpp/timer.hpp"
 
+#include "library/elliptics.h"
 #include "library/protocol.hpp"
 #include "library/common.hpp"
 
@@ -119,19 +120,19 @@ public:
 	: m_key(key)
 	, m_session(session.clean_clone())
 	, m_handler(result)
-	, m_log(session.get_logger()) {
+	, m_log(session.get_logger())
+	, m_cflags{0} {
 		m_session.set_checker(session.get_checker());
 		m_handler.set_total(1);
-
-		const size_t count = m_session.get_groups().size();
-		m_responses.groups.reserve(count);
-		m_responses.statuses.reserve(count);
-		m_responses.transes.reserve(count);
 	}
 
 	void start(std::vector<int> &&groups, const transport_control &control) {
-		DNET_LOG_ACCESS(m_log, "{}: {}: started: groups: {}",
-		                dnet_dump_id_str(m_key.raw_id().id), dnet_cmd_string(control.get_native().cmd), groups);
+		DNET_LOG_INFO(m_log, "{}: {}: started: groups: {}, cflags: {}", dnet_dump_id_str(m_key.raw_id().id),
+		              dnet_cmd_string(control.get_native().cmd), groups,
+		              dnet_flags_dump_cflags(control.get_native().cflags));
+
+		m_cflags = control.get_native().cflags;
+		m_transes.reserve(groups.size());
 
 		async_lookup_result result{m_session};
 		auto handler = std::make_shared<inner_handler>(m_session, result, std::move(groups),
@@ -149,17 +150,23 @@ private:
 		m_handler.process(entry);
 
 		const auto *cmd = entry.command();
-		m_responses.groups.emplace_back(cmd->id.group_id);
-		m_responses.statuses.emplace_back(cmd->id.group_id, entry.status());
-		m_responses.transes.emplace_back(cmd->id.group_id, cmd->trans);
+		m_transes.emplace_back(cmd->trans);
 	}
 
 	void complete(const error_info &error) {
 		m_handler.complete(error);
 
-		DNET_LOG_ACCESS(m_log, "{}: {}: finished: groups: {}, trans: {}, status: {}, total_time: {}us",
-		                dnet_dump_id_str(m_key.id().id), dnet_cmd_string(DNET_CMD_LOOKUP_NEW),
-		                m_responses.groups, m_responses.transes, m_responses.statuses, m_timer.get_us());
+		std::ostringstream transes;
+		transes << m_transes;
+
+		dnet_log_access(m_session.get_native_node(),
+		                {{"cmd", std::string(dnet_cmd_string(DNET_CMD_LOOKUP_NEW))},
+		                 {"id", std::string(dnet_dump_id_str(m_key.id().id))},
+		                 {"request_cflags", std::string(dnet_flags_dump_cflags(m_cflags))},
+		                 {"transes", transes.str()},
+		                 {"total_time", m_timer.get_us()},
+		                 {"access", "operation"},
+		                });
 	}
 
 	util::steady_timer m_timer{};
@@ -168,11 +175,8 @@ private:
 	async_result_handler<lookup_result_entry> m_handler;
 	std::unique_ptr<dnet_logger> m_log;
 
-	struct {
-		std::vector<uint32_t> groups;
-		std::vector<std::pair<uint32_t, int>> statuses;
-		std::vector<std::pair<uint32_t, uint64_t>> transes;
-	} m_responses;
+	uint64_t m_cflags;
+	std::vector<uint64_t> m_transes;
 };
 
 async_lookup_result session::lookup(const key &id) {
@@ -203,16 +207,17 @@ public:
 		m_session.set_checker(session.get_checker());
 
 		const size_t count = m_session.get_groups().size();
-		m_responses.groups.reserve(count);
-		m_responses.statuses.reserve(count);
-		m_responses.transes.reserve(count);
+		m_transes.reserve(count);
 	}
 
 	void start(const transport_control &control, const dnet_remove_request &request) {
-		DNET_LOG_ACCESS(m_log, "{}: {}: started: groups: {}, ioflags: {}, ts: '{}",
-		                dnet_dump_id_str(m_key.id().id), dnet_cmd_string(control.get_native().cmd),
-		                m_session.get_groups(), dnet_flags_dump_ioflags(request.ioflags),
-		                dnet_print_time(&request.timestamp));
+		DNET_LOG_INFO(m_log, "{}: {}: started: groups: {}, ioflags: {}, ts: '{}",
+		              dnet_dump_id_str(m_key.id().id), dnet_cmd_string(control.get_native().cmd),
+		              m_session.get_groups(), dnet_flags_dump_ioflags(request.ioflags),
+		              dnet_print_time(&request.timestamp));
+
+		m_request = request;
+		m_cflags = control.get_native().cflags;
 
 		auto rr = send_to_groups(m_session, control);
 		m_handler.set_total(rr.total());
@@ -228,17 +233,25 @@ private:
 		m_handler.process(entry);
 
 		const auto *cmd = entry.command();
-		m_responses.groups.emplace_back(cmd->id.group_id);
-		m_responses.statuses.emplace_back(cmd->id.group_id, entry.status());
-		m_responses.transes.emplace_back(cmd->id.group_id, cmd->trans);
+		m_transes.emplace_back(cmd->trans);
 	}
 
 	void complete(const error_info &error) {
 		m_handler.complete(error);
 
-		DNET_LOG_ACCESS(m_log, "{}: {}: finished: groups: {}, trans: {}, status: {}, total_time: {}",
-		                dnet_dump_id_str(m_key.id().id), dnet_cmd_string(DNET_CMD_DEL_NEW), m_responses.groups,
-		                m_responses.transes, m_responses.statuses, m_timer.get_us());
+		std::ostringstream transes;
+		transes << m_transes;
+
+		dnet_log_access(m_session.get_native_node(),
+		                {{"cmd", std::string(dnet_cmd_string(DNET_CMD_DEL_NEW))},
+		                 {"id", std::string(dnet_dump_id_str(m_key.id().id))},
+		                 {"ioflags", std::string(dnet_flags_dump_ioflags(m_request.ioflags))},
+		                 {"cflags", std::string(dnet_flags_dump_cflags(m_cflags))},
+		                 {"ts", std::string(dnet_print_time(&m_request.timestamp))},
+		                 {"transes", transes.str()},
+		                 {"total_time", m_timer.get_us()},
+		                 {"access", "operation"},
+		                });
 	}
 
 private:
@@ -249,11 +262,9 @@ private:
 	async_result_handler<remove_result_entry> m_handler;
 	std::unique_ptr<dnet_logger> m_log;
 
-	struct {
-		std::vector<uint32_t> groups;
-		std::vector<std::pair<uint32_t, int>> statuses;
-		std::vector<std::pair<uint32_t, uint64_t>> transes;
-	} m_responses;
+	dnet_remove_request m_request;
+	uint64_t m_cflags;
+	std::vector<uint64_t> m_transes;
 };
 
 async_remove_result session::remove(const key &id) {
@@ -319,17 +330,21 @@ public:
 
 		const size_t count = m_session.get_groups().size();
 		m_responses.groups.reserve(count);
-		m_responses.statuses.reserve(count);
-		m_responses.json_sizes.reserve(count);
-		m_responses.data_sizes.reserve(count);
 		m_responses.transes.reserve(count);
+		m_responses.statuses.reserve(count);
+		m_responses.data_sizes.reserve(count);
+		m_responses.json_sizes.reserve(count);
 	}
 
 	void start(std::vector<int> &&groups, const transport_control &control, const dnet_read_request &request) {
-		DNET_LOG_ACCESS(m_log, "{}: {}: started: groups: {}, ioflags: {}, read-flags: {}, offset: {}, size: {}",
-		                dnet_dump_id_str(m_key.raw_id().id), dnet_cmd_string(control.get_native().cmd), groups,
-		                dnet_flags_dump_ioflags(request.ioflags), dnet_dump_read_flags(request.read_flags),
-		                request.data_offset, request.data_size);
+		DNET_LOG_INFO(m_log, "{}: {}: started: groups: {}, ioflags: {}, read-flags: {}, offset: {}, size: {}",
+		              dnet_dump_id_str(m_key.raw_id().id), dnet_cmd_string(control.get_native().cmd), groups,
+		              dnet_flags_dump_ioflags(request.ioflags), dnet_dump_read_flags(request.read_flags),
+		              request.data_offset, request.data_size);
+
+		m_transes.reserve(groups.size());
+		m_request = request;
+		m_cflags = control.get_native().cflags;
 
 		async_read_result result(m_session);
 		auto handler = std::make_shared<inner_handler>(m_session, result, std::move(groups),
@@ -347,21 +362,49 @@ private:
 		m_handler.process(entry);
 
 		const auto *cmd = entry.command();
-		m_responses.groups.emplace_back(cmd->id.group_id);
-		m_responses.statuses.emplace_back(cmd->id.group_id, entry.status());
-		m_responses.json_sizes.emplace_back(cmd->id.group_id, entry.status() ? 0 : entry.io_info().json_size);
-		m_responses.data_sizes.emplace_back(cmd->id.group_id, entry.status() ? 0 : entry.io_info().data_size);
-		m_responses.transes.emplace_back(cmd->id.group_id, cmd->trans);
+		m_transes.emplace_back(cmd->trans);
+
+		if (!entry.error()) {
+			m_read_json_size += entry.io_info().json_size;
+			m_read_data_size += entry.io_info().data_size;
+		}
+
+		const auto &response = callback_cast<read_result_entry>(entry);
+		const auto group = cmd->id.group_id;
+		m_responses.groups.emplace_back(group);
+		m_responses.transes.emplace_back(group, cmd->trans);
+		m_responses.statuses.emplace_back(group, cmd->status);
+		m_responses.data_sizes.emplace_back(group, cmd->status ? 0 : response.io_info().data_size);
+		m_responses.json_sizes.emplace_back(group, cmd->status ? 0 : response.io_info().json_size);
 	}
 
 	void complete(const error_info &error) {
 		m_handler.complete(error);
 
-		DNET_LOG_ACCESS(m_log, "{}: {}: finished: groups: {}, trans: {}, status: {}, json-size: {}, data-size: "
-		                       "{}, total_time: {}us",
-		                dnet_dump_id_str(m_key.id().id), dnet_cmd_string(DNET_CMD_READ_NEW), m_responses.groups,
-		                m_responses.transes, m_responses.statuses, m_responses.json_sizes,
-		                m_responses.data_sizes, m_timer.get_us());
+		DNET_LOG_INFO(m_log, "{}: {}: finished: groups: {}, trans: {}, status: {}, json-size: {}, data-size: "
+		"{}, total_time: {}",
+		              dnet_dump_id_str(m_key.id().id), dnet_cmd_string(DNET_CMD_READ_NEW), m_responses.groups,
+		              m_responses.transes, m_responses.statuses, m_responses.json_sizes, m_responses.data_sizes,
+		              m_timer.get_us());
+
+		std::ostringstream transes;
+		transes << m_transes;
+
+		dnet_log_access(m_session.get_native_node(),
+		                {{"cmd", std::string(dnet_cmd_string(DNET_CMD_READ_NEW))},
+		                 {"id", std::string(dnet_dump_id_str(m_key.id().id))},
+		                 {"ioflags", std::string(dnet_flags_dump_ioflags(m_request.ioflags))},
+		                 {"cflags", std::string(dnet_flags_dump_cflags(m_cflags))},
+		                 {"read_flags", std::string(dnet_dump_read_flags(m_request.read_flags))},
+		                 {"request_offset", m_request.data_offset},
+		                 {"request_size", m_request.data_size},
+		                 {"deadline", std::string(dnet_print_time(&m_request.deadline))},
+		                 {"transes", transes.str()},
+		                 {"read_json_size", m_read_json_size},
+		                 {"read_data_size", m_read_data_size},
+		                 {"total_time", m_timer.get_us()},
+		                 {"access", "operation"},
+		                });
 	}
 
 	util::steady_timer m_timer{};
@@ -370,12 +413,18 @@ private:
 	async_result_handler<read_result_entry> m_handler;
 	std::unique_ptr<dnet_logger> m_log;
 
+	dnet_read_request m_request;
+	uint64_t m_cflags{0};
+	std::vector<uint64_t> m_transes;
+	uint64_t m_read_json_size{0};
+	uint64_t m_read_data_size{0};
+
 	struct {
 		std::vector<uint32_t> groups;
 		std::vector<std::pair<uint32_t, int>> statuses;
-		std::vector<std::pair<uint32_t, uint64_t>> json_sizes;
-		std::vector<std::pair<uint32_t, uint64_t>> data_sizes;
 		std::vector<std::pair<uint32_t, uint64_t>> transes;
+		std::vector<std::pair<uint32_t, uint64_t>> data_sizes;
+		std::vector<std::pair<uint32_t, uint64_t>> json_sizes;
 	} m_responses;
 };
 
@@ -462,20 +511,25 @@ public:
 		const size_t count = m_session.get_groups().size();
 		m_responses.groups.reserve(count);
 		m_responses.statuses.reserve(count);
+		m_responses.transes.reserve(count);
 		m_responses.json_sizes.reserve(count);
 		m_responses.data_sizes.reserve(count);
-		m_responses.transes.reserve(count);
 	}
 
 	void start(const transport_control &control, const dnet_write_request &request) {
-		DNET_LOG_ACCESS(m_log, "{}: {}: started: groups: {}, ioflags: {}, "
-		                       "json: {{size: {}, capacity: {}, ts: '{}'}}, "
-		                       "data: {{offset: {}, size: {}, capacity: {}, commit-size: {}, ts: '{}'}}",
-		                dnet_dump_id_str(m_key.id().id), dnet_cmd_string(control.get_native().cmd),
-		                m_session.get_groups(), dnet_flags_dump_ioflags(request.ioflags),
-		                request.json_size, request.json_capacity, dnet_print_time(&request.json_timestamp),
-		                request.data_offset, request.data_size, request.data_capacity, request.data_commit_size,
-		                dnet_print_time(&request.timestamp));
+		DNET_LOG_INFO(m_log, "{}: {}: started: groups: {}, ioflags: {}, "
+		                     "json: {{size: {}, capacity: {}, ts: '{}'}}, "
+		                     "data: {{offset: {}, size: {}, capacity: {}, commit-size: {}, ts: '{}'}}",
+		              dnet_dump_id_str(m_key.id().id), dnet_cmd_string(control.get_native().cmd),
+		              m_session.get_groups(), dnet_flags_dump_ioflags(request.ioflags),
+		              request.json_size, request.json_capacity, dnet_print_time(&request.json_timestamp),
+		              request.data_offset, request.data_size, request.data_capacity, request.data_commit_size,
+		              dnet_print_time(&request.timestamp));
+
+		m_transes.reserve(m_session.get_groups().size());
+		m_request = request;
+		m_cflags = control.get_native().cflags;
+
 		auto rr = async_result_cast<write_result_entry>(m_session, send_to_groups(m_session, control));
 		m_handler.set_total(rr.total());
 
@@ -490,23 +544,49 @@ private:
 		m_handler.process(entry);
 
 		const auto *cmd = entry.command();
-		m_responses.groups.emplace_back(cmd->id.group_id);
-		m_responses.statuses.emplace_back(cmd->id.group_id, entry.status());
-		m_responses.json_sizes.emplace_back(cmd->id.group_id,
-		                                    entry.status() ? 0 : entry.record_info().json_size);
-		m_responses.data_sizes.emplace_back(cmd->id.group_id,
-		                                    entry.status() ? 0 : entry.record_info().data_size);
-		m_responses.transes.emplace_back(cmd->id.group_id, cmd->trans);
+		m_transes.emplace_back(cmd->trans);
+
+		const auto &response = callback_cast<write_result_entry>(entry);
+		const auto group = cmd->id.group_id;
+		m_responses.groups.emplace_back(group);
+		m_responses.transes.emplace_back(group, cmd->trans);
+		m_responses.statuses.emplace_back(group, cmd->status);
+		m_responses.json_sizes.emplace_back(group, cmd->status ? 0 : response.record_info().json_size);
+		m_responses.data_sizes.emplace_back(group, cmd->status ? 0 : response.record_info().data_size);
 	}
 
 	void complete(const error_info &error) {
 		m_handler.complete(error);
 
-		DNET_LOG_ACCESS(m_log, "{}: {}: finished: groups: {}, trans: {}, status: {}, json-size: {}, "
-		                       "data-size: {}, total_time: {}",
-		                dnet_dump_id_str(m_key.id().id), dnet_cmd_string(DNET_CMD_WRITE_NEW),
-		                m_responses.groups, m_responses.transes, m_responses.statuses, m_responses.json_sizes,
-		                m_responses.data_sizes, m_timer.get_us());
+		DNET_LOG_INFO(m_log, "{}: {}: finished: groups: {}, trans: {}, status: {}, json-size: {}, data-size: "
+		                     "{}, total_time: {}",
+		              dnet_dump_id_str(m_key.id().id), dnet_cmd_string(DNET_CMD_WRITE_NEW), m_responses.groups,
+		              m_responses.transes, m_responses.statuses, m_responses.json_sizes, m_responses.data_sizes,
+		              m_timer.get_us());
+
+		std::ostringstream transes;
+		transes << m_transes;
+
+		dnet_log_access(m_session.get_native_node(),
+		                {{"cmd", std::string(dnet_cmd_string(DNET_CMD_WRITE_NEW))},
+		                 {"id", std::string(dnet_dump_id_str(m_key.id().id))},
+		                 {"ioflags", std::string(dnet_flags_dump_ioflags(m_request.ioflags))},
+		                 {"cflags", std::string(dnet_flags_dump_cflags(m_cflags))},
+		                 {"user_flags", m_request.user_flags},
+		                 {"json_ts", std::string(dnet_print_time(&m_request.json_timestamp))},
+		                 {"json_size", m_request.json_size},
+		                 {"json_capacity", m_request.json_capacity},
+		                 {"data_ts", std::string(dnet_print_time(&m_request.timestamp))},
+		                 {"data_offset", m_request.data_offset},
+		                 {"data_size", m_request.data_size},
+		                 {"data_capacity", m_request.data_capacity},
+		                 {"data_commit_size", m_request.data_commit_size},
+		                 {"cache_lifetime", m_request.cache_lifetime},
+		                 {"deadline", std::string(dnet_print_time(&m_request.deadline))},
+		                 {"trans", transes.str()},
+		                 {"total_time", m_timer.get_us()},
+		                 {"access", "operation"},
+		                });
 	}
 
 	util::steady_timer m_timer{};
@@ -515,12 +595,16 @@ private:
 	async_result_handler<write_result_entry> m_handler;
 	std::unique_ptr<dnet_logger> m_log;
 
+	dnet_write_request m_request;
+	uint64_t m_cflags;
+	std::vector<uint64_t> m_transes;
+
 	struct {
 		std::vector<uint32_t> groups;
 		std::vector<std::pair<uint32_t, int>> statuses;
+		std::vector<std::pair<uint32_t, uint64_t>> transes;
 		std::vector<std::pair<uint32_t, uint64_t>> json_sizes;
 		std::vector<std::pair<uint32_t, uint64_t>> data_sizes;
-		std::vector<std::pair<uint32_t, uint64_t>> transes;
 	} m_responses;
 };
 
@@ -787,12 +871,14 @@ public:
 	}
 
 	void start(const transport_control &control, const dnet_iterator_request &request) {
-		DNET_LOG_ACCESS(m_log, "{}: started: st: {}/{}, id: {}, action: {}, type: {}, iflags: {}, "
-		                       "key_ranges: {}, ts_range: '{}' - '{}', groups: {}",
-		                dnet_cmd_string(DNET_CMD_ITERATOR_NEW), m_address.to_string_with_family(), m_backend_id,
-		                request.iterator_id, request.action, request.type, request.flags,
-		                request.key_ranges.size(), dnet_print_time(&std::get<0>(request.time_range)),
-		                dnet_print_time(&std::get<1>(request.time_range)), request.groups);
+		DNET_LOG_INFO(m_log, "{}: started: st: {}/{}, id: {}, action: {}, type: {}, iflags: {}, "
+		                     "key_ranges: {}, ts_range: '{}' - '{}', groups: {}",
+		              dnet_cmd_string(DNET_CMD_ITERATOR_NEW), m_address.to_string_with_family(), m_backend_id,
+		              request.iterator_id, request.action, request.type, request.flags,
+		              request.key_ranges.size(), dnet_print_time(&std::get<0>(request.time_range)),
+		              dnet_print_time(&std::get<1>(request.time_range)), request.groups);
+
+		m_request = request;
 
 		auto rr = async_result_cast<iterator_result_entry>(m_session, send_to_single_state(m_session, control));
 		rr.connect(
@@ -809,8 +895,8 @@ private:
 			return;
 
 		const auto *cmd = entry.command();
-		m_responses.transes.emplace(cmd->trans);
-		auto it = m_responses.statuses.emplace(entry.status(), 1);
+		m_trans = cmd->trans;
+		auto it = m_statuses.emplace(entry.status(), 1);
 		if (!it.second)
 			++it.first->second;
 	}
@@ -818,23 +904,42 @@ private:
 	void complete(const error_info &error) {
 		m_handler.complete(error);
 
-		DNET_LOG_ACCESS(m_log, "{}: finished: st: {}/{}, trans: {}, status: {}, total_time: {}us",
-		                dnet_cmd_string(DNET_CMD_ITERATOR_NEW), m_address.to_string_with_family(), m_backend_id,
-		                m_responses.transes, m_responses.statuses, m_timer.get_us());
+		std::ostringstream ts_range, groups, statuses;
+		ts_range << dnet_print_time(&std::get<0>(m_request.time_range)) << " - "
+		         << dnet_print_time(&std::get<1>(m_request.time_range));
+		groups << m_request.groups;
+		statuses << m_statuses;
+
+		dnet_log_access(m_session.get_native_node(),
+		                {{"cmd", std::string(dnet_cmd_string(DNET_CMD_ITERATOR_NEW))},
+		                 {"st", m_address.to_string_with_family()},
+		                 {"backend_id", m_backend_id},
+		                 {"iterator_id", m_request.iterator_id},
+		                 {"action", m_request.action},
+		                 {"type", m_request.type},
+		                 {"flags", m_request.flags},
+		                 {"key_ranges", m_request.key_ranges.size()},
+		                 {"time_range", ts_range.str()},
+		                 {"groups", groups.str()},
+		                 {"trans", m_trans},
+		                 {"total_time", m_timer.get_us()},
+		                 {"statuses", statuses.str()},
+		                 {"access", "operation"},
+		                });
 	}
 
 private:
-	util::steady_timer m_timer;
+	util::steady_timer m_timer{};
 	session m_session;
 	async_result_handler<iterator_result_entry> m_handler;
 	std::unique_ptr<dnet_logger> m_log;
 	const address m_address;
 	const uint32_t m_backend_id;
 
-	struct {
-		std::unordered_set<uint64_t> transes;
-		std::unordered_map<int, size_t> statuses;
-	} m_responses;
+	dnet_iterator_request m_request;
+	uint64_t m_trans{0};
+
+	std::unordered_map<int, size_t> m_statuses;
 };
 
 async_iterator_result session::start_iterator(const address &addr, uint32_t backend_id,
@@ -896,7 +1001,7 @@ class server_send_handler : public std::enable_shared_from_this<server_send_hand
 public:
 	explicit server_send_handler(const async_iterator_result &result,
 	                             session &session)
-	: m_session(session)
+	: m_session(session.clone())
 	, m_handler(result)
 	, m_log(session.get_logger()) {
 	}
@@ -906,10 +1011,16 @@ public:
 	           uint64_t chunk_size,
 	           const int src_group,
 	           const std::vector<int> &dst_groups) {
-		DNET_LOG_ACCESS(m_log, "{}: started: flags: {}, src_group: {}, dst_groups: {}, "
-		                       "chunk_size: {}, keys: {}",
-		                dnet_cmd_string(DNET_CMD_SEND_NEW), flags, src_group, dst_groups, chunk_size,
-		                keys.size());
+		DNET_LOG_INFO(m_log, "{}: started: flags: {}, src_group: {}, dst_groups: {}, "
+		                     "chunk_size: {}, keys: {}",
+		              dnet_cmd_string(DNET_CMD_SEND_NEW), flags, src_group, dst_groups, chunk_size,
+		              keys.size());
+
+		m_flags = flags;
+		m_chunk_size = chunk_size;
+		m_keys_count = keys.size();
+		m_dst_groups = dst_groups;
+
 		if (dst_groups.empty()) {
 			m_handler.complete(create_error(-ENXIO, "server_send: remote groups list is empty"));
 			return;
@@ -988,8 +1099,8 @@ private:
 		m_handler.process(entry);
 
 		const auto *cmd = entry.command();
-		m_responses.transes.emplace(cmd->trans);
-		auto it = m_responses.statuses.emplace(entry.status(), 1);
+		m_transes.emplace(cmd->trans);
+		auto it = m_statuses.emplace(entry.status(), 1);
 		if (!it.second)
 			++it.first->second;
 	}
@@ -997,21 +1108,37 @@ private:
 	void complete(const error_info &error) {
 		m_handler.complete(error);
 
-		DNET_LOG_ACCESS(m_log, "{}: finished: trans: {}, status: {}, total_time: {}us",
-		                dnet_cmd_string(DNET_CMD_SEND_NEW), m_responses.transes, m_responses.statuses,
-		                m_timer.get_us());
+		std::ostringstream transes, statuses, dst_groups;
+		transes << m_transes;
+		statuses << m_statuses;
+		dst_groups << m_dst_groups;
+
+		dnet_log_access(m_session.get_native_node(),
+		                {{"cmd", std::string(dnet_cmd_string(DNET_CMD_SEND_NEW))},
+		                 {"keys", m_keys_count},
+		                 {"dst_groups", dst_groups.str()},
+		                 {"flags", m_flags},
+		                 {"chunk_size", m_chunk_size},
+		                 {"transes", transes.str()},
+		                 {"statuses", statuses.str()},
+		                 {"total_time", m_timer.get_us()},
+		                 {"access", "operation"},
+		                });
 	}
 
 private:
 	util::steady_timer m_timer{};
-	session &m_session;
+	session m_session;
 	async_result_handler<iterator_result_entry> m_handler;
 	std::unique_ptr<dnet_logger> m_log;
 
-	struct {
-		std::unordered_set<uint64_t> transes;
-		std::unordered_map<int, size_t> statuses;
-	} m_responses;
+	size_t m_keys_count{0};
+	std::vector<int> m_dst_groups;
+	uint64_t m_flags;
+	uint64_t m_chunk_size;
+
+	std::unordered_set<uint64_t> m_transes;
+	std::unordered_map<int, size_t> m_statuses;
 };
 
 async_iterator_result session::server_send(const std::vector<key> &keys,
@@ -1135,16 +1262,18 @@ public:
 	explicit bulk_read_handler(const async_read_result &result,
 	                           session &session,
 	                           const std::vector<dnet_id> &keys)
-	: m_session(session)
+	: m_session(session.clone())
 	, m_handler(result)
 	, m_log(session.get_logger())
 	, m_keys(keys) {
 	}
 
 	void start(uint64_t read_flags) {
-		DNET_LOG_ACCESS(m_log, "{}: started: keys: {}, read_flags: {}, ioflags: {}",
-		                dnet_cmd_string(DNET_CMD_BULK_READ_NEW), m_keys.size(),
-		                dnet_dump_read_flags(read_flags), dnet_flags_dump_ioflags(m_session.get_ioflags()));
+		DNET_LOG_INFO(m_log, "{}: started: keys: {}, read_flags: {}, ioflags: {}",
+		              dnet_cmd_string(DNET_CMD_BULK_READ_NEW), m_keys.size(),
+		              dnet_dump_read_flags(read_flags), dnet_flags_dump_ioflags(m_session.get_ioflags()));
+
+		m_read_flags = read_flags;
 
 		if (m_keys.empty()) {
 			m_handler.complete(create_error(-ENXIO, "send_bulk_read: keys list is empty"));
@@ -1243,8 +1372,8 @@ private:
 		m_handler.process(entry);
 
 		const auto *cmd = entry.command();
-		m_responses.transes.emplace(cmd->trans);
-		auto it = m_responses.statuses.emplace(entry.status(), 1);
+		m_transes.emplace(cmd->trans);
+		auto it = m_statuses.emplace(entry.status(), 1);
 		if (!it.second)
 			++it.first->second;
 	}
@@ -1252,22 +1381,31 @@ private:
 	void complete(const error_info &error) {
 		m_handler.complete(error);
 
-		DNET_LOG_ACCESS(m_log, "{}: finished: trans: {}, status: {}, total_time: {}us",
-		                dnet_cmd_string(DNET_CMD_BULK_READ_NEW), m_responses.transes, m_responses.statuses,
-		                m_timer.get_us());
+		std::ostringstream transes, statuses;
+		transes << m_transes;
+		statuses << m_statuses;
+
+		dnet_log_access(m_session.get_native_node(),
+		                {{"cmd", std::string(dnet_cmd_string(DNET_CMD_BULK_READ_NEW))},
+		                 {"ioflags", std::string(dnet_flags_dump_ioflags(m_session.get_ioflags()))},
+		                 {"cflags", std::string(dnet_flags_dump_cflags(m_session.get_cflags()))},
+		                 {"read_flags", std::string(dnet_dump_read_flags(m_read_flags))},
+		                 {"keys", m_keys.size()},
+		                 {"transes", transes.str()},
+		                 {"statuses", statuses.str()},
+		                 {"access", "operation"},
+		                });
 	}
 
 private:
 	util::steady_timer m_timer{};
-	session &m_session;
+	session m_session;
 	async_result_handler<read_result_entry> m_handler;
 	std::unique_ptr<dnet_logger> m_log;
 	const std::vector<dnet_id> m_keys;
-
-	struct {
-		std::unordered_set<uint64_t> transes;
-		std::unordered_map<int, size_t> statuses;
-	} m_responses;
+	uint64_t m_read_flags;
+	std::unordered_set<uint64_t> m_transes;
+	std::unordered_map<int, size_t> m_statuses;
 };
 
 async_read_result send_bulk_read(session &session, const std::vector<dnet_id> &keys, uint64_t read_flags) {

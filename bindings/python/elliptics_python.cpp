@@ -16,7 +16,20 @@
 
 #include <blackhole/wrapper.hpp>
 
-#include <elliptics/cppdef.h>
+#include <blackhole/attribute.hpp>
+#include <blackhole/builder.hpp>
+#include <blackhole/extensions/writer.hpp>
+#include <blackhole/formatter/string.hpp>
+#include <blackhole/formatter/tskv.hpp>
+#include <blackhole/handler/blocking.hpp>
+#include <blackhole/logger.hpp>
+#include <blackhole/record.hpp>
+#include <blackhole/root.hpp>
+#include <blackhole/sink/asynchronous.hpp>
+#include <blackhole/sink/file.hpp>
+
+#include "elliptics/cppdef.h"
+#include "library/logger.hpp"
 
 #include "python.hpp"
 #include "elliptics_id.h"
@@ -128,15 +141,69 @@ std::string dnet_config_get_cookie(const dnet_config &config) {
 	return std::string(config.cookie, sizeof(config.cookie));
 }
 
-dnet_config& dnet_config_config(dnet_config &config) {
-	return config;
+static std::unique_ptr<blackhole::formatter_t> make_string_formatter() {
+	static const std::string pattern = "{timestamp:l} {trace_id:{0:default}0>16}/{thread:d}/{process} "
+	                                   "{severity}: {message}, attrs: [{...}]";
+
+	static auto sevmap = [](std::size_t severity, const std::string &spec, blackhole::writer_t &writer) {
+		static const std::array<const char *, 5> mapping = {
+		{"DEBUG", "NOTICE", "INFO", "WARNING", "ERROR"}};
+		if (severity < mapping.size()) {
+			writer.write(spec, mapping[severity]);
+		} else {
+			writer.write(spec, severity);
+		}
+	};
+
+	blackhole::builder<blackhole::formatter::string_t> builder(pattern);
+	builder.mapping(sevmap);
+	return std::move(builder).build();
 }
 
-class elliptics_file_logger {
+static std::unique_ptr<blackhole::formatter_t> make_tskv_formatter() {
+	blackhole::builder<blackhole::formatter::tskv_t> builder;
+	return std::move(builder).build();
+}
+
+std::unique_ptr<dnet_logger> make_logger(const std::string &file, int level, bool watched, bool tskv) {
+	auto formatter = tskv ? make_tskv_formatter() : make_string_formatter();
+
+	auto file_sink = [&] {
+		blackhole::builder <blackhole::sink::file_t> builder(file);
+		builder.flush_every(1);
+		if (watched)
+			builder.rotate_checking_stat();
+		return std::move(builder).build();
+	}();
+
+	auto async_sink = [&] {
+		blackhole::builder<blackhole::sink::asynchronous_t> builder(std::move(file_sink));
+		builder.factor(20);
+		builder.wait();
+		return std::move(builder).build();
+	}();
+
+	std::vector<std::unique_ptr<blackhole::handler_t>> handlers;
+	handlers.emplace_back(
+		blackhole::builder<blackhole::handler::blocking_t>()
+			.set(std::move(formatter))
+			.add(std::move(async_sink))
+			.build()
+	);
+
+	std::unique_ptr<blackhole::root_logger_t> logger(new blackhole::root_logger_t(std::move(handlers)));
+
+	logger->filter([level](const blackhole::record_t &record) {
+		return log_filter(record.severity(), level);
+	});
+
+	return std::move(logger);
+}
+
+class logger {
 public:
-	elliptics_file_logger(const std::string &file, int level, bool watched = false)
-	: m_logger(watched ? make_watched_logger(file, dnet_log_level(level))
-	                   : make_file_logger(file, dnet_log_level(level))) {}
+	logger(const std::string &file, int level, bool watched = false, bool tskv = false)
+	: m_logger(make_logger(file, dnet_log_level(level), watched, tskv)) {}
 
 	std::unique_ptr<dnet_logger> get_logger() {
 		return std::unique_ptr<dnet_logger>(new blackhole::wrapper_t(*m_logger, {}));
@@ -148,13 +215,20 @@ private:
 
 class elliptics_node_python : public node, public bp::wrapper<node> {
 public:
-	elliptics_node_python(elliptics_file_logger &logger)
-	: node(logger.get_logger()) {}
+	elliptics_node_python(logger &log)
+	: node(log.get_logger()) {}
 
-	elliptics_node_python(elliptics_file_logger &logger, dnet_config &cfg)
-	: node(logger.get_logger(), cfg) {}
+	elliptics_node_python(logger &log, logger &access_log)
+	: node(log.get_logger(), access_log.get_logger()) {}
 
-	elliptics_node_python(const node &n) : node(n) {}
+	elliptics_node_python(logger &log, dnet_config &cfg)
+	: node(log.get_logger(), cfg) {}
+
+	elliptics_node_python(logger &log, logger &access_log, dnet_config &cfg)
+	: node(log.get_logger(), access_log.get_logger(), cfg) {}
+
+	elliptics_node_python(const node &n)
+	: node(n) {}
 
 	~elliptics_node_python() {
 		py_allow_threads_scoped pythr;
@@ -242,8 +316,7 @@ std::string get_cmd_string(int cmd) {
 	return std::string(dnet_cmd_string(cmd));
 }
 
-BOOST_PYTHON_MODULE(core)
-{
+BOOST_PYTHON_MODULE(core) {
 	PyEval_InitThreads();
 	bp::docstring_options local_docstring_options(true, false, false);
 	bp::class_<error>(
@@ -272,10 +345,11 @@ BOOST_PYTHON_MODULE(core)
 	bp::register_exception_translator<error>(error_translator);
 	bp::register_exception_translator<std::ios_base::failure>(ios_base_failure_translator);
 
-	bp::class_<elliptics_file_logger, boost::noncopyable>(
+	bp::class_<logger, boost::noncopyable>(
 		"Logger", "File logger for using inside Elliptics client library",
-		bp::init<const std::string &, int, bp::optional<bool>>(bp::args("log_file", "log_level", "watched"),
-		    "__init__(self, filename, log_level)\n"
+		bp::init<const std::string &, int, bool, bool>(
+			bp::args("log_file", "log_level", "watched", "tskv"),
+		    "__init__(self, filename, log_level, tskv)\n"
 		    "    Initializes file logger by the specified file and level of verbosity\n\n"
 		    "    logger = elliptics.Logger(\"/dev/stderr\", elliptics.log_level.debug)"));
 
@@ -300,13 +374,11 @@ BOOST_PYTHON_MODULE(core)
 		               "IP priority")
 	;
 
-	bp::class_<elliptics_node_python>(
-	    "Node", "Node represents a connection with Elliptics.",
-	    bp::init<elliptics_file_logger &>(bp::args("logger")))
-		.def(bp::init<elliptics_file_logger &, dnet_config &>(bp::args("logger", "config"),
-		     "__init__(self, logger, config)\n"
-		     "    Initializes node by the logger and custom configuration\n\n"
-		     "node = elliptics.Node(logger, config)"))
+	bp::class_<elliptics_node_python, boost::noncopyable>("Node", "Node represents a connection with Elliptics",
+	                                                      bp::init<logger &>(bp::args("logger")))
+		.def(bp::init<logger &, dnet_config &>(bp::args("logger", "config")))
+		.def(bp::init<logger &, logger &>(bp::args("logger", "access_logger")))
+		.def(bp::init<logger &, logger &, dnet_config &>(bp::args("logger", "access_logger", "config")))
 		.def("add_remotes", &elliptics_node_python::add_remotes,
 		     (bp::arg("remotes")),
 		     "add_remotes(remotes)\n"
@@ -425,13 +497,11 @@ BOOST_PYTHON_MODULE(core)
 
 	bp::enum_<int>("log_level",
 	    "Different levels of verbosity elliptics logs:\n\n"
-	     "access\n  The level contains access messages with minimum verbosity and useful information \n"
 	     "error\n    The level contains critical errors that materially affect the work\n"
 	     "warning\n    The level contains reports of the previous level and warnings that may not affect the work\n"
 	     "info\n    The level contains reports of the previous level and messages about the time of the various operations\n"
 	     "notice\n    The level is considered to be the first level of debugging\n"
 	     "debug\n    The level includes all sort of information about errors and work")
-		.value("access", DNET_LOG_ACCESS)
 		.value("error", DNET_LOG_ERROR)
 		.value("warning", DNET_LOG_WARNING)
 		.value("info", DNET_LOG_INFO)
