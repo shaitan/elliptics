@@ -57,8 +57,10 @@ public:
 
 	ioremap::elliptics::data_pointer lookup(const dnet_cmd &cmd, int *errp);
 
-	int remove(const struct dnet_id &id);
-	int remove_new(const struct dnet_id &id, const ioremap::elliptics::dnet_remove_request &request);
+	int remove(const struct dnet_id &id, dnet_access_context *context = nullptr);
+	int remove_new(const struct dnet_id &id,
+	               const ioremap::elliptics::dnet_remove_request &request,
+	               dnet_access_context *context = nullptr);
 
 private:
 	void clear_queue(int *errp = nullptr);

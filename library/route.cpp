@@ -387,7 +387,7 @@ int dnet_route_list::send_all_ids_nolock(dnet_net_state *st, dnet_id *id,
 	dnet_convert_id_container(id_container);
 
 	st->__ids_sent = 1;
-	return dnet_send(st, buffer, total_size);
+	return dnet_send(st, buffer, total_size, /*context*/ nullptr);
 }
 
 void dnet_route_list::send_update_to_states(dnet_cmd *cmd, uint32_t backend_id)
@@ -399,7 +399,7 @@ void dnet_route_list::send_update_to_states(dnet_cmd *cmd, uint32_t backend_id)
 		if (!state->__ids_sent || state == m_node->st)
 			continue;
 
-		int err = dnet_send(state, cmd, cmd->size + sizeof(dnet_cmd));
+		int err = dnet_send(state, cmd, cmd->size + sizeof(dnet_cmd), /*context*/ nullptr);
 		if (err != 0) {
 			DNET_LOG_ERROR(m_node, "failed to send route-list update for backend: {} to state: {}, "
 			                       "reseting the state, err: {}",

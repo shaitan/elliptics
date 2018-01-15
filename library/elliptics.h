@@ -57,6 +57,7 @@ struct dnet_node;
 struct dnet_group;
 struct dnet_net_state;
 struct dnet_cmd_stats;
+struct dnet_access_context;
 
 struct dnet_io_req {
 	struct list_head	req_entry;
@@ -77,6 +78,8 @@ struct dnet_io_req {
 	struct timespec		queue_start_ts;
 	uint64_t		queue_time;
 	uint64_t		recv_time;
+
+	struct dnet_access_context *context;
 };
 
 #define ELLIPTICS_PROTOCOL_VERSION_0 2
@@ -640,11 +643,13 @@ static inline void dnet_counter_set(struct dnet_node *n, int counter, int err, i
 }
 
 struct dnet_trans;
+struct dnet_access_context;
 int __attribute__((weak)) dnet_process_cmd_raw(struct dnet_net_state *st,
                                                struct dnet_cmd *cmd,
                                                void *data,
                                                int recursive,
-                                               long queue_time);
+                                               long queue_time,
+                                               struct dnet_access_context *context);
 int dnet_process_recv(struct dnet_net_state *st, struct dnet_io_req *r);
 void dnet_trans_update_timestamp(struct dnet_trans *t);
 
@@ -653,7 +658,11 @@ int dnet_sendfile(struct dnet_net_state *st, int fd, uint64_t *offset, uint64_t 
 int dnet_send_request(struct dnet_net_state *st, struct dnet_io_req *r);
 
 
-int __attribute__((weak)) dnet_send_ack(struct dnet_net_state *st, struct dnet_cmd *cmd, int err, int recursive);
+int __attribute__((weak)) dnet_send_ack(struct dnet_net_state *st,
+                                        struct dnet_cmd *cmd,
+                                        int err,
+                                        int recursive,
+                                        struct dnet_access_context *context);
 void dnet_schedule_io(struct dnet_node *n, struct dnet_io_req *r);
 
 struct dnet_config;
@@ -749,9 +758,14 @@ int dnet_trans_forward(struct dnet_io_req *r, struct dnet_net_state *orig, struc
 int dnet_recv_list(struct dnet_node *n, struct dnet_net_state *st);
 
 ssize_t dnet_send_fd(struct dnet_net_state *st, void *header, uint64_t hsize,
-		int fd, uint64_t offset, uint64_t dsize, int on_exit);
-ssize_t dnet_send_data(struct dnet_net_state *st, void *header, uint64_t hsize, void *data, uint64_t dsize);
-ssize_t dnet_send(struct dnet_net_state *st, void *data, uint64_t size);
+		int fd, uint64_t offset, uint64_t dsize, int on_exit, struct dnet_access_context *context);
+ssize_t dnet_send_data(struct dnet_net_state *st,
+                       void *header,
+                       uint64_t hsize,
+                       void *data,
+                       uint64_t dsize,
+                       struct dnet_access_context *context);
+ssize_t dnet_send(struct dnet_net_state *st, void *data, uint64_t size, struct dnet_access_context *context);
 ssize_t dnet_send_nolock(struct dnet_net_state *st, void *data, uint64_t size);
 
 struct dnet_addr_storage

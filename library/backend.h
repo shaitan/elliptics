@@ -220,14 +220,16 @@ int dnet_backend_process_cmd_raw(struct dnet_backend *backend,
                                  struct dnet_net_state *st,
                                  struct dnet_cmd *cmd,
                                  void *data,
-                                 struct dnet_cmd_stats *cmd_stats);
+                                 struct dnet_cmd_stats *cmd_stats,
+                                 struct dnet_access_context *context);
 
 // handle command by @backend's cache
 int dnet_cmd_cache_io(struct dnet_backend *backend,
                       struct dnet_net_state *st,
                       struct dnet_cmd *cmd,
                       char *data,
-                      struct dnet_cmd_stats *cmd_stats);
+                      struct dnet_cmd_stats *cmd_stats,
+                      struct dnet_access_context *context);
 
 // initialize backends' subsystem, but do not enable any backend
 int dnet_backends_init(struct dnet_node *node);
@@ -249,7 +251,10 @@ int dnet_cmd_backend_control(struct dnet_net_state *st, struct dnet_cmd *cmd, vo
 // handle DNET_CMD_BACKEND_STATUS
 int dnet_cmd_backend_status(struct dnet_net_state *st, struct dnet_cmd *cmd);
 // handle DNET_CMD_BULK_READ_NEW
-int dnet_cmd_bulk_read_new(struct dnet_net_state *st, struct dnet_cmd *cmd, void *data);
+int dnet_cmd_bulk_read_new(struct dnet_net_state *st,
+                           struct dnet_cmd *cmd,
+                           void *data,
+                           struct dnet_access_context *context);
 
 // add to @queue_size and @threads_count all io pools' queues' sizes and number of threads.
 // This is used to suspend net threads if queues are heavily filled

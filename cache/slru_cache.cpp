@@ -78,8 +78,10 @@ slru_cache_t::~slru_cache_t() {
 	DNET_LOG_NOTICE(m_node, "cache: disable: backend: {}: destructed", m_backend.backend_id());
 }
 
-write_response_t slru_cache_t::write(dnet_net_state *st, dnet_cmd *cmd, const write_request &request)
-{
+write_response_t slru_cache_t::write(dnet_net_state *st,
+                                     dnet_cmd *cmd,
+                                     const write_request &request,
+                                     dnet_access_context *context) {
 	TIMER_SCOPE("write");
 
 	const auto id = request.id;
@@ -110,7 +112,12 @@ write_response_t slru_cache_t::write(dnet_net_state *st, dnet_cmd *cmd, const wr
 
 		dnet_cmd_stats stats;
 		const auto &callbacks = m_backend.callbacks();
-		int err = callbacks.command_handler(st, callbacks.command_private, cmd, request.request_data, &stats);
+		int err = callbacks.command_handler(st,
+		                                    callbacks.command_private,
+		                                    cmd,
+		                                    request.request_data,
+		                                    &stats,
+		                                    context);
 
 		it = populate_from_disk(guard, id, false, &err);
 
@@ -290,7 +297,9 @@ read_response_t slru_cache_t::read(const unsigned char *id, uint64_t ioflags) {
 	return read_response_t{err, cache_item()};
 }
 
-int slru_cache_t::remove(const dnet_cmd *cmd, ioremap::elliptics::dnet_remove_request &request) {
+int slru_cache_t::remove(const dnet_cmd *cmd,
+                         ioremap::elliptics::dnet_remove_request &request,
+                         dnet_access_context *context) {
 	TIMER_SCOPE("remove");
 
 	auto id = reinterpret_cast<const unsigned char *>(cmd->id.id);
@@ -360,11 +369,11 @@ int slru_cache_t::remove(const dnet_cmd *cmd, ioremap::elliptics::dnet_remove_re
 
 			TIMER_SCOPE("remove.local");
 
-			local_err = sess.remove_new(raw, request);
+			local_err = sess.remove_new(raw, request, context);
 		} else {
 			TIMER_SCOPE("remove.local");
 
-			local_err = sess.remove(raw);
+			local_err = sess.remove(raw, context);
 		}
 
 		if (local_err != -ENOENT)

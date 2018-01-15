@@ -140,16 +140,19 @@ cache_manager::~cache_manager() {
 
 write_response_t cache_manager::write(dnet_net_state *st,
                                       dnet_cmd *cmd,
-                                      const write_request &request) {
-	return m_caches[idx(request.id)]->write(st, cmd, request);
+                                      const write_request &request,
+                                      dnet_access_context *context) {
+	return m_caches[idx(request.id)]->write(st, cmd, request, context);
 }
 
 read_response_t cache_manager::read(const unsigned char *id, uint64_t ioflags) {
 	return m_caches[idx(id)]->read(id, ioflags);
 }
 
-int cache_manager::remove(const dnet_cmd *cmd, ioremap::elliptics::dnet_remove_request &request) {
-	return m_caches[idx(cmd->id.id)]->remove(cmd, request);
+int cache_manager::remove(const dnet_cmd *cmd,
+                          ioremap::elliptics::dnet_remove_request &request,
+                          dnet_access_context *context) {
+	return m_caches[idx(cmd->id.id)]->remove(cmd, request, context);
 }
 
 read_response_t cache_manager::lookup(const unsigned char *id) {
@@ -231,7 +234,10 @@ static int dnet_cmd_cache_io_write(struct cache_manager *cache,
 
 	auto data_p = ioremap::elliptics::data_pointer::from_raw(data, io->size);
 
-	std::tie(status, err, std::ignore) = cache->write(st, cmd, write_request(io->id, io, data_p));
+	std::tie(status, err, std::ignore) = cache->write(st,
+	                                                  cmd,
+	                                                  {io->id, io, data_p},
+	                                                  /*context*/ nullptr);
 
 	switch (status) {
 	case write_status::ERROR:
@@ -258,7 +264,8 @@ static int dnet_cmd_cache_io_write_new(struct cache_manager *cache,
                                        struct dnet_net_state *st,
                                        struct dnet_cmd *cmd,
                                        void *data,
-                                       struct dnet_cmd_stats *cmd_stats) {
+                                       struct dnet_cmd_stats *cmd_stats,
+                                       dnet_access_context *context) {
 	using namespace ioremap::elliptics;
 
 	auto data_p = data_pointer::from_raw(data, cmd->size);
@@ -282,7 +289,10 @@ static int dnet_cmd_cache_io_write_new(struct cache_manager *cache,
 	int err;
 	cache_item it;
 
-	std::tie(status, err, it) = cache->write(st, cmd, write_request(cmd->id.id, request, data, data_p, json));
+	std::tie(status, err, it) = cache->write(st,
+	                                         cmd,
+	                                         {cmd->id.id, request, data, data_p, json},
+	                                         context);
 
 	if (status == write_status::HANDLED_IN_CACHE) {
 		auto response = serialize(dnet_lookup_response{
@@ -304,7 +314,7 @@ static int dnet_cmd_cache_io_write_new(struct cache_manager *cache,
 		cmd_stats->handled_in_cache = 1;
 
 		cmd->flags &= ~DNET_FLAGS_NEED_ACK;
-		err = dnet_send_reply(st, cmd, response.data(), response.size(), 0);
+		err = dnet_send_reply(st, cmd, response.data(), response.size(), 0, context);
 	} else if (status == write_status::HANDLED_IN_BACKEND) {
 		cmd_stats->size = request.json_size + request.data_size;
 		cmd_stats->handled_in_cache = 0;
@@ -371,7 +381,8 @@ static int dnet_cmd_cache_io_read_new(struct cache_manager *cache,
                                       struct dnet_net_state *st,
                                       struct dnet_cmd *cmd,
                                       void *data,
-                                      struct dnet_cmd_stats *cmd_stats) {
+                                      struct dnet_cmd_stats *cmd_stats,
+                                      dnet_access_context *context) {
 	using namespace ioremap::elliptics;
 
 	auto request = [&data, &cmd] () {
@@ -445,7 +456,7 @@ static int dnet_cmd_cache_io_read_new(struct cache_manager *cache,
 	cmd_stats->handled_in_cache = 1;
 
 	cmd->flags &= ~DNET_FLAGS_NEED_ACK;
-	return dnet_send_data(st, response.data(), response.size(), data_p.data(), data_p.size());
+	return dnet_send_data(st, response.data(), response.size(), data_p.data(), data_p.size(), context);
 }
 
 static int dnet_cmd_cache_io_lookup(struct dnet_backend *backend,
@@ -480,13 +491,14 @@ static int dnet_cmd_cache_io_lookup(struct dnet_backend *backend,
 	auto info = data.skip<dnet_addr>().data<dnet_file_info>();
 	info->mtime = it.timestamp;
 
-	return dnet_send_reply(st, cmd, data.data(), data.size(), 0);
+	return dnet_send_reply(st, cmd, data.data(), data.size(), 0, /*context*/ nullptr);
 }
 
 static int dnet_cmd_cache_io_lookup_new(struct cache_manager *cache,
                                         struct dnet_net_state *st,
                                         struct dnet_cmd *cmd,
-                                        struct dnet_cmd_stats *cmd_stats) {
+                                        struct dnet_cmd_stats *cmd_stats,
+                                        dnet_access_context *context) {
 	using namespace ioremap::elliptics;
 	cmd_stats->handled_in_cache = 1;
 
@@ -514,15 +526,16 @@ static int dnet_cmd_cache_io_lookup_new(struct cache_manager *cache,
 	});
 
 	cmd->flags &= ~DNET_FLAGS_NEED_ACK;
-	return dnet_send_reply(st, cmd, response.data(), response.size(), 0);
+	return dnet_send_reply(st, cmd, response.data(), response.size(), 0, context);
 }
 
 static int dnet_cmd_cache_io_remove(struct cache_manager *cache,
 				    struct dnet_cmd *cmd,
 				    struct dnet_io_attr *io,
-				    struct dnet_cmd_stats *cmd_stats) {
+				    struct dnet_cmd_stats *cmd_stats,
+				    dnet_access_context *context) {
 	ioremap::elliptics::dnet_remove_request request{io->flags, {0, 0}};
-	const int err = cache->remove(cmd, request);
+	const int err = cache->remove(cmd, request, context);
 	if (!err) {
 		cmd_stats->handled_in_cache = 1;
 	}
@@ -532,7 +545,8 @@ static int dnet_cmd_cache_io_remove(struct cache_manager *cache,
 static int dnet_cmd_cache_io_remove_new(struct cache_manager *cache,
                                         struct dnet_cmd *cmd,
                                         void *data,
-                                        struct dnet_cmd_stats *cmd_stats) {
+                                        struct dnet_cmd_stats *cmd_stats,
+                                        dnet_access_context *context) {
 	using namespace ioremap::elliptics;
 
 	auto request = [&data, &cmd] () {
@@ -545,7 +559,7 @@ static int dnet_cmd_cache_io_remove_new(struct cache_manager *cache,
 		return -ENOTSUP;
 	}
 
-	const int err = cache->remove(cmd, request);
+	const int err = cache->remove(cmd, request, context);
 	if (!err) {
 		cmd_stats->handled_in_cache = 1;
 	}
@@ -556,7 +570,8 @@ int dnet_cmd_cache_io(struct dnet_backend *backend,
                       struct dnet_net_state *st,
                       struct dnet_cmd *cmd,
                       char *data,
-                      struct dnet_cmd_stats *cmd_stats) {
+                      struct dnet_cmd_stats *cmd_stats,
+                      struct dnet_access_context *context) {
 	if (cmd->flags & DNET_FLAGS_NOCACHE)
 		return -ENOTSUP;
 
@@ -590,15 +605,15 @@ int dnet_cmd_cache_io(struct dnet_backend *backend,
 		case DNET_CMD_LOOKUP:
 			return dnet_cmd_cache_io_lookup(backend, st, cmd, cmd_stats);
 		case DNET_CMD_DEL:
-			return dnet_cmd_cache_io_remove(cache, cmd, io, cmd_stats);
+			return dnet_cmd_cache_io_remove(cache, cmd, io, cmd_stats, context);
 		case DNET_CMD_WRITE_NEW:
-			return dnet_cmd_cache_io_write_new(cache, st, cmd, data, cmd_stats);
+			return dnet_cmd_cache_io_write_new(cache, st, cmd, data, cmd_stats, context);
 		case DNET_CMD_READ_NEW:
-			return dnet_cmd_cache_io_read_new(cache, st, cmd, data, cmd_stats);
+			return dnet_cmd_cache_io_read_new(cache, st, cmd, data, cmd_stats, context);
 		case DNET_CMD_LOOKUP_NEW:
-			return dnet_cmd_cache_io_lookup_new(cache, st, cmd, cmd_stats);
+			return dnet_cmd_cache_io_lookup_new(cache, st, cmd, cmd_stats, context);
 		case DNET_CMD_DEL_NEW:
-			return dnet_cmd_cache_io_remove_new(cache, cmd, data, cmd_stats);
+			return dnet_cmd_cache_io_remove_new(cache, cmd, data, cmd_stats, context);
 		default:
 			return -ENOTSUP;
 		}

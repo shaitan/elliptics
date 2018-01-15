@@ -35,6 +35,7 @@ set(ELLIPTICS_CLIENT_SRCS
     ../../library/trans.c
     ../../library/tests.c
     ../../library/common.cpp
+    ../../library/access_context.cpp
 # Added includes for better IDE's experience
     ../../include/elliptics/interface.h
     ../../include/elliptics/utils.hpp

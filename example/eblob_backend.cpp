@@ -34,6 +34,7 @@
 #include "library/backend.h"
 #include "library/request_queue.h"
 #include "library/logger.hpp"
+#include "library/access_context.h"
 
 #include "bindings/cpp/timer.hpp"
 
@@ -118,9 +119,15 @@ int dnet_read_json_header(int fd, uint64_t offset, uint64_t size, dnet_json_head
 	return 0;
 }
 
-int blob_file_info_new(eblob_backend_config *c, void *state, dnet_cmd *cmd) {
+int blob_file_info_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, struct dnet_access_context *context) {
 	using namespace ioremap::elliptics;
 	eblob_backend *b = c->eblob;
+
+	if (context) {
+		context->add({{"id", std::string(dnet_dump_id(&cmd->id))},
+		              {"backend_id", c->data.stat_id},
+		             });
+	}
 
 	eblob_key key;
 	memcpy(key.id, cmd->id.id, EBLOB_ID_SIZE);
@@ -211,7 +218,7 @@ int blob_file_info_new(eblob_backend_config *c, void *state, dnet_cmd *cmd) {
 		wc.size,
 	});
 
-	err = dnet_send_reply(state, cmd, response.data(), response.size(), 0);
+	err = dnet_send_reply(state, cmd, response.data(), response.size(), 0, context);
 	if (err) {
 		DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-file-info-new: dnet_send_reply: data: {:p}, size: {}: {} [{}]",
 		               dnet_dump_id(&cmd->id), response.data(), response.size(), strerror(-err), err);
@@ -276,7 +283,7 @@ static int blob_del_new_cas(eblob_backend_config *c, eblob_backend *b, const dne
 	return 0;
 }
 
-int blob_del_new(eblob_backend_config *c, dnet_cmd *cmd, void *data) {
+int blob_del_new(eblob_backend_config *c, dnet_cmd *cmd, void *data, struct dnet_access_context *context) {
 	using namespace ioremap::elliptics;
 	eblob_backend *b = c->eblob;
 
@@ -285,6 +292,16 @@ int blob_del_new(eblob_backend_config *c, dnet_cmd *cmd, void *data) {
 		deserialize(data_pointer::from_raw(data, cmd->size), request);
 		return request;
 	} ();
+
+	if (context) {
+		context->add({{"id", std::string(dnet_dump_id(&cmd->id))},
+		              {"backend_id", c->data.stat_id},
+		              {"ioflags", std::string(dnet_flags_dump_ioflags(request.ioflags))},
+		             });
+		if (request.ioflags & DNET_IO_FLAGS_CAS_TIMESTAMP) {
+			context->add({"ts-cas", std::string(dnet_print_time(&request.timestamp))});
+		}
+	}
 
 	DNET_LOG_INFO(c->blog, "{}: EBLOB: {}: REMOVE_NEW: start: ioflags: {}",
 		      dnet_dump_id(&cmd->id), __func__, dnet_flags_dump_ioflags(request.ioflags));
@@ -312,16 +329,16 @@ static int blob_read_new_impl(eblob_backend_config *c,
                               dnet_cmd *cmd,
                               dnet_cmd_stats *cmd_stats,
                               const ioremap::elliptics::dnet_read_request &request,
-                              bool last_read) {
+                              bool last_read,
+                              dnet_access_context *context) {
 	using namespace ioremap::elliptics;
 
 	eblob_backend *b = c->eblob;
 
 	DNET_LOG_NOTICE(c->blog, "{}: EBLOB: blob-read-new: {}: start: ioflags: {}, read_flags: {}, "
 	                         "data_offset: {}, data_size: {}",
-	                         dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd),
-	                         dnet_flags_dump_ioflags(request.ioflags), request.read_flags,
-	                         request.data_offset, request.data_size);
+	                dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), dnet_flags_dump_ioflags(request.ioflags),
+	                dnet_dump_read_flags(request.read_flags), request.data_offset, request.data_size);
 
 	eblob_key key;
 	memcpy(key.id, cmd->id.id, EBLOB_ID_SIZE);
@@ -342,10 +359,9 @@ static int blob_read_new_impl(eblob_backend_config *c,
 			return 0;
 		wc.offset = offset;
 		wc.size = size;
-		const auto start = std::chrono::high_resolution_clock::now();
+		util::steady_timer timer;
 		const auto ret = eblob_verify_checksum(b, &key, &wc);
-		const auto end = std::chrono::high_resolution_clock::now();
-		csum_time = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+		csum_time = timer.get_us();
 		return ret;
 	};
 
@@ -428,9 +444,8 @@ static int blob_read_new_impl(eblob_backend_config *c,
 		if (err) {
 			DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-read-new: {}: failed to verify checksum for "
 			                        "json: fd: {}, offset: {}, size: {}: {} [{}]",
-			                        dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd),
-			                        wc.data_fd, wc.offset, wc.size,
-			                        strerror(-err), err);
+			               dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), wc.data_fd, wc.offset,
+			               wc.size, strerror(-err), err);
 			return err;
 		}
 
@@ -439,9 +454,8 @@ static int blob_read_new_impl(eblob_backend_config *c,
 		if (err) {
 			DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-read-new: {}: failed to read json: fd: {}, "
 			                        "offset: {}, size: {}: {} [{}]",
-			                        dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd),
-			                        wc.data_fd, wc.data_offset, json.size(),
-			                        strerror(-err), err);
+			               dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), wc.data_fd, wc.data_offset,
+			               json.size(), strerror(-err), err);
 			return err;
 		}
 	}
@@ -474,9 +488,8 @@ static int blob_read_new_impl(eblob_backend_config *c,
 		if (err) {
 			DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-read-new: {}: failed to verify checksum for "
 			                        "data: offset: {}, size: {}: {} [{}]",
-			                        dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd),
-			                        request.data_offset, request.data_size,
-			                        strerror(-err), err);
+			               dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), request.data_offset,
+			               request.data_size, strerror(-err), err);
 			return err;
 		}
 	}
@@ -510,12 +523,21 @@ static int blob_read_new_impl(eblob_backend_config *c,
 
 	cmd->flags &= ~DNET_FLAGS_NEED_ACK;
 	err = dnet_send_fd((dnet_net_state *)state, response.data(), response.size(),
-	                   wc.data_fd, data_offset, data_size, 0);
+	                   wc.data_fd, data_offset, data_size, 0, context);
 
 	if (err) {
 		DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-read-new: dnet_send_reply: data {:p}, size: {}: {} [{}]",
 		               dnet_dump_id(&cmd->id), response.data(), response.size(), strerror(-err), err);
 		return err;
+	}
+
+	if (context) {
+		context->add({{"response_json_size", json.size()},
+		              {"response_data_size", data_size},
+		              {"header_csum_time", headers_csum_time},
+		              {"json_csum_time", json_csum_time},
+		              {"data_csum_time", data_csum_time},
+		            });
 	}
 
 	DNET_LOG_INFO(c->blog, "{}: EBLOB: blob-read-new: json_size: {}, data_size: {}, headers_csum_time: {} usecs, "
@@ -526,8 +548,12 @@ static int blob_read_new_impl(eblob_backend_config *c,
 	return 0;
 }
 
-int blob_read_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *data,
-                  dnet_cmd_stats *cmd_stats) {
+int blob_read_new(eblob_backend_config *c,
+                  void *state,
+                  dnet_cmd *cmd,
+                  void *data,
+                  dnet_cmd_stats *cmd_stats,
+                  dnet_access_context *context) {
 	using namespace ioremap::elliptics;
 
 	const auto request = [&data, &cmd] () {
@@ -536,11 +562,24 @@ int blob_read_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *dat
 		return request;
 	} ();
 
-	return blob_read_new_impl(c, state, cmd, cmd_stats, request, true);
+	if (context) {
+		context->add({{"id", std::string(dnet_dump_id(&cmd->id))},
+		              {"backend_id", c->data.stat_id},
+		              {"read_flags", std::string(dnet_dump_read_flags(request.read_flags))},
+		              {"ioflags", std::string(dnet_flags_dump_ioflags(request.ioflags))},
+		            });
+		if (request.read_flags & DNET_READ_FLAGS_DATA) {
+			context->add({{"request_data_offset", request.data_offset},
+			              {"request_data_size", request.data_size},
+			             });
+		}
+	}
+
+	return blob_read_new_impl(c, state, cmd, cmd_stats, request, true, context);
 }
 
 int blob_write_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *data,
-                   dnet_cmd_stats *cmd_stats) {
+                   dnet_cmd_stats *cmd_stats, struct dnet_access_context *context) {
 	using namespace ioremap::elliptics;
 
 	struct eblob_backend *b = c->eblob;
@@ -553,6 +592,20 @@ int blob_write_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *da
 		data_p = data_p.skip(offset);
 		return request;
 	} ();
+
+	if (context) {
+		context->add({{"id", std::string(dnet_dump_id(&cmd->id))},
+		              {"backend_id", c->data.stat_id},
+		              {"ioflags", std::string(dnet_flags_dump_ioflags(request.ioflags))},
+		              {"data_offset", request.data_offset},
+		              {"data_size", request.data_size},
+		              {"data_commit_size", request.data_commit_size},
+		              {"data_capacity", request.data_capacity},
+		              {"json_size", request.json_size},
+		              {"json_capacity", request.json_capacity},
+		              {"user_flags", to_hex_string(request.user_flags)},
+		             });
+	}
 
 	cmd_stats->size = request.json_size + request.data_size;
 
@@ -795,7 +848,7 @@ int blob_write_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *da
 		wc.size ? (wc.size - jhdr.capacity) : 0,
 	});
 
-	err = dnet_send_reply(state, cmd, response.data(), response.size(), 0);
+	err = dnet_send_reply(state, cmd, response.data(), response.size(), 0, context);
 	if (err) {
 		DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-write-new: dnet_send_reply: data: {:p}, size: {}: {} [{}]",
 		               dnet_dump_id(&cmd->id), (void *)response.data(), response.size(), strerror(-err), err);
@@ -1123,7 +1176,8 @@ static iterator_callback make_iterator_server_send_callback(eblob_backend_config
 					                "EBLOB: Interrupting server_send: peer has been disconnected");
 				        } else {
 						auto response = serialize_response(error.code());
-						dnet_send_reply(st, cmd, response.data(), response.size(), 1);
+						dnet_send_reply(st, cmd, response.data(), response.size(), 1,
+						                /*context*/ nullptr);
 					}
 
 					monitor.remove_bytes(info->jhdr.size + info->data_size);
@@ -1173,7 +1227,8 @@ static iterator_callback make_iterator_server_send_callback(eblob_backend_config
 
 					auto response = serialize_response(err);
 
-					return dnet_send_reply(st, cmd, response.data(), response.size(), 1);
+					return dnet_send_reply(st, cmd, response.data(), response.size(), 1,
+					                       /*context*/ nullptr);
 				}
 
 				data_offset += data_size;
@@ -1424,7 +1479,11 @@ static int blob_iterator_start(struct eblob_backend_config *c, dnet_net_state *s
 	return eblob_iterate(c->eblob, &control);
 }
 
-int blob_iterate(struct eblob_backend_config *c, void *state, struct dnet_cmd *cmd, void *data) {
+int blob_iterate(struct eblob_backend_config *c,
+                 void *state,
+                 struct dnet_cmd *cmd,
+                 void *data,
+                 dnet_access_context *context) {
 	using namespace ioremap::elliptics;
 	/*
 	 * Sanity
@@ -1435,6 +1494,22 @@ int blob_iterate(struct eblob_backend_config *c, void *state, struct dnet_cmd *c
 
 	ioremap::elliptics::dnet_iterator_request request;
 	deserialize(data_pointer::from_raw(data, cmd->size), request);
+
+	if (context) {
+		auto groups = [&] {
+			std::ostringstream groups;
+			groups << request.groups;
+			return groups.str();
+		}();
+
+		context->add({{"iterator_id", request.iterator_id},
+		              {"action", request.action},
+		              {"type", request.type},
+		              {"flags", to_hex_string(request.flags)},
+		              {"key_ranges", request.key_ranges.size()},
+		              {"groups", groups},
+		             });
+	}
 
 	DNET_LOG_INFO(c->blog, "EBLOB: {} started: id: {}, flags: {}, action: {}, type: {}, key_ranges: {}, groups: {}",
 	              __func__, request.iterator_id, request.flags, request.action, request.type,
@@ -1467,7 +1542,11 @@ int blob_iterate(struct eblob_backend_config *c, void *state, struct dnet_cmd *c
 	return err;
 }
 
-int blob_send_new(struct eblob_backend_config *c, void *state, struct dnet_cmd *cmd, void *data) {
+int blob_send_new(struct eblob_backend_config *c,
+                  void *state,
+                  struct dnet_cmd *cmd,
+                  void *data,
+                  dnet_access_context *context) {
 	using namespace ioremap::elliptics;
 
 	if (c == nullptr || state == nullptr || cmd == nullptr || data == nullptr)
@@ -1475,6 +1554,21 @@ int blob_send_new(struct eblob_backend_config *c, void *state, struct dnet_cmd *
 
 	ioremap::elliptics::dnet_server_send_request request;
 	deserialize(data_pointer::from_raw(data, cmd->size), request);
+
+	auto groups = [&] {
+		std::ostringstream groups;
+		groups << request.groups;
+		return groups.str();
+	}();
+
+	if (context) {
+		context->add({{"keys", request.keys.size()},
+		              {"backend_id", c->data.stat_id},
+		              {"chunk_size", request.chunk_size},
+		              {"flags", to_hex_string(request.flags)},
+		              {"groups", groups},
+		             });
+	}
 
 	DNET_LOG_INFO(c->blog, "EBLOB: {} started: ids_num: {}, groups_num: {}", __func__, request.keys.size(),
 	              request.groups.size());
@@ -1510,7 +1604,7 @@ int blob_send_new(struct eblob_backend_config *c, void *state, struct dnet_cmd *
 		response.iterated_keys = ++counter;
 
 		auto response_data = serialize(response);
-		return dnet_send_reply(state, cmd, response_data.data(), response_data.size(), 1);
+		return dnet_send_reply(state, cmd, response_data.data(), response_data.size(), 1, /*context*/ nullptr);
 	};
 
 	congestion_control_monitor monitor;
@@ -1642,15 +1736,30 @@ int blob_send_new(struct eblob_backend_config *c, void *state, struct dnet_cmd *
 	return err;
 }
 
-int blob_bulk_read_new(struct eblob_backend_config *c, void *state, struct dnet_cmd *cmd, void *data,
-		       struct dnet_cmd_stats *cmd_stats) {
+int blob_bulk_read_new(struct eblob_backend_config *c,
+                       void *state,
+                       struct dnet_cmd *cmd,
+                       void *data,
+		       struct dnet_cmd_stats *cmd_stats,
+		       dnet_access_context *context) {
 	using namespace ioremap::elliptics;
 
 	if (c == nullptr || state == nullptr || cmd == nullptr || data == nullptr)
 		return -EINVAL;
 
+	dnet_bulk_read_request bulk_request;
+	deserialize(data_pointer::from_raw(data, cmd->size), bulk_request);
+
 	auto st = reinterpret_cast<dnet_net_state *>(state);
 	const int backend_id = c->data.stat_id;
+
+	if (context) {
+		context->add({{"keys", bulk_request.keys.size()},
+		              {"ioflags", std::string(dnet_flags_dump_ioflags(bulk_request.ioflags))},
+		              {"read_flags", std::string(dnet_dump_read_flags(bulk_request.read_flags))},
+		              {"backend_id", backend_id},
+		             });
+	}
 
 	auto backend = st->n->io->backends_manager->get(backend_id);
 	if (!backend)
@@ -1662,10 +1771,6 @@ int blob_bulk_read_new(struct eblob_backend_config *c, void *state, struct dnet_
 			       __func__, backend_id);
 		return -EINVAL;
 	}
-
-
-	dnet_bulk_read_request bulk_request;
-	deserialize(data_pointer::from_raw(data, cmd->size), bulk_request);
 
 	int err = 0;
 	dnet_read_request request;
@@ -1689,11 +1794,18 @@ int blob_bulk_read_new(struct eblob_backend_config *c, void *state, struct dnet_
 		const bool last_read = i >= (num_keys - 1);
 		{
 			dnet_oplock_guard oplock_guard{pool, &cmd_copy.id};
-			err = blob_read_new_impl(c, state, &cmd_copy, &read_stats, request, last_read);
+			// bulk_read doesn't provide its context to read to decrease verbosity
+			err = blob_read_new_impl(c,
+			                         state,
+			                         &cmd_copy,
+			                         &read_stats,
+			                         request,
+			                         last_read,
+			                         /*context*/ nullptr);
 		}
 		if (err) {
 			cmd_copy.status = err;
-			dnet_send_reply(st, &cmd_copy, nullptr, 0, last_read ? 0 : 1);
+			dnet_send_reply(st, &cmd_copy, nullptr, 0, last_read ? 0 : 1, /*context*/ nullptr);
 		}
 		cmd_stats->size += read_stats.size;
 

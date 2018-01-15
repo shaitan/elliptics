@@ -84,18 +84,20 @@ static void parse_logger(config_data *data, const kora::config_t &logger) {
 		else
 			data->access_holder.reset(nullptr);
 
-		auto wrap_logger = [&] (std::unique_ptr<blackhole::root_logger_t> &logger) {
+		auto wrap_logger = [&] (std::unique_ptr<blackhole::root_logger_t> &logger, bool access) -> wrapper_t * {
 			std::unique_ptr<dnet_logger> base_wrapper{
 				new blackhole::wrapper_t(*logger, {{"source", "elliptics"}})};
 
-			std::unique_ptr<dnet_logger> trace_wrapper{new trace_wrapper_t{std::move(base_wrapper)}};
-			std::unique_ptr<dnet_logger> pool_wrapper{new pool_wrapper_t{std::move(trace_wrapper)}};
+			std::unique_ptr<wrapper_t> trace_wrapper{new trace_wrapper_t{std::move(base_wrapper)}};
+			if (access)
+				return trace_wrapper.release();
+			std::unique_ptr<wrapper_t> pool_wrapper{new pool_wrapper_t{std::move(trace_wrapper)}};
 			return new backend_wrapper_t{std::move(pool_wrapper)};
 		};
 
-		data->logger.reset(wrap_logger(data->root_holder));
+		data->logger.reset(wrap_logger(data->root_holder, false));
 		if (data->access_holder)
-			data->access_logger.reset(wrap_logger(data->access_holder));
+			data->access_logger.reset(wrap_logger(data->access_holder, true));
 		else
 			data->access_logger.reset(nullptr);
 

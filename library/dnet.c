@@ -41,6 +41,7 @@
 #include "monitor/measure_points.h"
 
 #include "logger.hpp"
+#include "access_context.h"
 
 static int dnet_cmd_route_list(struct dnet_net_state *orig, struct dnet_cmd *cmd) {
 	struct dnet_node *n = orig->n;
@@ -113,7 +114,7 @@ static int dnet_cmd_route_list(struct dnet_net_state *orig, struct dnet_cmd *cmd
 	acmd->cmd.cmd = DNET_CMD_ROUTE_LIST;
 
 	dnet_convert_addr_cmd(acmd);
-	err = dnet_send(orig, acmd, total_size);
+	err = dnet_send(orig, acmd, total_size, /*context*/ NULL);
 
 	if (err == 0) {
 		cmd->flags &= ~DNET_FLAGS_NEED_ACK;
@@ -167,7 +168,7 @@ static int dnet_cmd_status(struct dnet_net_state *orig, struct dnet_cmd *cmd __u
 
 	dnet_convert_node_status(st);
 
-	return dnet_send_reply(orig, cmd, st, sizeof(struct dnet_node_status), 1);
+	return dnet_send_reply(orig, cmd, st, sizeof(struct dnet_node_status), 1, /*context*/ NULL);
 }
 
 static int dnet_cmd_auth(struct dnet_net_state *orig, struct dnet_cmd *cmd __unused, void *data)
@@ -193,8 +194,11 @@ err_out_exit:
 	return err;
 }
 
-int dnet_send_ack(struct dnet_net_state *st, struct dnet_cmd *cmd, int err, int recursive)
-{
+int dnet_send_ack(struct dnet_net_state *st,
+                  struct dnet_cmd *cmd,
+                  int err,
+                  int recursive,
+                  struct dnet_access_context *context) {
 	if (st && cmd && (cmd->flags & DNET_FLAGS_NEED_ACK)) {
 		struct dnet_node *n = st->n;
 		unsigned long long tid = cmd->trans;
@@ -215,14 +219,18 @@ int dnet_send_ack(struct dnet_net_state *st, struct dnet_cmd *cmd, int err, int 
 				dnet_addr_string(&st->addr), dnet_flags_dump_cflags(ack.flags), err);
 
 		dnet_convert_cmd(&ack);
-		err = dnet_send(st, &ack, sizeof(struct dnet_cmd));
+		err = dnet_send(st, &ack, sizeof(struct dnet_cmd), context);
 	}
 
 	return err;
 }
 
-int dnet_send_reply(void *state, struct dnet_cmd *cmd, const void *odata, unsigned int size, int more)
-{
+int dnet_send_reply(void *state,
+                    struct dnet_cmd *cmd,
+                    const void *odata,
+                    unsigned int size,
+                    int more,
+                    struct dnet_access_context *context) {
 	struct dnet_net_state *st = state;
 	struct dnet_cmd *c;
 	void *data;
@@ -252,7 +260,7 @@ int dnet_send_reply(void *state, struct dnet_cmd *cmd, const void *odata, unsign
 
 	dnet_convert_cmd(c);
 
-	err = dnet_send(st, c, sizeof(struct dnet_cmd) + size);
+	err = dnet_send(st, c, sizeof(struct dnet_cmd) + size, context);
 	free(c);
 
 	return err;
@@ -296,7 +304,7 @@ int dnet_send_reply_threshold(void *state, struct dnet_cmd *cmd,
 		return 0;
 
 	/* Send reply */
-	err = dnet_send_reply(state, cmd, odata, size, more);
+	err = dnet_send_reply(state, cmd, odata, size, more, /*context*/ NULL);
 	if (err == 0) {
 		atomic_inc(&st->send_queue_size);
 		dnet_queue_wait_threshold(st);
@@ -311,7 +319,7 @@ int dnet_send_fd_threshold(struct dnet_net_state *st, void *header, uint64_t hsi
 	if (st == st->n->st)
 		return 0;
 
-	err = dnet_send_fd(st, header, hsize, fd, offset, dsize, 0);
+	err = dnet_send_fd(st, header, hsize, fd, offset, dsize, 0, /*context*/ NULL);
 	if (err == 0) {
 		atomic_inc(&st->send_queue_size);
 		dnet_queue_wait_threshold(st);
@@ -503,7 +511,7 @@ err_out_send:
 
 			dnet_convert_iterator_response(re);
 
-			err = dnet_send_reply(send->state, &send->cmd, wp->data, wp->dsize, 1);
+			err = dnet_send_reply(send->state, &send->cmd, wp->data, wp->dsize, 1, /*context*/ NULL);
 			if (err && !send->write_error)
 				send->write_error = err;
 
@@ -592,7 +600,7 @@ static int dnet_server_send_cleanup(struct dnet_server_send_ctl *ctl)
 	 * thread waiting for all requests to complete (like in iterator command)
 	 */
 	if (ctl->cmd.flags & DNET_FLAGS_NEED_ACK) {
-		dnet_send_ack(ctl->state, &ctl->cmd, err, 0);
+		dnet_send_ack(ctl->state, &ctl->cmd, err, 0, /*context*/ NULL);
 	}
 
 	pthread_cond_destroy(&ctl->write_wait);
@@ -829,7 +837,7 @@ static int dnet_iterator_callback_server_send(void *priv, void *data, uint64_t d
 	 * since this will commit those keys on remote nodes, while they are uncommitted here locally.
 	 */
 	if (re->flags & DNET_RECORD_FLAGS_UNCOMMITTED) {
-		err = dnet_send_reply(send->state, &send->cmd, data, dsize, 1);
+		err = dnet_send_reply(send->state, &send->cmd, data, dsize, 1, /*context*/ NULL);
 		if (err && !send->write_error)
 			send->write_error = err;
 		return err;
@@ -1304,7 +1312,7 @@ static int dnet_cmd_bulk_read(struct dnet_backend *backend,
 			dnet_oplock(pool, &lock_id);
 		}
 
-		ret = dnet_process_cmd_raw(st, &read_cmd, &ios[i], 1, cmd_stats->queue_time);
+		ret = dnet_process_cmd_raw(st, &read_cmd, &ios[i], 1, cmd_stats->queue_time, /*context*/ NULL);
 		dnet_log(st->n, DNET_LOG_NOTICE, "%s: processing BULK_READ.READ for %d/%d command, err: %d",
 			dnet_dump_id(&cmd->id), (int) i, (int) count, ret);
 
@@ -1445,7 +1453,8 @@ static int dnet_cmd_notify(struct dnet_net_state *st, struct dnet_cmd *cmd) {
 static int dnet_process_cmd_without_backend_raw(struct dnet_net_state *st,
                                                 struct dnet_cmd *cmd,
                                                 void *data,
-                                                struct dnet_cmd_stats *cmd_stats) {
+                                                struct dnet_cmd_stats *cmd_stats,
+                                                struct dnet_access_context *context) {
 	switch (cmd->cmd) {
 	case DNET_CMD_AUTH:
 		return dnet_cmd_auth(st, cmd, data);
@@ -1466,7 +1475,7 @@ static int dnet_process_cmd_without_backend_raw(struct dnet_net_state *st,
 	case DNET_CMD_NOTIFY:
 		return dnet_cmd_notify(st, cmd);
 	case DNET_CMD_BULK_READ_NEW:
-		return dnet_cmd_bulk_read_new(st, cmd, data);
+		return dnet_cmd_bulk_read_new(st, cmd, data, context);
 		break;
 	default:
 		return -ENOTSUP;
@@ -1505,13 +1514,14 @@ static int dnet_cmd_send(struct dnet_backend *backend,
 	}
 
 	dnet_convert_server_send_request(req);
-	return dnet_backend_process_cmd_raw(backend, st, cmd, data, cmd_stats);
+	return dnet_backend_process_cmd_raw(backend, st, cmd, data, cmd_stats, /*context*/ NULL);
 }
 
 static int dnet_process_cmd_with_backend_raw(struct dnet_net_state *st,
                                              struct dnet_cmd *cmd,
                                              void *data,
-                                             struct dnet_cmd_stats *cmd_stats) {
+                                             struct dnet_cmd_stats *cmd_stats,
+                                             struct dnet_access_context *context) {
 	int err = 0;
 	struct dnet_node *n = st->n;
 	struct dnet_io_attr *io = NULL;
@@ -1537,7 +1547,7 @@ static int dnet_process_cmd_with_backend_raw(struct dnet_net_state *st,
 		err = dnet_cmd_send(backend, st, cmd, data, cmd_stats);
 		break;
 	case DNET_CMD_BULK_READ:
-		err = dnet_backend_process_cmd_raw(backend, st, cmd, data, cmd_stats);
+		err = dnet_backend_process_cmd_raw(backend, st, cmd, data, cmd_stats, context);
 		if (err == -ENOTSUP)
 			err = dnet_cmd_bulk_read(backend, st, cmd, data, cmd_stats);
 		break;
@@ -1564,7 +1574,7 @@ static int dnet_process_cmd_with_backend_raw(struct dnet_net_state *st,
 			io->flags |= DNET_IO_FLAGS_NOCSUM;
 
 		if (!(io->flags & DNET_IO_FLAGS_NOCACHE)) {
-			err = dnet_cmd_cache_io(backend, st, cmd, data, cmd_stats);
+			err = dnet_cmd_cache_io(backend, st, cmd, data, cmd_stats, context);
 			if (err != -ENOTSUP)
 				break;
 		}
@@ -1596,7 +1606,7 @@ static int dnet_process_cmd_with_backend_raw(struct dnet_net_state *st,
 
 		if (!(cmd->flags & DNET_FLAGS_NOCACHE) &&
 		    ((cmd->cmd == DNET_CMD_LOOKUP) || (cmd->cmd == DNET_CMD_LOOKUP_NEW))) {
-			err = dnet_cmd_cache_io(backend, st, cmd, data, cmd_stats);
+			err = dnet_cmd_cache_io(backend, st, cmd, data, cmd_stats, context);
 			if (err != -ENOTSUP && err != -ENOENT)
 				break;
 		}
@@ -1604,7 +1614,7 @@ static int dnet_process_cmd_with_backend_raw(struct dnet_net_state *st,
 		if ((cmd->cmd == DNET_CMD_WRITE_NEW) ||
 		    (cmd->cmd == DNET_CMD_READ_NEW) ||
 		    (cmd->cmd == DNET_CMD_DEL_NEW)) {
-			err = dnet_cmd_cache_io(backend, st, cmd, data, cmd_stats);
+			err = dnet_cmd_cache_io(backend, st, cmd, data, cmd_stats, context);
 			if (err != -ENOTSUP)
 				break;
 		}
@@ -1622,7 +1632,7 @@ static int dnet_process_cmd_with_backend_raw(struct dnet_net_state *st,
 			cmd->flags &= ~DNET_FLAGS_NEED_ACK;
 		}
 
-		err = dnet_backend_process_cmd_raw(backend, st, cmd, data, cmd_stats);
+		err = dnet_backend_process_cmd_raw(backend, st, cmd, data, cmd_stats, context);
 		if (!err && (cmd->cmd == DNET_CMD_WRITE))
 			dnet_update_notify(st, cmd, data);
 		break;
@@ -1657,8 +1667,8 @@ int dnet_process_cmd_raw(struct dnet_net_state *st,
                          struct dnet_cmd *cmd,
                          void *data,
                          int recursive,
-                         const long queue_time)
-{
+                         const long queue_time,
+                         struct dnet_access_context *context) {
 	int err = 0;
 	struct dnet_node *n = st->n;
 	const unsigned long long tid = cmd->trans;
@@ -1675,9 +1685,9 @@ int dnet_process_cmd_raw(struct dnet_net_state *st,
 
 	clock_gettime(CLOCK_MONOTONIC_RAW, &start);
 
-	err = dnet_process_cmd_without_backend_raw(st, cmd, data, &cmd_stats);
+	err = dnet_process_cmd_without_backend_raw(st, cmd, data, &cmd_stats, context);
 	if (err == -ENOTSUP)
-		err = dnet_process_cmd_with_backend_raw(st, cmd, data, &cmd_stats);
+		err = dnet_process_cmd_with_backend_raw(st, cmd, data, &cmd_stats, context);
 
 	clock_gettime(CLOCK_MONOTONIC_RAW, &end);
 	cmd_stats.handle_time = DIFF_TIMESPEC(start, end);
@@ -1726,6 +1736,8 @@ int dnet_process_cmd_raw(struct dnet_net_state *st,
 				tid, dnet_flags_dump_cflags(cmd->flags), cmd_stats.handle_time, queue_time, err);
 	}
 
+	dnet_access_context_add_int(context, "status", err);
+
 	// we must provide real error from the backend into statistics
 	dnet_monitor_stats_update(n, cmd, err, cmd_stats.handled_in_cache, cmd_stats.size, cmd_stats.handle_time);
 
@@ -1733,14 +1745,13 @@ int dnet_process_cmd_raw(struct dnet_net_state *st,
 	("io.cmd%s.%d.%s.%d", (recursive ? "_recursive" : ""), cmd->backend_id, dnet_cmd_string(cmd->cmd), err), 1);
 	HANDY_COUNTER_INCREMENT(("io.cmd%s.%s.%d", (recursive ? "_recursive" : ""), dnet_cmd_string(cmd->cmd), err), 1);
 
-	err = dnet_send_ack(st, cmd, err, recursive);
+	err = dnet_send_ack(st, cmd, err, recursive, context);
 
 	dnet_stat_inc(st->stat, cmd->cmd, err);
 	if (st->__join_state == DNET_JOIN)
 		dnet_counter_inc(n, cmd->cmd, err);
 	else
 		dnet_counter_inc(n, cmd->cmd + __DNET_CMD_MAX, err);
-
 	return err;
 }
 
@@ -1807,9 +1818,9 @@ int dnet_send_read_data(void *state, struct dnet_cmd *cmd, struct dnet_io_attr *
 	clock_gettime(CLOCK_MONOTONIC_RAW, &csum_ts);
 
 	if (data)
-		err = dnet_send_data(st, c, hsize, data, rio->size);
+		err = dnet_send_data(st, c, hsize, data, rio->size, /*context*/ NULL);
 	else
-		err = dnet_send_fd(st, c, hsize, fd, offset, rio->size, on_exit);
+		err = dnet_send_fd(st, c, hsize, fd, offset, rio->size, on_exit, /*context*/ NULL);
 
 	clock_gettime(CLOCK_MONOTONIC_RAW, &send_ts);
 
@@ -1900,7 +1911,7 @@ int dnet_send_file_info(void *state, struct dnet_cmd *cmd, int fd, uint64_t offs
 
 	dnet_convert_file_info(info);
 
-	err = dnet_send_reply(state, cmd, addr, sizeof(struct dnet_addr) + sizeof(struct dnet_file_info) + flen, 0);
+	err = dnet_send_reply(state, cmd, addr, sizeof(struct dnet_addr) + sizeof(struct dnet_file_info) + flen, 0, /*context*/ NULL);
 
 err_out_free:
 	free(addr);
@@ -1960,7 +1971,7 @@ int dnet_send_file_info_ts(void *state, struct dnet_cmd *cmd, int fd, uint64_t o
 				info->size, info->checksum, sizeof(info->checksum));
 
 	dnet_convert_file_info(info);
-	err = dnet_send_reply(state, cmd, a, a_size, 0);
+	err = dnet_send_reply(state, cmd, a, a_size, 0, /*context*/ NULL);
 	free(a);
 
 err_out_free_file:
@@ -1999,7 +2010,7 @@ int dnet_send_file_info_ts_without_fd(void *state, struct dnet_cmd *cmd, const v
 		info->mtime = *timestamp;
 
 	dnet_convert_file_info(info);
-	return dnet_send_reply(state, cmd, a, a_size, 0);
+	return dnet_send_reply(state, cmd, a, a_size, 0, /*context*/ NULL);
 }
 
 int dnet_checksum_data(struct dnet_node *n, const void *data, uint64_t size, unsigned char *csum, int csize)

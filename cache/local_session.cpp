@@ -96,7 +96,7 @@ int local_session::read(const dnet_id &id,
 	cmd.size = packet.size();
 	cmd.backend_id = m_backend.backend_id();
 
-	const int err = dnet_process_cmd_raw(m_state, &cmd, packet.data(), 0, 0);
+	const int err = dnet_process_cmd_raw(m_state, &cmd, packet.data(), 0, 0, /*context*/ nullptr);
 	if (err) {
 		clear_queue();
 		return err;
@@ -194,7 +194,7 @@ int local_session::write(const dnet_id &id, const char *data, size_t size, uint6
 	cmd.size = datap.size();
 	cmd.backend_id = m_backend.backend_id();
 
-	int err = dnet_process_cmd_raw(m_state, &cmd, datap.data(), 0, 0);
+	int err = dnet_process_cmd_raw(m_state, &cmd, datap.data(), 0, 0, /*context*/ nullptr);
 
 	clear_queue(&err);
 
@@ -241,7 +241,7 @@ int local_session::write(const dnet_id &id,
 	cmd.size = datap.size();
 	cmd.backend_id = m_backend.backend_id();
 
-	int err = dnet_process_cmd_raw(m_state, &cmd, datap.data(), 0, 0);
+	int err = dnet_process_cmd_raw(m_state, &cmd, datap.data(), 0, 0, /*context*/ nullptr);
 	clear_queue(&err);
 	return err;
 }
@@ -253,7 +253,7 @@ data_pointer local_session::lookup(const dnet_cmd &tmp_cmd, int *errp)
 	cmd.size = 0;
 	cmd.backend_id = m_backend.backend_id();
 
-	*errp = dnet_process_cmd_raw(m_state, &cmd, nullptr, 0, 0);
+	*errp = dnet_process_cmd_raw(m_state, &cmd, nullptr, 0, 0, /*context*/ nullptr);
 
 	if (*errp)
 		return data_pointer();
@@ -279,7 +279,7 @@ data_pointer local_session::lookup(const dnet_cmd &tmp_cmd, int *errp)
 	return data_pointer();
 }
 
-int local_session::remove(const struct dnet_id &id) {
+int local_session::remove(const struct dnet_id &id, dnet_access_context *context) {
 	struct dnet_io_attr io;
 	memset(&io, 0, sizeof(io));
 	memcpy(io.parent, id.id, DNET_ID_SIZE);
@@ -299,14 +299,21 @@ int local_session::remove(const struct dnet_id &id) {
 	memset(&cmd_stats, 0, sizeof(cmd_stats));
 
 	const auto &callbacks = m_backend.callbacks();
-	const int err = callbacks.command_handler(m_state, callbacks.command_private, &cmd, &io, &cmd_stats);
+	const int err = callbacks.command_handler(m_state,
+	                                          callbacks.command_private,
+	                                          &cmd,
+	                                          &io,
+	                                          &cmd_stats,
+	                                          context);
 	DNET_LOG_NOTICE(m_state->n, "{}: local remove: err: {}", dnet_dump_id(&cmd.id), err);
 
 	clear_queue(nullptr);
 	return err;
 }
 
-int local_session::remove_new(const struct dnet_id &id, const ioremap::elliptics::dnet_remove_request &request) {
+int local_session::remove_new(const struct dnet_id &id,
+                              const ioremap::elliptics::dnet_remove_request &request,
+                              dnet_access_context *context) {
 	const auto packet = ioremap::elliptics::serialize(request);
 
 	struct dnet_cmd cmd;
@@ -321,7 +328,12 @@ int local_session::remove_new(const struct dnet_id &id, const ioremap::elliptics
 	memset(&cmd_stats, 0, sizeof(struct dnet_cmd_stats));
 
 	const auto &callbacks = m_backend.callbacks();
-	int err = callbacks.command_handler(m_state, callbacks.command_private, &cmd, packet.data(), &cmd_stats);
+	int err = callbacks.command_handler(m_state,
+	                                    callbacks.command_private,
+	                                    &cmd,
+	                                    packet.data(),
+	                                    &cmd_stats,
+	                                    context);
 	DNET_LOG_NOTICE(m_state->n, "{}: local remove_new: err: {}", dnet_dump_id(&cmd.id), err);
 
 	return err;

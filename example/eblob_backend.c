@@ -39,6 +39,7 @@
 #include <unistd.h>
 
 #include <eblob/blob.h>
+#include <library/access_context.h>
 
 #include "elliptics/packet.h"
 #include "elliptics/interface.h"
@@ -1200,7 +1201,12 @@ err_out_exit:
 	return err;
 }
 
-static int eblob_backend_command_handler(void *state, void *priv, struct dnet_cmd *cmd, void *data, void *cmd_stats) {
+static int eblob_backend_command_handler(void *state,
+                                         void *priv,
+                                         struct dnet_cmd *cmd,
+                                         void *data,
+                                         void *cmd_stats,
+                                         struct dnet_access_context *context) {
 	FORMATTED(HANDY_TIMER_SCOPE, ("eblob_backend.cmd.%s", dnet_cmd_string(cmd->cmd)));
 
 	int err;
@@ -1228,25 +1234,25 @@ static int eblob_backend_command_handler(void *state, void *priv, struct dnet_cm
 			err = blob_send(c, state, cmd, data);
 			break;
 		case DNET_CMD_LOOKUP_NEW:
-			err = blob_file_info_new(c, state, cmd);
+			err = blob_file_info_new(c, state, cmd, context);
 			break;
 		case DNET_CMD_READ_NEW:
-			err = blob_read_new(c, state, cmd, data, cmd_stats);
+			err = blob_read_new(c, state, cmd, data, cmd_stats, context);
 			break;
 		case DNET_CMD_WRITE_NEW:
-			err = blob_write_new(c, state, cmd, data, cmd_stats);
+			err = blob_write_new(c, state, cmd, data, cmd_stats, context);
 			break;
 		case DNET_CMD_ITERATOR_NEW:
-			err = blob_iterate(c, state, cmd, data);
+			err = blob_iterate(c, state, cmd, data, context);
 			break;
 		case DNET_CMD_SEND_NEW:
-			err = blob_send_new(c, state, cmd, data);
+			err = blob_send_new(c, state, cmd, data, context);
 			break;
 		case DNET_CMD_DEL_NEW:
-			err = blob_del_new(c, cmd, data);
+			err = blob_del_new(c, cmd, data, context);
 			break;
 		case DNET_CMD_BULK_READ_NEW:
-			err = blob_bulk_read_new(c, state, cmd, data, cmd_stats);
+			err = blob_bulk_read_new(c, state, cmd, data, cmd_stats, context);
 			break;
 		default:
 			err = -ENOTSUP;
