@@ -31,6 +31,7 @@
 #include "node_p.hpp"
 
 #include "elliptics/async_result_cast.hpp"
+#include "elliptics/utils.hpp"
 
 namespace ioremap { namespace elliptics {
 
@@ -1673,6 +1674,33 @@ async_monitor_stat_result session::monitor_stat(const address &addr, uint64_t ca
 	control.set_command(DNET_CMD_MONITOR_STAT);
 	control.set_cflags(DNET_FLAGS_NEED_ACK | DNET_FLAGS_NOLOCK);
 	control.set_data(&request, sizeof(request));
+
+	session sess = clean_clone();
+	sess.set_direct_id(addr);
+	return async_result_cast<monitor_stat_result_entry>(*this, send_to_single_state(sess, control));
+}
+
+async_monitor_stat_result session::monitor_stat(const address &addr, uint64_t categories,
+                                                const std::unordered_set<uint32_t> &backends_ids)
+{
+	trace_scope scope{*this};
+	dnet_monitor_stat_request request;
+	memset(&request, 0, sizeof(struct dnet_monitor_stat_request));
+	request.categories = categories;
+	request.backends_number = backends_ids.size();
+	dnet_convert_monitor_stat_request(&request);
+
+	transport_control control;
+	control.set_command(DNET_CMD_MONITOR_STAT);
+	control.set_cflags(DNET_FLAGS_NEED_ACK | DNET_FLAGS_NOLOCK);
+
+	data_buffer buffer(sizeof(request) + backends_ids.size() * sizeof(uint32_t));
+	buffer.write(request);
+	for (auto i: backends_ids) {
+		buffer.write(dnet_bswap32(i));
+	}
+	data_pointer data_p(std::move(buffer));
+	control.set_data(data_p.data(), data_p.size());
 
 	session sess = clean_clone();
 	sess.set_direct_id(addr);

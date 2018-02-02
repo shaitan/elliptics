@@ -227,19 +227,25 @@ class Session(elliptics.core.newapi.Session):
                                               backend_id=backend_id,
                                               delay=delay)
 
-    def monitor_stat(self, address=None, categories=monitor_stat_categories.all):
+    def monitor_stat(self, address=None, categories=monitor_stat_categories.all, backends=None):
         """
         Gather monitor statistics of specified categories from @address.
 
         If @address is None monitoring statistics will be gathered from all nodes.
-        result = session.monitor_stat(elliptics.Address.from_host_port('host.com:1025'))
+        If @backends isn't None statistics will be requested for backends with id
+        specified by backends. If @backends is None statistics will be requested for all backends.
+        result = session.monitor_stat(elliptics.Address.from_host_port('host.com:1025'), categories, [1,2,3])
         stats = result.get()
         """
         if not address:
             address = ()
         else:
             address = tuple(address)
-        return super(Session, self).monitor_stat(address, categories)
+        if not backends:
+            backends = []
+        else:
+            backends = list(backends)
+        return super(Session, self).monitor_stat(address, categories, backends)
 
     def start_iterator(self, address, backend_id, flags, key_ranges=None, time_range=None):
         """Start iterator on node @address and backend @backend_id."""

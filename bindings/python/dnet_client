@@ -230,15 +230,27 @@ def process_monitor():
     parser.usage = '%prog monitor action [options]'
     parser.add_option('--categories', dest='categories', type='int', default=-1,
                       help='Categories of monitor statistics that will be requested')
+    parser.add_option('--backends', dest='backends', type='string',
+                      help='Statistics will be requested for backends with specified ids'
+                           '[e.g.: --backends=1,2,3]')
     add_node_options(parser)
 
     (options, args) = parser.parse_args()
 
     first_remote = elliptics.Address.from_host_port_family(options.remote[0])
 
+    try:
+        backends = None
+        if options.backends:
+            backends = set(map(int, options.backends.split(',')))
+    except Exception as e:
+        parser.error("Can't parse backends list: '{}': {}".format(options.backends, repr(e)))
+
     actions = {
-        'all': lambda x, y: process_monitor_control(x, y, partial(elliptics.Session.monitor_stat, address=None)),
-        'one': lambda x, y: process_monitor_control(x, y, partial(elliptics.Session.monitor_stat, address=first_remote))
+        'all': lambda x, y: process_monitor_control(x, y, partial(elliptics.Session.monitor_stat, address=None,
+                                                                  backends=backends)),
+        'one': lambda x, y: process_monitor_control(x, y, partial(elliptics.Session.monitor_stat, address=first_remote,
+                                                                  backends=backends))
     }
 
     if len(args) > 2:

@@ -232,9 +232,10 @@ void dnet_monitor_stats_update(struct dnet_node *n,
 }
 
 int dnet_monitor_process_cmd(struct dnet_net_state *orig, struct dnet_cmd *cmd, void *data) {
-	if (cmd->size != sizeof(dnet_monitor_stat_request)) {
-		DNET_LOG_DEBUG(orig->n, "monitor: {}: {}: process MONITOR_STAT, invalid size: {}",
-		               dnet_state_dump_addr(orig), dnet_dump_id(&cmd->id), cmd->size);
+	if (cmd->size < sizeof(dnet_monitor_stat_request)) {
+		DNET_LOG_DEBUG(orig->n, "monitor: {}: {}: process MONITOR_STAT, invalid size: {}, expected: >= {}",
+		               dnet_state_dump_addr(orig), dnet_dump_id(&cmd->id), cmd->size,
+		               sizeof(dnet_monitor_stat_request));
 		return -EINVAL;
 	}
 
@@ -246,12 +247,27 @@ int dnet_monitor_process_cmd(struct dnet_net_state *orig, struct dnet_cmd *cmd, 
 	DNET_LOG_DEBUG(n, "monitor: {}: {}: process MONITOR_STAT, categories: {:x}, monitor: {:p}",
 	               dnet_state_dump_addr(orig), dnet_dump_id(&cmd->id), req->categories, (void *)n->monitor);
 
+	if (cmd->size != sizeof(struct dnet_monitor_stat_request) + req->backends_number * sizeof(uint32_t)) {
+		DNET_LOG_DEBUG(orig->n, "monitor: {}: {}: process MONITOR_STAT, invalid backends ids size: {},"
+			                " expected: {}",
+		               dnet_state_dump_addr(orig), dnet_dump_id(&cmd->id),
+		               cmd->size - sizeof(struct dnet_monitor_stat_request),
+		               req->backends_number * sizeof(uint32_t));
+		return -EINVAL;
+	}
+	
+	ioremap::monitor::request request(req->categories);
+	uint32_t *backeds_ids_buff = static_cast<uint32_t *>(data + sizeof(struct dnet_monitor_stat_request));
+	for (size_t i = 0; i < req->backends_number; ++i) {
+		request.backends_ids.insert(dnet_bswap32(backeds_ids_buff[i]));
+	}
+
 	auto real_monitor = ioremap::monitor::get_monitor(n);
 	if (!real_monitor)
 		return dnet_send_reply(orig, cmd, disabled_reply.c_str(), disabled_reply.size(), 0);
 
 	try {
-		auto json = real_monitor->get_statistics().report(req->categories);
+		auto json = real_monitor->get_statistics().report(request);
 		return dnet_send_reply(orig, cmd, &*json.begin(), json.size(), 0);
 	} catch(const std::exception &e) {
 		const std::string rep =
