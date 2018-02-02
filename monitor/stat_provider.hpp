@@ -20,9 +20,21 @@
 #ifndef __DNET_STAT_PROVIDER_HPP
 #define __DNET_STAT_PROVIDER_HPP
 
+#include <unordered_set>
+
 #include "rapidjson/document.h"
 
 namespace ioremap { namespace monitor {
+/*!
+ * Struct that stores statistics categories and ids of requested backends
+ */
+struct request {
+	uint64_t categories;
+	std::unordered_set<uint32_t> backends_ids;
+
+	request(): categories(0) {}
+	request(uint64_t req_categories): categories(req_categories) {}
+};
 
 /*!
  * \internal
@@ -38,9 +50,10 @@ public:
 	 * \internal
 	 *
 	 * Returns json string of the real provider statistics
-	 * \a categories - categories which statistics should be included to json
+	 * \a request - struct that stores categories which statistics should be included to json
+	 * and ids of requested backends
 	 */
-	virtual void statistics(uint64_t categories,
+	virtual void statistics(const request &request,
 	                        rapidjson::Value &value,
 	                        rapidjson::Document::AllocatorType &allocator) const = 0;
 

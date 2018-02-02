@@ -31,7 +31,7 @@ class procfs_provider : public stat_provider {
 public:
 	procfs_provider(struct dnet_node *node);
 
-	void statistics(uint64_t categories,
+	void statistics(const request &request,
 	                rapidjson::Value &value,
 	                rapidjson::Document::AllocatorType &allocator) const override;
 

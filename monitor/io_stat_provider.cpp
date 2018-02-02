@@ -45,10 +45,10 @@ static rapidjson::Value & fill_states_stats(struct dnet_node *n,
 	return value;
 }
 
-void io_stat_provider::statistics(uint64_t categories,
+void io_stat_provider::statistics(const request &request,
                                   rapidjson::Value &value,
                                   rapidjson::Document::AllocatorType &allocator) const {
-	if (!(categories & DNET_MONITOR_IO))
+	if (!(request.categories & DNET_MONITOR_IO))
 		return;
 
 	value.SetObject();

@@ -39,15 +39,15 @@ backends_stat_provider::backends_stat_provider(struct dnet_node *node)
 {}
 
 /*
- * Generates json statistics from all backends
+ * Generates json statistics from backends in accordance with the request
  */
-void backends_stat_provider::statistics(uint64_t categories,
+void backends_stat_provider::statistics(const request &request,
                                         rapidjson::Value &value,
                                         rapidjson::Document::AllocatorType &allocator) const {
-	if (!(categories & (DNET_MONITOR_IO | DNET_MONITOR_CACHE | DNET_MONITOR_BACKEND)))
+	if (!(request.categories & (DNET_MONITOR_IO | DNET_MONITOR_CACHE | DNET_MONITOR_BACKEND)))
 		return;
 
-	m_node->io->backends_manager->statistics(categories, value, allocator);
+	m_node->io->backends_manager->statistics(request, value, allocator);
 }
 
 }} /* namespace ioremap::monitor */

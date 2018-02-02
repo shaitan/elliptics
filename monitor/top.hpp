@@ -130,7 +130,7 @@ class top_provider : public stat_provider {
 public:
 	top_provider(std::shared_ptr<top_stats> top_stats);
 
-	void statistics(uint64_t categories,
+	void statistics(const request &request,
 	                rapidjson::Value &value,
 	                rapidjson::Document::AllocatorType &allocator) const override;
 

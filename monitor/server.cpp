@@ -61,7 +61,7 @@ private:
 	void async_write();
 	void close();
 
-	uint64_t parse_request();
+	request parse_request();
 
 	http_request m_http_request;
 
@@ -71,7 +71,6 @@ private:
 	const std::string m_remote;
 	std::array<char, 1024> m_buffer;
 	std::string m_response;
-	std::string m_url;
 
 	std::chrono::time_point<std::chrono::system_clock> m_start_ts;
 	std::chrono::time_point<std::chrono::system_clock> m_recv_ts;
@@ -136,7 +135,7 @@ void handler::async_read() {
 		}
 		if (!m_http_request.parse(m_buffer.data(), size)) {
 			DNET_LOG_ERROR(m_monitor.node(), "monitor: http-server: failed to parse request url: {},"
-				               " from {}: {} [{}]",
+			                                 " from {}: {} [{}]",
 			               m_http_request.url(), m_remote,
 			               m_http_request.error(), m_http_request.error_code());
 			close();
@@ -144,15 +143,15 @@ void handler::async_read() {
 		}
 		if (m_http_request.ready()) {
 			m_recv_ts = std::chrono::system_clock::now();
-			const auto req = parse_request();
-			m_response = make_reply(req, [&]() {
-				if (req == 0)
+			const auto request = parse_request();
+			m_response = make_reply(request.categories, [&]() {
+				if (request.categories == 0)
 					return std::string();
 
 				DNET_LOG_DEBUG(m_monitor.node(), "monitor: http-server: "
 				                                 "got statistics request for categories: {:x} from: {}",
-				               req, m_remote);
-				return m_monitor.get_statistics().report(req);
+				               request.categories, m_remote);
+				return m_monitor.get_statistics().report(request);
 			}());
 
 			m_collect_ts = std::chrono::system_clock::now();
@@ -210,10 +209,9 @@ void handler::close() {
 }
 
 /*!
- * Parses simple HTTP request and determines requested category
- */
-uint64_t handler::parse_request() {
-	static const std::string categories_url = "/?categories=";
+ * Parses HTTP request and determines statictics request
+ кор*/
+request handler::parse_request() {
 	static const std::map<std::string, uint64_t> handlers = {
 		{"/all", DNET_MONITOR_ALL},
 		{"/cache", DNET_MONITOR_CACHE},
@@ -225,26 +223,45 @@ uint64_t handler::parse_request() {
 		{"/top", DNET_MONITOR_TOP}
 	};
 
+	request req;
+
 	auto it = handlers.find(m_http_request.path());
 	if (it != handlers.end()) {
-		return it->second;
+		req.categories = it->second;
 	} else if (m_http_request.path() == "/") {
 		auto it = m_http_request.query().find("categories");
 		if (it != m_http_request.query().end()) {
 			try {
-				return std::stoull(it->second);
+				req.categories = std::stoull(it->second);
 			} catch (...) {
 				DNET_LOG_ERROR(m_monitor.node(), "monitor: http-server: Can't parse categories: {}",
 				               it->second);
-				return 0;
+				return request();
 			}
 		}
 	} else {
 		DNET_LOG_ERROR(m_monitor.node(), "monitor: http-server: request parser: Unknown path: {}",
 		               m_http_request.path());
-		return 0;
+		return request();
 	}
-	return 0;
+
+	const auto backends_item = m_http_request.query().find("backends");
+	if (backends_item != m_http_request.query().end()) {
+		std::string id_list = backends_item->second;
+		char *id = std::strtok(const_cast<char*>(id_list.c_str()), ",");
+		while (id != NULL) {
+			try {
+				req.backends_ids.insert(std::stoul(id, nullptr, 10));
+			} catch (...) {
+				DNET_LOG_ERROR(m_monitor.node(), "monitor: http-server: Can't parse backend ids: {}",
+				               backends_item->second);
+				return request();
+			}
+			id = std::strtok(NULL, ",");
+		}
+	}
+
+	return req;
 }
 
 }} /* namespace ioremap::monitor */

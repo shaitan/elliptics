@@ -324,10 +324,10 @@ static void fill_net(dnet_node *node,
 	stat_value.AddMember("net", net_stat, allocator);
 }
 
-void procfs_provider::statistics(uint64_t categories,
+void procfs_provider::statistics(const request &request,
                                  rapidjson::Value &value,
                                  rapidjson::Document::AllocatorType &allocator) const {
-	if (!(categories & DNET_MONITOR_PROCFS))
+	if (!(request.categories & DNET_MONITOR_PROCFS))
 	    return;
 
 	value.SetObject();
