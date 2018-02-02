@@ -23,6 +23,8 @@ Build-Depends: cdbs,
                handystats (>= 1.11.6),
                libkora-util-dev (= 1.1.0-rc1),
                blackhole-dev (>= 1.9.0-1),
+               libhttp-parser-dev (>= 2.1),
+               liburiparser-dev (>= 0.7.5),
 Standards-Version: 3.8.0
 Homepage: http://www.ioremap.net/projects/elliptics
 XS-Python-Version: >= 2.6

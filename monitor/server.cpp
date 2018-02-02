@@ -1,5 +1,6 @@
 /*
  * Copyright 2013+ Kirill Smorodinnikov <shaitkir@gmail.com>
+ * Copyright 2018+ Artem Ikchurin <artem.ikchurin@gmail.com>
  *
  * This file is part of Elliptics.
  *
@@ -19,6 +20,7 @@
 
 #include "server.hpp"
 #include "monitor.hpp"
+#include "http_request.hpp"
 
 #include <chrono>
 
@@ -59,7 +61,9 @@ private:
 	void async_write();
 	void close();
 
-	uint64_t parse_request(size_t size);
+	uint64_t parse_request();
+
+	http_request m_http_request;
 
 	monitor &m_monitor;
 	boost::asio::ip::tcp::socket m_socket;
@@ -130,25 +134,33 @@ void handler::async_read() {
 			close();
 			return;
 		}
+		if (!m_http_request.parse(m_buffer.data(), size)) {
+			DNET_LOG_ERROR(m_monitor.node(), "monitor: http-server: failed to parse request url: {},"
+				               " from {}: {} [{}]",
+			               m_http_request.url(), m_remote,
+			               m_http_request.error(), m_http_request.error_code());
+			close();
+			return;
+		}
+		if (m_http_request.ready()) {
+			m_recv_ts = std::chrono::system_clock::now();
+			const auto req = parse_request();
+			m_response = make_reply(req, [&]() {
+				if (req == 0)
+					return std::string();
 
-		m_recv_ts = std::chrono::system_clock::now();
+				DNET_LOG_DEBUG(m_monitor.node(), "monitor: http-server: "
+				                                 "got statistics request for categories: {:x} from: {}",
+				               req, m_remote);
+				return m_monitor.get_statistics().report(req);
+			}());
 
-		const auto req = parse_request(size);
+			m_collect_ts = std::chrono::system_clock::now();
 
-		m_response = make_reply(req, [&]() {
-			if (req == 0)
-				return std::string();
-
-			DNET_LOG_DEBUG(m_monitor.node(),
-			               "monitor: http-server: got statistics request for categories: {:x} from: {}",
-			               req, m_remote);
-			return m_monitor.get_statistics().report(req);
-		}());
-
-		m_collect_ts = std::chrono::system_clock::now();
-
-		async_write();
-
+			async_write();
+		} else {
+			async_read();
+		}
 	});
 }
 
@@ -174,7 +186,7 @@ void handler::async_write() {
 
 		const auto full_url = [this]() {
 			std::ostringstream stream;
-			stream << "http://" << to_string(m_socket.local_endpoint(), true) << m_url;
+			stream << "http://" << to_string(m_socket.local_endpoint(), true) << m_http_request.url();
 			return stream.str();
 		}();
 
@@ -199,10 +211,8 @@ void handler::close() {
 
 /*!
  * Parses simple HTTP request and determines requested category
- * @packet - HTTP request packet
- * @size - size of HTTP request packet
  */
-uint64_t handler::parse_request(size_t size) {
+uint64_t handler::parse_request() {
 	static const std::string categories_url = "/?categories=";
 	static const std::map<std::string, uint64_t> handlers = {
 		{"/all", DNET_MONITOR_ALL},
@@ -215,32 +225,25 @@ uint64_t handler::parse_request(size_t size) {
 		{"/top", DNET_MONITOR_TOP}
 	};
 
-	const char *packet = m_buffer.data();
-	const char* end = packet + size;
-	const char *method_end = std::find(packet, end, ' ');
-	if (method_end >= end || packet == method_end)
-		return 0;
-
-	const char *url_begin = method_end + 1;
-	const char *url_end = std::find(url_begin, end, ' ');
-	if (url_end >= end)
-		return 0;
-
-	m_url = std::string(url_begin, url_end);
-
-	auto it = handlers.find(m_url);
+	auto it = handlers.find(m_http_request.path());
 	if (it != handlers.end()) {
 		return it->second;
-	} else if (ssize_t(categories_url.size()) < (url_end - url_begin) &&
-	           strncmp(url_begin, categories_url.c_str(), categories_url.size()) == 0) {
-		const char *categories = url_begin + categories_url.size();
-		try {
-			return std::stoull(std::string(categories, url_end));
-		} catch(...) {
-			DNET_LOG_ERROR(m_monitor.node(), "Can't parse categories: {}", categories);
+	} else if (m_http_request.path() == "/") {
+		auto it = m_http_request.query().find("categories");
+		if (it != m_http_request.query().end()) {
+			try {
+				return std::stoull(it->second);
+			} catch (...) {
+				DNET_LOG_ERROR(m_monitor.node(), "monitor: http-server: Can't parse categories: {}",
+				               it->second);
+				return 0;
+			}
 		}
+	} else {
+		DNET_LOG_ERROR(m_monitor.node(), "monitor: http-server: request parser: Unknown path: {}",
+		               m_http_request.path());
+		return 0;
 	}
-
 	return 0;
 }
 
