@@ -1264,19 +1264,31 @@ struct dnet_backend_status_list *dnet_backends_manager::get_status() {
 	return list;
 }
 
-void dnet_backends_manager::statistics(uint64_t categories,
+void dnet_backends_manager::statistics(const ioremap::monitor::request &request,
                                        rapidjson::Value &value,
                                        rapidjson::Document::AllocatorType &allocator) {
 	value.SetObject();
 
 	boost::shared_lock<boost::shared_mutex> guard(m_backends_mutex);
-	for (auto &item: m_backends) {
-		const auto &backend_id = std::to_string(item.first);
-		auto &backend = item.second;
-
-		rapidjson::Value backend_value(rapidjson::kObjectType);
-		backend->statistics(categories, backend_value, allocator);
-		value.AddMember(backend_id.c_str(), allocator, backend_value, allocator);
+	if (request.backends_ids.empty()) {
+		for (auto &item: m_backends) {
+			const auto &backend_id = std::to_string(item.first);
+			auto &backend = item.second;
+			rapidjson::Value backend_value(rapidjson::kObjectType);
+			backend->statistics(request.categories, backend_value, allocator);
+			value.AddMember(backend_id.c_str(), allocator, backend_value, allocator);
+		}
+	} else {
+		for (auto backend_id: request.backends_ids){
+			auto item = m_backends.find(backend_id);
+			rapidjson::Value backend_value;
+			if (item != m_backends.end()) {
+				auto &backend = item->second;
+				backend->statistics(request.categories, backend_value.SetObject(), allocator);
+			}
+			const auto &str_backend_id = std::to_string(backend_id);
+			value.AddMember(str_backend_id.c_str(), allocator, backend_value, allocator);
+		}
 	}
 }
 

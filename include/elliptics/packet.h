@@ -1110,12 +1110,16 @@ static inline void dnet_convert_defrag_ctl(struct dnet_defrag_ctl *ctl)
 struct dnet_monitor_stat_request {
 	uint64_t	categories;
 	int			reserved_int; // reserved for packing
-	uint64_t	reserved[4];
+	uint32_t	backends_number; // size of array of backends ids.
+	                                 // This array is located behind this structure in binary packet
+	uint32_t        reserved_uint32t;
+	uint64_t	reserved[3];
 } __attribute__ ((packed));
 
 static inline void dnet_convert_monitor_stat_request(struct dnet_monitor_stat_request *r)
 {
-	r->categories = dnet_bswap32(r->categories);
+	r->categories = dnet_bswap64(r->categories);
+	r->backends_number = dnet_bswap32(r->backends_number);
 }
 
 

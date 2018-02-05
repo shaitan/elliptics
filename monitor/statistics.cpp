@@ -210,10 +210,10 @@ inline std::string convert_report(const rapidjson::Document &report)
 	return compress(buffer.GetString());
 }
 
-std::string statistics::report(uint64_t categories)
+std::string statistics::report(const request &request)
 {
 	rapidjson::Document report;
-	DNET_LOG_INFO(m_monitor.node(), "monitor: collecting statistics for categories: {:x}", categories);
+	DNET_LOG_INFO(m_monitor.node(), "monitor: collecting statistics for categories: {:x}", request.categories);
 	report.SetObject();
 	auto &allocator = report.GetAllocator();
 
@@ -227,9 +227,9 @@ std::string statistics::report(uint64_t categories)
 	report.AddMember("string_timestamp", dnet_print_time(&time), allocator);
 
 	report.AddMember("monitor_status", "enabled", allocator);
-	report.AddMember("categories", categories, allocator);
+	report.AddMember("categories", request.categories, allocator);
 
-	if (categories & DNET_MONITOR_COMMANDS) {
+	if (request.categories & DNET_MONITOR_COMMANDS) {
 		rapidjson::Value commands_value(rapidjson::kObjectType);
 		m_command_stats.commands_report(m_monitor.node(), commands_value, allocator);
 
@@ -240,7 +240,7 @@ std::string statistics::report(uint64_t categories)
 		report.AddMember("commands", commands_value, allocator);
 	}
 
-	if (categories & DNET_MONITOR_STATS) {
+	if (request.categories & DNET_MONITOR_STATS) {
 #if defined(HAVE_HANDYSTATS) && !defined(HANDYSTATS_DISABLE)
 		rapidjson::Document stats(&allocator);
 		stats.Parse<0>(HANDY_JSON_DUMP().c_str());
@@ -256,12 +256,12 @@ std::string statistics::report(uint64_t categories)
 		const auto &provider = item.second;
 
 		rapidjson::Value value;
-		provider->statistics(categories, value, allocator);
+		provider->statistics(request, value, allocator);
 		report.AddMember(provider_name.c_str(), allocator, value, allocator);
 	}
 
 	DNET_LOG_DEBUG(m_monitor.node(), "monitor: finished generating json statistics for categories: {:x}",
-	               categories);
+	               request.categories);
 	return convert_report(report);
 }
 

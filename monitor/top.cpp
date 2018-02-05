@@ -57,10 +57,10 @@ static void fill_top_stat(const key_stat_event &key_event,
 	stat_array.PushBack(key_stat, allocator);
 }
 
-void top_provider::statistics(uint64_t categories,
+void top_provider::statistics(const request &request,
                               rapidjson::Value &value,
                               rapidjson::Document::AllocatorType &allocator) const {
-	if (!(categories & DNET_MONITOR_TOP))
+	if (!(request.categories & DNET_MONITOR_TOP))
 		return;
 
 	value.SetObject();

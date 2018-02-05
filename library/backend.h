@@ -15,6 +15,9 @@
 
 #include "monitor/statistics.hpp"
 
+namespace ioremap { namespace monitor {
+struct request;
+}} /* namespace ioremap::monitor */
 
 namespace ioremap { namespace cache {
 class cache_manager;
@@ -165,8 +168,9 @@ public:
 	void set_verbosity(const dnet_log_level level);
 	// return status of all backends
 	struct dnet_backend_status_list *get_status();
-	// return statistics of all backends
-	void statistics(uint64_t categories, rapidjson::Value &value, rapidjson::Document::AllocatorType &allocator);
+	// return statistics of backends in accordance with the request
+	void statistics(const ioremap::monitor::request &request, rapidjson::Value &value,
+	                rapidjson::Document::AllocatorType &allocator);
 
 private:
 	dnet_node							*m_node;

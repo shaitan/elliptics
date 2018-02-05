@@ -21,6 +21,7 @@
 #include <boost/python/iterator.hpp>
 
 #include <vector>
+#include <unordered_set>
 
 namespace bp = boost::python;
 
@@ -44,6 +45,16 @@ std::vector<data_pointer> convert_to_vector<data_pointer>(const bp::api::object 
 		ret.push_back(data_pointer::copy(*it));
 	}
 	return ret;
+}
+
+template <typename T>
+static std::unordered_set<T> convert_to_unordered_set(const bp::api::object &list) {
+	if (list.ptr() == Py_None) {
+		return std::unordered_set<T>();
+	}
+
+	bp::stl_input_iterator<T> begin(list), end;
+	return std::unordered_set<T>(begin, end);
 }
 
 template <typename T>

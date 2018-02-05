@@ -155,11 +155,11 @@ public:
 	/*!
 	 * \internal
 	 *
-	 * Generates and returns json statistics for specified \a category
+	 * Generates and returns json statistics for @request
 	 * For that statistics will interview all external statistics provider
-	 * which supports \a categories
+	 * which supports this @request
 	 */
-	std::string report(uint64_t categories);
+	std::string report(const request &request);
 
 	/*!
 	 * \internal

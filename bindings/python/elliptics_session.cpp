@@ -619,10 +619,12 @@ public:
 		return create_result(std::move(session::bulk_write(ios, wdatas)));
 	}
 
-	python_monitor_stat_result monitor_stat(const bp::tuple &addr, uint64_t categories) {
+	python_monitor_stat_result monitor_stat(const bp::tuple &addr, uint64_t categories,
+	                                        const bp::list &backends_ids) {
 		if (bp::len(addr) == 0)
 			return create_result(std::move(session::monitor_stat(categories)));
 
+		auto b_ids = convert_to_unordered_set<uint32_t>(backends_ids);
 		bp::extract<std::string> get_host(addr[0]);
 		bp::extract<int> get_port(addr[1]);
 		bp::extract<int> get_family(addr[2]);
@@ -630,7 +632,7 @@ public:
 		return create_result(std::move(session::monitor_stat(address(get_host(),
 		                                                             get_port(),
 		                                                             get_family()),
-		                                                     categories)));
+		                                                     categories, b_ids)));
 	}
 
 private:
@@ -1751,12 +1753,17 @@ void init_elliptics_session() {
 // Statistics
 
 		.def("monitor_stat", &elliptics_session::monitor_stat,
-		     (bp::arg("address"), bp::arg("categories")=elliptics_monitor_categories_all),
-		    "monitor_stat(key=None, categories=elliptics.monitor_stat_categories.all)\n"
-		    "    Gather monitor statistics of specified categories.\n"
-		    "    -- address - elliptics.Address of node\n\n"
-		    "    result = session.monitor_stat(elliptics.Address.from_host_port('host.com:1025'))\n"
-		    "    stats = result.get()\n")
+		     (bp::arg("address"), bp::arg("categories")=elliptics_monitor_categories_all,
+		      bp::arg("backends")),
+		     "monitor_stat(address=None, categories=elliptics.monitor_stat_categories.all, backends=None)\n"
+			     "    Gather monitor statistics of specified categories.\n"
+			     "    -- address - elliptics.Address of node\n"
+			     "    -- categories - category number of requested statistics\n"
+			     "    -- backends - ids of backends for which statistics will be requested\n\n"
+			     "    result = session.monitor_stat(elliptics.Address.from_host_port('host.com:1025'), "
+			     "categories, [1,2,3])\n"
+			     "    stats = result.get()\n")
+
 
 		.def("state_num", &session::state_num)
 

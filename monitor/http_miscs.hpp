@@ -45,19 +45,19 @@ const std::string list = R"(<html>
 }
 
 /*!
- * Generates HTTP response for @req category with @content
+ * Generates HTTP response for @categories category with @content
  */
-std::string make_reply(uint64_t req, std::string content = "") {
+std::string make_reply(uint64_t categories, std::string content = "") {
 	std::ostringstream ret;
 	std::string content_type = "application/json";
-	if (req == 0) {
+	if (categories == 0) {
 		content = content_strings::list;
 		content_type = "text/html";
 	}
 
 	ret << status_strings::ok
 	    << "Content-Type: " << content_type << "\r\n"
-	    << (req != 0 ? "Content-Encoding: deflate\r\n" : "")
+	    << (categories != 0 ? "Content-Encoding: deflate\r\n" : "")
 	    << "Connection: close\r\n"
 	    << "Content-Length: " << content.size() << "\r\n\r\n"
 	    << content;

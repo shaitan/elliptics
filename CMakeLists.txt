@@ -39,10 +39,21 @@ include(TestBigEndian)
 include(CheckProcStats)
 include(CreateStdint)
 include(FixRpath)
+include(locate_library)
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include/)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/monitor)
+
+# http parser
+locate_library(HTTP_PARSER "http_parser.h" "http_parser")
+include_directories(${HTTP_PARSER_INCLUDE_DIRS})
+link_directories(${HTTP_PARSER_LIBRARY_DIRS})
+
+# uri parser
+locate_library(URIPARSER "uriparser/Uri.h" "uriparser")
+include_directories(${URIPARSER_INCLUDE_DIRS})
+link_directories(${URIPARSER_LIBRARY_DIRS})
 
 # Set id_size
 if (NOT ID_SIZE)

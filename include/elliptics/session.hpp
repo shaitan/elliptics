@@ -20,6 +20,7 @@
 
 #include <functional>
 #include <vector>
+#include <unordered_set>
 #include <list>
 
 #include "result_entry.hpp"
@@ -618,6 +619,13 @@ public:
 	 * Queries monitor statistics information from the server node specified by \a id
 	 */
 	async_monitor_stat_result monitor_stat(const address &addr, uint64_t categories);
+
+	/*!
+	 * Queries monitor statistics information for backends defined in \a backends_ids
+	 * from the server node specified by \a addr
+	 */
+	async_monitor_stat_result monitor_stat(const address &addr, uint64_t categories,
+	                                       const std::unordered_set<uint32_t> &backends_ids);
 
 	/*!
 	 * Returns the number of session states.

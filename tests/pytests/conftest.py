@@ -1,5 +1,6 @@
 # =============================================================================
 # 2013+ Copyright (c) Kirill Smorodinnikov <shaitkir@gmail.com>
+# 2018+ Copyright (c) Artem Ikchurin <artem.ikchurin@gmail.com>
 # All rights reserved.
 #
 # This program is free software; you can redistribute it and/or modify
@@ -170,3 +171,43 @@ def scope():
         def __repr__(self):
             return '{0}'.format(vars(self))
     return Scope()
+
+
+@pytest.fixture(scope="session")
+def routes(simple_node):
+    '''
+    Initializes session.
+    Returns routes list.
+    '''
+    return make_session(node=simple_node,
+                        test_name='Fixture.backends').routes
+
+
+@pytest.fixture(scope="session",
+                params=["none", "empty", "one_real", "all", "repeating", "part",
+                        "unreal", "one_unreal", "mix"])
+def backends_combination(request, routes):
+    '''
+    Creates variable fixture with all combinations of backends.
+    Return list with backends ids.
+    '''
+    all_backends = list(routes.get_address_backends(routes.addresses()[0]))
+    if request.param == "none":
+        return None
+    elif request.param == "empty":
+        return []
+    elif request.param == "one_real":
+        return all_backends[:1]
+    elif request.param == "all":
+        return all_backends
+    elif request.param == "repeating":
+        return all_backends + all_backends
+    elif request.param == "part":
+        return all_backends[:len(all_backends) / 2]
+    elif request.param == "unreal":
+        return range(max(all_backends) + 1, max(all_backends) + 3)
+    elif request.param == "one_unreal":
+        return [max(all_backends) + 1]
+    elif request.param == "mix":
+        return all_backends + range(max(all_backends) + 1, max(all_backends) + 3)
+    return None
