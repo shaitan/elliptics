@@ -1135,7 +1135,7 @@ struct cas_functor : std::enable_shared_from_this<cas_functor>
 		if (index < count) {
 			next_iteration();
 		} else {
-			handler.complete(create_error(-EBADFD, id, "write_cas: too many attemps: %d", count));
+			handler.complete(create_error(-EBADFD, id, "write_cas: too many attempts: %d", count));
 		}
 	}
 }; /* write_entry */

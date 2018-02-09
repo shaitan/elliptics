@@ -402,7 +402,7 @@ def run(args=None):
                       help="Enable remote monitoring on provided port [default: disabled]")
     parser.add_option("-w", "--wait-timeout", action="store", dest="wait_timeout", default="3600",
                       help="[Wait timeout for elliptics operations default: %default]")
-    parser.add_option("-a", "--attemps", action="store", dest="attempts", default=1,
+    parser.add_option("-a", "--attempts", action="store", dest="attempts", default=1,
                       help="Number of attempts to recover one key")
     parser.add_option("-o", "--one-node", action="store", dest="one_node", default=None,
                       help="Elliptics node address that should be iterated/recovered [default: %default]")
