@@ -310,12 +310,15 @@ def main(options, args):
     ctx.routes = get_routes(ctx)
     log.debug("Parsed routing table:\n{0}".format(ctx.routes))
     if not ctx.routes:
+        ctx.stats.counter('unavailable_groups', len(ctx.groups))
         raise RuntimeError("No routes was parsed from session")
     log.debug("Total routes: {0}".format(len(ctx.routes)))
 
-    if set(ctx.groups) != set(ctx.routes.groups()):
-        raise RuntimeError("Not all specified groups({}) are presented in route-list({})"
-                           .format(ctx.groups, ctx.routes.groups()))
+    unavailable_groups = set(ctx.groups) - set(ctx.routes.groups())
+    if unavailable_groups:
+        ctx.stats.counter('unavailable_groups', len(unavailable_groups))
+        raise RuntimeError("Not all specified groups({}) are presented in route-list({}). Unavailable groups: {}"
+                           .format(ctx.groups, ctx.routes.groups(), unavailable_groups))
 
     try:
         log.info("Creating pool of processes: %d", ctx.nprocess)
@@ -337,8 +340,8 @@ def main(options, args):
         ctx.pool.close()
         ctx.pool.terminate()
         ctx.pool.join()
-    except Exception as e:
-        log.error("Recovering failed: %s, traceback: %s", repr(e), traceback.format_exc())
+    except Exception:
+        log.error("Recovering failed")
         ctx.pool.terminate()
         ctx.pool.join()
         result = False
@@ -399,7 +402,7 @@ def run(args=None):
                       help="Enable remote monitoring on provided port [default: disabled]")
     parser.add_option("-w", "--wait-timeout", action="store", dest="wait_timeout", default="3600",
                       help="[Wait timeout for elliptics operations default: %default]")
-    parser.add_option("-a", "--attemps", action="store", dest="attempts", default=1,
+    parser.add_option("-a", "--attempts", action="store", dest="attempts", default=1,
                       help="Number of attempts to recover one key")
     parser.add_option("-o", "--one-node", action="store", dest="one_node", default=None,
                       help="Elliptics node address that should be iterated/recovered [default: %default]")
@@ -421,11 +424,14 @@ def run(args=None):
                       help='Timeout for uncommitted records (prepared, but not committed).'
                       'Records that exceeded this timeout will be removed. [default: %default]')
     parser.add_option('-T', '--trace-id', action='store', dest="trace_id", default='0',
-                      help='Marks all recovery commands by trace_id at both recovery and server logs. This option accepts hex strings. [default: %default]')
+                      help=('Marks all recovery commands by trace_id at both recovery and server logs. '
+                            'This option accepts hex strings. [default: %default]'))
     parser.add_option('-U', '--no-server-send', action="store_true", dest="no_server_send", default=False,
-                      help='Do not use server-send for recovery. Disabling recovery via server-send useful if there is no network connection between groups')
+                      help=('Do not use server-send for recovery. Disabling recovery via server-send useful '
+                            'if there is no network connection between groups'))
     parser.add_option('--user-flags', action='append', dest='user_flags_set', default=[],
                       help='Recover key if at least one replica has user_flags from specified user_flags_set')
     parser.add_option('--data-flow-rate', action='store', dest='data_flow_rate', default=10,
-                      help='Expected execution speed for an I/O operation: server-send/read/write/etc. [default: %default] Mb')
+                      help=('Expected execution speed for an I/O operation: server-send/read/write/etc. '
+                            '[default: %default] Mb'))
     return main(*parser.parse_args(args))

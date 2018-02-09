@@ -78,7 +78,7 @@
   - <b>-e, --no-exit</b> - Will be waiting for user input at the finish.
   - <b>-m MONITOR_PORT, --monitor-port=MONITOR_PORT</b> - Enable remote monitoring on provided port.
   - <b>-w WAIT_TIMEOUT, --wait-timeout=WAIT_TIMEOUT</b> - Wait timeout for elliptics operations <b>[default: 3600]</b>
-  - <b>-a ATTEMPTS, --attemps=ATTEMPTS</b> - Number of attempts to recover one key
+  - <b>-a ATTEMPTS, --attempts=ATTEMPTS</b> - Number of attempts to recover one key
   - <b>-c CHUNK_SIZE, --chunk-size=CHUNK_SIZE</b> - Size of chunk by which all object will be read and recovered <b>[default: 1048576]</b>
   - <b>-C CUSTOM_RECOVER, --custom-recover=CUSTOM_RECOVER</b> - Sets custom recover app
     that will be used by `dc` for recovering data.
