@@ -20,8 +20,8 @@ Simple and Python-ish interface to stats.
 Currently we support counters and time measurements.
 """
 
+import itertools
 from datetime import datetime
-from itertools import chain
 try:
     from collections import OrderedDict
 except:
@@ -147,6 +147,50 @@ class DurationTimer(object):
         return result
 
 
+class AttributeContainer(object):
+    """List of different values combined under an unique name.
+
+    Use .append(value) to @append value to the attribute.
+    >>> ac = AttributeContainer('Attribute')
+    >>> ac.append(10)
+    >>> ac.append("some")
+    >>> print ac
+    Attribute:                                                                              [10, 'some']
+    """
+    def __init__(self, name):
+        self.name = name
+        self.attributes = []
+
+    def append(self, value):
+        self.attributes.append(value)
+
+    def __attributes(self):
+        if not self.attributes:
+            return
+        elif len(self.attributes) == 1:
+            return self.attributes[0]
+        else:
+            return self.attributes
+
+    def __str__(self):
+        dump = self.__dump()
+        if not dump:
+            return ''
+        else:
+            return format_kv(self.name, dump) + '\n'
+
+    def __dump(self):
+        if not self.attributes:
+            return
+        elif len(self.attributes) == 1:
+            return self.attributes[0]
+        else:
+            return self.attributes
+
+    def dump_to_dict(self):
+        return self.__dump()
+
+
 class Container(object):
     """
     Container class which creates instance of provided `klass` on attribute access.
@@ -222,17 +266,21 @@ class Stats(object):
         self.name = name
         self.counter = Container(ResultCounter)
         self.timer = Container(DurationTimer)
+        self.attributes = Container(AttributeContainer)
         self.__sub_stats = Container(Stats)
+
+    def __containers(self):
+        return itertools.chain(sorted(self.counter), sorted(self.timer), sorted(self.attributes), sorted(self.__sub_stats))
 
     def __str__(self):
         result = ["{0:=^100}".format(" " + str(self.name) + " ")]
-        for _, v in chain(sorted(self.counter), sorted(self.timer), sorted(self.__sub_stats)):
+        for _, v in self.__containers():
             result.append(str(v))
         return "\n".join(result)
 
     def dump_to_dict(self):
         result = OrderedDict()
-        for _, v in chain(sorted(self.counter), sorted(self.timer), sorted(self.__sub_stats)):
+        for _, v in self.__containers():
             result[v.name] = v.dump_to_dict()
         return result
 

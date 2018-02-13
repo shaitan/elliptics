@@ -46,6 +46,7 @@ class StatsProxy(object):
     COUNTER = 1
     SET_COUNTER = 2
     TIMER = 3
+    ATTRIBUTE = 4
 
     def __init__(self, queue, prefix=''):
         self.queue = queue
@@ -70,6 +71,13 @@ class StatsProxy(object):
             self.queue.put_nowait((self.prefix, self.TIMER, name, milestone, datetime.now()))
         except:
             self.log.exception('Failed to update timer')
+            raise
+
+    def attribute(self, name, value):
+        try:
+            self.queue.put_nowait((self.prefix, self.ATTRIBUTE, name, value))
+        except:
+            self.log.exception('Failed to set attribute')
             raise
 
     def __getitem__(self, item):
@@ -186,6 +194,10 @@ class Monitor(object):
                     _, _, name, milestone, ts = data
                     timer = getattr(stats.timer, name, ts)
                     timer(milestone)
+                elif flavour == StatsProxy.ATTRIBUTE:
+                    _, _, name, value = data
+                    attribute = getattr(stats.attributes, name)
+                    attribute.append(value)
                 else:
                     RuntimeError("Unknown flavour: {0}".format(data))
             except Exception as e:
