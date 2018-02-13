@@ -310,13 +310,13 @@ def main(options, args):
     ctx.routes = get_routes(ctx)
     log.debug("Parsed routing table:\n{0}".format(ctx.routes))
     if not ctx.routes:
-        ctx.stats.counter('unavailable_groups', len(ctx.groups))
+        ctx.stats.attribute('unavailable_groups', list(ctx.groups))
         raise RuntimeError("No routes was parsed from session")
     log.debug("Total routes: {0}".format(len(ctx.routes)))
 
     unavailable_groups = set(ctx.groups) - set(ctx.routes.groups())
     if unavailable_groups:
-        ctx.stats.counter('unavailable_groups', len(unavailable_groups))
+        ctx.stats.attribute('unavailable_groups', list(unavailable_groups))
         raise RuntimeError("Not all specified groups({}) are presented in route-list({}). Unavailable groups: {}"
                            .format(ctx.groups, ctx.routes.groups(), unavailable_groups))
 
