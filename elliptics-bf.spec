@@ -3,7 +3,7 @@
 
 Summary:	Distributed hash table storage
 Name:		elliptics
-Version:	2.27.5.0
+Version:	2.27.6.0
 Release:	1%{?dist}
 
 License:	GPLv2+
@@ -14,10 +14,10 @@ BuildRoot:	%{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 
 BuildRequires:	python-devel
 BuildRequires:	eblob-devel >= 0.24.0
-BuildRequires:  libblackhole-devel = 1.3.0
+BuildRequires:  libblackhole-devel = 1.9.0
 BuildRequires:	libev-devel libtool-ltdl-devel
 BuildRequires:	cmake msgpack-devel python-msgpack
-BuildRequires:	handystats >= 1.11.4
+BuildRequires:	handystats >= 1.11.6
 
 %define boost_ver %{nil}
 
@@ -55,7 +55,7 @@ Elliptics client library (C++/Python bindings)
 Summary:	Elliptics library C++ binding development headers and libraries
 Group:		Development/Libraries
 Requires:	%{name} = %{version}-%{release}
-Requires:	libblackhole-devel = 1.3.0
+Requires:	libblackhole-devel = 1.9.0
 
 
 %description client-devel
@@ -131,6 +131,20 @@ rm -rf %{buildroot}
 
 
 %changelog
+* Tue Feb 13 2018 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.6.0
+- logs: introduce `dnet_access_context`
+- recovery: use attribute for `unavailable_groups`
+- Remove access log level and introduce separated access logger instead
+- recovery: add attribute container to monitor stats
+- Separate `dnet_process_reply()` from `dnet_process_recv()`
+- recovery: monir style fix
+- fix typo
+- recovery: add number of unavailable groups to statistics
+- Update monitor tests
+- Update obtaining backends statistics via binary protocol
+- Update obtaining backends statistics via HTTP
+- Update parsing http request
+
 * Mon Dec 11 2017 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.5.0
 - Refactor client code for commands from newapi
 - Simplify usage of aggregasted()
