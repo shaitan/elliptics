@@ -80,7 +80,7 @@ int dnet_update_notify(struct dnet_net_state *st, struct dnet_cmd *cmd, void *da
 		memcpy(&notif.addr, &st->addr, sizeof(struct dnet_addr));
 
 		dnet_log(n, DNET_LOG_NOTICE, "%s: sending notification", dnet_dump_id(&cmd->id));
-		dnet_send_reply(nt->state, &nt->cmd, &notif, sizeof(struct dnet_io_notification), 1);
+		dnet_send_reply(nt->state, &nt->cmd, &notif, sizeof(struct dnet_io_notification), 1, /*context*/ NULL);
 	}
 	pthread_rwlock_unlock(&b->notify_lock);
 
@@ -134,7 +134,7 @@ int dnet_notify_remove(struct dnet_net_state *st, struct dnet_cmd *cmd)
 			continue;
 
 		e->cmd.flags = 0;
-		err = dnet_send_reply(e->state, &e->cmd, NULL, 0, 0);
+		err = dnet_send_reply(e->state, &e->cmd, NULL, 0, 0, /*context*/ NULL);
 
 		list_del(&e->notify_entry);
 		dnet_notify_entry_destroy(e);

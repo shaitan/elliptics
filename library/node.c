@@ -43,6 +43,7 @@ static struct dnet_node *dnet_node_alloc(struct dnet_config *cfg)
 	atomic_init(&n->trans, 0);
 
 	n->log = cfg->log;
+	n->access_log = cfg->access_log ? cfg->access_log : cfg->log;
 
 	err = pthread_mutex_init(&n->state_lock, NULL);
 	if (err) {
@@ -768,10 +769,6 @@ struct dnet_node *dnet_node_create(struct dnet_config *cfg)
 	n->removal_delay = cfg->removal_delay;
 	n->flags = cfg->flags;
 	n->send_limit = cfg->send_limit;
-
-	if (!n->log) {
-		n->log = cfg->log;
-	}
 
 	DNET_INFO(n, "Elliptics v%d.%d.%d.%d starts, flags: %s", CONFIG_ELLIPTICS_VERSION_0,
 	          CONFIG_ELLIPTICS_VERSION_1, CONFIG_ELLIPTICS_VERSION_2, CONFIG_ELLIPTICS_VERSION_3,

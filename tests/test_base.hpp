@@ -223,6 +223,7 @@ public:
 	config_data options;
 	std::vector<config_data> backends;
 	std::string log_path;
+	std::string access_path;
 };
 
 class server_node

@@ -264,15 +264,15 @@ int dnet_monitor_process_cmd(struct dnet_net_state *orig, struct dnet_cmd *cmd, 
 
 	auto real_monitor = ioremap::monitor::get_monitor(n);
 	if (!real_monitor)
-		return dnet_send_reply(orig, cmd, disabled_reply.c_str(), disabled_reply.size(), 0);
+		return dnet_send_reply(orig, cmd, disabled_reply.c_str(), disabled_reply.size(), 0, /*context*/ NULL);
 
 	try {
 		auto json = real_monitor->get_statistics().report(request);
-		return dnet_send_reply(orig, cmd, &*json.begin(), json.size(), 0);
+		return dnet_send_reply(orig, cmd, &*json.begin(), json.size(), 0, /*context*/ nullptr);
 	} catch(const std::exception &e) {
 		const std::string rep =
 		        ioremap::monitor::compress("{\"monitor_status\":\"failed: " + std::string(e.what()) + "\"}");
 		DNET_LOG_DEBUG(orig->n, "monitor: failed to generate json: {}", e.what());
-		return dnet_send_reply(orig, cmd, &*rep.begin(), rep.size(), 0);
+		return dnet_send_reply(orig, cmd, &*rep.begin(), rep.size(), 0, /*context*/ NULL);
 	}
 }

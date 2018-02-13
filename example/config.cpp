@@ -51,16 +51,16 @@ extern "C" void dnet_config_data_destroy(struct dnet_config_data *config) {
 	delete data;
 }
 
-static blackhole::root_logger_t make_logger(config_data *data) {
+static blackhole::root_logger_t make_logger(config_data *data, const std::string &name) {
 	auto root = blackhole::registry::configured()
 	                    ->builder<blackhole::config::json_t>(std::istringstream{data->logger_value})
-	                    .build("core");
+	                    .build(name);
 
 	const auto &level = data->logger_level;
 	root.filter([&level](const blackhole::record_t &record) {
 		return log_filter(record.severity(), level);
 	});
-	return root;
+	return std::move(root);
 }
 
 static void parse_logger(config_data *data, const kora::config_t &logger) {
@@ -78,18 +78,31 @@ static void parse_logger(config_data *data, const kora::config_t &logger) {
 	}
 
 	try {
-		data->root_logger.reset(new blackhole::root_logger_t(make_logger(data)));
+		data->root_holder.reset(new blackhole::root_logger_t(make_logger(data, "core")));
+		if (logger.has("access"))
+			data->access_holder.reset(new blackhole::root_logger_t(make_logger(data, "access")));
+		else
+			data->access_holder.reset(nullptr);
 
-		data->logger.reset([&data] {
+		auto wrap_logger = [&] (std::unique_ptr<blackhole::root_logger_t> &logger, bool access) -> wrapper_t * {
 			std::unique_ptr<dnet_logger> base_wrapper{
-			        new blackhole::wrapper_t(*data->root_logger, {{"source", "elliptics"}})};
+				new blackhole::wrapper_t(*logger, {{"source", "elliptics"}})};
 
-			std::unique_ptr<dnet_logger> trace_wrapper{new trace_wrapper_t{std::move(base_wrapper)}};
-			std::unique_ptr<dnet_logger> pool_wrapper{new pool_wrapper_t{std::move(trace_wrapper)}};
-			return new backend_wrapper_t(std::move(pool_wrapper));
-		}());
+			std::unique_ptr<wrapper_t> trace_wrapper{new trace_wrapper_t{std::move(base_wrapper)}};
+			if (access)
+				return trace_wrapper.release();
+			std::unique_ptr<wrapper_t> pool_wrapper{new pool_wrapper_t{std::move(trace_wrapper)}};
+			return new backend_wrapper_t{std::move(pool_wrapper)};
+		};
+
+		data->logger.reset(wrap_logger(data->root_holder, false));
+		if (data->access_holder)
+			data->access_logger.reset(wrap_logger(data->access_holder, true));
+		else
+			data->access_logger.reset(nullptr);
 
 		data->cfg_state.log = data->logger.get();
+		data->cfg_state.access_log = data->access_logger.get();
 	} catch (std::exception &e) {
 		throw config_error() << "failed to initialize blackhole log: " << e.what();
 	}
@@ -453,7 +466,9 @@ std::shared_ptr<kora::config_parser_t> config_data::parse_config() {
 
 void config_data::reset_logger() {
 	DNET_LOG_INFO(logger, "resetting logger");
-	*root_logger = make_logger(this);
+	*root_holder = make_logger(this, "core");
+	if (access_holder)
+		*access_holder = make_logger(this, "access");
 	DNET_LOG_INFO(logger, "logger has been reset");
 }
 

@@ -12,6 +12,7 @@
 
 #include "cache/cache.hpp"
 #include "example/config.hpp"
+#include "library/access_context.h"
 #include "library/logger.hpp"
 #include "library/protocol.hpp"
 #include "library/request_queue.h"
@@ -504,10 +505,10 @@ static int dnet_cmd_backend_control_dangerous(struct dnet_net_state *st, struct 
 	backend->fill_status(list->backends[0]);
 
 	if (err) {
-		dnet_send_reply(st, cmd, list, sizeof(buffer), true);
+		dnet_send_reply(st, cmd, list, sizeof(buffer), true, /*context*/ nullptr);
 	} else {
 		cmd->flags &= ~DNET_FLAGS_NEED_ACK;
-		err = dnet_send_reply(st, cmd, list, sizeof(buffer), false);
+		err = dnet_send_reply(st, cmd, list, sizeof(buffer), false, /*context*/ nullptr);
 		if (err) {
 			cmd->flags |= DNET_FLAGS_NEED_ACK;
 			return 0;
@@ -543,7 +544,7 @@ int dnet_cmd_backend_status(struct dnet_net_state *st, struct dnet_cmd *cmd) {
 	const size_t size = sizeof(dnet_backend_status_list) + list->backends_count * sizeof(dnet_backend_status);
 
 	cmd->flags &= ~DNET_FLAGS_NEED_ACK;
-	int err = dnet_send_reply(st, cmd, list.get(), size, false);
+	int err = dnet_send_reply(st, cmd, list.get(), size, false, /*context*/ nullptr);
 	if (err != 0) {
 		cmd->flags |= DNET_FLAGS_NEED_ACK;
 	}
@@ -835,7 +836,7 @@ private:
 		std::lock_guard<std::mutex> gurad(m_mutex);
 
 		const int more = --m_total > 0 ? 1 : 0;
-		dnet_send_reply(m_state.get(), &cmd, data.data(), data.size(), more);
+		dnet_send_reply(m_state.get(), &cmd, data.data(), data.size(), more, /*context*/ nullptr);
 	}
 
 private:
@@ -849,7 +850,7 @@ private:
 	std::mutex m_mutex;
 };
 
-int dnet_cmd_bulk_read_new(struct dnet_net_state *st, struct dnet_cmd *cmd, void *data) {
+int dnet_cmd_bulk_read_new(struct dnet_net_state *st, struct dnet_cmd *cmd, void *data, dnet_access_context *context) {
 	if (cmd->backend_id >= 0) {
 		return -ENOTSUP;
 	}
@@ -862,6 +863,13 @@ int dnet_cmd_bulk_read_new(struct dnet_net_state *st, struct dnet_cmd *cmd, void
 
 	dnet_bulk_read_request request;
 	deserialize(data_pointer::from_raw(data, cmd->size), request);
+
+	if (context) {
+		context->add({{"keys", request.keys.size()},
+		              {"ioflags", std::string(dnet_flags_dump_ioflags(request.ioflags))},
+		              {"read_flags", std::string(dnet_dump_read_flags(request.read_flags))},
+		             });
+	}
 
 	cmd->flags &= ~DNET_FLAGS_NEED_ACK;
 	auto handler = std::make_shared<bulk_read_handler>(st, cmd);
@@ -1373,7 +1381,8 @@ int dnet_backend_process_cmd_raw(struct dnet_backend *backend,
                                  struct dnet_net_state *st,
                                  struct dnet_cmd *cmd,
                                  void *data,
-                                 struct dnet_cmd_stats *cmd_stats) {
+                                 struct dnet_cmd_stats *cmd_stats,
+                                 struct dnet_access_context *context) {
 	auto &callbacks = backend->callbacks();
-	return callbacks.command_handler(st, callbacks.command_private, cmd, data, cmd_stats);
+	return callbacks.command_handler(st, callbacks.command_private, cmd, data, cmd_stats, context);
 }

@@ -1,25 +1,41 @@
 {
 	"logger": {
 		"level": "debug",
-		"core": [
-			{
-				"formatter": {
-					"type": "string",
-					"pattern": "{timestamp:l} {trace_id:{0:default}0>16}/{thread:d}/{process} {severity}: {message}, attrs: [{...}]",
-					"sevmap": ["DEBUG", "NOTICE", "INFO", "WARNING", "ERROR", "ACCESS"]
-				},
-				"sinks": [{
-					"type": "asynchronous",
-					"factor": 20,
-					"overflow": "drop",
-					"sink": {
-						"type": "file",
-						"path": "/dev/stdout",
-						"flush": 1
-					}
-				}]
-			}
-		]
+		"core": [{
+			"formatter": {
+				"type": "string",
+				"pattern": "{timestamp:l} {trace_id:{0:default}0>16}/{thread:d}/{process} {severity}: {message}, attrs: [{...}]",
+				"sevmap": ["DEBUG", "NOTICE", "INFO", "WARNING", "ERROR"]
+			},
+			"sinks": [{
+				"type": "asynchronous",
+				"factor": 20,
+				"overflow": "drop",
+				"sink": {
+					"type": "file",
+					"path": "/dev/stderr",
+					"flush": 1
+				}
+			}]
+		}],
+		"access": [{
+			"formatter": {
+				"type": "tskv",
+				"create": {
+					"tskv_format": "YT"
+				}
+			},
+			"sinks": [{
+				"type": "asynchronous",
+				"factor": 20,
+				"overflow": "drop",
+				"sink": {
+					"type": "file",
+					"path": "/dev/stderr",
+					"flush": 1
+				}
+			}]
+		}]
 	},
 	"options": {
 		"join": true,

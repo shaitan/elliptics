@@ -155,6 +155,8 @@ class node {
 public:
 	explicit node(std::unique_ptr<dnet_logger> logger);
 	explicit node(std::unique_ptr<dnet_logger> logger, dnet_config &cfg);
+	node(std::unique_ptr<dnet_logger> logger, std::unique_ptr<dnet_logger> access_logger);
+	node(std::unique_ptr<dnet_logger> logger, std::unique_ptr<dnet_logger> access_logger, dnet_config &cfg);
 	node(const node &other);
 	~node();
 

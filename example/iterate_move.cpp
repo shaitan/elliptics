@@ -185,7 +185,7 @@ int main(int argc, char *argv[])
 		 	"remote nodes to connect, can be specified multiple times, format: addr:port:family")
 		("group,g", bpo::value<int>(&igroup)->required(), "single remote group to iterate over")
 		("log-file", bpo::value<std::string>(&log_file)->default_value("/dev/stdout"), "log file")
-		("log-level", bpo::value<std::string>(&log_level)->default_value("error"), "log level: access, error, info, notice, debug")
+		("log-level", bpo::value<std::string>(&log_level)->default_value("error"), "log level: error, info, notice, debug")
 		("wait-timeout,w", bpo::value<long>(&wait_timeout)->default_value(120), "wait timeout in seconds")
 		("backend,b", bpo::value<std::vector<uint32_t>>(&backends)->composing(),
 		 	"remote backends in specified group, if not specified, iteration will run over all backends, "

@@ -29,6 +29,7 @@
 #include <fcntl.h>
 #include <signal.h>
 
+#include "access_context.h"
 #include "elliptics.h"
 #include "backend.h"
 #include "elliptics/interface.h"

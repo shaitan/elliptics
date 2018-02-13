@@ -13,28 +13,40 @@
 # GNU General Public License for more details.
 # =============================================================================
 
-from elliptics.core import Node
-from elliptics.route import Address
+import elliptics.core
+
+from elliptics import log_level
+from elliptics.log import Logger
 from elliptics.log import logged_class
+from elliptics.route import Address
 
 
 @logged_class
-class Node(Node):
+class Node(elliptics.core.Node):
     '''
     Node represents a connection with Elliptics.
     '''
-    def __init__(self, logger, config=None):
-        '''
-        Initializes node by the logger and custom configuration\n
-        node = elliptics.Node(logger, config)
-        node = elliptics.Node(logger)
+    def __init__(self, logger, access_logger=None, config=None):
+        """Initializes node by the logger, the logger for access entry and custom configuration
 
-        '''
-        if config:
-            super(Node, self).__init__(logger, config)
+        node = elliptics.Node(logger)
+        node = elliptics.Node(logger, config)
+        node = elliptics.Node(logger, access_logger)
+        node = elliptics.Node(logger, access_logger, config)
+        """
+        if access_logger is None:
+            if config is None:
+                super(Node, self).__init__(logger)
+            else:
+                super(Node, self).__init__(logger, config)
         else:
-            super(Node, self).__init__(logger)
-        self._logger = logger
+            if config is None:
+                super(Node, self).__init__(logger, access_logger)
+            else:
+                super(Node, self).__init__(logger, access_logger, config)
+
+        self.__logger = logger
+        self.__access_logger = access_logger
 
     def add_remotes(self, remotes):
         '''
@@ -61,3 +73,36 @@ class Node(Node):
             super(Node, self).add_remotes(map(convert, remotes))
         else:
             raise ValueError("Couldn't convert {0} to elliptics.Address".format(repr(remotes)))
+
+
+def create_node(elog=None,
+                log_file='/dev/stderr',
+                log_level=log_level.error,
+                cfg=None,
+                wait_timeout=3600,
+                check_timeout=60,
+                flags=0,
+                io_thread_num=1,
+                net_thread_num=1,
+                nonblocking_io_thread_num=1,
+                remotes=[],
+                log_watched=False,
+                access_logger=None):
+    if not elog:
+        elog = Logger(log_file, log_level, log_watched)
+
+    if not cfg:
+        cfg = elliptics.core.Config()
+        cfg.wait_timeout = wait_timeout
+        cfg.check_timeout = check_timeout
+        cfg.flags = flags
+        cfg.io_thread_num = io_thread_num
+        cfg.nonblocking_io_thread_num = nonblocking_io_thread_num
+        cfg.net_thread_num = net_thread_num
+
+    n = Node(logger=elog, access_logger=access_logger, config=cfg)
+    try:
+        n.add_remotes(remotes)
+    except:
+        pass
+    return n

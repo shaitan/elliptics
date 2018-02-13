@@ -255,10 +255,16 @@ struct dnet_io_local
 	uint64_t		reserved[8];
 };
 
+struct dnet_access_context;
+
 struct dnet_backend_callbacks {
 	/* command handler processes DNET_CMD_* commands */
-	int			(* command_handler)(void *state, void *priv, struct dnet_cmd *cmd, void *data,
-	                                            void *cmd_stats);
+	int			(* command_handler)(void *state,
+	                                            void *priv,
+	                                            struct dnet_cmd *cmd,
+	                                            void *data,
+	                                            void *cmd_stats,
+	                                            struct dnet_access_context *context);
 
 	/* this must be provided as @priv argument to all above and below callbacks*/
 	void			*command_private;
@@ -326,7 +332,7 @@ struct dnet_config
 	long			wait_timeout;
 
 	/*
-	 * Specifies wether given node will join the network,
+	 * Specifies whether given node will join the network,
 	 * or it is a client node and its ID should not be checked
 	 * against collision with others.
 	 *
@@ -379,7 +385,7 @@ struct dnet_config
 
 	int			reserved_for_future_use_3;
 
-	uint64_t		reserved_for_future_use_4;
+	dnet_logger		*access_log;
 
 	int			send_limit;
 
@@ -888,7 +894,12 @@ int dnet_send_file_info_ts_without_fd(void *state, struct dnet_cmd *cmd, const v
  * It will fill transaction, command and ID from the original command and copy given data.
  * It will set DNET_FLAGS_MORE if original command requested acknowledge or @more is set.
  */
-int dnet_send_reply(void *state, struct dnet_cmd *cmd, const void *odata, unsigned int size, int more);
+int dnet_send_reply(void *state,
+                    struct dnet_cmd *cmd,
+                    const void *odata,
+                    unsigned int size,
+                    int more,
+                    struct dnet_access_context  *context);
 int dnet_send_reply_threshold(void *state, struct dnet_cmd *cmd,
 		const void *odata, unsigned int size, int more);
 

@@ -29,14 +29,21 @@
 namespace ioremap { namespace elliptics {
 
 node::node(std::unique_ptr<dnet_logger> logger)
-: m_data(std::make_shared<node_data>(std::move(logger))) {
-	struct dnet_config cfg;
+: node(std::move(logger), nullptr) {}
+
+node::node(std::unique_ptr<dnet_logger> logger, dnet_config &cfg)
+: node(std::move(logger), nullptr, cfg) {}
+
+node::node(std::unique_ptr<dnet_logger> logger, std::unique_ptr<dnet_logger> access_logger)
+: m_data(std::make_shared<node_data>(std::move(logger), std::move(access_logger))) {
+	dnet_config cfg;
 
 	memset(&cfg, 0, sizeof(cfg));
 
 	cfg.wait_timeout = 5;
 	cfg.check_timeout = 20;
 	cfg.log = m_data->logger.get();
+	cfg.access_log = m_data->access_logger.get();
 
 	m_data->node_ptr = dnet_node_create(&cfg);
 	if (!m_data->node_ptr) {
@@ -44,18 +51,18 @@ node::node(std::unique_ptr<dnet_logger> logger)
 	}
 }
 
-node::node(std::unique_ptr<dnet_logger> logger, dnet_config &cfg)
-: m_data(std::make_shared<node_data>(std::move(logger))) {
+node::node(std::unique_ptr<dnet_logger> logger, std::unique_ptr<dnet_logger> access_logger, dnet_config &cfg)
+: m_data(std::make_shared<node_data>(std::move(logger), std::move(access_logger))) {
 	cfg.log = m_data->logger.get();
+	cfg.access_log = m_data->access_logger.get();
 
 	m_data->node_ptr = dnet_node_create(&cfg);
-	if (!m_data->node_ptr) {
+	if (!m_data->node_ptr)
 		throw std::bad_alloc();
-	}
 }
 
-node::node(const node &other) : m_data(other.m_data)
-{}
+node::node(const node &other)
+: m_data(other.m_data) {}
 
 node::~node()
 {}

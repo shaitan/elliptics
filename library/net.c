@@ -40,6 +40,7 @@
 #include "monitor/measure_points.h"
 #include "library/logger.hpp"
 #include "tests.h"
+#include "access_context.h"
 
 #ifndef POLLRDHUP
 #define POLLRDHUP 0x2000
@@ -203,6 +204,7 @@ static struct dnet_io_req *dnet_io_req_copy(struct dnet_net_state *st, struct dn
 	}
 	memset(r, 0, sizeof(struct dnet_io_req));
 	r->fd = -1;
+	r->context = dnet_access_context_get(orig->context);
 
 	if (orig->header && orig->hsize) {
 		r->header = buf + sizeof(struct dnet_io_req);
@@ -211,9 +213,9 @@ static struct dnet_io_req *dnet_io_req_copy(struct dnet_net_state *st, struct dn
 		offset = r->hsize;
 		memcpy(r->header, orig->header, r->hsize);
 	} else if (bypass) {
-        r->header = buf + sizeof(struct dnet_io_req);
-        r->hsize = 0;
-    }
+		r->header = buf + sizeof(struct dnet_io_req);
+		r->hsize = 0;
+	}
 
 	if (orig->data && orig->dsize) {
 		r->data = buf + sizeof(struct dnet_io_req) + offset;
@@ -284,7 +286,8 @@ static int dnet_io_req_queue(struct dnet_net_state *st, struct dnet_io_req *orig
 	 * If io_req hold fd instead of data it should be read here.
 	 */
 	if (st == st->n->st) {
-		dnet_log(st->n, DNET_LOG_DEBUG, "Sending to local state: data: 0x%lx data_size: %d", (unsigned long)orig->data, (int)orig->dsize);
+		dnet_log(st->n, DNET_LOG_DEBUG, "Sending to local state: data: 0x%lx data_size: %d",
+		         (unsigned long)orig->data, (int)orig->dsize);
 
 		r = dnet_io_req_copy(st, orig, 1);
 		if (!r) {
@@ -333,6 +336,7 @@ void dnet_io_req_free(struct dnet_io_req *r)
 		if (r->on_exit & DNET_IO_REQ_FLAGS_CLOSE)
 			close(r->fd);
 	}
+	dnet_access_access_put(r->context);
 	free(r);
 }
 
@@ -368,7 +372,7 @@ ssize_t dnet_send_nolock(struct dnet_net_state *st, void *data, uint64_t size)
 	return err;
 }
 
-ssize_t dnet_send(struct dnet_net_state *st, void *data, uint64_t size)
+ssize_t dnet_send(struct dnet_net_state *st, void *data, uint64_t size, struct dnet_access_context *context)
 {
 	struct dnet_io_req r;
 
@@ -380,12 +384,17 @@ ssize_t dnet_send(struct dnet_net_state *st, void *data, uint64_t size)
 		r.dsize = size - r.hsize;
 	}
 	r.fd = -1;
+	r.context = context;
 
 	return dnet_io_req_queue(st, &r);
 }
 
-ssize_t dnet_send_data(struct dnet_net_state *st, void *header, uint64_t hsize, void *data, uint64_t dsize)
-{
+ssize_t dnet_send_data(struct dnet_net_state *st,
+                       void *header,
+                       uint64_t hsize,
+                       void *data,
+                       uint64_t dsize,
+                       struct dnet_access_context *context) {
 	struct dnet_io_req r;
 
 	memset(&r, 0, sizeof(r));
@@ -394,6 +403,7 @@ ssize_t dnet_send_data(struct dnet_net_state *st, void *header, uint64_t hsize, 
 	r.data = data;
 	r.dsize = dsize;
 	r.fd = -1;
+	r.context = context;
 
 	return dnet_io_req_queue(st, &r);
 }
@@ -422,7 +432,7 @@ static ssize_t dnet_send_fd_nolock(struct dnet_net_state *st, int fd, uint64_t o
 }
 
 ssize_t dnet_send_fd(struct dnet_net_state *st, void *header, uint64_t hsize,
-		int fd, uint64_t offset, uint64_t fsize, int on_exit)
+		int fd, uint64_t offset, uint64_t fsize, int on_exit, struct dnet_access_context *context)
 {
 	struct dnet_io_req r;
 
@@ -433,6 +443,7 @@ ssize_t dnet_send_fd(struct dnet_net_state *st, void *header, uint64_t hsize,
 	r.on_exit = on_exit;
 	r.local_offset = offset;
 	r.fsize = fsize;
+	r.context = context;
 
 	return dnet_io_req_queue(st, &r);
 }
@@ -584,113 +595,133 @@ static int dnet_process_control(struct dnet_net_state *st, struct dnet_cmd *cmd,
 	}
 }
 
-int dnet_process_recv(struct dnet_net_state *st, struct dnet_io_req *r)
-{
+static int dnet_process_reply(struct dnet_net_state *st, struct dnet_io_req *r) {
+	int err = 0;
+	struct dnet_node *n = st->n;
+	struct dnet_trans *t = NULL;
+	struct dnet_cmd *cmd = r->header;
+	uint64_t tid = cmd->trans;
+	uint64_t flags = cmd->flags;
+
+	HANDY_COUNTER_INCREMENT("io.replies", 1);
+
+	pthread_mutex_lock(&st->trans_lock);
+	t = dnet_trans_search(st, tid);
+	if (t) {
+		if (!(flags & DNET_FLAGS_MORE)) {
+			dnet_trans_remove_nolock(st, t);
+		}
+
+		/*
+		 * Remove transaction for the duration of callback processing,
+		 * otherwise timeout checking thread can catch up.
+		 *
+		 * Network thread also removes transaction from the tree, but network
+		 * thread can read multiple replies and put multiple packets into the IO queue,
+		 * which if processed here. Since code below inserts transaction into the timer tree
+		 * again after its callback has been completed, someone has to remove it.
+		 *
+		 * It is safe to remove transaction multiple times, but subsequent insertion will lead to crash,
+		 * if timestamp has been updated, since it is used as a key in the timer tree.
+		 */
+		dnet_trans_remove_timer_nolock(st, t);
+	}
+	pthread_mutex_unlock(&st->trans_lock);
+
+	if (!t) {
+		dnet_log(n, DNET_LOG_ERROR, "%s: could not find transaction for reply: trans %llu",
+		         dnet_dump_id(&cmd->id), (unsigned long long)tid);
+		err = 0;
+		goto out;
+	}
+
+	++t->stats.recv_replies;
+	t->stats.recv_size += r->hsize + r->dsize + r->fsize;
+	t->stats.recv_queue_time += r->queue_time;
+	t->stats.recv_time += r->recv_time;
+
+	if (t->complete) {
+		if (t->command == DNET_CMD_READ || t->command == DNET_CMD_READ_NEW) {
+			uint64_t ioflags = 0;
+			if ((t->command == DNET_CMD_READ) &&
+			    (cmd->size >= sizeof(struct dnet_io_attr)) &&
+			    (t->alloc_size >= sizeof(struct dnet_cmd) + sizeof(struct dnet_io_attr))) {
+				struct dnet_io_attr *recv_io = (struct dnet_io_attr *)(cmd + 1);
+
+				struct dnet_cmd *local_cmd = (struct dnet_cmd *)(t + 1);
+				struct dnet_io_attr *local_io = (struct dnet_io_attr *)(local_cmd + 1);
+
+				ioflags = local_io->flags = recv_io->flags;
+				local_io->size = recv_io->size;
+				local_io->offset = recv_io->offset;
+				local_io->user_flags = recv_io->user_flags;
+				local_io->total_size = recv_io->total_size;
+				local_io->timestamp = recv_io->timestamp;
+
+				dnet_convert_io_attr(local_io);
+			}
+
+			if (st && !(flags & DNET_FLAGS_MORE)) {
+				struct timespec ts;
+				long diff;
+
+				clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
+				diff = DIFF_TIMESPEC(t->start_ts, ts);
+
+				dnet_update_backend_weight(st, cmd, ioflags, diff);
+			}
+		}
+		t->complete(dnet_state_addr(t->st), cmd, t->priv);
+	}
+
+	dnet_trans_put(t);
+	if (!(flags & DNET_FLAGS_MORE)) {
+		memcpy(&t->cmd, cmd, sizeof(struct dnet_cmd));
+		dnet_trans_put(t);
+	} else {
+		/*
+		 * Put transaction back into the end of 'timer' tree with updated timestamp.
+		 * Transaction had been removed from timer tree in @dnet_update_trans_timestamp_network() in network
+		 * thread right after whole data was read.
+		 */
+
+		pthread_mutex_lock(&st->trans_lock);
+		dnet_trans_update_timestamp(t);
+		dnet_trans_insert_timer_nolock(st, t);
+		pthread_mutex_unlock(&st->trans_lock);
+	}
+
+out:
+	return err;
+}
+
+int dnet_process_recv(struct dnet_net_state *st, struct dnet_io_req *r) {
 	int err = 0;
 	struct dnet_node *n = st->n;
 	struct dnet_net_state *forward_state = NULL;
 	struct dnet_cmd *cmd = r->header;
+	struct dnet_access_context *context = NULL;
 
 	if (cmd->flags & DNET_FLAGS_REPLY) {
-		struct dnet_trans *t = NULL;
-		uint64_t tid = cmd->trans;
-		uint64_t flags = cmd->flags;
-
-		HANDY_COUNTER_INCREMENT("io.replies", 1);
-
-		pthread_mutex_lock(&st->trans_lock);
-		t = dnet_trans_search(st, tid);
-		if (t) {
-			if (!(flags & DNET_FLAGS_MORE)) {
-				dnet_trans_remove_nolock(st, t);
-			}
-
-			/*
-			 * Remove transaction for the duration of callback processing,
-			 * otherwise timeout checking thread can catch up.
-			 *
-			 * Network thread also removes transaction from the tree, but network
-			 * thread can read multiple replies and put multiple packets into the IO queue,
-			 * which if processed here. Since code below inserts transaction into the timer tree
-			 * again after its callback has been completed, someone has to remove it.
-			 *
-			 * It is safe to remove transaction multiple times, but subsequent insertion will lead to crash,
-			 * if timestamp has been updated, since it is used as a key in the timer tree.
-			 */
-			dnet_trans_remove_timer_nolock(st, t);
-		}
-		pthread_mutex_unlock(&st->trans_lock);
-
-		if (!t) {
-			dnet_log(n, DNET_LOG_ERROR, "%s: could not find transaction for reply: trans %llu.",
-				dnet_dump_id(&cmd->id), (unsigned long long)tid);
-			err = 0;
-			goto err_out_exit;
-		}
-
-		++t->stats.recv_replies;
-		t->stats.recv_size += r->hsize + r->dsize + r->fsize;
-		t->stats.recv_queue_time += r->queue_time;
-		t->stats.recv_time += r->recv_time;
-
-		if (t->complete) {
-			if (t->command == DNET_CMD_READ || t->command == DNET_CMD_READ_NEW) {
-				uint64_t ioflags = 0;
-				if ((t->command == DNET_CMD_READ) &&
-				    (cmd->size >= sizeof(struct dnet_io_attr)) &&
-				    (t->alloc_size >= sizeof(struct dnet_cmd) + sizeof(struct dnet_io_attr))) {
-					struct dnet_io_attr *recv_io = (struct dnet_io_attr *)(cmd + 1);
-
-					struct dnet_cmd *local_cmd = (struct dnet_cmd *)(t + 1);
-					struct dnet_io_attr *local_io = (struct dnet_io_attr *)(local_cmd + 1);
-
-					ioflags = local_io->flags = recv_io->flags;
-					local_io->size = recv_io->size;
-					local_io->offset = recv_io->offset;
-					local_io->user_flags = recv_io->user_flags;
-					local_io->total_size = recv_io->total_size;
-					local_io->timestamp = recv_io->timestamp;
-
-					dnet_convert_io_attr(local_io);
-				}
-
-				if (st && !(flags & DNET_FLAGS_MORE)) {
-					struct timespec ts;
-					long diff;
-
-					clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
-					diff = DIFF_TIMESPEC(t->start_ts, ts);
-
-					dnet_update_backend_weight(st, cmd, ioflags, diff);
-				}
-			}
-			t->complete(dnet_state_addr(t->st), cmd, t->priv);
-		}
-
-		dnet_trans_put(t);
-		if (!(flags & DNET_FLAGS_MORE)) {
-			memcpy(&t->cmd, cmd, sizeof(struct dnet_cmd));
-			dnet_trans_put(t);
-		} else {
-			/*
-			 * Put transaction back into the end of 'timer' tree with updated timestamp.
-			 * Transaction had been removed from timer tree in @dnet_update_trans_timestamp_network() in network
-			 * thread right after whole data was read.
-			 */
-
-			pthread_mutex_lock(&st->trans_lock);
-			dnet_trans_update_timestamp(t);
-			dnet_trans_insert_timer_nolock(st, t);
-			pthread_mutex_unlock(&st->trans_lock);
-		}
-
+		err = dnet_process_reply(st, r);
 		goto out;
 	}
+
+	// context is created only for requests, all replies should be handled within their request's context
+	context = dnet_access_context_create(n);
+	dnet_access_context_add_string(context, "cmd", dnet_cmd_string(cmd->cmd));
+	dnet_access_context_add_uint(context, "trans", cmd->trans);
+	dnet_access_context_add_string(context, "st", dnet_state_dump_addr(st));
+	dnet_access_context_add_uint(context, "request_size", r->hsize + r->dsize + r->fsize);
+	dnet_access_context_add_uint(context, "receive_time", r->recv_time);
+	dnet_access_context_add_uint(context, "receive_queue_time", r->queue_time);
 
 	err = dnet_process_control(st, cmd, r->data);
 	if (err != -ENOTSUP) {
+		dnet_access_context_add_string(context, "access", "server/control");
 		goto out;
 	}
+
 
 	if (!(cmd->flags & DNET_FLAGS_DIRECT)) {
 		forward_state = dnet_state_get_first(n, &cmd->id);
@@ -699,14 +730,12 @@ int dnet_process_recv(struct dnet_net_state *st, struct dnet_io_req *r)
 	if (!forward_state || forward_state == st || forward_state == n->st) {
 		dnet_state_put(forward_state);
 
+		dnet_access_context_add_string(context, "access", "server");
 		HANDY_COUNTER_INCREMENT("io.cmds", 1);
-		err = dnet_process_cmd_raw(st, cmd, r->data, 0, r->queue_time);
+		err = dnet_process_cmd_raw(st, cmd, r->data, 0, r->queue_time, context);
 	} else {
-		if (!forward_state) {
-			err = -ENXIO;
-			goto err_out_put_forward;
-		}
-
+		dnet_access_context_add_string(context, "access", "server/forward");
+		dnet_access_context_add_string(context, "forward", dnet_state_dump_addr(forward_state));
 		HANDY_COUNTER_INCREMENT("io.forwards", 1);
 		err = dnet_trans_forward(r, st, forward_state);
 		if (err)
@@ -716,11 +745,12 @@ int dnet_process_recv(struct dnet_net_state *st, struct dnet_io_req *r)
 	}
 
 out:
+	dnet_access_access_put(context);
 	return err;
 
 err_out_put_forward:
 	dnet_state_put(forward_state);
-err_out_exit:
+	dnet_access_access_put(context);
 	return err;
 }
 
@@ -1334,6 +1364,9 @@ err_out_exit:
 		         dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), (unsigned long long)cmd->trans,
 		         dnet_addr_string(&st->addr), cmd->backend_id, (unsigned long long)cmd->size,
 		         dnet_flags_dump_cflags(cmd->flags), st->send_offset, total_size, r->queue_time, send_time);
+		dnet_access_context_add_uint(r->context, "send_time", send_time);
+		dnet_access_context_add_uint(r->context, "send_queue_time", r->queue_time);
+		dnet_access_context_add_uint(r->context, "response_size", total_size);
 	}
 	dnet_logger_unset_trace_id();
 

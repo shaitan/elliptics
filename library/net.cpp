@@ -1338,7 +1338,7 @@ static int dnet_trans_complete_forward(struct dnet_addr * /*addr*/, struct dnet_
 
 		dnet_convert_cmd(cmd);
 
-		err = dnet_send_data(t->orig, cmd, sizeof(struct dnet_cmd), cmd + 1, size);
+		err = dnet_send_data(t->orig, cmd, sizeof(struct dnet_cmd), cmd + 1, size, /*context*/ NULL);
 	}
 
 	return err;

@@ -318,9 +318,9 @@ struct json_value_visitor : public boost::static_visitor<>
 	}
 };
 
-void server_config::write(const std::string &path) const {
-	rapidjson::MemoryPoolAllocator<> allocator;
-
+static void add_core_logger(rapidjson::Value &logger,
+                            rapidjson::Document::AllocatorType &allocator,
+                            const std::string &log_path) {
 	rapidjson::Value sevmap;
 	sevmap.SetArray();
 	sevmap.PushBack("DEBUG", allocator);
@@ -328,14 +328,13 @@ void server_config::write(const std::string &path) const {
 	sevmap.PushBack("INFO", allocator);
 	sevmap.PushBack("WARNING", allocator);
 	sevmap.PushBack("ERROR", allocator);
-	sevmap.PushBack("ACCESS", allocator);
 
 	rapidjson::Value formatter;
 	formatter.SetObject();
 	formatter.AddMember("type", "string", allocator);
 	formatter.AddMember("sevmap", sevmap, allocator);
-	formatter.AddMember("pattern",
-	                    "{timestamp:l} {trace_id:{0:default}0>16}/{thread:d}/{process} {severity}: {message}, attrs: [{...}]",
+	formatter.AddMember("pattern","{timestamp:l} {trace_id:{0:default}0>16}/{thread:d}/{process} "
+		                      "{severity}: {message}, attrs: [{...}]",
 	                    allocator);
 
 	rapidjson::Value file_sink;
@@ -364,12 +363,53 @@ void server_config::write(const std::string &path) const {
 	core.SetArray();
 	core.PushBack(core_0, allocator);
 
-	rapidjson::Value log_level("debug", allocator);
+	logger.AddMember("core", core, allocator);
+}
+
+static void add_access_logger(rapidjson::Value &logger,
+                              rapidjson::Document::AllocatorType &allocator,
+                              const std::string &log_path) {
+	rapidjson::Value tskv_formatter;
+	tskv_formatter.SetObject();
+	tskv_formatter.AddMember("type", "tskv", allocator);
+
+	rapidjson::Value file_sink;
+	file_sink.SetObject();
+	file_sink.AddMember("type", "file", allocator);
+	file_sink.AddMember("path", log_path.c_str(), allocator);
+	file_sink.AddMember("flush", 1, allocator);
+
+	rapidjson::Value async_sink;
+	async_sink.SetObject();
+	async_sink.AddMember("type", "asynchronous", allocator);
+	async_sink.AddMember("factor", 10, allocator);
+	async_sink.AddMember("overflow", "wait", allocator);
+	async_sink.AddMember("sink", file_sink, allocator);
+
+	rapidjson::Value sinks;
+	sinks.SetArray();
+	sinks.PushBack(async_sink, allocator);
+
+	rapidjson::Value access_0;
+	access_0.SetObject();
+	access_0.AddMember("formatter", tskv_formatter, allocator);
+	access_0.AddMember("sinks", sinks, allocator);
+
+	rapidjson::Value access;
+	access.SetArray();
+	access.PushBack(access_0, allocator);
+
+	logger.AddMember("access", access, allocator);
+}
+
+void server_config::write(const std::string &path) const {
+	rapidjson::MemoryPoolAllocator<> allocator;
 
 	rapidjson::Value logger;
 	logger.SetObject();
-	logger.AddMember("level", log_level, allocator);
-	logger.AddMember("core", core, allocator);
+	logger.AddMember("level", "debug", allocator);
+	add_core_logger(logger, allocator, log_path);
+	add_access_logger(logger, allocator, access_path);
 
 	rapidjson::Value server;
 	server.SetObject();
@@ -842,6 +882,9 @@ nodes_data::ptr start_nodes(start_nodes_config &start_config) {
 
 		if (config.log_path.empty())
 			config.log_path = server_path + "/log.log";
+
+		if (config.access_path.empty())
+			config.access_path = server_path + "/access.log";
 
 		config.options
 				("auth_cookie", auth_cookie)
