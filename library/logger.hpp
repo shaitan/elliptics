@@ -24,7 +24,7 @@ public:
 
 	blackhole::scope::manager_t &manager();
 
-	virtual blackhole::attributes_t attributes() = 0;
+	virtual blackhole::attributes_t attributes();
 
 	dnet_logger *inner_logger();
 	dnet_logger *base_logger();

@@ -88,9 +88,10 @@ static void parse_logger(config_data *data, const kora::config_t &logger) {
 			std::unique_ptr<dnet_logger> base_wrapper{
 				new blackhole::wrapper_t(*logger, {{"source", "elliptics"}})};
 
-			std::unique_ptr<wrapper_t> trace_wrapper{new trace_wrapper_t{std::move(base_wrapper)}};
 			if (access)
-				return trace_wrapper.release();
+				return new wrapper_t{std::move(base_wrapper)};
+
+			std::unique_ptr<wrapper_t> trace_wrapper{new trace_wrapper_t{std::move(base_wrapper)}};
 			std::unique_ptr<wrapper_t> pool_wrapper{new pool_wrapper_t{std::move(trace_wrapper)}};
 			return new backend_wrapper_t{std::move(pool_wrapper)};
 		};

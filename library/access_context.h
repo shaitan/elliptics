@@ -82,6 +82,8 @@ void dnet_access_context_add_int(struct dnet_access_context *context, const char
 void dnet_access_context_add_uint(struct dnet_access_context *context, const char *name, uint64_t value);
 // Add attribute with @name and @value: overload for const char* values
 void dnet_access_context_add_string(struct dnet_access_context *context, const char *name, const char *value);
+// Add trace_id attribute with @value
+void dnet_access_context_add_trace_id(struct dnet_access_context *context, uint64_t value);
 
 #ifdef __cplusplus
 }
