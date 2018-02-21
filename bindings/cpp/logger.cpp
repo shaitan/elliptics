@@ -202,6 +202,10 @@ blackhole::scope::manager_t &wrapper_t::manager() {
 	return m_inner->manager();
 }
 
+blackhole::attributes_t wrapper_t::attributes() {
+	return {};
+}
+
 dnet_logger *wrapper_t::inner_logger() {
 	return m_inner.get();
 }
