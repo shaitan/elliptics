@@ -137,6 +137,7 @@ public:
 			                {"id", std::string(dnet_dump_id_str(m_key.id().id))},
 			                {"access", "client"},
 			                {"cflags",  std::string(dnet_flags_dump_cflags(control.get_native().cflags))},
+			                {"trace_id", to_hex_string(m_session.get_trace_id())},
 			               });
 		}
 
@@ -228,6 +229,7 @@ public:
 			                {"ioflags", std::string(dnet_flags_dump_ioflags(request.ioflags))},
 			                {"cflags", std::string(dnet_flags_dump_cflags(control.get_native().cflags))},
 			                {"ts", std::string(dnet_print_time(&request.timestamp))},
+			                {"trace_id", to_hex_string(m_session.get_trace_id())},
 			               });
 		}
 
@@ -351,6 +353,7 @@ public:
 			                {"request_offset", request.data_offset},
 			                {"request_size", request.data_size},
 			                {"deadline", std::string(dnet_print_time(&request.deadline))},
+			                {"trace_id", to_hex_string(m_session.get_trace_id())},
 			               });
 		}
 
@@ -545,6 +548,7 @@ public:
 			                {"data_commit_size", request.data_commit_size},
 			                {"cache_lifetime", request.cache_lifetime},
 			                {"deadline", std::string(dnet_print_time(&request.deadline))},
+			                {"trace_id", to_hex_string(m_session.get_trace_id())},
 			               });
 		}
 
@@ -910,6 +914,7 @@ public:
 				        	result << request.groups;
 				        	return std::move(result.str());
 			                }()},
+			                {"trace_id", to_hex_string(m_session.get_trace_id())},
 			               });
 		}
 
@@ -1048,6 +1053,7 @@ public:
 			                }()},
 			                {"flags", flags},
 			                {"chunk_size", chunk_size},
+			                {"trace_id", to_hex_string(m_session.get_trace_id())},
 			               });
 		}
 
@@ -1304,6 +1310,7 @@ public:
 			                {"cflags", std::string(dnet_flags_dump_cflags(m_session.get_cflags()))},
 			                {"read_flags", std::string(dnet_dump_read_flags(read_flags))},
 			                {"keys", m_keys.size()},
+			                {"trace_id", to_hex_string(m_session.get_trace_id())},
 			               });
 		}
 

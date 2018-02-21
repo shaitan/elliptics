@@ -368,6 +368,7 @@ void dnet_trans_log(struct dnet_node *node, struct dnet_trans *t) {
 	                 {"group", cmd->id.group_id},
 	                 {"trans", t->trans},
 	                 {"st", std::string(dnet_state_dump_addr(t->st))},
+	                 {"trace_id", ioremap::elliptics::to_hex_string(cmd->trace_id)},
 	                 {"backend_id", std::to_string(cmd->backend_id)},
 	                 {"request_size", request_size},
 	                 {"request_cflags", std::string(dnet_flags_dump_cflags(cmd->flags))},

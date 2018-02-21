@@ -97,3 +97,10 @@ void dnet_access_context_add_string(struct dnet_access_context *context, const c
 
 	context->add({name, std::string(value)});
 }
+
+void dnet_access_context_add_trace_id(struct dnet_access_context *context, uint64_t value) {
+	if (!context)
+		return;
+
+	context->add({"trace_id", ioremap::elliptics::to_hex_string(value)});
+}

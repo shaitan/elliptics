@@ -712,6 +712,7 @@ int dnet_process_recv(struct dnet_net_state *st, struct dnet_io_req *r) {
 	dnet_access_context_add_string(context, "cmd", dnet_cmd_string(cmd->cmd));
 	dnet_access_context_add_uint(context, "trans", cmd->trans);
 	dnet_access_context_add_string(context, "st", dnet_state_dump_addr(st));
+	dnet_access_context_add_trace_id(context, cmd->trace_id);
 	dnet_access_context_add_uint(context, "request_size", r->hsize + r->dsize + r->fsize);
 	dnet_access_context_add_uint(context, "receive_time", r->recv_time);
 	dnet_access_context_add_uint(context, "receive_queue_time", r->queue_time);
