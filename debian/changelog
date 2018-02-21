@@ -1,3 +1,9 @@
+elliptics (2.27.6.7~debug) unstable; urgency=low
+
+  * debug: calculate and print sha512 for writing data
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Fri, 11 May 2018 09:11:53 +0300
+
 elliptics (2.27.6.7) unstable; urgency=low
 
   * Block all signals in spawned threads
