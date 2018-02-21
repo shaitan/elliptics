@@ -3,7 +3,7 @@
 
 Summary:	Distributed hash table storage
 Name:		elliptics
-Version:	2.27.6.0
+Version:	2.27.6.1
 Release:	1%{?dist}
 
 License:	GPLv2+
@@ -131,6 +131,10 @@ rm -rf %{buildroot}
 
 
 %changelog
+* Wed Feb 21 2018 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.6.1
+- access: attach trace_id to access context
+- access: use less wrapped logger for access
+
 * Tue Feb 13 2018 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.6.0
 - logs: introduce `dnet_access_context`
 - recovery: use attribute for `unavailable_groups`
