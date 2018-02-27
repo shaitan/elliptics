@@ -934,7 +934,7 @@ private:
 
 		const auto *cmd = entry.command();
 		m_trans = cmd->trans;
-		auto it = m_statuses.emplace(entry.status(), 1);
+		auto it = m_statuses.emplace(cmd->status, 1);
 		if (!it.second)
 			++it.first->second;
 	}
