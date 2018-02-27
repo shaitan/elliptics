@@ -1,3 +1,9 @@
+elliptics (2.27.6.2) unstable; urgency=medium
+
+  * Fix using method of an entry with an error
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Tue, 27 Feb 2018 13:11:00 +0300
+
 elliptics (2.27.6.1) unstable; urgency=medium
 
   * access: attach trace_id to access context
