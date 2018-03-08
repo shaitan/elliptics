@@ -929,9 +929,6 @@ private:
 	void process(const iterator_result_entry &entry) {
 		m_handler.process(entry);
 
-		if (entry.is_ack())
-			return;
-
 		const auto *cmd = entry.command();
 		m_trans = cmd->trans;
 		auto it = m_statuses.emplace(cmd->status, 1);
