@@ -51,15 +51,17 @@ extern "C" void dnet_config_data_destroy(struct dnet_config_data *config) {
 	delete data;
 }
 
-static blackhole::root_logger_t make_logger(config_data *data, const std::string &name) {
+static blackhole::root_logger_t make_logger(config_data *data, const std::string &name, bool filter=true) {
 	auto root = blackhole::registry::configured()
 	                    ->builder<blackhole::config::json_t>(std::istringstream{data->logger_value})
 	                    .build(name);
 
-	const auto &level = data->logger_level;
-	root.filter([&level](const blackhole::record_t &record) {
-		return log_filter(record.severity(), level);
-	});
+	if (filter) {
+		const auto &level = data->logger_level;
+		root.filter([&level](const blackhole::record_t &record) {
+			return log_filter(record.severity(), level);
+		});
+	}
 	return std::move(root);
 }
 
@@ -80,7 +82,7 @@ static void parse_logger(config_data *data, const kora::config_t &logger) {
 	try {
 		data->root_holder.reset(new blackhole::root_logger_t(make_logger(data, "core")));
 		if (logger.has("access"))
-			data->access_holder.reset(new blackhole::root_logger_t(make_logger(data, "access")));
+			data->access_holder.reset(new blackhole::root_logger_t(make_logger(data, "access", /*filter*/ false)));
 		else
 			data->access_holder.reset(nullptr);
 
@@ -469,7 +471,7 @@ void config_data::reset_logger() {
 	DNET_LOG_INFO(logger, "resetting logger");
 	*root_holder = make_logger(this, "core");
 	if (access_holder)
-		*access_holder = make_logger(this, "access");
+		*access_holder = make_logger(this, "access", /*filter*/ false);
 	DNET_LOG_INFO(logger, "logger has been reset");
 }
 
