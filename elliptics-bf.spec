@@ -3,7 +3,7 @@
 
 Summary:	Distributed hash table storage
 Name:		elliptics
-Version:	2.27.6.2
+Version:	2.27.6.3
 Release:	1%{?dist}
 
 License:	GPLv2+
@@ -131,6 +131,10 @@ rm -rf %{buildroot}
 
 
 %changelog
+* Wed Mar 28 2018 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.6.3
+- logger: do not filter access logs
+- fix: output correct status in access log for transaction
+
 * Tue Feb 27 2018 Kirill Smorodinnikov <shaitkir@gmail.com> - 2.27.6.2
 - Fix using method of an entry with an error
 
