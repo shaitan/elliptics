@@ -376,7 +376,7 @@ void dnet_trans_log(struct dnet_node *node, struct dnet_trans *t) {
 	                 {"stall", t->st->stall},
 	                 {"send_queue_time", t->stats.send_queue_time},
 	                 {"send_time", t->stats.send_time},
-	                 {"status", cmd->status},
+	                 {"status", int(t->cmd.status)},
 	                 {"replies", t->stats.recv_replies},
 	                 {"replies_size", t->stats.recv_size},
 	                 {"recv_time", t->stats.recv_time},
