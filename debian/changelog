@@ -1,3 +1,12 @@
+elliptics (2.27.6.4) unstable; urgency=medium
+
+  * Remove useless check
+  * recovery: use monitor with `with` statement
+  * Fix typos
+  * recovery: limit waiting for results from a process pool
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Sat, 31 Mar 2018 16:40:07 +0300
+
 elliptics (2.27.6.3) unstable; urgency=medium
 
   * logger: do not filter access logs
