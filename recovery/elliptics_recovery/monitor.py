@@ -93,21 +93,37 @@ class Monitor(object):
     Contains monitoring data and provides interface for manipulating it
     from detached threads/processes
     """
-    def __init__(self, ctx, port):
-        self.ctx = ctx
+    # TODO: remove @ctx when no one specifies it
+    def __init__(self, ctx=None, port=None, stat_format=None, path=None):
+        """Initializes Monitor
+
+        Args:
+            ctx (obj): old way to pass arguments
+            port (int): port number to serve by http server
+            stat_format (str): one of ALLOWED_STAT_FORMATS
+            path (str): path for dumping statistics
+
+        Note:
+            `ctx` and current order is kept for backward compatibility. If `ctx` is specified then
+            `ctx.stat_format` and `ctx.tmp_dir` will be used instead of `stat_format` and `path`.
+        """
+        if ctx:
+            stat_format = ctx.stat_format
+            path = ctx.tmp_dir
         self.port = port
+        self.stat_format = stat_format
         self.manager = Manager()
         self.queue = self.manager.Queue()
         self.stats = StatsProxy(self.queue)
         self.__shutdown_request = False
         self.__stats = Stats('monitor')
-        if self.ctx.stat_format == STAT_TEXT:
+        if self.stat_format == STAT_TEXT:
             self.stats_file = 'stats.txt'
-        elif self.ctx.stat_format == STAT_JSON:
+        elif self.stat_format == STAT_JSON:
             self.stats_file = 'stats.json'
         else:
             self.stats_file = 'stats'
-        self.stats_file = os.path.join(ctx.tmp_dir, self.stats_file)
+        self.stats_file = os.path.join(path, self.stats_file)
 
         self.d_thread = Thread(target=self.data_thread, name="MonitorDataThread")
         self.d_thread.daemon = True
@@ -132,15 +148,23 @@ class Monitor(object):
             self.l_thread.start()
         self.u_thread.start()
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.shutdown()
+        self.update()
+        self.print_stat()
+
     def update(self):
         """
         Writes to file current stats
         """
         stats_file_tmp = os.path.join(self.stats_file + '.tmp')
         with open(stats_file_tmp, 'w') as f:
-            if self.ctx.stat_format == STAT_TEXT:
+            if self.stat_format == STAT_TEXT:
                 f.write(str(self.__stats))
-            elif self.ctx.stat_format == STAT_JSON:
+            elif self.stat_format == STAT_JSON:
                 f.write(self.__stats.json())
             f.write('\n')
         try:

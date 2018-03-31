@@ -17,9 +17,9 @@ import os
 import sys
 import logging
 import logging.handlers
+import socket
 import traceback
 from multiprocessing import Pool
-# from memory_profiler import profile
 
 from elliptics_recovery.etime import Time
 from elliptics_recovery.utils.misc import elliptics_create_node, elliptics_create_session, worker_init
@@ -75,7 +75,6 @@ def get_routes(ctx):
     return session.routes.filter_by_groups(ctx.groups)
 
 
-# @profile
 def main(options, args):
     if len(args) > 1:
         raise ValueError("Too many arguments passed: {0}, expected: 1".format(len(args)))
@@ -196,7 +195,7 @@ def main(options, args):
             ctx.address = elliptics.Address.from_host_port_family(options.one_node)
         except Exception as e:
             raise ValueError("Can't parse host:port:family: '{0}': {1}, traceback: {2}"
-                             .format(remote, repr(e), traceback.format_exc()))
+                             .format(options.one_node, repr(e), traceback.format_exc()))
         try:
             if options.backend_id is not None:
                 ctx.backend_id = int(options.backend_id)
@@ -236,7 +235,7 @@ def main(options, args):
         if ctx.batch_size <= 0:
             raise ValueError("Batch size should be positive: {0}".format(ctx.batch_size))
     except Exception as e:
-        raise ValueError("Can't parse batchsize: '{0}': {1}, traceback: {2}"
+        raise ValueError("Can't parse batch_size: '{0}': {1}, traceback: {2}"
                          .format(options.batch_size, repr(e), traceback.format_exc()))
     log.info("Using batch_size: {0}".format(ctx.batch_size))
 
@@ -256,25 +255,17 @@ def main(options, args):
         raise ValueError("Can't parse attempts: '{0}': {1}, traceback: {2}"
                          .format(options.attempts, repr(e), traceback.format_exc()))
 
-    ctx.stat_format = options.stat
-    if ctx.stat_format not in ALLOWED_STAT_FORMATS:
-        raise ValueError("Unknown statistics output format: '{0}'. Available formats are: {1}"
-                         .format(ctx.stat_format, ALLOWED_STAT_FORMATS))
+    if options.stat not in ALLOWED_STAT_FORMATS:
+        raise ValueError("Unknown statistics output format: '{}'. Available formats are: {}"
+                         .format(options.stat, ALLOWED_STAT_FORMATS))
 
     try:
-        ctx.monitor_port = int(options.monitor_port)
-        if ctx.monitor_port:
-            try:
-                from socket import getfqdn
-
-                base_url = 'http://{0}:{1}'.format(getfqdn(), ctx.monitor_port)
-                log.warning("Stats can be monitored via: {0}/{1}".format(base_url, "stats.txt"))
-                log.warning("Log can be viewed via: {0}/{1}".format(base_url, options.elliptics_log))
-            except Exception:
-                pass
-    except Exception as e:
-        raise ValueError("Can't parse monitor_port: '{0}': {1}, traceback: {2}"
-                         .format(options.monitor_port, repr(e), traceback.format_exc()))
+        if options.monitor_port:
+            base_url = 'http://{0}:{1}'.format(socket.getfqdn(), options.monitor_port)
+            log.warning("Stats can be monitored via: %s/%s", base_url, "stats.txt")
+            log.warning("Log can be viewed via: %s/%s", base_url, options.elliptics_log)
+    except Exception:
+        pass
 
     try:
         ctx.wait_timeout = int(options.wait_timeout)
@@ -302,63 +293,60 @@ def main(options, args):
     ctx.corrupted_keys = open(os.path.join(ctx.tmp_dir, 'corrupted_keys'), 'w')
 
     log.info("Initializing monitor")
-    monitor = Monitor(ctx, ctx.monitor_port)
-    ctx.stats = monitor.stats
+    with Monitor(port=options.monitor_port, stat_format=options.stat, path=ctx.tmp_dir) as monitor:
+        ctx.stats = monitor.stats
 
-    log.debug("Using following context:\n{0}".format(ctx))
+        log.debug("Using following context:\n%s", ctx)
 
-    ctx.routes = get_routes(ctx)
-    log.debug("Parsed routing table:\n{0}".format(ctx.routes))
-    if not ctx.routes:
-        ctx.stats.attribute('unavailable_groups', list(ctx.groups))
-        raise RuntimeError("No routes was parsed from session")
-    log.debug("Total routes: {0}".format(len(ctx.routes)))
+        ctx.routes = get_routes(ctx)
+        log.debug("Parsed routing table:\n%s", ctx.routes)
+        if not ctx.routes:
+            ctx.stats.attribute('unavailable_groups', list(ctx.groups))
+            raise RuntimeError("No routes was parsed from session")
+        log.debug("Total routes: %s", len(ctx.routes))
 
-    unavailable_groups = set(ctx.groups) - set(ctx.routes.groups())
-    if unavailable_groups:
-        ctx.stats.attribute('unavailable_groups', list(unavailable_groups))
-        raise RuntimeError("Not all specified groups({}) are presented in route-list({}). Unavailable groups: {}"
-                           .format(ctx.groups, ctx.routes.groups(), unavailable_groups))
+        unavailable_groups = set(ctx.groups) - set(ctx.routes.groups())
+        if unavailable_groups:
+            ctx.stats.attribute('unavailable_groups', list(unavailable_groups))
+            raise RuntimeError("Not all specified groups({}) are presented in route-list({}). Unavailable groups: {}"
+                               .format(ctx.groups, ctx.routes.groups(), unavailable_groups))
 
-    try:
-        log.info("Creating pool of processes: %d", ctx.nprocess)
-        ctx.pool = Pool(processes=ctx.nprocess, initializer=worker_init)
-        if recovery_type == TYPE_MERGE:
-            if ctx.dump_file:
-                from elliptics_recovery.types.merge import dump_main
-                result = dump_main(ctx)
-            else:
-                from elliptics_recovery.types.merge import main
-                result = main(ctx)
-        elif recovery_type == TYPE_DC:
-            if ctx.dump_file:
-                from elliptics_recovery.types.dc import dump_main
-                result = dump_main(ctx)
-            else:
-                from elliptics_recovery.types.dc import main
-                result = main(ctx)
-        ctx.pool.close()
-        ctx.pool.terminate()
-        ctx.pool.join()
-    except Exception:
-        log.error("Recovering failed")
-        ctx.pool.terminate()
-        ctx.pool.join()
-        result = False
+        try:
+            log.info("Creating pool of processes: %d", ctx.nprocess)
+            ctx.pool = Pool(processes=ctx.nprocess, initializer=worker_init)
+            if recovery_type == TYPE_MERGE:
+                if ctx.dump_file:
+                    from elliptics_recovery.types.merge import dump_main
+                    result = dump_main(ctx)
+                else:
+                    from elliptics_recovery.types.merge import main
+                    result = main(ctx)
+            elif recovery_type == TYPE_DC:
+                if ctx.dump_file:
+                    from elliptics_recovery.types.dc import dump_main
+                    result = dump_main(ctx)
+                else:
+                    from elliptics_recovery.types.dc import main
+                    result = main(ctx)
+            ctx.pool.close()
+            ctx.pool.terminate()
+            ctx.pool.join()
+        except Exception:
+            log.error("Recovering failed")
+            ctx.pool.terminate()
+            ctx.pool.join()
+            result = False
 
-    rc = int(not result)
-    log.info("Finished with rc: {0}".format(rc))
-    ctx.stats.counter('result', rc)
+        rc = int(not result)
+        log.info("Finished with rc: %s", rc)
+        ctx.stats.counter('result', rc)
 
-    if options.no_exit:
-        raw_input("Press Enter to exit!")
+        if options.no_exit:
+            raw_input("Press Enter to exit!")
 
-    monitor.shutdown()
-    monitor.update()
-    monitor.print_stat()
-    ctx.corrupted_keys.close()
-    os.chdir(init_dir)
-    return rc
+        ctx.corrupted_keys.close()
+        os.chdir(init_dir)
+        return rc
 
 
 def run(args=None):
@@ -398,7 +386,7 @@ def run(args=None):
                            "e.g.: `1368940603`, `12h`, `1d`, or `4w` [default: %default]")
     parser.add_option("-e", "--no-exit", action="store_true", dest="no_exit", default=False,
                       help="Will be waiting for user input at the finish.")
-    parser.add_option("-m", "--monitor-port", action="store", dest="monitor_port", default=0,
+    parser.add_option("-m", "--monitor-port", action="store", type="int", dest="monitor_port", default=0,
                       help="Enable remote monitoring on provided port [default: disabled]")
     parser.add_option("-w", "--wait-timeout", action="store", dest="wait_timeout", default="3600",
                       help="[Wait timeout for elliptics operations default: %default]")
