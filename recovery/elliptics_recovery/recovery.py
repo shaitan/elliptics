@@ -20,7 +20,6 @@ import logging.handlers
 import socket
 import traceback
 from multiprocessing import Pool
-# from memory_profiler import profile
 
 from elliptics_recovery.etime import Time
 from elliptics_recovery.utils.misc import elliptics_create_node, elliptics_create_session, worker_init
@@ -76,7 +75,6 @@ def get_routes(ctx):
     return session.routes.filter_by_groups(ctx.groups)
 
 
-# @profile
 def main(options, args):
     if len(args) > 1:
         raise ValueError("Too many arguments passed: {0}, expected: 1".format(len(args)))
@@ -197,7 +195,7 @@ def main(options, args):
             ctx.address = elliptics.Address.from_host_port_family(options.one_node)
         except Exception as e:
             raise ValueError("Can't parse host:port:family: '{0}': {1}, traceback: {2}"
-                             .format(remote, repr(e), traceback.format_exc()))
+                             .format(options.one_node, repr(e), traceback.format_exc()))
         try:
             if options.backend_id is not None:
                 ctx.backend_id = int(options.backend_id)
@@ -237,7 +235,7 @@ def main(options, args):
         if ctx.batch_size <= 0:
             raise ValueError("Batch size should be positive: {0}".format(ctx.batch_size))
     except Exception as e:
-        raise ValueError("Can't parse batchsize: '{0}': {1}, traceback: {2}"
+        raise ValueError("Can't parse batch_size: '{0}': {1}, traceback: {2}"
                          .format(options.batch_size, repr(e), traceback.format_exc()))
     log.info("Using batch_size: {0}".format(ctx.batch_size))
 
