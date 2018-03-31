@@ -457,8 +457,8 @@ def dump_main(ctx):
 
     try:
         # processes each group in separated process
-        iresults = ctx.pool.imap(dump_process_group, ((ctx.portable(), g) for g in groups))
-        results = list(iresults)
+        async = ctx.pool.map_async(dump_process_group, ((ctx.portable(), g) for g in groups))
+        results = async.get(timeout=ctx.wait_timeout * len(groups))
     except KeyboardInterrupt:
         log.error("Caught Ctrl+C. Terminating.")
         ctx.stats.timer('main', 'finished')

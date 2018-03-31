@@ -480,8 +480,8 @@ def main(ctx):
     try:
         ctx.stats.timer('main', 'iterating')
         log.info("Start iterating {0} nodes in the pool".format(len(ranges)))
-        iresults = ctx.pool.imap(iterate_node, ((ctx.portable(), addr[0], addr[1], ranges[addr]) for addr in ranges))
-        for result in iresults:
+        async = ctx.pool.map_async(iterate_node, ((ctx.portable(), addr[0], addr[1], ranges[addr]) for addr in ranges))
+        for result in async.get(timeout=ctx.wait_timeout * len(ranges)):
             if result is None:
                 log.error('Some iteration has been failed. Terminating.')
                 ctx.stats.timer('main', 'finished')
@@ -499,8 +499,8 @@ def main(ctx):
 
     try:
         log.info("Merging iteration results from different nodes")
-        iresults = ctx.pool.imap(merge_results, ((ctx.portable(), ) + x for x in results.items()))
-        results = [r for r in iresults if r]
+        async = ctx.pool.map_async(merge_results, ((ctx.portable(), ) + x for x in results.items()))
+        results = [r for r in async.get(timeout=ctx.wait_timeout * len(results)) if r]
     except KeyboardInterrupt:
         log.error("Caught Ctrl+C. Terminating.")
         ctx.stats.timer('main', 'finished')
