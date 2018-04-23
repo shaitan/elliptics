@@ -597,12 +597,12 @@ int blob_write_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *da
 		context->add({{"id", std::string(dnet_dump_id(&cmd->id))},
 		              {"backend_id", c->data.stat_id},
 		              {"ioflags", std::string(dnet_flags_dump_ioflags(request.ioflags))},
-		              {"data_offset", request.data_offset},
-		              {"data_size", request.data_size},
-		              {"data_commit_size", request.data_commit_size},
-		              {"data_capacity", request.data_capacity},
-		              {"json_size", request.json_size},
-		              {"json_capacity", request.json_capacity},
+		              {"request_data_offset", request.data_offset},
+		              {"request_data_size", request.data_size},
+		              {"request_data_commit_size", request.data_commit_size},
+		              {"request_data_capacity", request.data_capacity},
+		              {"request_json_size", request.json_size},
+		              {"request_json_capacity", request.json_capacity},
 		              {"user_flags", to_hex_string(request.user_flags)},
 		             });
 	}
