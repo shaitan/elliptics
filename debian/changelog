@@ -1,3 +1,9 @@
+elliptics (2.27.6.5) unstable; urgency=low
+
+  * logger: rename data_* and json_* in write access logs
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Mon, 23 Apr 2018 11:23:38 +0300
+
 elliptics (2.27.6.4) unstable; urgency=medium
 
   * Remove useless check
