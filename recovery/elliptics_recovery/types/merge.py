@@ -83,7 +83,7 @@ def process_node_backend(ctx, address, backend_id, group, ranges):
         elog = elliptics.Logger(ctx.log_file, int(ctx.log_level), True)
         node = elliptics_create_node(address=ctx.address,
                                      elog=elog,
-                                     wait_timeout=ctx.wait_timeout,
+                                     wait_timeout=ctx.iteration_timeout,
                                      flags=elliptics.config_flags.no_route_list,
                                      remotes=ctx.remotes,
                                      io_thread_num=4)
