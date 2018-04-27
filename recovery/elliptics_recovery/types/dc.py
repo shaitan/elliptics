@@ -48,7 +48,7 @@ def iterate_node(arg):
 
     node = elliptics_create_node(address=address,
                                  elog=elog,
-                                 wait_timeout=ctx.wait_timeout,
+                                 wait_timeout=ctx.iteration_timeout,
                                  flags=elliptics.config_flags.no_route_list,
                                  net_thread_num=1,
                                  io_thread_num=1)
@@ -481,12 +481,16 @@ def main(ctx):
         ctx.stats.timer('main', 'iterating')
         log.info("Start iterating {0} nodes in the pool".format(len(ranges)))
         async = ctx.pool.map_async(iterate_node, ((ctx.portable(), addr[0], addr[1], ranges[addr]) for addr in ranges))
-        for result in async.get(timeout=ctx.wait_timeout * len(ranges)):
+        for result in async.get(timeout=ctx.iteration_timeout):
             if result is None:
                 log.error('Some iteration has been failed. Terminating.')
                 ctx.stats.timer('main', 'finished')
                 return False
             results.append(result)
+    except Exception:
+        log.exception("Failed to iterate nodes")
+        ctx.stats.timer('main', 'finished')
+        return False
     except KeyboardInterrupt:
         log.error("Caught Ctrl+C. Terminating.")
         ctx.stats.timer('main', 'finished')

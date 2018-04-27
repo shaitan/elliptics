@@ -273,6 +273,8 @@ def main(options, args):
         raise ValueError("Can't parse wait_timeout: '{0}': {1}, traceback: {2}"
                          .format(options.wait_timeout, repr(e), traceback.format_exc()))
 
+    ctx.iteration_timeout = options.iteration_timeout
+
     try:
         ctx.prepare_timeout = Time.from_epoch(options.prepare_timeout)
     except Exception as e:
@@ -422,4 +424,6 @@ def run(args=None):
     parser.add_option('--data-flow-rate', action='store', dest='data_flow_rate', default=10,
                       help=('Expected execution speed for an I/O operation: server-send/read/write/etc. '
                             '[default: %default] Mb'))
+    parser.add_option("--iteration-timeout", action="store", type="int", dest="iteration_timeout", default=12*60*60,
+                      help="Timeout for elliptics iterations [default: %default]")
     return main(*parser.parse_args(args))
