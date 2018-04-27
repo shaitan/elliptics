@@ -1,3 +1,9 @@
+elliptics (2.27.6.6) unstable; urgency=low
+
+  * recovery: use separate timeout for iteration
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Fri, 27 Apr 2018 13:37:00 +0300
+
 elliptics (2.27.6.5) unstable; urgency=low
 
   * logger: rename data_* and json_* in write access logs
