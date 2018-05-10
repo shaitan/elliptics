@@ -94,11 +94,7 @@ struct dnet_node *dnet_server_node_create(struct dnet_config_data *cfg_data)
 
 	sigset_t previous_sigset;
 	sigset_t sigset;
-	sigemptyset(&sigset);
-	sigaddset(&sigset, SIGINT);
-	sigaddset(&sigset, SIGTERM);
-	sigaddset(&sigset, SIGALRM);
-	sigaddset(&sigset, SIGQUIT);
+	sigfillset(&sigset);
 	pthread_sigmask(SIG_BLOCK, &sigset, &previous_sigset);
 
 	n = dnet_node_create(cfg);
