@@ -40,6 +40,25 @@
 
 namespace ioremap { namespace elliptics { namespace config {
 
+/**
+ * Blocks all signals in spawned threads in RAII style
+ */
+class signal_guard {
+public:
+	signal_guard() {
+		sigset_t sigset;
+		sigfillset(&sigset);
+		pthread_sigmask(SIG_BLOCK, &sigset, &previous_sigset);
+	}
+
+	~signal_guard() {
+		pthread_sigmask(SIG_SETMASK, &previous_sigset, NULL);
+	}
+private:
+	sigset_t previous_sigset;
+};
+
+
 extern "C" void dnet_config_data_destroy(struct dnet_config_data *config) {
 	if (!config)
 		return;
@@ -80,6 +99,7 @@ static void parse_logger(config_data *data, const kora::config_t &logger) {
 	}
 
 	try {
+		signal_guard guard;
 		data->root_holder.reset(new blackhole::root_logger_t(make_logger(data, "core")));
 		if (logger.has("access"))
 			data->access_holder.reset(new blackhole::root_logger_t(make_logger(data, "access", /*filter*/ false)));
@@ -468,6 +488,7 @@ std::shared_ptr<kora::config_parser_t> config_data::parse_config() {
 }
 
 void config_data::reset_logger() {
+	signal_guard guard;
 	DNET_LOG_INFO(logger, "resetting logger");
 	*root_holder = make_logger(this, "core");
 	if (access_holder)
