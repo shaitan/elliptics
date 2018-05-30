@@ -46,7 +46,11 @@ void dnet_access_context::increment_ref() {
 
 void dnet_access_context::print() {
 	add({"total_time", timer_.get_us()});
-	dnet_log_access(node_, blackhole::attribute_list{attributes_.begin(), attributes_.end()});
+	blackhole::attribute_list list;
+	for (const auto &attribute: attributes_) {
+		list.emplace_back(attribute);
+	}
+	dnet_log_access(node_, list);
 }
 
 void dnet_access_context::decrement_ref() {
