@@ -494,13 +494,18 @@ int dnet_trans_iterate_move_transaction(struct dnet_net_state *st, struct list_h
 		pthread_mutex_lock(&st->trans_lock);
 
 		t = NULL;
-		rb_node = rb_first(&st->timer_root);
-		if (!rb_node) {
+		if (!RB_EMPTY_ROOT(&st->timer_root)) {
+			rb_node = rb_first(&st->timer_root);
+			t = rb_entry(rb_node, struct dnet_trans, timer_entry);
+		} else if (st->__need_exit && !RB_EMPTY_ROOT(&st->trans_root)) {
+			rb_node = rb_first(&st->trans_root);
+			t = rb_entry(rb_node, struct dnet_trans, trans_entry);
+		}
+		if (!t) {
 			pthread_mutex_unlock(&st->trans_lock);
 			break;
 		}
 
-		t = rb_entry(rb_node, struct dnet_trans, timer_entry);
 		if (!st->__need_exit) {
 			int has_timeouted;
 			if (t->time_ts.tv_sec < ts.tv_sec) {
