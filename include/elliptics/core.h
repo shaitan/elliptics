@@ -86,6 +86,12 @@
 /* Default size of a chunk in server_send */
 #define DNET_DEFAULT_SERVER_SEND_CHUNK_SIZE	(10 * 1024 * 1024)
 
+/* Default timeout in ms for writing a chunk by server_send */
+#define DNET_DEFAULT_SERVER_SEND_CHUNK_WRITE_TIMEOUT	1000 // 1 second
+
+/* Default timeout in ms for committing a chunk by server_send */
+#define DNET_DEFAULT_SERVER_SEND_CHUNK_COMMIT_TIMEOUT	1000 // 1 second
+
 #define DNET_DEFAULT_SEND_LIMIT 1000
 
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))

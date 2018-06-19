@@ -1032,11 +1032,13 @@ public:
 	           uint64_t flags,
 	           uint64_t chunk_size,
 	           const int src_group,
-	           const std::vector<int> &dst_groups) {
+	           const std::vector<int> &dst_groups,
+	           uint64_t chunk_write_timeout,
+	           uint64_t chunk_commit_timeout) {
 		DNET_LOG_INFO(m_log, "{}: started: flags: {}, src_group: {}, dst_groups: {}, "
-		                     "chunk_size: {}, keys: {}",
+		                     "chunk_size: {}, keys: {}, chunk_write_timeout: {}, chunk_commit_timeout: {}",
 		              dnet_cmd_string(DNET_CMD_SEND_NEW), flags, src_group, dst_groups, chunk_size,
-		              keys.size());
+		              keys.size(), chunk_write_timeout, chunk_commit_timeout);
 
 		m_context.reset(new dnet_access_context(m_session.get_native_node()));
 		if (m_context) {
@@ -1051,6 +1053,8 @@ public:
 			                {"flags", flags},
 			                {"chunk_size", chunk_size},
 			                {"trace_id", to_hex_string(m_session.get_trace_id())},
+			                {"chunk_write_timeout", chunk_write_timeout},
+			                {"chunk_commit_timeout", chunk_commit_timeout},
 			               });
 		}
 
@@ -1102,7 +1106,9 @@ public:
 				ids,
 				dst_groups,
 				flags,
-				chunk_size
+				chunk_size,
+				chunk_write_timeout,
+				chunk_commit_timeout,
 			});
 
 			transport_control control;
@@ -1172,11 +1178,58 @@ async_iterator_result session::server_send(const std::vector<key> &keys,
                                            uint64_t chunk_size,
                                            const int src_group,
                                            const std::vector<int> &dst_groups) {
+	return server_send(keys, flags, chunk_size, src_group, dst_groups, DNET_DEFAULT_SERVER_SEND_CHUNK_WRITE_TIMEOUT,
+	                   DNET_DEFAULT_SERVER_SEND_CHUNK_COMMIT_TIMEOUT);
+}
+
+async_iterator_result session::server_send(const std::vector<dnet_raw_id> &keys,
+                                           uint64_t flags,
+                                           uint64_t chunk_size,
+                                           const int src_group,
+                                           const std::vector<int> &dst_groups,
+                                           uint64_t chunk_write_timeout,
+                                           uint64_t chunk_commit_timeout) {
+	std::vector<key> converted_keys;
+	converted_keys.reserve(keys.size());
+
+	for (const auto &key: keys) {
+		converted_keys.emplace_back(key);
+	}
+
+	return server_send(converted_keys, flags, chunk_size, src_group, dst_groups, chunk_write_timeout,
+	                   chunk_commit_timeout);
+}
+
+async_iterator_result session::server_send(const std::vector<std::string> &keys,
+                                           uint64_t flags,
+                                           uint64_t chunk_size,
+                                           const int src_group,
+                                           const std::vector<int> &dst_groups,
+                                           uint64_t chunk_write_timeout,
+                                           uint64_t chunk_commit_timeout) {
+	std::vector<key> converted_keys;
+	converted_keys.reserve(keys.size());
+
+	for (const auto &key: keys) {
+		converted_keys.emplace_back(key);
+	}
+
+	return server_send(converted_keys, flags, chunk_size, src_group, dst_groups, chunk_write_timeout,
+	                   chunk_commit_timeout);
+}
+
+async_iterator_result session::server_send(const std::vector<key> &keys,
+                                           uint64_t flags,
+                                           uint64_t chunk_size,
+                                           const int src_group,
+                                           const std::vector<int> &dst_groups,
+                                           uint64_t chunk_write_timeout,
+                                           uint64_t chunk_commit_timeout) {
 	trace_scope scope{*this};
 
 	async_iterator_result result(*this);
 	auto handler = std::make_shared<server_send_handler>(result, *this);
-	handler->start(keys, flags, chunk_size, src_group, dst_groups);
+	handler->start(keys, flags, chunk_size, src_group, dst_groups, chunk_write_timeout, chunk_commit_timeout);
 	return result;
 }
 

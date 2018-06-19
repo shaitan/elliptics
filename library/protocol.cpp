@@ -415,6 +415,14 @@ inline ioremap::elliptics::dnet_server_send_request &operator >>(msgpack::object
 		v.chunk_size = DNET_DEFAULT_SERVER_SEND_CHUNK_SIZE;
 	}
 
+	if (o.via.array.size > 5) {
+		p[4].convert(&v.chunk_write_timeout);
+		p[5].convert(&v.chunk_commit_timeout);
+	} else {
+		v.chunk_write_timeout = DNET_DEFAULT_SERVER_SEND_CHUNK_WRITE_TIMEOUT;
+		v.chunk_commit_timeout = DNET_DEFAULT_SERVER_SEND_CHUNK_COMMIT_TIMEOUT;
+	}
+
 	return v;
 }
 
@@ -426,6 +434,8 @@ inline msgpack::packer<Stream> &operator <<(msgpack::packer<Stream> &o,
 	o.pack(v.groups);
 	o.pack(v.flags);
 	o.pack(v.chunk_size);
+	o.pack(v.chunk_write_timeout);
+	o.pack(v.chunk_commit_timeout);
 
 	return o;
 }

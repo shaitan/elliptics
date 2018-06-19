@@ -255,8 +255,16 @@ class ServerSendRecovery(object):
                     self.stats.counter('server_send' if i == 0 else 'server_send_retry', 1)
                     if i > 0:
                         self.ctx.stats.counter('retry_recover_keys', len(timeouted_keys))
-                    log.info("Server-send: group_id: {0}, remote_groups: {1}, num_keys: {2}".format(group_id, remote_groups, len(newest_keys)))
-                    iterator = self.session.server_send(newest_keys, 0, self.ctx.chunk_size, group_id, remote_groups)
+                    log.info("Server-send: group_id: %s, remote_groups: %s, num_keys: %s", group_id, remote_groups,
+                             len(newest_keys))
+                    iterator = self.session.server_send(keys=newest_keys,
+                                                        flags=0,
+                                                        chunk_size=self.ctx.chunk_size,
+                                                        src_group=group_id,
+                                                        dst_groups=remote_groups,
+                                                        chunk_write_timeout=self.ctx.chunk_write_timeout,
+                                                        chunk_commit_timeout=self.ctx.chunk_commit_timeout,
+                                                        )
                     timeouted_keys, corrupted_keys = self._check_server_send_results(iterator, key_infos_map, group_id)
                     newest_keys = timeouted_keys
                     if corrupted_keys:

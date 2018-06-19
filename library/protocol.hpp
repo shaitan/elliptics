@@ -136,6 +136,8 @@ struct dnet_server_send_request {
 	std::vector<int> groups;
 	uint64_t flags;
 	uint64_t chunk_size;
+	uint64_t chunk_write_timeout;
+	uint64_t chunk_commit_timeout;
 };
 
 template<typename T>
