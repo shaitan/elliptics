@@ -274,6 +274,8 @@ def main(options, args):
                          .format(options.wait_timeout, repr(e), traceback.format_exc()))
 
     ctx.iteration_timeout = options.iteration_timeout
+    ctx.chunk_write_timeout = options.chunk_write_timeout
+    ctx.chunk_commit_timeout = options.chunk_commit_timeout
 
     try:
         ctx.prepare_timeout = Time.from_epoch(options.prepare_timeout)
@@ -426,4 +428,8 @@ def run(args=None):
                             '[default: %default] Mb'))
     parser.add_option("--iteration-timeout", action="store", type="int", dest="iteration_timeout", default=12*60*60,
                       help="Timeout for elliptics iterations [default: %default]")
+    parser.add_option('--chunk-write-timeout', action='store', type='int', dest='chunk_write_timeout', default=1000,
+                      help='Timeout in ms for writing a chunk by server-send [default: %default]')
+    parser.add_option('--chunk-commit-timeout', action='store', type='int', dest='chunk_commit_timeout', default=1000,
+                      help='Timeout in ms for committing a chunk by server-send [default: %default]')
     return main(*parser.parse_args(args))

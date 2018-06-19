@@ -411,9 +411,13 @@ void test_chunked_server_send(const ioremap::elliptics::newapi::session &session
 		key_ids.push_back(k.id);
 	}
 
-	auto async = s.server_send(key_ids, 0 /*flags*/,
-				   chunk_size,
-				   src_group, dst_groups);
+	auto async = s.server_send(key_ids,
+	                           /*flags*/ 0,
+	                           chunk_size,
+	                           src_group,
+	                           dst_groups,
+	                           DNET_DEFAULT_SERVER_SEND_CHUNK_WRITE_TIMEOUT,
+	                           DNET_DEFAULT_SERVER_SEND_CHUNK_COMMIT_TIMEOUT);
 
 	size_t counter = 0;
 	for (const auto &result : async) {
@@ -460,8 +464,10 @@ void test_simple_server_send(const ioremap::elliptics::newapi::session &session/
 	// send the key via server_send from src_group to dst_groups
 	{
 		auto async = s.server_send(std::vector<std::string>{key}, 0 /*flags*/,
-					   DNET_DEFAULT_SERVER_SEND_CHUNK_SIZE,
-		                           constants::src_group, constants::dst_groups);
+		                           DNET_DEFAULT_SERVER_SEND_CHUNK_SIZE,
+		                           constants::src_group, constants::dst_groups,
+		                           DNET_DEFAULT_SERVER_SEND_CHUNK_WRITE_TIMEOUT,
+		                           DNET_DEFAULT_SERVER_SEND_CHUNK_COMMIT_TIMEOUT);
 
 		dnet_raw_id raw_key;
 		s.transform(key, raw_key);

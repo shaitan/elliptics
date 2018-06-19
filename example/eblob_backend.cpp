@@ -1127,14 +1127,30 @@ static iterator_callback make_iterator_server_send_callback(eblob_backend_config
 		session.set_ioflags(DNET_IO_FLAGS_CAS_TIMESTAMP);
 		session.set_json_timestamp(info->jhdr.timestamp);
 		session.set_timestamp(info->ehdr.timestamp);
-		if (session.get_timeout() < 60) {
-			session.set_timeout(60);
-		}
+
+		const auto write_timeout = std::max(1lu, (request.chunk_write_timeout - 1) / 1000 + 1);
+		const auto commit_timeout = [&] {
+			const auto size = info->data_size + info->jhdr.size;
+			if (!size) {
+				// If record is empty use just 1 second timeout
+				return 1lu;
+			}
+
+			const auto number_of_chunks = (size - 1) / request.chunk_size + 1;
+			// commit operation includes last chunk write, so its timeout should be taken into account
+			const auto timeout =
+				request.chunk_write_timeout + request.chunk_commit_timeout * number_of_chunks;
+			return std::max(1lu, (timeout - 1) / 1000 + 1);
+		}();
+
+		DNET_LOG_DEBUG(c->blog, "EBLOB: server_send: size: {}, write_timeout: {}, commit_timeout: {}",
+		               info->data_size + info->jhdr.size, write_timeout, commit_timeout);
+
+		session.set_timeout(write_timeout);
 
 		data_pointer json, data;
 
-		const int backend_id = c->data.stat_id;
-		auto pool = dnet_backend_get_pool(st->n, backend_id);
+		auto pool = dnet_backend_get_pool(st->n, c->data.stat_id);
 
 		dnet_id id;
 		dnet_setup_id(&id, cmd->id.group_id, info->key.id);
@@ -1164,6 +1180,8 @@ static iterator_callback make_iterator_server_send_callback(eblob_backend_config
 			oplock_guard.unlock();
 
 			monitor.add_bytes(info->jhdr.size + info->data_size);
+
+			session.set_timeout(commit_timeout);
 
 			auto async = session.write(info->key,
 						   json, info->jhdr.capacity,
@@ -1219,6 +1237,8 @@ static iterator_callback make_iterator_server_send_callback(eblob_backend_config
 					}
 				} else {
 					oplock_guard.unlock();
+
+					session.set_timeout(commit_timeout);
 
 					data_pointer data_slice{data.slice(0, data_size)};
 					auto async = session.write_commit(info->key, "", data_slice, data_offset,

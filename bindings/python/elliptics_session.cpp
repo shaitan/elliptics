@@ -805,7 +805,9 @@ public:
 	}
 
 	python_iterator_result server_send(const bp::api::object &keys, uint64_t flags, uint64_t chunk_size,
-	                                   int src_group, const bp::api::object &dst_groups) {
+	                                   int src_group, const bp::api::object &dst_groups,
+	                                   uint64_t chunk_write_timeout,
+	                                   uint64_t chunk_commit_timeout) {
 		auto std_dst_groups = convert_to_vector<int>(dst_groups);
 		std::vector<dnet_raw_id> std_keys;
 		std_keys.reserve(bp::len(keys));
@@ -815,7 +817,8 @@ public:
 		}
 
 		return create_result(
-			newapi::session{*this}.server_send(std_keys, flags, chunk_size, src_group, std_dst_groups)
+			newapi::session{*this}.server_send(std_keys, flags, chunk_size, src_group, std_dst_groups,
+			                                   chunk_write_timeout, chunk_commit_timeout)
 		);
 	}
 
@@ -1959,7 +1962,10 @@ void init_elliptics_session() {
 		     "                       result.json))\n")
 
 		.def("server_send", &newapi::elliptics_session::server_send,
-		     bp::args("keys", "flags", "chunk_size", "src_group", "dst_groups"))
+		     (bp::arg("keys"), bp::arg("flags"), bp::arg("chunk_size"), bp::arg("src_group"),
+		      bp::arg("dst_groups"),
+		      bp::arg("chunk_write_timeout")=DNET_DEFAULT_SERVER_SEND_CHUNK_WRITE_TIMEOUT,
+		      bp::arg("chunk_commit_timeout")=DNET_DEFAULT_SERVER_SEND_CHUNK_COMMIT_TIMEOUT))
 
 		.def("bulk_read_json", &newapi::elliptics_session::bulk_read_json,
 		     (bp::arg("keys")),
