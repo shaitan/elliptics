@@ -1,3 +1,11 @@
+elliptics (2.27.6.9) unstable; urgency=low
+
+  * fix: remove all transactions of failed connection
+  * recovery: extend and use extended server-send
+  * Cleanup code style a bit
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Tue, 19 Jun 2018 11:03:05 +0300
+
 elliptics (2.27.6.8) unstable; urgency=low
 
   * debian: limit eblob version << 0.25.0
