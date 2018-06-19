@@ -1187,19 +1187,19 @@ static iterator_callback make_iterator_server_send_callback(eblob_backend_config
 						   json, info->jhdr.capacity,
 						   data, info->data_size);
 
-			async.connect([=, &request, &monitor] (const newapi::sync_write_result &/*results*/, const error_info &error) {
-					if (st->__need_exit) {
-					        DNET_LOG_ERROR(
-					                c->blog,
-					                "EBLOB: Interrupting server_send: peer has been disconnected");
-				        } else {
-						auto response = serialize_response(error.code());
-						dnet_send_reply(st, cmd, response.data(), response.size(), 1,
-						                /*context*/ nullptr);
-					}
+			async.connect([=, &request, &monitor](const newapi::sync_write_result &/*results*/,
+			                                      const error_info &error) {
+				if (st->__need_exit) {
+					DNET_LOG_ERROR(c->blog,
+					               "EBLOB: Interrupting server_send: peer has been disconnected");
+				} else {
+					auto response = serialize_response(error.code());
+					dnet_send_reply(st, cmd, response.data(), response.size(), 1,
+					                /*context*/ nullptr);
+				}
 
-					monitor.remove_bytes(info->jhdr.size + info->data_size);
-				});
+				monitor.remove_bytes(info->jhdr.size + info->data_size);
+			});
 		} else {
 			uint64_t data_offset = 0;
 			data = data_pointer::allocate(request.chunk_size);
@@ -1225,8 +1225,8 @@ static iterator_callback make_iterator_server_send_callback(eblob_backend_config
 
 				if (data_offset == 0) {
 					auto async = session.write_prepare(info->key,
-									   json, info->jhdr.capacity,
-									   data, 0, info->data_size);
+					                                   json, info->jhdr.capacity,
+					                                   data, 0, info->data_size);
 					if ((err = get_write_result(async)) != 0) {
 						return send_fail_reply(err);
 					}
@@ -1242,7 +1242,7 @@ static iterator_callback make_iterator_server_send_callback(eblob_backend_config
 
 					data_pointer data_slice{data.slice(0, data_size)};
 					auto async = session.write_commit(info->key, "", data_slice, data_offset,
-									  info->data_size);
+					                                  info->data_size);
 					err = get_write_result(async);
 
 					auto response = serialize_response(err);
