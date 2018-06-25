@@ -44,6 +44,7 @@ include(locate_library)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include/)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/monitor)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/foreign/rapidjson/include/)
 
 # http parser
 locate_library(HTTP_PARSER "http_parser.h" "http_parser")

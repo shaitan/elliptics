@@ -26,7 +26,7 @@
 #include <boost/asio.hpp>
 
 #include "rapidjson/document.h"
-#include "rapidjson/filestream.h"
+#include <rapidjson/istreamwrapper.h>
 #include "rapidjson/writer.h"
 #include "rapidjson/stringbuffer.h"
 
@@ -395,7 +395,7 @@ int main(int, char *[])
 {
 	srand(time(NULL));
 
-	rapidjson::FileStream stream(stdin);
+	rapidjson::IStreamWrapper stream(std::cin);
 	rapidjson::Document doc;
 	doc.ParseStream<0>(stream);
 

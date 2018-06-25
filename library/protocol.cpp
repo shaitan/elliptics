@@ -3,6 +3,7 @@
 #include <msgpack.hpp>
 
 #include "rapidjson/document.h"
+#include "rapidjson/error/en.h"
 
 namespace msgpack {
 using namespace ioremap::elliptics;
@@ -520,7 +521,7 @@ void validate_json(const std::string &json) {
 	doc.Parse<0>(json.c_str());
 
 	if (doc.HasParseError() || !doc.IsObject()) {
-		throw std::runtime_error(doc.GetParseError());
+		throw std::runtime_error(rapidjson::GetParseError_En(doc.GetParseError()));
 	}
 }
 

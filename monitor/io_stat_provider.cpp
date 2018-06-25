@@ -38,7 +38,7 @@ static rapidjson::Value & fill_states_stats(struct dnet_node *n,
 		state.AddMember("free", (uint64_t)st->free, allocator);
 		state.AddMember("stall", st->stall, allocator);
 		state.AddMember("join_state", st->__join_state, allocator);
-		value.AddMember(dnet_addr_string(&st->addr), allocator, state, allocator);
+		value.AddMember(rapidjson::Value(dnet_addr_string(&st->addr), allocator), std::move(state), allocator);
 	}
 	pthread_mutex_unlock(&n->state_lock);
 

@@ -26,12 +26,7 @@
 #include "elliptics/backends.h"
 #include "monitor/compress.hpp"
 
-//FIXME: elliptics uses rather modified version of rapidjson
-// which is partially incompatible with a stock version used by
-// handystats, so its a necessity to include exactly prettywriter.h,
-// its effectively forces selection of elliptics' version of rapidjson
-// in its entirety.
-#include "rapidjson/prettywriter.h"
+#include "rapidjson/writer.h"
 
 #ifdef HAVE_HANDYSTATS
 #include <handystats/json_dump.hpp>
@@ -103,7 +98,7 @@ static void single_client_stat_json(dnet_net_state *st, rapidjson::Value &stat_v
 		if (st->stat[i].count != 0 || st->stat[i].err != 0) {
 			rapidjson::Value cmd_stat(rapidjson::kObjectType);
 			dnet_stat_count_json(st->stat[i], cmd_stat, allocator);
-			stat_value.AddMember(dnet_cmd_string(i), allocator, cmd_stat, allocator);
+			stat_value.AddMember(rapidjson::StringRef(dnet_cmd_string(i)), cmd_stat, allocator);
 		}
 	}
 }
@@ -117,7 +112,7 @@ static void clients_stat_json(dnet_node *n, rapidjson::Value &stat_value,
 		list_for_each_entry(st, &n->empty_state_list, node_entry) {
 			rapidjson::Value client_stat(rapidjson::kObjectType);
 			single_client_stat_json(st, client_stat, allocator);
-			stat_value.AddMember(dnet_addr_string(&st->addr), allocator, client_stat, allocator);
+			stat_value.AddMember(rapidjson::Value(dnet_addr_string(&st->addr), allocator), client_stat, allocator);
 		}
 	} catch(std::exception &e) {
 		pthread_mutex_unlock(&n->state_lock);
@@ -172,7 +167,7 @@ void command_stats::commands_report(dnet_node *node,
 		if (tmp_stats[i].has_data()) {
 			rapidjson::Value cmd_stat(rapidjson::kObjectType);
 			cmd_stat_json(node, i, tmp_stats[i], cmd_stat, allocator);
-			stat_value.AddMember(dnet_cmd_string(i), allocator, cmd_stat, allocator);
+			stat_value.AddMember(rapidjson::StringRef(dnet_cmd_string(i)), cmd_stat, allocator);
 		}
 	}
 }
@@ -224,7 +219,7 @@ std::string statistics::report(const request &request)
 	timestamp.AddMember("tv_sec", time.tsec, allocator);
 	timestamp.AddMember("tv_usec", time.tnsec / 1000, allocator);
 	report.AddMember("timestamp", timestamp, allocator);
-	report.AddMember("string_timestamp", dnet_print_time(&time), allocator);
+	report.AddMember("string_timestamp", rapidjson::Value(dnet_print_time(&time), allocator), allocator);
 
 	report.AddMember("monitor_status", "enabled", allocator);
 	report.AddMember("categories", request.categories, allocator);
@@ -257,7 +252,7 @@ std::string statistics::report(const request &request)
 
 		rapidjson::Value value;
 		provider->statistics(request, value, allocator);
-		report.AddMember(provider_name.c_str(), allocator, value, allocator);
+		report.AddMember(rapidjson::Value(provider_name.c_str(), allocator), value, allocator);
 	}
 
 	DNET_LOG_DEBUG(m_monitor.node(), "monitor: finished generating json statistics for categories: {:x}",

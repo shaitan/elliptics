@@ -208,7 +208,7 @@ void cache_manager::statistics(rapidjson::Value &value, rapidjson::Document::All
 		const auto &index = std::to_string(i);
 		rapidjson::Value cache_time_stats(rapidjson::kObjectType);
 		m_caches[i]->get_cache_stats().to_json(cache_time_stats, allocator);
-		caches.AddMember(index.c_str(), allocator, cache_time_stats, allocator);
+		caches.AddMember(rapidjson::Value(index.c_str(), allocator), std::move(cache_time_stats), allocator);
 	}
 	value.AddMember("caches", caches, allocator);
 }

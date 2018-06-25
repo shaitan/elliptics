@@ -221,7 +221,7 @@ static void fill_vm(dnet_node *node,
 		vm_value.AddMember("cached", st.vm_cached, allocator);
 		vm_value.AddMember("buffers", st.vm_buffers, allocator);
 	} else
-		vm_value.AddMember("string_error", strerror(-err), allocator);
+		vm_value.AddMember("string_error", rapidjson::Value(strerror(-err), allocator), allocator);
 
 	stat_value.AddMember("vm", vm_value, allocator);
 }
@@ -246,7 +246,7 @@ static void fill_io(dnet_node *node,
 		io_stat.AddMember("write_bytes", st.write_bytes, allocator);
 		io_stat.AddMember("cancelled_write_bytes", st.cancelled_write_bytes, allocator);
 	} else
-		io_stat.AddMember("string_error", strerror(-err), allocator);
+		io_stat.AddMember("string_error", rapidjson::Value(strerror(-err), allocator), allocator);
 
 	stat_value.AddMember("io", io_stat, allocator);
 }
@@ -273,7 +273,7 @@ static void fill_stat(dnet_node *node,
 		stat_stat.AddMember("mcode", st.mcode, allocator);
 		stat_stat.AddMember("mdata", st.mdata, allocator);
 	} else
-		stat_stat.AddMember("string_error", strerror(-err), allocator);
+		stat_stat.AddMember("string_error", rapidjson::Value(strerror(-err), allocator), allocator);
 
 	stat_value.AddMember("stat", stat_stat, allocator);
 }
@@ -286,7 +286,7 @@ static void fill_net_stat(const char *origin,
 	stat.AddMember("bytes", ns.bytes, allocator);
 	stat.AddMember("packets", ns.packets, allocator);
 	stat.AddMember("errors", ns.errors, allocator);
-	stat_value.AddMember(origin, stat, allocator);
+	stat_value.AddMember(rapidjson::Value(origin, allocator), stat, allocator);
 }
 
 static void fill_net(dnet_node *node,
@@ -313,15 +313,15 @@ static void fill_net(dnet_node *node,
 
 			stat.AddMember("speed", ns.speed, allocator);
 
-			dev_stat.AddMember(name.c_str(), allocator, stat, allocator);
+			dev_stat.AddMember(rapidjson::Value(name.c_str(), allocator), std::move(stat), allocator);
 		}
 
 		net_stat.AddMember("string_error", "", allocator);
-		net_stat.AddMember("net_interfaces", dev_stat, allocator);
+		net_stat.AddMember("net_interfaces", std::move(dev_stat), allocator);
 	} else
-		net_stat.AddMember("string_error", strerror(-err), allocator);
+		net_stat.AddMember("string_error", rapidjson::Value(strerror(-err), allocator), allocator);
 
-	stat_value.AddMember("net", net_stat, allocator);
+	stat_value.AddMember("net", std::move(net_stat), allocator);
 }
 
 void procfs_provider::statistics(const request &request,

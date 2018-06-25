@@ -279,7 +279,7 @@ struct json_value_visitor : public boost::static_visitor<>
 			boost::apply_visitor(visitor, it->second);
 		}
 
-		object->AddMember(name, result, *allocator);
+		object->AddMember(rapidjson::Value(name, *allocator), result, *allocator);
 	}
 
 	void operator() (const std::vector<std::string> &value) const
@@ -293,28 +293,28 @@ struct json_value_visitor : public boost::static_visitor<>
 			result.PushBack(string, *allocator);
 		}
 
-		object->AddMember(name, result, *allocator);
+		object->AddMember(rapidjson::Value(name, *allocator), result, *allocator);
 	}
 
 	void operator() (const std::string &value) const
 	{
 		rapidjson::Value result;
 		result.SetString(value.c_str(), value.size(), *allocator);
-		object->AddMember(name, result, *allocator);
+		object->AddMember(rapidjson::Value(name, *allocator), result, *allocator);
 	}
 
 	void operator() (bool value) const
 	{
 		rapidjson::Value result;
 		result.SetBool(value);
-		object->AddMember(name, result, *allocator);
+		object->AddMember(rapidjson::Value(name, *allocator), result, *allocator);
 	}
 
 	void operator() (int64_t value) const
 	{
 		rapidjson::Value result;
 		result.SetUint64(value);
-		object->AddMember(name, result, *allocator);
+		object->AddMember(rapidjson::Value(name, *allocator), result, *allocator);
 	}
 };
 
@@ -340,7 +340,7 @@ static void add_core_logger(rapidjson::Value &logger,
 	rapidjson::Value file_sink;
 	file_sink.SetObject();
 	file_sink.AddMember("type", "file", allocator);
-	file_sink.AddMember("path", log_path.c_str(), allocator);
+	file_sink.AddMember("path", rapidjson::Value(log_path.c_str(), allocator), allocator);
 	file_sink.AddMember("flush", 1, allocator);
 
 	rapidjson::Value async_sink;
@@ -376,7 +376,7 @@ static void add_access_logger(rapidjson::Value &logger,
 	rapidjson::Value file_sink;
 	file_sink.SetObject();
 	file_sink.AddMember("type", "file", allocator);
-	file_sink.AddMember("path", log_path.c_str(), allocator);
+	file_sink.AddMember("path", rapidjson::Value(log_path.c_str(), allocator), allocator);
 	file_sink.AddMember("flush", 1, allocator);
 
 	rapidjson::Value async_sink;
@@ -480,8 +480,7 @@ void server_config::write(const std::string &path) const {
 		throw std::runtime_error("Can not open file \"" + path + "\" for writing");
 	}
 
-	out.write(buffer.GetString(), buffer.Size());
-	out << std::endl;
+	out << buffer.GetString() << std::endl;
 }
 
 server_config &server_config::apply_options(const config_data &data)

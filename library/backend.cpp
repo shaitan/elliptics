@@ -149,7 +149,7 @@ void dnet_io_pools_manager::statistics(rapidjson::Value &value, rapidjson::Docum
 
 		rapidjson::Value pool(rapidjson::kObjectType);
 		ioremap::monitor::dump_io_pool_stats(*io_pool, pool, allocator);
-		value.AddMember(pool_id.c_str(), allocator, pool, allocator);
+		value.AddMember(rapidjson::Value(pool_id.c_str(), allocator), pool, allocator);
 	}
 }
 
@@ -1002,23 +1002,23 @@ void dnet_backend::fill_status(rapidjson::Value &value, rapidjson::Document::All
 	{
 		status.AddMember("backend_id",  m_config->backend_id, allocator);
 		status.AddMember("state",  (int)m_state, allocator);
-		status.AddMember("string_state",  dnet_backend_state_string(m_state), allocator);
+		status.AddMember("string_state",  rapidjson::StringRef(dnet_backend_state_string(m_state)), allocator);
 		status.AddMember("read_only",  m_read_only, allocator);
 		status.AddMember("delay",  m_delay, allocator);
 		status.AddMember("group",  m_config->group_id, allocator);
-		status.AddMember("pool_id", m_pool_id.c_str(), allocator);
+		status.AddMember("pool_id", rapidjson::Value(m_pool_id.c_str(), allocator), allocator);
 		const auto defrag_state = (m_state == DNET_BACKEND_ENABLED && m_callbacks.defrag_status)
 		                          ? m_callbacks.defrag_status(m_callbacks.command_private)
 		                          : DNET_BACKEND_DEFRAG_NOT_STARTED;
 		status.AddMember("defrag_state", defrag_state, allocator);
-		status.AddMember("string_defrag_state", dnet_backend_defrag_state_string(defrag_state), allocator);
+		status.AddMember("string_defrag_state", rapidjson::StringRef(dnet_backend_defrag_state_string(defrag_state)), allocator);
 		rapidjson::Value last_start(rapidjson::kObjectType);
 		{
 			last_start.AddMember("tv_sec", m_last_start.tsec, allocator);
 			last_start.AddMember("tv_usec", m_last_start.tnsec / 1000, allocator);
 		}
 		status.AddMember("last_start", last_start, allocator);
-		status.AddMember("string_last_time", dnet_print_time(&m_last_start), allocator);
+		status.AddMember("string_last_time", rapidjson::Value(dnet_print_time(&m_last_start), allocator), allocator);
 		status.AddMember("last_start_err", m_last_start_err, allocator);
 
 		// TODO(shaitan): make a request inspect status from the backend
@@ -1026,7 +1026,7 @@ void dnet_backend::fill_status(rapidjson::Value &value, rapidjson::Document::All
 		                           ? m_callbacks.inspect_status(m_callbacks.command_private)
 		                           : DNET_BACKEND_INSPECT_NOT_STARTED;
 		status.AddMember("inspect_state", inspect_state, allocator);
-		status.AddMember("string_inspect_state", dnet_backend_inspect_state_string(inspect_state), allocator);
+		status.AddMember("string_inspect_state", rapidjson::StringRef(dnet_backend_inspect_state_string(inspect_state)), allocator);
 	}
 	value.AddMember("status", status, allocator);
 }
@@ -1284,7 +1284,7 @@ void dnet_backends_manager::statistics(const ioremap::monitor::request &request,
 			auto &backend = item.second;
 			rapidjson::Value backend_value(rapidjson::kObjectType);
 			backend->statistics(request.categories, backend_value, allocator);
-			value.AddMember(backend_id.c_str(), allocator, backend_value, allocator);
+			value.AddMember(rapidjson::Value(backend_id.c_str(), allocator), backend_value, allocator);
 		}
 	} else {
 		for (auto backend_id: request.backends_ids){
@@ -1295,7 +1295,7 @@ void dnet_backends_manager::statistics(const ioremap::monitor::request &request,
 				backend->statistics(request.categories, backend_value.SetObject(), allocator);
 			}
 			const auto &str_backend_id = std::to_string(backend_id);
-			value.AddMember(str_backend_id.c_str(), allocator, backend_value, allocator);
+			value.AddMember(rapidjson::Value(str_backend_id.c_str(), allocator), backend_value, allocator);
 		}
 	}
 }

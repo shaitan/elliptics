@@ -27,9 +27,6 @@
 #include "library/backend.h"
 #include "library/request_queue.h"
 
-#include "rapidjson/document.h"
-#include "rapidjson/writer.h"
-#include "rapidjson/stringbuffer.h"
 #include "cache/cache.hpp"
 
 namespace ioremap { namespace monitor {
