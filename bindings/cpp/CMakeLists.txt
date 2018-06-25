@@ -54,6 +54,7 @@ set_target_properties(elliptics_client PROPERTIES
     VERSION ${ELLIPTICS_VERSION}
     SOVERSION ${ELLIPTICS_VERSION_ABI}
     LINKER_LANGUAGE CXX
+    LINK_FLAGS -Wl,--version-script=${CMAKE_SOURCE_DIR}/elliptics-client.version
     )
 target_link_libraries(elliptics_client
                       ${BLACKHOLE_LIBRARIES}
