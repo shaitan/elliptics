@@ -429,7 +429,7 @@ inline ioremap::elliptics::dnet_server_send_request &operator >>(msgpack::object
 template <typename Stream>
 inline msgpack::packer<Stream> &operator <<(msgpack::packer<Stream> &o,
                                             const ioremap::elliptics::dnet_server_send_request &v) {
-	o.pack_array(4);
+	o.pack_array(6);
 	o.pack(v.keys);
 	o.pack(v.groups);
 	o.pack(v.flags);
