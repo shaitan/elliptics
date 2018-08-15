@@ -1587,11 +1587,15 @@ int blob_send_new(struct eblob_backend_config *c,
 		              {"chunk_size", request.chunk_size},
 		              {"flags", to_hex_string(request.flags)},
 		              {"groups", groups},
+		              {"chunk_write_timeout", request.chunk_write_timeout},
+		              {"chunk_commit_timeout", request.chunk_commit_timeout},
 		             });
 	}
 
-	DNET_LOG_INFO(c->blog, "EBLOB: {} started: ids_num: {}, groups_num: {}", __func__, request.keys.size(),
-	              request.groups.size());
+	DNET_LOG_INFO(c->blog, "EBLOB: {} started: ids_num: {}, groups: {}, "
+	                       "chunk_write_timeout: {}, chunk_commit_timeout: {}",
+	              __func__, request.keys.size(), request.groups, request.chunk_write_timeout,
+	              request.chunk_commit_timeout);
 
 	int err = 0;
 
