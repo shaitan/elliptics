@@ -699,7 +699,6 @@ class Iterator(object):
         self._lookup_session.set_filter(elliptics.filters.all_with_ack)
         self._lookup_session.exceptions_policy = elliptics.exceptions_policy.no_exceptions
 
-
     def prepare(self):
         try:
             self._iterate()
@@ -830,6 +829,7 @@ class Iterator(object):
 
     def _merge(self):
         heap = []
+
         def heap_push(dump_file, unpacker=None):
             try:
                 unpacker = unpacker or msgpack.Unpacker(dump_file)
@@ -872,7 +872,7 @@ def analyze(groups, key_infos):
 
     missed = set(groups) - {key_info.group for key_info in key_infos}
     if missed:
-        report += '\tmissed in groups: %s'  % missed
+        report += '\tmissed in groups: %s' % missed
 
     corrupted = {key_info.groups: key_info.status
                  for key_info in key_infos
