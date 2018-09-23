@@ -169,7 +169,7 @@ def corrupt_key(session, key):
 
 def recovery(one_node, remotes, backend_id, address, groups,
              rtype, log_file, tmp_dir, no_server_send=False, dump_file=None, no_meta=False,
-             user_flags_set=(), expected_ret_code=0, chunk_size=1024):
+             user_flags_set=(), expected_ret_code=0, chunk_size=1024, ro_groups=set()):
     '''
     Imports dnet_recovery tools and executes merge recovery. Checks result of merge.
     '''
@@ -210,6 +210,9 @@ def recovery(one_node, remotes, backend_id, address, groups,
         args += ['--no-server-send']
     for user_flags in user_flags_set:
         args += ['--user-flags', user_flags]
+
+    if ro_groups:
+        args += ['--ro-groups', ','.join(map(str, ro_groups))]
 
     assert run(args) == expected_ret_code
 
@@ -1376,3 +1379,117 @@ class TestRecoveryUserFlags:
     @pytest.mark.usefixtures("servers")
     def test_teardown(self, simple_node):
         self.cleanup_backends()
+
+
+@pytest.mark.usefixtures('use_server_send')
+@pytest.mark.usefixtures("servers")
+@pytest.mark.incremental
+class TestDCRecoveryReadOnlyGroup:
+
+    timestamp_old = elliptics.Time.now()
+    timestamp_new = elliptics.Time(timestamp_old.tsec + 3600, timestamp_old.tnsec)
+    missed_in_ro_key = 'missed_in_ro_key'  # key is presented in writeable group and is missed in readonly group
+    corrupted_in_ro_key = 'corrupted_in_ro_key'  # key is presented and is corrupted only in readonly group
+    missed_in_rw_key = 'missed_in_rw_key'  # key is presented in readonly group and is missed in writeable group
+    uncommitted_in_ro_key = 'uncommitted_in_ro_key'  # uncommitted key is presented only in readonly group
+    old_in_ro_key = 'old_in_ro_key'  # old key is presented in readonly group and new key is presented in
+    #                                  writeable group
+
+    def prepare_data(self):
+        self.cleanup()
+        scope.session.groups = [scope.rw_group]
+        scope.session.timestamp = self.timestamp_new
+        scope.session.write_data(self.missed_in_ro_key, self.missed_in_ro_key).wait()
+
+        scope.session.groups = [scope.ro_group]
+        scope.session.write_data(self.corrupted_in_ro_key, self.corrupted_in_ro_key).wait()
+        corrupt_key(scope.session, self.corrupted_in_ro_key)
+
+        scope.session.write_data(self.missed_in_rw_key, self.missed_in_rw_key).wait()
+
+        scope.session.timestamp = elliptics.Time(self.timestamp_old.tsec - 24 * 60 * 60, 0)
+        scope.session.write_prepare(self.uncommitted_in_ro_key, '', 0, 100).wait()
+
+        scope.session.timestamp = self.timestamp_old
+        scope.session.write_data(self.old_in_ro_key, self.old_in_ro_key).wait()
+
+        scope.session.groups = [scope.rw_group]
+        scope.session.timestamp = self.timestamp_new
+        scope.session.write_data(self.old_in_ro_key, self.old_in_ro_key).wait()
+
+    def cleanup(self):
+        """Cleanup backends.
+
+        * disable all backends
+        * remove all blobs
+        * enable all backends on all nodes
+        """
+        cleanup_backends(scope.session, scope.session.routes.addresses_with_backends(),
+                         scope.session.routes.addresses_with_backends())
+
+    def test_setup(self, simple_node):
+        scope.session = make_session(node=simple_node, test_name='TestRecoveryReadOnlyGroup')
+        scope.ro_group = scope.session.routes.groups()[0]
+        scope.rw_group = scope.session.routes.groups()[1]
+
+        self.prepare_data()
+
+    def test_recovery(self, use_server_send):
+        recovery(one_node=False,
+                 remotes=scope.session.routes.addresses(),
+                 backend_id=None,
+                 address=scope.session.routes.addresses(),
+                 groups=[scope.ro_group, scope.rw_group],
+                 ro_groups={scope.ro_group},
+                 rtype=RECOVERY.DC,
+                 log_file='dc_recovery_ro_group.log',
+                 tmp_dir='dc_recovery_ro_group_{}'.format(use_server_send[0]),
+                 no_server_send=use_server_send[1],
+                 expected_ret_code=1)  # expect that recovery will fail because one corrupted key won't be recovered
+
+        session = scope.session.clone()
+        session.exceptions_policy = elliptics.core.exceptions_policy.no_exceptions
+        session.set_filter(elliptics.filters.all)
+
+        session.groups = [scope.ro_group]
+
+        result = session.read_data(self.missed_in_ro_key).get()[0]
+        assert result.status == -errno.ENOENT
+
+        result = session.read_data(self.corrupted_in_ro_key).get()[0]
+        assert result.status == -errno.EILSEQ
+
+        result = session.read_data(self.missed_in_rw_key).get()[0]
+        assert result.status == 0
+        assert result.data == self.missed_in_rw_key
+
+        result = session.lookup(self.uncommitted_in_ro_key).get()[0]
+        assert result.status == -errno.ENOENT
+
+        result = session.read_data(self.old_in_ro_key).get()[0]
+        assert result.status == 0
+        assert result.data == self.old_in_ro_key
+        assert result.timestamp == self.timestamp_old
+
+        session.groups = [scope.rw_group]
+        result = session.read_data(self.missed_in_ro_key).get()[0]
+        assert result.status == 0
+        assert result.data == self.missed_in_ro_key
+
+        result = session.read_data(self.corrupted_in_ro_key).get()[0]
+        assert result.status == -errno.ENOENT
+
+        result = session.read_data(self.missed_in_rw_key).get()[0]
+        assert result.status == 0
+        assert result.data == self.missed_in_rw_key
+
+        result = session.read_data(self.uncommitted_in_ro_key).get()[0]
+        assert result.status == -errno.ENOENT
+
+        result = session.read_data(self.old_in_ro_key).get()[0]
+        assert result.status == 0
+        assert result.data == self.old_in_ro_key
+        assert result.timestamp == self.timestamp_new
+
+    def test_teardown(self):
+        self.cleanup()
