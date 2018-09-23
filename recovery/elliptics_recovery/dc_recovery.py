@@ -166,7 +166,16 @@ class KeyRecover(object):
                           self.diff_groups, self.missed_groups))
 
         self.read_session.groups = self.same_groups
-        self.write_session.groups = self.diff_groups + self.missed_groups
+
+        groups_for_write = []
+        for group in self.diff_groups + self.missed_groups:
+            if group in self.ctx.ro_groups:
+                self.stats.counter('skip_write_to_ro_group', 1)
+                continue
+
+            groups_for_write.append(group)
+
+        self.write_session.groups = groups_for_write
         self.read()
 
     def stop(self, result):
@@ -273,7 +282,17 @@ class KeyRecover(object):
 
     def onread(self, results, error):
         try:
-            corrupted_groups = [r.group_id for r in results if r.status == -errno.EILSEQ]
+            corrupted_groups = []
+            for result in results:
+                if result.status != -errno.EILSEQ:
+                    continue
+
+                if result.group_id in self.ctx.ro_groups:
+                    self.stats.counter('skip_remove_corrupted_key_from_ro_group', 1)
+                    continue
+
+                corrupted_groups.append(result.group_id)
+
             if corrupted_groups:
                 with self.pending_operations_lock:
                     self.pending_operations += 1

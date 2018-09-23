@@ -257,11 +257,20 @@ class ServerSendRecovery(object):
                         self.ctx.stats.counter('retry_recover_keys', len(timeouted_keys))
                     log.info("Server-send: group_id: %s, remote_groups: %s, num_keys: %s", group_id, remote_groups,
                              len(newest_keys))
+                    dst_groups = []
+                    for group in remote_groups:
+                        if group in self.ctx.ro_groups:
+                            self.stats.counter('skip_server_send_to_ro_group', len(newest_keys))
+                            continue
+                        dst_groups.append(group)
+                    if not dst_groups:
+                        # if all remote_groups are readonly, skip server_send at all
+                        break
                     iterator = self.session.server_send(keys=newest_keys,
                                                         flags=0,
                                                         chunk_size=self.ctx.chunk_size,
                                                         src_group=group_id,
-                                                        dst_groups=remote_groups,
+                                                        dst_groups=dst_groups,
                                                         chunk_write_timeout=self.ctx.chunk_write_timeout,
                                                         chunk_commit_timeout=self.ctx.chunk_commit_timeout,
                                                         )
@@ -360,6 +369,10 @@ class ServerSendRecovery(object):
         Removes invalid keys with invalid checksum.
         '''
         if self.ctx.safe:
+            return
+
+        if group_id in self.ctx.ro_groups:
+            self.stats.counter('skip_remove_corrupted_key_from_ro_group', 1)
             return
 
         self.remove_session.groups = [group_id]

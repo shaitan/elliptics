@@ -219,6 +219,16 @@ def main(options, args):
     log.info("Using group list: {0}".format(ctx.groups))
 
     try:
+        if options.ro_groups:
+            ctx.ro_groups = set(map(int, options.ro_groups.split(',')))
+        else:
+            ctx.ro_groups = set()
+    except Exception as e:
+        raise ValueError("Can't parse --ro-groups: '{}': {}, traceback: {}"
+                         .format(options.ro_groups, repr(e), traceback.format_exc()))
+    log.info('Using ro_groups: %s', ctx.ro_groups)
+
+    try:
         if options.timestamp is None:
             options.timestamp = 0
         ctx.timestamp = Time.from_epoch(options.timestamp)
@@ -336,7 +346,7 @@ def main(options, args):
             ctx.pool.terminate()
             ctx.pool.join()
         except Exception:
-            log.error("Recovering failed")
+            log.exception("Recovering failed")
             ctx.pool.terminate()
             ctx.pool.join()
             result = False
@@ -367,6 +377,8 @@ def run(args=None):
                       help="Temporary directory for iterators' results [default: %default]")
     parser.add_option("-g", "--groups", action="store", dest="elliptics_groups", default=None,
                       help="Comma separated list of groups [default: all]")
+    parser.add_option("--ro-groups", action="store", dest="ro_groups", default=None,
+                      help="Comma separated list of read-only groups [default: None]")
     parser.add_option("-k", "--lock", dest="lock", default='dnet_recovery.lock', metavar="LOCKFILE",
                       help="Lock file used for recovery [default: %default]")
     parser.add_option("-l", "--log", dest="elliptics_log", default='dnet_recovery.log', metavar="FILE",

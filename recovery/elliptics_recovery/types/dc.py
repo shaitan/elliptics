@@ -299,12 +299,17 @@ def process_uncommitted(ctx, results):
                                     key=lambda x: x[0] / ctx.batch_size):
                 batch = [item[1] for item in batch]
                 tasks = []
+                statuses = {}  # (key, group_id) -> status
+
                 for key, key_infos in batch:
                     for info in key_infos:
                         if info.flags & elliptics.record_flags.uncommitted:
+                            if info.group_id in ctx.ro_groups:
+                                stats.counter('skip_remove_uncommitted_key_from_ro_group', 1)
+                                statuses[(key, info.group_id)] = 0  # mark status as successful
+                                continue
                             tasks.append((key, info.group_id, info.size))
 
-                statuses = {} # (key, group_id) -> status
                 for attempt in range(ctx.attempts):
                     if not tasks:
                         break
