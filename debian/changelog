@@ -1,3 +1,10 @@
+elliptics (2.27.6.11) unstable; urgency=low
+
+  * recovery: add --ro-groups
+  * recovery: add tests for --ro-groups
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Wed, 26 Sep 2018 12:22:30 +0300
+
 elliptics (2.27.6.10) unstable; urgency=low
 
   * access: add chunk_write and chunk_commit timeoutes to server_send access log
