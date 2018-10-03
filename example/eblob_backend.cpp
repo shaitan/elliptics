@@ -42,6 +42,55 @@
 #include "rapidjson/writer.h"
 #include "rapidjson/stringbuffer.h"
 
+
+// Checks for broken headers signature(s).
+int blob_check_corrupted_stamp(void *buffer, size_t buffer_size) {
+	// Should be `assert`, but as __func__ is public (mostly for testing),
+	// it could be called occasionally with arbitrary buffer size.
+	if (buffer_size < sizeof(eblob_disk_control) + sizeof(dnet_ext_list_hdr)) {
+		return 0;
+	}
+
+	const eblob_disk_control *dc = static_cast<const eblob_disk_control *>(buffer);
+	const dnet_ext_list_hdr *ehdr = reinterpret_cast<const dnet_ext_list_hdr *>(dc + 1);
+
+	const auto check_dc_header = [] (const eblob_disk_control &dc) {
+		constexpr auto flags_limit = 1 << 9;
+		return dc.flags && dc.flags < flags_limit &&
+		       dc.data_size &&
+		       dc.disk_size >= dc.data_size &&
+		       dc.position == 0;
+	};
+
+	const auto check_ext_header = [] (const dnet_ext_list_hdr &ehdr) {
+		return ehdr.version == DNET_EXT_VERSION_V1 &&
+		       ehdr.timestamp.tsec <= DNET_SERVER_SEND_BUGFIX_TIMESTAMP &&
+		       !(ehdr.__pad1[0] || ehdr.__pad1[1] || ehdr.__pad1[2]) &&
+		       !(ehdr.__pad2[0] || ehdr.__pad2[1]);
+	};
+
+	if (check_dc_header(*dc) && check_ext_header(*ehdr)) {
+		return -EILSEQ;
+	}
+
+	return 0;
+}
+
+static inline int read_and_check_stamp(int fd, uint64_t data_size, uint64_t data_offset) {
+	std::array<char, sizeof(eblob_disk_control) + sizeof(dnet_ext_list_hdr)> stamp;
+
+	if (data_size < stamp.size()) {
+		return 0;
+	}
+
+	auto err = dnet_read_ll(fd, stamp.data(), stamp.size(), data_offset);
+	if (err) {
+		return err;
+	}
+
+	return blob_check_corrupted_stamp(static_cast<void *>(stamp.data()), stamp.size());
+}
+
 static int dnet_get_filename(int fd, std::string &filename) {
 	char *name = nullptr;
 	if (const int err = dnet_fd_readlink(fd, &name) < 0)
@@ -467,6 +516,13 @@ static int blob_read_new_impl(eblob_backend_config *c,
 	if (request.read_flags & DNET_READ_FLAGS_DATA) {
 		data_size = wc.size - jhdr.capacity;
 		data_offset = wc.data_offset + jhdr.capacity;
+
+		err = read_and_check_stamp(wc.data_fd, data_size, data_offset);
+		if (err) {
+			DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-read-new {}: corrupted signature: data offset {}, data size {}",
+			               dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), data_offset, data_size);
+			return err;
+		}
 
 		if (request.data_offset && request.data_offset >= data_size) {
 			err = -E2BIG;

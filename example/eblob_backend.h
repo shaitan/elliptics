@@ -80,6 +80,11 @@ int blob_bulk_read_new(struct eblob_backend_config *c,
 
 int dnet_read_json_header(int fd, uint64_t offset, uint64_t size, struct dnet_json_header *jhdr);
 
+// Checks for broken headers signature(s): ELL-817
+// Time when the bug was fixed.
+#define DNET_SERVER_SEND_BUGFIX_TIMESTAMP 1483228800ULL
+int blob_check_corrupted_stamp(void *buffer, size_t buffer_size);
+
 #ifdef __cplusplus
 }
 #endif
