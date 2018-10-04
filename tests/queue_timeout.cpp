@@ -115,6 +115,47 @@ static void test_queue_timeout(session &s, const nodes_data *setup) {
 	}
 }
 
+/* The test checks for error reply on dropped request, so client could be informed on timeout earlier,
+ * not on session timeout.
+ */
+static void test_queue_ack_timeout(session &s, const nodes_data *setup) {
+	// check that test have only one node
+	BOOST_REQUIRE(setup->nodes.size() == 1);
+
+	// test key and data
+	std::string key = "queue timeout reply with timout test key";
+	std::string data = "queue timeout reply with timout test key";
+
+	const auto &node = setup->nodes.front();
+	// sets 2 seconds delay to the only backend on the only node
+	constexpr uint64_t delay_ms = 2000;
+	s.set_delay(node.remote(), backend_id, delay_ms).get();
+
+	// sets 10 seconds session timeout - it should fit at least 2 x backend delay because
+	// if the second command won't be dropped due to queue timeout its handling time
+	// should be around 4 seconds (2 x backend delay).
+	constexpr auto session_timeout = 10;
+	s.set_timeout(session_timeout);
+	dnet_time start; dnet_current_time(&start);
+
+	// first lookup will delay after decoupling from queue for `delay_ms`.
+	auto async = s.lookup(key);
+	// second lookup command. It will be in io queue while the only io thread will sleep on backend delay.
+	auto async_timeouted = s.lookup(key);
+	{
+		ELLIPTICS_REQUIRE_ERROR(res, std::move(async), -ENOENT);
+	} {
+		// second lookup command should fail with timeout error due to drop from server queue request.
+		ELLIPTICS_REQUIRE_ERROR(res, std::move(async_timeouted), -ETIMEDOUT);
+		const auto delta_sec = res.end_time().tsec - start.tsec;
+		// Warning: all timings comparsion is a "danger zone", as execution time could depends on many factors.
+		constexpr auto expected_to_elapsed_sec = delay_ms / 1000;
+		BOOST_REQUIRE_GE(delta_sec, expected_to_elapsed_sec);
+		BOOST_REQUIRE_LT(delta_sec, session_timeout / 2);
+	}
+}
+
+
 /* Idea is the same as @test_queue_timeout but it uses backend with overridden to 2 seconds queue timeout.
  * It consists of 2 parts:
  * * first part checks that overridden queue timeout is really overridden and

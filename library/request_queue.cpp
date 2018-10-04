@@ -2,6 +2,8 @@
 
 #include <blackhole/attribute.hpp>
 
+#include <cerrno>
+
 #include "murmurhash.h"
 #include "monitor/measure_points.h"
 #include "example/config.hpp"
@@ -103,6 +105,10 @@ dnet_io_req *dnet_request_queue::pop_request(dnet_work_io *wio, const char *thre
 
 	if (!expired)
 		return r;
+
+	// Note: this function is marked with `weak` attribute and is not defined in client bindings,
+	// so this code should not be executed from client side otherwise it will lead to segfault.
+	dnet_send_ack(st, cmd, -ETIMEDOUT, 0, nullptr);
 
 	FORMATTED(HANDY_COUNTER_INCREMENT, ("pool.%s.queue.dropped", thread_stat_id), 1);
 	{
