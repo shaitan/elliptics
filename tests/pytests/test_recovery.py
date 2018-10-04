@@ -1493,3 +1493,62 @@ class TestDCRecoveryReadOnlyGroup:
 
     def test_teardown(self):
         self.cleanup()
+
+
+@pytest.mark.usefixtures('use_server_send')
+@pytest.mark.usefixtures("servers")
+@pytest.mark.incremental
+class TestRecoveryDCWithFailedGroup:
+    """This test cover the case when recovery considered all server-send failures as data unavailability and overwrote
+    valid data. Scenario:
+    * use 3 groups
+    * write a key to groups [1, 2]
+    * turn read-only mode on 3rd group
+    * run recovery
+    * read a key from groups [1, 2] and check that data is available and correct
+    """
+
+    key = 'TestRecoveryDCWithFailedGroup'
+    data = 'data'
+
+    def prepare_data(self):
+        self.cleanup()
+
+        scope.session.groups = scope.groups[:2]
+        scope.session.write_data(self.key, self.data).wait()
+
+        for address, backend in scope.session.routes.filter_by_group(scope.groups[2]).addresses_with_backends():
+            scope.session.make_readonly(address, backend).wait()
+
+    def cleanup(self):
+        cleanup_backends(scope.session, scope.session.routes.addresses_with_backends(),
+                         scope.session.routes.addresses_with_backends())
+
+    def test_setup(self, simple_node):
+        scope.session = make_session(node=simple_node, test_name='TestRecoveryDCWithFailedGroup')
+        scope.groups = scope.session.routes.groups()[:3]
+
+        self.prepare_data()
+
+    def test_recovery(self, use_server_send):
+        recovery(one_node=False,
+                 remotes=scope.session.routes.addresses(),
+                 backend_id=None,
+                 address=scope.session.routes.addresses(),
+                 groups=scope.groups,
+                 rtype=RECOVERY.DC,
+                 log_file='recovery.log',
+                 tmp_dir='TestRecoveryDCWithFailedGroup_{}'.format(use_server_send[0]),
+                 no_server_send=use_server_send[1],
+                 chunk_size=1,  # use small chunk to make server-send write data by chunks
+                 expected_ret_code=1)  # expect that recovery will fail because the key won't be recovered
+
+        for group in scope.groups[:2]:
+            scope.session.groups = [group]
+            result = scope.session.read_data(self.key).get()[0]
+
+            assert result.status == 0
+            assert result.data == self.data
+
+    def test_teardown(self):
+        self.cleanup()
