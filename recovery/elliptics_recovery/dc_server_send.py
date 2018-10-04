@@ -227,11 +227,11 @@ class ServerSendRecovery(object):
         Recovers bunch of newest @keys from replica with appropriate @group_id to other replicas via server-send.
         '''
         log.info("Server-send bucket: source group_id: {0}, num keys: {1}".format(group_id, len(keys)))
-        keys_bunch = {} # (tuple of remote groups) -> [list of newest keys]
+        keys_bunch = {}  # (tuple of remote groups) -> [list of newest keys]
         for key, key_infos in keys:
             unprocessed_key_infos = self._get_unprocessed_key_infos(key_infos, group_id)
 
-            dest_groups = self._get_dest_groups(unprocessed_key_infos)
+            dest_groups = self._get_dest_groups(key_infos)
             index = frozenset(dest_groups)
             if index not in keys_bunch:
                 keys_bunch[index] = []
@@ -354,10 +354,12 @@ class ServerSendRecovery(object):
         elif status == -errno.ETIMEDOUT:
             timeouted_keys.append(key)
         else:
-            if status == -errno.EILSEQ:
+            next_group_id = self._get_next_group_id(key_infos, group_id)
+            if status in {-errno.EILSEQ, -errno.ERANGE}:
                 corrupted_keys.append(key)
                 self.ctx.corrupted_keys.write('{key} {group}\n'.format(key=key, group=group_id))
-            next_group_id = self._get_next_group_id(key_infos, group_id)
+                # forget about corrupted key_info, so this group will be used as a destination for future server-send
+                key_infos = [key_info for key_info in key_infos if key_info.group_id != group_id]
             if next_group_id >= 0:
                 self.buckets.on_server_send_fail(key, key_infos, next_group_id)
             else:
