@@ -1,3 +1,12 @@
+elliptics (2.27.6.12) unstable; urgency=low
+
+  * recovery: do not consider all server-send failures as data error
+  * tests: cover by test situation when recovery considered server-send failure as data error and overwrote valid data
+  * feat: inform client on request expiration
+  * test(queue_timeout): update with ack check
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Mon, 08 Oct 2018 15:47:05 +0300
+
 elliptics (2.27.6.11) unstable; urgency=low
 
   * recovery: add --ro-groups
