@@ -273,6 +273,7 @@ class ServerSendRecovery(object):
                                                         dst_groups=dst_groups,
                                                         chunk_write_timeout=self.ctx.chunk_write_timeout,
                                                         chunk_commit_timeout=self.ctx.chunk_commit_timeout,
+                                                        chunk_retry_count=self.ctx.attempts - 1,
                                                         )
                     timeouted_keys, corrupted_keys = self._check_server_send_results(iterator, key_infos_map, group_id)
                     newest_keys = timeouted_keys

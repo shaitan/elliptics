@@ -1137,15 +1137,380 @@ private:
 	std::condition_variable m_cond;
 };
 
-typedef std::function<int (int status)> fail_reply_callback;
+class base_object_sender {
+public:
+	base_object_sender(eblob_backend_config *backend,
+	                   dnet_net_state *st,
+	                   const uint64_t iterator_id,
+	                   dnet_cmd *cmd,
+	                   const ioremap::elliptics::dnet_server_send_request &request,
+	                   std::shared_ptr<iterated_key_info> info,
+	                   congestion_control_monitor &monitor,
+	                   std::atomic<uint64_t> &counter)
+	: log_{backend->blog}
+	, st_{st}
+	, iterator_id_{iterator_id}
+	, cmd_(cmd)
+	, request_(request)
+	, info_{std::move(info)}
+	, monitor_(monitor)
+	, counter_(counter)
+	, pool_(dnet_backend_get_pool(st->n, backend->data.stat_id))
+	, session_{st->n} {
+		json_.reserve(request_.chunk_size);
+		data_.reserve(request_.chunk_size);
 
-static iterator_callback make_iterator_server_send_callback(eblob_backend_config *c, dnet_net_state *st,
+		session_.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
+		session_.set_filter(ioremap::elliptics::filters::all_final);
+		session_.set_trace_id(cmd_->trace_id);
+		session_.set_trace_bit(!!(cmd_->flags & DNET_FLAGS_TRACE_BIT));
+		session_.set_groups(request_.groups);
+		session_.set_user_flags(info_->ehdr.flags);
+		session_.set_ioflags(DNET_IO_FLAGS_CAS_TIMESTAMP);
+		session_.set_json_timestamp(info_->jhdr.timestamp);
+		session_.set_timestamp(info_->ehdr.timestamp);
+
+		chunk_timeout_ = std::max(1lu, (request_.chunk_write_timeout - 1) / 1000 + 1);
+		commit_timeout_ = [&] {
+			const auto size = info_->data_size + info_->jhdr.size;
+			if (!size) {
+				// If record is empty use just 1 second timeout
+				return 1lu;
+			}
+
+			const auto number_of_chunks = (size - 1) / request_.chunk_size + 1;
+			// commit operation includes last chunk write, so its timeout should be taken into account
+			const auto timeout = request_.chunk_write_timeout +
+				request_.chunk_commit_timeout * number_of_chunks;
+			return std::max(1lu, (timeout - 1) / 1000 + 1);
+		}();
+
+		session_.set_timeout(chunk_timeout_);
+
+		dnet_setup_id(&id_, cmd_->id.group_id, info_->key.id);
+
+		DNET_LOG_DEBUG(log_, "EBLOB: server_send: size: {}, write_timeout: {}, commit_timeout: {}",
+		               info_->data_size + info_->jhdr.size, session_.get_timeout(), commit_timeout_);
+	}
+
+	virtual ~base_object_sender() {
+		unlock_quota();
+		unlock_id();
+	}
+
+
+protected:
+	void lock_id() {
+		if (id_locked_)
+			return;
+
+		dnet_oplock(pool_, &id_);
+		id_locked_ = true;
+	}
+
+	void unlock_id() {
+		if (!id_locked_)
+			return;
+
+		dnet_opunlock(pool_, &id_);
+		id_locked_ = false;
+	}
+
+	void lock_quota() {
+		if (locked_quota_)
+			return;
+
+		locked_quota_ = json_.size() + data_.size();
+		monitor_.add_bytes(locked_quota_);
+	}
+
+	void unlock_quota() {
+		if (!locked_quota_)
+			return;
+
+		monitor_.remove_bytes(locked_quota_);
+		locked_quota_ = 0;
+	}
+
+	int read() {
+		lock_id();
+
+		// read json only with first chunk of data (data_offset_ == 0)
+		if (info_->jhdr.size && !data_offset_) {
+			json_.resize(info_->jhdr.size, 0);
+			const int err = dnet_read_ll(info_->fd, &json_.front(), json_.size(), info_->json_offset);
+			if (err) {
+				DNET_LOG_ERROR(log_, "EBLOB: server_send: {}: failed to read json: {}",
+				               dnet_dump_id_str(info_->key.id), dnet_print_error(err));
+				return err;
+			}
+		}
+
+		const auto remaining_size = info_->data_size - data_offset_;
+		const auto chunk_size = std::min(remaining_size, request_.chunk_size);
+
+		data_.resize(chunk_size, 0);
+
+		if (!data_.empty()) {
+			const auto read_offset = info_->data_offset + data_offset_;
+			const int err = dnet_read_ll(info_->fd, &data_.front(), data_.size(), read_offset);
+			if (err) {
+				DNET_LOG_ERROR(log_, "EBLOB: server_send: {}: failed to read data: {}",
+				               dnet_dump_id_str(info_->key.id), dnet_print_error(err));
+				return err;
+			}
+		}
+
+		lock_quota();
+
+		if (remaining_size <= request_.chunk_size) {
+			// unlock id because all its data has been read
+			unlock_id();
+		}
+
+		return 0;
+	}
+
+	void send_response(int status) {
+		auto response = serialize(ioremap::elliptics::dnet_iterator_response{
+			iterator_id_, // iterator_id
+			info_->key, // key
+			status, // status
+
+			++counter_, // iterated_keys
+			request_.keys.size(), // total_keys
+
+			info_->record_flags, // record_flags
+			info_->ehdr.flags, // user_flags
+
+			info_->jhdr.timestamp, // json_timestamp
+			info_->jhdr.size, // json_size
+			info_->jhdr.capacity, // json_capacity
+			0, // read_json_size
+
+			info_->ehdr.timestamp, // data timestamp
+			info_->data_size, // data_size
+			0, // read_data_size
+			info_->data_offset, // data_offset
+			static_cast<uint64_t>(info_->fd) // blob_id
+		});
+		dnet_send_reply(st_, cmd_, response.data(), response.size(), 1, /*context*/ nullptr);
+	}
+
+	uint64_t remaining_size() const {
+		uint64_t remaining_size = info_->data_size - data_offset_;
+		if (!data_offset_) {
+			// include json size that will be written with first data chunk
+			remaining_size += info_->jhdr.size;
+		}
+		return remaining_size;
+	}
+
+	ioremap::elliptics::data_pointer json() {
+		return ioremap::elliptics::data_pointer::from_raw(&json_.front(), json_.size());
+	}
+
+	ioremap::elliptics::data_pointer data() {
+		return ioremap::elliptics::data_pointer::from_raw(&data_.front(), data_.size());
+	}
+
+
+	dnet_logger *log_;
+	dnet_net_state *st_;
+
+	const uint64_t iterator_id_;
+
+	dnet_cmd *cmd_;
+	const ioremap::elliptics::dnet_server_send_request &request_;
+
+	const std::shared_ptr<iterated_key_info> info_;
+	congestion_control_monitor &monitor_;
+	uint64_t locked_quota_{0};
+	std::atomic<uint64_t> &counter_;
+
+	dnet_io_pool *pool_;
+	dnet_id id_;
+	bool id_locked_{false};
+
+	ioremap::elliptics::newapi::session session_;
+	uint64_t chunk_timeout_;
+	uint64_t commit_timeout_;
+
+	std::string json_;
+	std::string data_;
+	uint64_t data_offset_{0};
+};
+
+class small_object_sender : public base_object_sender, public std::enable_shared_from_this<small_object_sender> {
+public:
+	using base_object_sender::base_object_sender;
+
+	void send() {
+		retry_count_ = request_.chunk_retry_count;
+
+		if (const int err = read()) {
+			send_response(err);
+			return;
+		}
+
+		write();
+	}
+
+private:
+	void write() {
+		session_.write(info_->key, json(), info_->jhdr.capacity, data(), info_->data_size)
+			.connect(std::bind(&small_object_sender::on_write, shared_from_this(), std::placeholders::_1,
+			                   std::placeholders::_2));
+	}
+
+	void on_write(const ioremap::elliptics::newapi::sync_write_result &results,
+	              const ioremap::elliptics::error_info &/*error*/) {
+		if (st_->__need_exit) {
+			DNET_LOG_ERROR(log_, "EBLOB: Interrupting server_send: peer has been disconnected");
+			return;
+		}
+
+		// collect groups with timeout
+		auto retry_groups = [&] {
+			std::vector<int> groups;
+			groups.reserve(results.size());
+
+			for (const auto &result: results) {
+				const auto group_id = result.command()->id.group_id;
+				switch (result.status()) {
+					case 0: break; // skip successes
+					case -ETIMEDOUT: // collect timed-out groups
+						groups.emplace_back(group_id);
+						break;
+					default: // store one other error
+						last_error_ = result.status();
+						break;
+				}
+			}
+			return groups;
+
+		}();
+
+		if (retry_count_-- && !retry_groups.empty()) {
+			DNET_LOG_INFO(log_, "EBLOB: server_send {}: small_object_sender: retrying write to groups: {}"
+			                    ", retry: {:d}/{:d}",
+			              dnet_dump_id_str(info_->key.id), retry_groups,
+			              request_.chunk_retry_count - retry_count_, request_.chunk_retry_count);
+
+			session_.set_groups(retry_groups);
+			write();
+			return;
+		}
+
+		if (!retry_groups.empty())
+			last_error_ = -ETIMEDOUT;
+
+		send_response(last_error_);
+	}
+
+	uint8_t retry_count_{0};
+	int last_error_{0};
+};
+
+class large_object_sender : public base_object_sender {
+public:
+	using base_object_sender::base_object_sender;
+
+	void send() {
+		active_groups_.insert(request_.groups.begin(), request_.groups.end());
+		retry_groups_.reserve(request_.groups.size());
+
+		while (read_and_write_chunk()) {
+			data_offset_ += data_.size();
+		}
+
+		send_response(last_error_);
+	}
+
+private:
+	bool read_and_write_chunk() {
+		if (st_->__need_exit)
+			return false;
+
+		if (!remaining_size())
+			return false;
+
+		if (const int err = read()) {
+			// TODO: should we remove the key from active_groups if read was failed?
+			last_error_ = err;
+			return false;
+		}
+
+		session_.set_groups({active_groups_.begin(), active_groups_.end()});
+		auto retry_count = request_.chunk_retry_count;
+		do {
+			if (!retry_groups_.empty()) {
+				DNET_LOG_INFO(log_, "EBLOB: server_send {}: large_object_sender: retrying write to "
+				                    "groups: {}, retry: {:d}/{:d}",
+				              dnet_dump_id_str(info_->key.id), retry_groups_,
+				              request_.chunk_retry_count - retry_count,
+				              request_.chunk_retry_count);
+				session_.set_groups(retry_groups_);
+				retry_groups_.clear();
+			}
+
+			for (const auto &result: write()) {
+				const auto group_id = result.command()->id.group_id;
+				switch (result.status()) {
+					case 0: break; // skip successes
+					case -ETIMEDOUT: // collect timed-out groups
+						retry_groups_.emplace_back(group_id);
+						break;
+					default: // store one other error and remove group from active
+						last_error_ = result.status();
+						active_groups_.erase(group_id);
+						break;
+				}
+			}
+		} while (retry_count-- && !retry_groups_.empty());
+
+		if (!retry_groups_.empty()) {
+			// set error to -ETIMEDOUT if retry groups aren't empty and
+			// error wasn't already set
+			last_error_ = -ETIMEDOUT;
+			// remove groups that were failed to retry from active groups
+			for (auto group_id: retry_groups_) {
+				active_groups_.erase(group_id);
+			}
+			retry_groups_.clear();
+		}
+
+		// if active_groups are empty then there is no group can continue writes,
+		// so stop writing and answer to client with the last error.
+		return !active_groups_.empty();
+	}
+
+	ioremap::elliptics::newapi::async_write_result write() {
+		if (!data_offset_) {
+			return session_.write_prepare(info_->key,
+			                              json(), info_->jhdr.capacity,
+			                              data(), 0, info_->data_size);
+		} else if (remaining_size() > request_.chunk_size) {
+			return session_.write_plain(info_->key, "", data(), data_offset_);
+		} else {
+			session_.set_timeout(commit_timeout_);
+			return session_.write_commit(info_->key, "", data(), data_offset_, info_->data_size);
+		}
+	}
+
+
+	std::unordered_set<int> active_groups_;
+	std::vector<int> retry_groups_;
+	int last_error_{0};
+};
+
+static iterator_callback make_iterator_server_send_callback(eblob_backend_config *c,
+                                                            dnet_net_state *st,
                                                             dnet_cmd *cmd,
                                                             const ioremap::elliptics::dnet_server_send_request &request,
                                                             uint64_t iterator_id,
                                                             congestion_control_monitor &monitor,
-                                                            std::atomic<uint64_t> &counter,
-                                                            const fail_reply_callback &send_fail_reply) {
+                                                            std::atomic<uint64_t> &counter) {
 	using namespace ioremap::elliptics;
 	return [=, &request, &counter, &monitor] (std::shared_ptr<iterated_key_info> info) -> int {
 		if (st->__need_exit) {
@@ -1153,167 +1518,14 @@ static iterator_callback make_iterator_server_send_callback(eblob_backend_config
 			return -EINTR;
 		}
 
-		auto serialize_response = [=, &request, &counter] (int status) {
-			return serialize(ioremap::elliptics::dnet_iterator_response{
-				iterator_id, // iterator_id
-				info->key, // key
-				status, // status
-
-				++counter, // iterated_keys
-				request.keys.size(), // total_keys
-
-				info->record_flags, // record_flags
-				info->ehdr.flags, // user_flags
-
-				info->jhdr.timestamp, // json_timestamp
-				info->jhdr.size, // json_size
-				info->jhdr.capacity, // json_capacity
-				0, // read_json_size
-
-				info->ehdr.timestamp, // data timestamp
-				info->data_size, // data_size
-				0, // read_data_size
-				info->data_offset, // data_offset
-				static_cast<uint64_t>(info->fd) // blob_id
-			});
-		};
-
-		newapi::session session(st->n);
-		session.set_exceptions_policy(session::no_exceptions);
-		session.set_filter(filters::all_final);
-		session.set_trace_id(cmd->trace_id);
-		session.set_trace_bit(!!(cmd->flags & DNET_FLAGS_TRACE_BIT));
-		session.set_groups(request.groups);
-		session.set_user_flags(info->ehdr.flags);
-		session.set_ioflags(DNET_IO_FLAGS_CAS_TIMESTAMP);
-		session.set_json_timestamp(info->jhdr.timestamp);
-		session.set_timestamp(info->ehdr.timestamp);
-
-		const auto write_timeout = std::max(1lu, (request.chunk_write_timeout - 1) / 1000 + 1);
-		const auto commit_timeout = [&] {
-			const auto size = info->data_size + info->jhdr.size;
-			if (!size) {
-				// If record is empty use just 1 second timeout
-				return 1lu;
-			}
-
-			const auto number_of_chunks = (size - 1) / request.chunk_size + 1;
-			// commit operation includes last chunk write, so its timeout should be taken into account
-			const auto timeout =
-				request.chunk_write_timeout + request.chunk_commit_timeout * number_of_chunks;
-			return std::max(1lu, (timeout - 1) / 1000 + 1);
-		}();
-
-		DNET_LOG_DEBUG(c->blog, "EBLOB: server_send: size: {}, write_timeout: {}, commit_timeout: {}",
-		               info->data_size + info->jhdr.size, write_timeout, commit_timeout);
-
-		session.set_timeout(write_timeout);
-
-		data_pointer json, data;
-
-		auto pool = dnet_backend_get_pool(st->n, c->data.stat_id);
-
-		dnet_id id;
-		dnet_setup_id(&id, cmd->id.group_id, info->key.id);
-		dnet_oplock_guard oplock_guard{pool, &id};
-
-		if (info->jhdr.size) {
-			json = data_pointer::allocate(info->jhdr.size);
-			const int err = dnet_read_ll(info->fd, json.data<char>(), json.size(), info->json_offset);
-			if (err) {
-				DNET_LOG_ERROR(c->blog, "EBLOB: server_send: {}: failed to read json: {}",
-				               dnet_dump_id_str(info->key.id), dnet_print_error(err));
-				return send_fail_reply(err);
-			}
-		}
-
+		// use small key sender if data_size is less than chunk_size
 		if (info->data_size <= request.chunk_size) {
-			if (info->data_size) {
-				data = data_pointer::allocate(info->data_size);
-				const int err = dnet_read_ll(info->fd, data.data<char>(), data.size(), info->data_offset);
-				if (err) {
-					DNET_LOG_ERROR(c->blog, "EBLOB: server_send: {}: failed to read data: {}",
-					               dnet_dump_id_str(info->key.id), dnet_print_error(err));
-					return send_fail_reply(err);
-				}
-			}
-
-			oplock_guard.unlock();
-
-			monitor.add_bytes(info->jhdr.size + info->data_size);
-
-			session.set_timeout(commit_timeout);
-
-			auto async = session.write(info->key,
-						   json, info->jhdr.capacity,
-						   data, info->data_size);
-
-			async.connect([=, &request, &monitor](const newapi::sync_write_result &/*results*/,
-			                                      const error_info &error) {
-				if (st->__need_exit) {
-					DNET_LOG_ERROR(c->blog,
-					               "EBLOB: Interrupting server_send: peer has been disconnected");
-				} else {
-					auto response = serialize_response(error.code());
-					dnet_send_reply(st, cmd, response.data(), response.size(), 1,
-					                /*context*/ nullptr);
-				}
-
-				monitor.remove_bytes(info->jhdr.size + info->data_size);
-			});
+			const auto sender = std::make_shared<small_object_sender>(c, st, iterator_id, cmd, request,
+			                                                          info, monitor, counter);
+			sender->send();
 		} else {
-			uint64_t data_offset = 0;
-			data = data_pointer::allocate(request.chunk_size);
-
-			auto get_write_result = [&](newapi::async_lookup_result &async) -> int {
-				for (const auto &result: async.get()) {
-					const int status = result.status();
-					if (status != 0)
-						return status;
-				}
-				return 0;
-			};
-
-			while (data_offset < info->data_size && !st->__need_exit) {
-				const uint64_t remaining_size = info->data_size - data_offset;
-				const uint64_t data_size = std::min(remaining_size, request.chunk_size);
-				int err = dnet_read_ll(info->fd, data.data<char>(), data_size, info->data_offset + data_offset);
-				if (err) {
-					DNET_LOG_ERROR(c->blog, "EBLOB: server_send: {}: failed to read data: {}",
-					               dnet_dump_id_str(info->key.id), dnet_print_error(err));
-					return send_fail_reply(err);
-				}
-
-				if (data_offset == 0) {
-					auto async = session.write_prepare(info->key,
-					                                   json, info->jhdr.capacity,
-					                                   data, 0, info->data_size);
-					if ((err = get_write_result(async)) != 0) {
-						return send_fail_reply(err);
-					}
-				} else if (remaining_size > request.chunk_size) {
-					auto async = session.write_plain(info->key, "", data, data_offset);
-					if ((err = get_write_result(async)) != 0) {
-						return send_fail_reply(err);
-					}
-				} else {
-					oplock_guard.unlock();
-
-					session.set_timeout(commit_timeout);
-
-					data_pointer data_slice{data.slice(0, data_size)};
-					auto async = session.write_commit(info->key, "", data_slice, data_offset,
-					                                  info->data_size);
-					err = get_write_result(async);
-
-					auto response = serialize_response(err);
-
-					return dnet_send_reply(st, cmd, response.data(), response.size(), 1,
-					                       /*context*/ nullptr);
-				}
-
-				data_offset += data_size;
-			}
+			large_object_sender sender{c, st, iterator_id, cmd, request, info, monitor, counter};
+			sender.send();
 		}
 
 		return 0;
@@ -1650,13 +1862,14 @@ int blob_send_new(struct eblob_backend_config *c,
 		              {"groups", groups},
 		              {"chunk_write_timeout", request.chunk_write_timeout},
 		              {"chunk_commit_timeout", request.chunk_commit_timeout},
+		              {"chunk_retry_count", request.chunk_retry_count},
 		             });
 	}
 
-	DNET_LOG_INFO(c->blog, "EBLOB: {} started: ids_num: {}, groups: {}, "
-	                       "chunk_write_timeout: {}, chunk_commit_timeout: {}",
+	DNET_LOG_INFO(c->blog, "EBLOB: {} started: ids_num: {}, groups: {}, chunk_write_timeout: {}, "
+	                       "chunk_commit_timeout: {}, chunk_retry_count: {:d}",
 	              __func__, request.keys.size(), request.groups, request.chunk_write_timeout,
-	              request.chunk_commit_timeout);
+	              request.chunk_commit_timeout, request.chunk_retry_count);
 
 	int err = 0;
 
@@ -1695,7 +1908,7 @@ int blob_send_new(struct eblob_backend_config *c,
 	congestion_control_monitor monitor;
 
 	auto callback = make_iterator_server_send_callback(c, reinterpret_cast<dnet_net_state*>(state),
-	                                                   cmd, request, cmd->backend_id, monitor, counter, send_fail_reply);
+	                                                   cmd, request, cmd->backend_id, monitor, counter);
 
 	eblob_key ekey;
 	eblob_write_control wc;

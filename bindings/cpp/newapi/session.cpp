@@ -1034,11 +1034,13 @@ public:
 	           const int src_group,
 	           const std::vector<int> &dst_groups,
 	           uint64_t chunk_write_timeout,
-	           uint64_t chunk_commit_timeout) {
+	           uint64_t chunk_commit_timeout,
+	           uint8_t chunk_retry_count) {
 		DNET_LOG_INFO(m_log, "{}: started: flags: {}, src_group: {}, dst_groups: {}, "
-		                     "chunk_size: {}, keys: {}, chunk_write_timeout: {}, chunk_commit_timeout: {}",
+		                     "chunk_size: {}, keys: {}, chunk_write_timeout: {}, chunk_commit_timeout: {}, "
+		                     "chunk_retry_count: {:d}",
 		              dnet_cmd_string(DNET_CMD_SEND_NEW), flags, src_group, dst_groups, chunk_size,
-		              keys.size(), chunk_write_timeout, chunk_commit_timeout);
+		              keys.size(), chunk_write_timeout, chunk_commit_timeout, chunk_retry_count);
 
 		m_context.reset(new dnet_access_context(m_session.get_native_node()));
 		if (m_context) {
@@ -1055,6 +1057,7 @@ public:
 			                {"trace_id", to_hex_string(m_session.get_trace_id())},
 			                {"chunk_write_timeout", chunk_write_timeout},
 			                {"chunk_commit_timeout", chunk_commit_timeout},
+			                {"chunk_retry_count", chunk_retry_count},
 			               });
 		}
 
@@ -1109,6 +1112,7 @@ public:
 				chunk_size,
 				chunk_write_timeout,
 				chunk_commit_timeout,
+				chunk_retry_count,
 			});
 
 			transport_control control;
@@ -1189,13 +1193,7 @@ async_iterator_result session::server_send(const std::vector<dnet_raw_id> &keys,
                                            const std::vector<int> &dst_groups,
                                            uint64_t chunk_write_timeout,
                                            uint64_t chunk_commit_timeout) {
-	std::vector<key> converted_keys;
-	converted_keys.reserve(keys.size());
-
-	for (const auto &key: keys) {
-		converted_keys.emplace_back(key);
-	}
-
+	std::vector<key> converted_keys{keys.begin(), keys.end()};
 	return server_send(converted_keys, flags, chunk_size, src_group, dst_groups, chunk_write_timeout,
 	                   chunk_commit_timeout);
 }
@@ -1207,13 +1205,7 @@ async_iterator_result session::server_send(const std::vector<std::string> &keys,
                                            const std::vector<int> &dst_groups,
                                            uint64_t chunk_write_timeout,
                                            uint64_t chunk_commit_timeout) {
-	std::vector<key> converted_keys;
-	converted_keys.reserve(keys.size());
-
-	for (const auto &key: keys) {
-		converted_keys.emplace_back(key);
-	}
-
+	std::vector<key> converted_keys{keys.begin(), keys.end()};
 	return server_send(converted_keys, flags, chunk_size, src_group, dst_groups, chunk_write_timeout,
 	                   chunk_commit_timeout);
 }
@@ -1225,11 +1217,50 @@ async_iterator_result session::server_send(const std::vector<key> &keys,
                                            const std::vector<int> &dst_groups,
                                            uint64_t chunk_write_timeout,
                                            uint64_t chunk_commit_timeout) {
+	return server_send(keys, flags, chunk_size, src_group, dst_groups, chunk_write_timeout, chunk_commit_timeout,
+	                   DNET_DEFAULT_SERVER_SEND_CHUNK_RETRY_COUNT);
+}
+
+async_iterator_result session::server_send(const std::vector<dnet_raw_id> &keys,
+                                           const uint64_t flags,
+                                           const uint64_t chunk_size,
+                                           const int src_group,
+                                           const std::vector<int> &dst_groups,
+                                           const uint64_t chunk_write_timeout,
+                                           const uint64_t chunk_commit_timeout,
+                                           const uint8_t chunk_retry_count) {
+	std::vector<key> converted_keys{keys.begin(), keys.end()};
+	return server_send(converted_keys, flags, chunk_size, src_group, dst_groups, chunk_write_timeout,
+	                   chunk_commit_timeout, chunk_retry_count);
+}
+
+async_iterator_result session::server_send(const std::vector<std::string> &keys,
+                                           const uint64_t flags,
+                                           const uint64_t chunk_size,
+                                           const int src_group,
+                                           const std::vector<int> &dst_groups,
+                                           const uint64_t chunk_write_timeout,
+                                           const uint64_t chunk_commit_timeout,
+                                           const uint8_t chunk_retry_count) {
+	std::vector<key> converted_keys{keys.begin(), keys.end()};
+	return server_send(converted_keys, flags, chunk_size, src_group, dst_groups, chunk_write_timeout,
+	                   chunk_commit_timeout, chunk_retry_count);
+}
+
+async_iterator_result session::server_send(const std::vector<key> &keys,
+                                           const uint64_t flags,
+                                           const uint64_t chunk_size,
+                                           const int src_group,
+                                           const std::vector<int> &dst_groups,
+                                           const uint64_t chunk_write_timeout,
+                                           const uint64_t chunk_commit_timeout,
+                                           const uint8_t chunk_retry_count) {
 	trace_scope scope{*this};
 
 	async_iterator_result result(*this);
 	auto handler = std::make_shared<server_send_handler>(result, *this);
-	handler->start(keys, flags, chunk_size, src_group, dst_groups, chunk_write_timeout, chunk_commit_timeout);
+	handler->start(keys, flags, chunk_size, src_group, dst_groups, chunk_write_timeout, chunk_commit_timeout,
+	               chunk_retry_count);
 	return result;
 }
 

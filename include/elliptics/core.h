@@ -92,6 +92,8 @@
 /* Default timeout in ms for committing a chunk by server_send */
 #define DNET_DEFAULT_SERVER_SEND_CHUNK_COMMIT_TIMEOUT	1000 // 1 second
 
+#define DNET_DEFAULT_SERVER_SEND_CHUNK_RETRY_COUNT	0 // no retry
+
 #define DNET_DEFAULT_SEND_LIMIT 1000
 
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))

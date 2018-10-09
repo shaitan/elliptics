@@ -138,6 +138,7 @@ struct dnet_server_send_request {
 	uint64_t chunk_size;
 	uint64_t chunk_write_timeout;
 	uint64_t chunk_commit_timeout;
+	uint8_t chunk_retry_count;
 };
 
 template<typename T>

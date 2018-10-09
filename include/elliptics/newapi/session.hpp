@@ -147,6 +147,31 @@ public:
 	                                  const int src_group, const std::vector<int> &dst_groups,
 	                                  uint64_t chunk_write_timeout, uint64_t chunk_commit_timeout);
 
+
+	/*
+	 * Ask \a src_group to send \a keys to \a dst_groups
+	 * \a keys - keys that should be sent
+	 * \a flags - flags that describes how \a keys should be written
+	 * \a chunk_size - size of chunk by which each keys should be written
+	 * \a chunk_write_timeout - timeout in ms for one chunk write operation
+	 * \a chunk_commit_timeout - timeout in ms for committing one chunk of data
+	 * \a chunk_retry_count - number of retries to write a chunk of data
+	 */
+	async_iterator_result server_send(const std::vector<dnet_raw_id> &keys, uint64_t flags, uint64_t chunk_size,
+	                                  int src_group, const std::vector<int> &dst_groups,
+	                                  uint64_t chunk_write_timeout, uint64_t chunk_commit_timeout,
+	                                  uint8_t chunk_retry_count);
+
+	async_iterator_result server_send(const std::vector<std::string> &keys, uint64_t flags, uint64_t chunk_size,
+	                                  int src_group, const std::vector<int> &dst_groups,
+	                                  uint64_t chunk_write_timeout, uint64_t chunk_commit_timeout,
+	                                  uint8_t chunk_retry_count);
+
+	async_iterator_result server_send(const std::vector<key> &keys, uint64_t flags, uint64_t chunk_size,
+	                                  int src_group, const std::vector<int> &dst_groups,
+	                                  uint64_t chunk_write_timeout, uint64_t chunk_commit_timeout,
+	                                  uint8_t chunk_retry_count);
+
 	/*
 	 * Family of bulk_read methods are used to read keys from multiple groups/backends efficiently by
 	 * sending exactly one request to a node instead of sending multiple requests per each group.
