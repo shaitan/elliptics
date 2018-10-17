@@ -1,3 +1,10 @@
+elliptics (2.27.6.13) unstable; urgency=low
+
+  * feat: check blob for exposed user data
+  * test: check blob for exposed user data
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Wed, 17 Oct 2018 14:40:17 +0300
+
 elliptics (2.27.6.12) unstable; urgency=low
 
   * recovery: do not consider all server-send failures as data error
