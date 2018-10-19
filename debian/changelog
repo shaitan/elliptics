@@ -1,3 +1,9 @@
+elliptics (2.27.6.14) unstable; urgency=low
+
+  * backends: enable backend in nonblocking sys io pool
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Fri, 19 Oct 2018 17:42:03 +0300
+
 elliptics (2.27.6.13) unstable; urgency=low
 
   * feat: check blob for exposed user data
