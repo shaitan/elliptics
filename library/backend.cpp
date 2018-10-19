@@ -1182,7 +1182,7 @@ int dnet_backends_manager::init_all(bool parallel) {
 			sess.set_checker(checkers::no_check);
 			sess.set_exceptions_policy(session::no_exceptions);
 			sess.set_timeout(std::numeric_limits<unsigned>::max() / 2);
-			sess.set_cflags(sess.get_cflags() | DNET_FLAGS_NO_QUEUE_TIMEOUT);
+			sess.set_cflags(sess.get_cflags() | DNET_FLAGS_NO_QUEUE_TIMEOUT | DNET_FLAGS_NOLOCK);
 
 			std::vector<async_backend_control_result> results;
 			results.reserve(m_backends.size());
