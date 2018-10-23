@@ -1,3 +1,13 @@
+elliptics (2.27.6.15) unstable; urgency=low
+
+  * Revert "backends: enable backend in nonblocking sys io pool"
+  * backends: handle backends_status request in nonblocking sys pool
+  * backend: additional check for corruption on lookup with checksum
+  * backends: use common 'offset, size' parameters sequence in blob_read_and_check_stamp
+  * tests: cover lookup by corrupted_stamp_test
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Tue, 23 Oct 2018 20:15:35 +0300
+
 elliptics (2.27.6.14) unstable; urgency=low
 
   * backends: enable backend in nonblocking sys io pool
