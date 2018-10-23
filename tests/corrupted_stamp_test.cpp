@@ -295,6 +295,16 @@ void test_read_corrupted_stamp(ioremap::elliptics::newapi::session &s) {
 
 	}
 
+	session lookup_session{s.get_native_node()};
+	lookup_session.set_exceptions_policy(session::no_exceptions);
+	lookup_session.set_groups(s.get_groups());
+	auto lookup_csum_session = lookup_session.clone();
+	lookup_csum_session.set_cflags(lookup_csum_session.get_cflags() | DNET_FLAGS_CHECKSUM);
+
+	auto new_lookup_session = s.clone();
+	auto new_lookup_csum_session = s.clone();
+	new_lookup_csum_session.set_cflags(new_lookup_csum_session.get_cflags() | DNET_FLAGS_CHECKSUM);
+
 	for (auto &write_result : write_results) {
 		write_result.async_result.wait();
 
@@ -306,6 +316,19 @@ void test_read_corrupted_stamp(ioremap::elliptics::newapi::session &s) {
 			ELLIPTICS_REQUIRE_ERROR(res, std::move(async), write_result.expected_status);
 		} {
 			auto async = s.read_json(write_result.key);
+			ELLIPTICS_REQUIRE(res, std::move(async));
+		} {
+			auto async = lookup_session.lookup(write_result.key);
+			ELLIPTICS_REQUIRE(res, std::move(async));
+		} {
+			auto async = lookup_csum_session.lookup(write_result.key);
+			ELLIPTICS_REQUIRE_ERROR(res, std::move(async), write_result.expected_status);
+		} {
+			auto async = new_lookup_session.lookup(write_result.key);
+			ELLIPTICS_REQUIRE(res, std::move(async));
+		} {
+			auto async = new_lookup_csum_session.lookup(write_result.key);
+			// new commands don't support returning checksums yet
 			ELLIPTICS_REQUIRE(res, std::move(async));
 		}
 
