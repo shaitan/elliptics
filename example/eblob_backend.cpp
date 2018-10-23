@@ -76,7 +76,7 @@ int blob_check_corrupted_stamp(void *buffer, size_t buffer_size) {
 	return 0;
 }
 
-static inline int read_and_check_stamp(int fd, uint64_t data_size, uint64_t data_offset) {
+int blob_read_and_check_stamp(int fd, uint64_t data_size, uint64_t data_offset) {
 	std::array<char, sizeof(eblob_disk_control) + sizeof(dnet_ext_list_hdr)> stamp;
 
 	if (data_size < stamp.size()) {
@@ -517,7 +517,7 @@ static int blob_read_new_impl(eblob_backend_config *c,
 		data_size = wc.size - jhdr.capacity;
 		data_offset = wc.data_offset + jhdr.capacity;
 
-		err = read_and_check_stamp(wc.data_fd, data_size, data_offset);
+		err = blob_read_and_check_stamp(wc.data_fd, data_size, data_offset);
 		if (err) {
 			DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-read-new {}: corrupted signature: data offset {}, data size {}",
 			               dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), data_offset, data_size);

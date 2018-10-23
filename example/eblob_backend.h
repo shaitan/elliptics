@@ -84,6 +84,7 @@ int dnet_read_json_header(int fd, uint64_t offset, uint64_t size, struct dnet_js
 // Time when the bug was fixed.
 #define DNET_SERVER_SEND_BUGFIX_TIMESTAMP 1483228800ULL
 int blob_check_corrupted_stamp(void *buffer, size_t buffer_size);
+int blob_read_and_check_stamp(int fd, uint64_t data_size, uint64_t data_offset);
 
 #ifdef __cplusplus
 }
