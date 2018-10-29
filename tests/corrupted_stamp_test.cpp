@@ -195,10 +195,14 @@ void test_explicit_headers() {
 
 
 // TODO(karapuz): recreate blob file with different offsets.
-void test_read_corrupted_stamp(ioremap::elliptics::newapi::session &s) {
+void test_read_corrupted_stamp(ioremap::elliptics::newapi::session &s, const dnet_time &timestamp) {
 	using namespace ioremap::elliptics;
 
+	// check should be skipped for keys written after bugfix.
+	const bool check_skipped = timestamp.tsec > DNET_SERVER_SEND_BUGFIX_TIMESTAMP;
+
 	s.set_groups({constants::group_id});
+	s.set_timestamp(timestamp);
 
 	struct test_write_result {
 		std::string key;
@@ -231,7 +235,7 @@ void test_read_corrupted_stamp(ioremap::elliptics::newapi::session &s) {
 			s.write(k, "", 0, data, 0);
 
 		return test_write_result{std::move(k),
-		                         ec,
+		                         check_skipped ? 0 : ec,
 		                         constants::HEADERS_SIZE + to_add - to_remove,
 		                         std::move(async)};
 	};
@@ -451,7 +455,20 @@ bool register_tests(const tests::nodes_data *setup) {
 	ELLIPTICS_TEST_CASE(tests::test_explicit_headers);
 
 	// Light functional tests to write/read some data.
-	ELLIPTICS_TEST_CASE(tests::test_read_corrupted_stamp, tests::use_session(n));
+	ELLIPTICS_TEST_CASE(tests::test_read_corrupted_stamp, tests::use_session(n),
+	                    dnet_time{0, 0});
+
+	ELLIPTICS_TEST_CASE(tests::test_read_corrupted_stamp, tests::use_session(n),
+	                    dnet_time{DNET_SERVER_SEND_BUGFIX_TIMESTAMP - 1, 0});
+
+	ELLIPTICS_TEST_CASE(tests::test_read_corrupted_stamp, tests::use_session(n),
+	                    dnet_time{DNET_SERVER_SEND_BUGFIX_TIMESTAMP, 100500});
+
+	ELLIPTICS_TEST_CASE(tests::test_read_corrupted_stamp, tests::use_session(n),
+	                    dnet_time{DNET_SERVER_SEND_BUGFIX_TIMESTAMP + 1, 0});
+
+	ELLIPTICS_TEST_CASE(tests::test_read_corrupted_stamp, tests::use_session(n),
+	                    dnet_time{DNET_SERVER_SEND_BUGFIX_TIMESTAMP + 100500, 0});
 
 	return true;
 }
