@@ -18,6 +18,7 @@
 import os
 import sys
 import errno
+import itertools
 import time
 sys.path.insert(0, "")  # for running from cmake
 import pytest
@@ -169,7 +170,7 @@ def corrupt_key(session, key):
 
 def recovery(one_node, remotes, backend_id, address, groups,
              rtype, log_file, tmp_dir, no_server_send=False, dump_file=None, no_meta=False,
-             user_flags_set=(), expected_ret_code=0, chunk_size=1024, ro_groups=set()):
+             user_flags_set=(), expected_ret_code=0, chunk_size=1024, ro_groups=set(), safe=False):
     '''
     Imports dnet_recovery tools and executes merge recovery. Checks result of merge.
     '''
@@ -210,9 +211,10 @@ def recovery(one_node, remotes, backend_id, address, groups,
         args += ['--no-server-send']
     for user_flags in user_flags_set:
         args += ['--user-flags', user_flags]
-
     if ro_groups:
         args += ['--ro-groups', ','.join(map(str, ro_groups))]
+    if safe:
+        args += ['-S']
 
     assert run(args) == expected_ret_code
 
@@ -1549,6 +1551,191 @@ class TestRecoveryDCWithFailedGroup:
 
             assert result.status == 0
             assert result.data == self.data
+
+    def test_teardown(self):
+        self.cleanup()
+
+
+@pytest.mark.usefixtures("servers")
+@pytest.mark.incremental
+class TestRecoveryDCWithUncommitted:
+    """
+        Description:
+            checks that dc correctly deletes or recovers uncommitted keys in 3 groups
+        Steps:
+        setup:
+            initialize session
+            create 3 groups for recovery
+        tests:
+            create committed and uncommitted keys in groups
+            recovery
+            check state of keys and groups
+        teardown:
+            disable enabled backends
+            remove all blobs
+            enable all backends
+    """
+
+    timestamp_new = elliptics.Time.now()
+    timestamp_fresh = elliptics.Time(timestamp_new.tsec - 3600, timestamp_new.tnsec)
+    timestamp_old = elliptics.Time(timestamp_new.tsec - 25 * 3600, timestamp_new.tnsec)
+    timestamp_oldest = elliptics.Time(timestamp_new.tsec - 30 * 3600, timestamp_new.tnsec)
+    data = 'data'
+
+    def create_uncommitted(self, key, group, timestamp):
+        scope.session.timestamp = timestamp
+        scope.session.groups = [group]
+        scope.session.write_prepare(key, self.data, 0, 1024).wait()
+
+    def create_committed(self, key, group, timestamp):
+        scope.session.timestamp = timestamp
+        scope.session.groups = [group]
+        scope.session.write_data(key, self.data).wait()
+
+    def check_absent(self, key, group):
+        scope.session.groups = [group]
+        with pytest.raises(elliptics.NotFoundError):
+            scope.session.read_data(key).wait()
+
+    def check_uncommitted_count(self, group, expected):
+        real = 0
+        for address, backend in scope.session.routes.filter_by_group(group).addresses_with_backends():
+            stats = scope.session.monitor_stat(address).get()[0].statistics
+            real += stats['backends'][str(backend)]['backend']['summary_stats']['records_uncommitted']
+        assert real == expected
+
+    def check_committed(self, key, group, timestamp):
+        scope.session.groups = [group]
+        result = scope.session.read_data(key).get()[0]
+        assert result.status == 0
+        assert result.timestamp == timestamp
+        assert result.data == self.data
+
+    def recovery(self, dir_suffix, safe=False):
+        recovery(
+            one_node=False,
+            remotes=scope.session.routes.addresses(),
+            backend_id=None,
+            address=scope.session.routes.addresses(),
+            groups=scope.groups,
+            rtype=RECOVERY.DC,
+            log_file='recovery.log',
+            tmp_dir='TestRecoveryDCWithUncommitted_' + dir_suffix,
+            no_server_send=False,
+            chunk_size=1,  # use small chunk to make server-send write data by chunks
+            expected_ret_code=0,
+            safe=safe
+        )
+
+    def cleanup(self):
+        cleanup_backends(
+            scope.session,
+            scope.session.routes.addresses_with_backends(),
+            scope.session.routes.addresses_with_backends()
+        )
+
+    def test_setup(self, simple_node):
+        scope.session = make_session(node=simple_node, test_name='TestRecoveryDCWithUncommitted')
+        scope.groups = scope.session.routes.groups()[:3]
+
+    @pytest.mark.parametrize("safe", [False, True])
+    def test_expired_uncommitted_only(self, safe):
+        """Create uncommitted replicas of key in two groups. We expect that recovery procedure in:
+
+        * unsafe mode - will remove data from all of groups
+        * safe mode   - will not touch the data
+        """
+
+        key = 'ExpiredUncommittedOnly' + ('Safe' if safe else '')
+
+        self.cleanup()
+
+        self.create_uncommitted(key, scope.groups[1], self.timestamp_old)
+        self.create_uncommitted(key, scope.groups[2], self.timestamp_oldest)
+
+        self.recovery(key, safe)
+
+        if safe:
+            self.check_absent(key, scope.groups[0])
+
+            self.check_uncommitted_count(scope.groups[0], 0)
+            self.check_uncommitted_count(scope.groups[1], 1)
+            self.check_uncommitted_count(scope.groups[2], 1)
+        else:
+            for group in scope.groups:
+                self.check_absent(key, group)
+                self.check_uncommitted_count(group, 0)
+
+    @pytest.mark.parametrize("safe", [False, True])
+    def test_uncommitted_fresh_with_committed(self, safe):
+        """Check in both modes that key with at least one fresh uncommitted replica is stayed as is after recovery"""
+
+        key = 'FreshUncommitted' + ('Safe' if safe else '')
+
+        self.cleanup()
+
+        self.create_uncommitted(key, scope.groups[1], self.timestamp_fresh)
+        self.create_committed(key, scope.groups[2], self.timestamp_new)
+
+        self.recovery(key, safe)
+
+        self.check_absent(key, scope.groups[0])
+        self.check_committed(key, scope.groups[2], self.timestamp_new)
+
+        self.check_uncommitted_count(scope.groups[0], 0)
+        self.check_uncommitted_count(scope.groups[1], 1)
+        self.check_uncommitted_count(scope.groups[2], 0)
+
+    @pytest.mark.parametrize("safe", [False, True])
+    def test_mixed_uncommitted_older(self, safe):
+        """
+        Check in both modes that key with one uncommitted and one committed replicas will be
+        recovered to all groups if uncommitted replica is older
+        """
+
+        key = 'MixedUnCommittedOlder' + ('Safe' if safe else '')
+
+        self.cleanup()
+
+        self.create_uncommitted(key, scope.groups[1], self.timestamp_oldest)
+        self.create_committed(key, scope.groups[2], self.timestamp_old)
+
+        self.recovery(key, safe)
+
+        for group in scope.groups:
+            self.check_committed(key, group, self.timestamp_old)
+            self.check_uncommitted_count(group, 0)
+
+    @pytest.mark.parametrize("safe", [False, True])
+    def test_mixed_committed_older(self, safe):
+        """
+        Create one committed and one uncommitted replicas of key. Committed replica has older timestamp.
+        We expect that recovery procedure in:
+
+        * unsafe mode - will recover data from replica with committed key
+        * safe mode   - will not touch the data
+        """
+
+        key = 'MixedCommittedOlder' + ('Safe' if safe else '')
+
+        self.cleanup()
+
+        self.create_uncommitted(key, scope.groups[1], self.timestamp_old)
+        self.create_committed(key, scope.groups[2], self.timestamp_oldest)
+
+        self.recovery(key, safe)
+
+        if safe:
+            self.check_absent(key, scope.groups[0])
+            self.check_committed(key, scope.groups[2], self.timestamp_oldest)
+
+            self.check_uncommitted_count(scope.groups[0], 0)
+            self.check_uncommitted_count(scope.groups[1], 1)
+            self.check_uncommitted_count(scope.groups[2], 0)
+        else:
+            for group in scope.groups:
+                self.check_committed(key, group, self.timestamp_oldest)
+                self.check_uncommitted_count(group, 0)
 
     def test_teardown(self):
         self.cleanup()
