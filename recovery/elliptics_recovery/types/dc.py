@@ -193,9 +193,11 @@ class MergedKeys(object):
                 if info.timestamp >= self.prepare_timeout:
                     return
 
+        if has_uncommitted:
+            key_infos = [info for info in key_infos if not info.flags & elliptics.record_flags.uncommitted]
+
         if self.safe and has_uncommitted:
             has_uncommitted = False
-            key_infos = [info for info in key_infos if not info.flags & elliptics.record_flags.uncommitted]
             if not key_infos:
                 return
 
@@ -203,6 +205,8 @@ class MergedKeys(object):
             dump_key_data(key_data, uncommitted_file)
         else:
             dump_key_data(key_data, merged_file)
+
+        if key_infos:
             newest_key_group = key_infos[0].group_id
             self.newest_key_stats[newest_key_group] += 1
 
