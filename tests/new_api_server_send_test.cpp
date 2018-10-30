@@ -4,7 +4,11 @@
 #define BOOST_TEST_ALTERNATIVE_INIT_API
 #include <boost/test/included/unit_test.hpp>
 
+#include <chrono>
+#include <thread>
+
 #include "elliptics/newapi/session.hpp"
+#include "example/eblob_backend.h"
 
 #include "test_base.hpp"
 
@@ -30,10 +34,19 @@ tests::nodes_data::ptr configure_test_setup(const std::string &path) {
 		return tests::server_config::default_value().apply_options(c);
 	};
 
+	// config for a server with backend limited by 1 byte space
+	// used for tests that covers -ENOSPC cases
+	auto limited_server_config = [&] (const tests::config_data &c) {
+		auto server = server_config(c);
+		server.backends[0]("blob_size_limit", 1);
+		return server;
+	};
+
 	auto configs = {
 		server_config(tests::config_data()("group", 1)),
 		server_config(tests::config_data()("group", 2)),
-		// server_config(tests::config_data()("group", 3)),
+		server_config(tests::config_data()("group", 3)),
+		limited_server_config(tests::config_data()("group", 4)),
 	};
 
 	tests::start_nodes_config config{
@@ -509,6 +522,1139 @@ void test_simple_server_send(const ioremap::elliptics::newapi::session &session/
 
 using namespace tests;
 
+// Check the case when first write is timed-out and second is successful.
+// The key should be written.
+void test_send_with_successful_retry(ioremap::elliptics::newapi::session &session,
+                                     ioremap::elliptics::key key,
+                                     const nodes_data *setup,
+                                     bool chunked,
+                                     uint8_t retry_count) {
+	static const std::string json =
+		R"({"key": "new_api_server_send_test::test_send_with_successful_retry key"})";
+	static const std::string data =
+		"new_api_server_send_test::test_send_with_successful_retry data";
+	constexpr dnet_time timestamp{11, 0};
+	constexpr uint64_t user_flags = 100501;
+
+	constexpr int src_group = 1;
+	constexpr int dst_group = 2;
+
+	const auto delayed_remote = setup->nodes[1].remote();
+	constexpr uint32_t delayed_backend = 0;
+
+	session.transform(key);
+	session.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
+	session.set_groups({src_group});
+	session.set_timestamp(timestamp);
+	session.set_user_flags(user_flags);
+
+	{
+		// write the key into src_group
+		ELLIPTICS_REQUIRE(async, session.write(key, json, 1024, data, 1024));
+	}
+
+	session.set_delay(delayed_remote, delayed_backend, 3000).wait();
+
+	{
+		const uint64_t chunk_size = chunked ? (data.size() / 2) : DNET_DEFAULT_SERVER_SEND_CHUNK_SIZE;
+		auto async = session.server_send({key}, 0 /*flags*/,
+		                                 chunk_size,
+		                                 src_group, std::vector<int>{dst_group},
+		                                 2000 /* 1s */,
+		                                 2000 /* 1s */,
+		                                 retry_count /* chunk_retry_count */);
+
+		// sleep to give a time for server-send to send first write
+		std::this_thread::sleep_for(std::chrono::milliseconds(100));
+		// reset delay, so when server-send will retry write, it won't be timed-out
+		session.set_delay(delayed_remote, delayed_backend, 0).wait();
+
+		auto results = async.get();
+		BOOST_REQUIRE_EQUAL(results.size(), 1);
+		auto &result = results.front();
+
+		BOOST_REQUIRE_EQUAL(result.iterator_id(), 0);
+		BOOST_REQUIRE_EQUAL(result.key(), key.raw_id());
+		BOOST_REQUIRE_EQUAL(result.status(), 0);
+	}
+
+	// reset delay
+	session.set_delay(delayed_remote, delayed_backend, 0).wait();
+
+	{
+		constexpr std::array<int, 2> groups{src_group, dst_group};
+		for (const auto group: groups) {
+			auto s = session.clone();
+			s.set_groups({group});
+			ELLIPTICS_REQUIRE(async, s.read(key, 0, 0));
+			auto result = async.get().front();
+			BOOST_REQUIRE_EQUAL(result.data().to_string(), data);
+			BOOST_REQUIRE_EQUAL(result.record_info().data_timestamp, timestamp);
+
+			BOOST_REQUIRE_EQUAL(result.json().to_string(), json);
+			BOOST_REQUIRE_EQUAL(result.record_info().json_capacity, 1024);
+			BOOST_REQUIRE_EQUAL(result.record_info().json_timestamp, timestamp);
+
+			BOOST_REQUIRE_EQUAL(result.record_info().user_flags, user_flags);
+		}
+	}
+}
+
+// Check the case when all tries are failed with -ETIMEDOUT.
+// Server-send should respond with -ETIMEDOUT and original replica should be changed.
+void test_send_failed_with_ETIMEDOUT(ioremap::elliptics::newapi::session &session,
+                                     ioremap::elliptics::key key,
+                                     const nodes_data *setup,
+                                     bool chunked,
+                                     uint8_t retry_count) {
+	static const std::string json =
+		R"({"key": "new_api_server_send_test::test_send_failed_with_ETIMEDOUT key"})";
+	static const std::string data =
+		"new_api_server_send_test::test_send_failed_with_ETIMEDOUT data";
+	constexpr dnet_time timestamp{11, 0};
+	constexpr uint64_t user_flags = 100501;
+
+	constexpr int src_group = 1;
+	constexpr int dst_group = 2;
+
+	const auto delayed_remote = setup->nodes[1].remote();
+	constexpr uint32_t delayed_backend = 0;
+
+	session.transform(key);
+	session.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
+	session.set_groups({src_group});
+	session.set_timestamp(timestamp);
+	session.set_user_flags(user_flags);
+
+	{
+		// write the key into src_group
+		ELLIPTICS_REQUIRE(async, session.write(key, json, 1024, data, 1024));
+	}
+
+	session.set_delay(delayed_remote, delayed_backend, 2000).wait();
+
+	{
+		const uint64_t chunk_size = chunked ? (data.size() / 2) : DNET_DEFAULT_SERVER_SEND_CHUNK_SIZE;
+		auto async = session.server_send({key}, 0 /*flags*/,
+		                                 chunk_size,
+		                                 src_group, std::vector<int>{dst_group},
+		                                 1000 /* 1s */,
+		                                 1000 /* 1s */,
+		                                 retry_count /* chunk_retry_count */);
+
+		auto results = async.get();
+		BOOST_REQUIRE_EQUAL(results.size(), 1);
+		auto &result = results.front();
+
+		BOOST_REQUIRE_EQUAL(result.iterator_id(), 0);
+		BOOST_REQUIRE_EQUAL(result.key(), key.raw_id());
+		BOOST_REQUIRE_EQUAL(result.status(), -ETIMEDOUT);
+	}
+
+	// reset delay
+	session.set_delay(delayed_remote, delayed_backend, 0).wait();
+
+	{
+		auto s = session.clone();
+		s.set_groups({src_group});
+		ELLIPTICS_REQUIRE(async, s.read(key, 0, 0));
+		auto result = async.get().front();
+		BOOST_REQUIRE_EQUAL(result.data().to_string(), data);
+		BOOST_REQUIRE_EQUAL(result.record_info().data_timestamp, timestamp);
+
+		BOOST_REQUIRE_EQUAL(result.json().to_string(), json);
+		BOOST_REQUIRE_EQUAL(result.record_info().json_capacity, 1024);
+		BOOST_REQUIRE_EQUAL(result.record_info().json_timestamp, timestamp);
+
+		BOOST_REQUIRE_EQUAL(result.record_info().user_flags, user_flags);
+	}
+
+	// sleep for removing affects from hanging request
+	// sleep for 1 second, because server_send retried write once and it took double delay (3 seconds)
+	// to handle them, but 2 seconds has already passed by server-send
+	std::this_thread::sleep_for(std::chrono::seconds{retry_count + 1});
+
+}
+
+// Check the case when destination group aren't available(corresponding backend is disabled).
+// Server-send should respond with -ENXIO and original replica shouldn't be changed.
+void test_send_failed_with_ENXIO(ioremap::elliptics::newapi::session &session,
+                                 ioremap::elliptics::key key,
+                                 const nodes_data *setup,
+                                 bool chunked,
+                                 uint8_t retry_count) {
+	static const std::string json = R"({"key": "test_send_failed_with_ENXIO key"})";
+	static const std::string data = "test_send_failed_with_ENXIO data";
+	constexpr dnet_time timestamp{11, 0};
+	constexpr uint64_t user_flags = 100501;
+
+	constexpr int src_group = 1;
+	constexpr int dst_group = 2;
+
+	// victim's address and backend_id
+	const auto victim_address = setup->nodes[1].remote();
+	constexpr uint32_t victim_backend_id = 0;
+
+	session.transform(key);
+	session.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
+	session.set_groups({src_group});
+	session.set_timestamp(timestamp);
+	session.set_user_flags(user_flags);
+
+	{
+		// write the key into src_group
+		ELLIPTICS_REQUIRE(async, session.write(key, json, 1024, data, 1024));
+	}
+
+	// disable backend, so victim_group become unavailable
+	session.disable_backend(victim_address, victim_backend_id).wait();
+
+	{
+		const uint64_t chunk_size = chunked ? (data.size() / 2) : DNET_DEFAULT_SERVER_SEND_CHUNK_SIZE;
+		auto async = session.server_send({key}, 0 /*flags*/,
+		                                 chunk_size,
+		                                 src_group, std::vector<int>{dst_group},
+		                                 1000 /* 1s */,
+		                                 1000 /* 1s */,
+		                                 retry_count /* chunk_retry_count */);
+
+		auto results = async.get();
+		BOOST_REQUIRE_EQUAL(results.size(), 1);
+		auto &result = results.front();
+
+		BOOST_REQUIRE_EQUAL(result.iterator_id(), 0);
+		BOOST_REQUIRE_EQUAL(result.key(), key.raw_id());
+		BOOST_REQUIRE_EQUAL(result.status(), -ENXIO);
+
+		// backend's absence should be checked fast and without retries
+		BOOST_REQUIRE_EQUAL(async.elapsed_time().tsec, 0);
+	} {
+		auto s = session.clone();
+		s.set_groups({src_group});
+		ELLIPTICS_REQUIRE(async, s.read(key, 0, 0));
+		auto result = async.get().front();
+		BOOST_REQUIRE_EQUAL(result.data().to_string(), data);
+		BOOST_REQUIRE_EQUAL(result.record_info().data_timestamp, timestamp);
+
+		BOOST_REQUIRE_EQUAL(result.json().to_string(), json);
+		BOOST_REQUIRE_EQUAL(result.record_info().json_capacity, 1024);
+		BOOST_REQUIRE_EQUAL(result.record_info().json_timestamp, timestamp);
+
+		BOOST_REQUIRE_EQUAL(result.record_info().user_flags, user_flags);
+	}
+
+	// enable backend back
+	session.enable_backend(victim_address, victim_backend_id).wait();
+}
+
+// Check the case when destination group is in read-only mode.
+// Server-send should fail with -EROFS and original replica should be changed.
+void test_send_failed_with_EROFS(ioremap::elliptics::newapi::session &session,
+                                 ioremap::elliptics::key key,
+                                 const nodes_data *setup,
+                                 bool chunked,
+                                 uint8_t retry_count) {
+	static const std::string json = R"({"key": "test_send_failed_with_EROFS key"})";
+	static const std::string data = "test_send_failed_with_EROFS data";
+	constexpr dnet_time timestamp{11, 0};
+	constexpr uint64_t user_flags = 100501;
+
+	constexpr int src_group = 1;
+	constexpr int dst_group = 2;
+
+	// victim's address and backend_id
+	const auto victim_address = setup->nodes[1].remote();
+	constexpr uint32_t victim_backend_id = 0;
+
+	session.transform(key);
+	session.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
+	session.set_groups({src_group});
+	session.set_timestamp(timestamp);
+	session.set_user_flags(user_flags);
+
+	{
+		// write the key into src_group
+		ELLIPTICS_REQUIRE(async, session.write(key, json, 1024, data, 1024));
+	}
+
+	// turn RO on backend
+	session.make_readonly(victim_address, victim_backend_id).wait();
+
+	{
+		const uint64_t chunk_size = chunked ? (data.size() / 2) : DNET_DEFAULT_SERVER_SEND_CHUNK_SIZE;
+		auto async = session.server_send({key}, 0 /*flags*/,
+		                                 chunk_size,
+		                                 src_group, std::vector<int>{dst_group},
+		                                 1000 /* 1s */,
+		                                 1000 /* 1s */,
+		                                 retry_count /* chunk_retry_count */);
+
+		auto results = async.get();
+		BOOST_REQUIRE_EQUAL(results.size(), 1);
+		auto &result = results.front();
+
+		BOOST_REQUIRE_EQUAL(result.iterator_id(), 0);
+		BOOST_REQUIRE_EQUAL(result.key(), key.raw_id());
+		BOOST_REQUIRE_EQUAL(result.status(), -EROFS);
+
+		// backend's absence should be checked fast and without retries
+		BOOST_REQUIRE_EQUAL(async.elapsed_time().tsec, 0);
+	} {
+		auto s = session.clone();
+		s.set_groups({src_group});
+		ELLIPTICS_REQUIRE(async, s.read(key, 0, 0));
+		auto result = async.get().front();
+		BOOST_REQUIRE_EQUAL(result.data().to_string(), data);
+		BOOST_REQUIRE_EQUAL(result.record_info().data_timestamp, timestamp);
+
+		BOOST_REQUIRE_EQUAL(result.json().to_string(), json);
+		BOOST_REQUIRE_EQUAL(result.record_info().json_capacity, 1024);
+		BOOST_REQUIRE_EQUAL(result.record_info().json_timestamp, timestamp);
+
+		BOOST_REQUIRE_EQUAL(result.record_info().user_flags, user_flags);
+	}
+
+	// revert RO on backend
+	session.make_writable(victim_address, victim_backend_id).wait();
+}
+
+// Check the case when destination group has newer replica.
+// Server-send should respond with -EBADFD and both replicas shouldn't be changed.
+void test_send_failed_with_EBADFD(ioremap::elliptics::newapi::session &session,
+                                  ioremap::elliptics::key key,
+                                  bool chunked,
+                                  uint8_t retry_count) {
+	static const std::string json = R"({"key": "test_send_failed_with_EBADFD key"})";
+	static const std::string data = "test_send_failed_with_EBADFD data";
+
+	constexpr dnet_time src_timestamp{11, 0};
+	constexpr dnet_time dst_timestamp{src_timestamp.tsec, src_timestamp.tnsec + 1};
+
+	constexpr uint64_t src_user_flags = 100501;
+	constexpr uint64_t dst_user_flags = src_user_flags + 1;
+
+	constexpr int src_group = 1;
+	constexpr int dst_group = 2;
+
+	session.transform(key);
+	session.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
+	session.set_groups({src_group});
+	session.set_timestamp(src_timestamp);
+	session.set_user_flags(src_user_flags);
+
+	{
+		// write the key into src_group
+		ELLIPTICS_REQUIRE(async, session.write(key, json, 1024, data, 1024));
+	} {
+		// write the key into dst_group with higher timestamp
+		auto s = session.clone();
+		s.set_timestamp(dst_timestamp);
+		s.set_groups({dst_group});
+		s.set_user_flags(dst_user_flags);
+		ELLIPTICS_REQUIRE(async, s.write(key, json, 1024, data, 1024));
+	} {
+		const uint64_t chunk_size = chunked ? (data.size() / 2) : DNET_DEFAULT_SERVER_SEND_CHUNK_SIZE;
+		auto async = session.server_send({key}, 0 /*flags*/,
+		                                 chunk_size,
+		                                 src_group, std::vector<int>{dst_group},
+		                                 1000 /* 1s */,
+		                                 1000 /* 1s */,
+		                                 retry_count /* chunk_retry_count */);
+
+		auto results = async.get();
+		BOOST_REQUIRE_EQUAL(results.size(), 1);
+		auto &result = results.front();
+
+		BOOST_REQUIRE_EQUAL(result.iterator_id(), 0);
+		BOOST_REQUIRE_EQUAL(result.key(), key.raw_id());
+		BOOST_REQUIRE_EQUAL(result.status(), -EBADFD);
+
+		// backend's absence should be checked fast and without retries
+		BOOST_REQUIRE_EQUAL(async.elapsed_time().tsec, 0);
+	} {
+		auto s = session.clone();
+		s.set_groups({src_group});
+		ELLIPTICS_REQUIRE(async, s.read(key, 0, 0));
+		auto result = async.get().front();
+		BOOST_REQUIRE_EQUAL(result.data().to_string(), data);
+		BOOST_REQUIRE_EQUAL(result.record_info().data_timestamp, src_timestamp);
+
+		BOOST_REQUIRE_EQUAL(result.json().to_string(), json);
+		BOOST_REQUIRE_EQUAL(result.record_info().json_capacity, 1024);
+		BOOST_REQUIRE_EQUAL(result.record_info().json_timestamp, src_timestamp);
+
+		BOOST_REQUIRE_EQUAL(result.record_info().user_flags, src_user_flags);
+	} {
+		auto s = session.clone();
+		s.set_groups({dst_group});
+		ELLIPTICS_REQUIRE(async, s.read(key, 0, 0));
+		auto result = async.get().front();
+		BOOST_REQUIRE_EQUAL(result.data().to_string(), data);
+		BOOST_REQUIRE_EQUAL(result.record_info().data_timestamp, dst_timestamp);
+
+		BOOST_REQUIRE_EQUAL(result.json().to_string(), json);
+		BOOST_REQUIRE_EQUAL(result.record_info().json_capacity, 1024);
+		BOOST_REQUIRE_EQUAL(result.record_info().json_timestamp, dst_timestamp);
+
+		BOOST_REQUIRE_EQUAL(result.record_info().user_flags, dst_user_flags);
+	}
+}
+
+// Check the case when destination group doesn't have enough space.
+// Server-send should respond with -ENOSPC and original replica shouldn't be changed.
+void test_send_failed_with_ENOSPC(ioremap::elliptics::newapi::session &session,
+                                  ioremap::elliptics::key key,
+                                  bool chunked,
+                                  uint8_t retry_count) {
+	static const std::string json = R"({"key": "test_send_failed_with_ENOSPC key"})";
+	static const std::string data = "test_send_failed_with_ENOSPC data";
+	constexpr dnet_time timestamp{11, 0};
+	constexpr uint64_t user_flags = 100501;
+
+	constexpr int src_group = 1;
+	constexpr int dst_group = 4; // backend with limited size
+
+	session.transform(key);
+	session.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
+	session.set_groups({src_group});
+	session.set_timestamp(timestamp);
+	session.set_user_flags(user_flags);
+
+	{
+		// write the key into src_group
+		ELLIPTICS_REQUIRE(async, session.write(key, json, 1024, data, 1024));
+	} {
+		const uint64_t chunk_size = chunked ? (data.size() / 2) : DNET_DEFAULT_SERVER_SEND_CHUNK_SIZE;
+		auto async = session.server_send({key}, 0 /*flags*/,
+		                                 chunk_size,
+		                                 src_group, std::vector<int>{dst_group},
+		                                 1000 /* 1s */,
+		                                 1000 /* 1s */,
+		                                 retry_count /* chunk_retry_count */);
+
+		auto results = async.get();
+		BOOST_REQUIRE_EQUAL(results.size(), 1);
+		auto &result = results.front();
+
+		BOOST_REQUIRE_EQUAL(result.iterator_id(), 0);
+		BOOST_REQUIRE_EQUAL(result.key(), key.raw_id());
+		BOOST_REQUIRE_EQUAL(result.status(), -ENOSPC);
+
+		// backend's absence should be checked fast and without retries
+		BOOST_REQUIRE_EQUAL(async.elapsed_time().tsec, 0);
+	} {
+		auto s = session.clone();
+		s.set_groups({src_group});
+		ELLIPTICS_REQUIRE(async, s.read(key, 0, 0));
+		auto result = async.get().front();
+		BOOST_REQUIRE_EQUAL(result.data().to_string(), data);
+		BOOST_REQUIRE_EQUAL(result.record_info().data_timestamp, timestamp);
+
+		BOOST_REQUIRE_EQUAL(result.json().to_string(), json);
+		BOOST_REQUIRE_EQUAL(result.record_info().json_capacity, 1024);
+		BOOST_REQUIRE_EQUAL(result.record_info().json_timestamp, timestamp);
+
+		BOOST_REQUIRE_EQUAL(result.record_info().user_flags, user_flags);
+	} {
+		auto s = session.clone();
+		s.set_groups({dst_group});
+		ELLIPTICS_REQUIRE_ERROR(async, s.lookup(key), -ENOENT);
+	}
+}
+
+static void corrupt_record(const std::string &path, off_t offset, const std::string &injection) {
+	int fd = open(path.c_str(), O_RDWR, 0644);
+
+	BOOST_REQUIRE(fd > 0);
+	BOOST_REQUIRE_EQUAL(pwrite(fd, injection.c_str(), injection.size(), offset), injection.size());
+
+	close(fd);
+}
+
+// Check the case when original replica is corrupted.
+// Server-send should respond with -EILSEQ, original replica should remain corrupted and
+// destination replica shouldn't exist.
+void test_send_failed_with_EILSEQ(ioremap::elliptics::newapi::session &session,
+                                  ioremap::elliptics::key key,
+                                  bool chunked,
+                                  uint8_t retry_count) {
+	static const std::string json = R"({"key": "test_send_failed_with_EILSEQ key"})";
+	static const std::string data = "test_send_failed_with_EILSEQ data";
+	constexpr dnet_time timestamp{11, 0};
+	constexpr uint64_t user_flags = 100501;
+
+	constexpr int src_group = 1;
+	constexpr int dst_group = 2; // backend with limited size
+
+	session.transform(key);
+	session.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
+	session.set_groups({src_group});
+	session.set_timestamp(timestamp);
+	session.set_user_flags(user_flags);
+
+	{
+		// write the key into src_group
+		ELLIPTICS_REQUIRE(async, session.write(key, json, 1024, data, 1024));
+
+		// corrupt
+		auto result = async.get()[0];
+		corrupt_record(result.path(), result.record_info().data_offset, "xx");
+	} {
+		const uint64_t chunk_size = chunked ? (data.size() / 2) : DNET_DEFAULT_SERVER_SEND_CHUNK_SIZE;
+		auto async = session.server_send({key}, 0 /*flags*/,
+		                                 chunk_size,
+		                                 src_group, std::vector<int>{dst_group},
+		                                 1000 /* 1s */,
+		                                 1000 /* 1s */,
+		                                 retry_count /* chunk_retry_count */);
+
+		auto results = async.get();
+		BOOST_REQUIRE_EQUAL(results.size(), 1);
+		auto &result = results.front();
+
+		BOOST_REQUIRE_EQUAL(result.iterator_id(), 0);
+		BOOST_REQUIRE_EQUAL(result.key(), key.raw_id());
+		BOOST_REQUIRE_EQUAL(result.status(), -EILSEQ);
+
+		// backend's absence should be checked fast and without retries
+		BOOST_REQUIRE_EQUAL(async.elapsed_time().tsec, 0);
+	} {
+		auto s = session.clone();
+		s.set_groups({src_group});
+		ELLIPTICS_REQUIRE_ERROR(async, s.read(key, 0, 0), -EILSEQ);
+	} {
+		auto s = session.clone();
+		s.set_groups({dst_group});
+		ELLIPTICS_REQUIRE_ERROR(async, s.lookup(key), -ENOENT);
+	}
+}
+
+// Check the case when original replica is corrupted with stamp.
+// Server-send should respond with -EILSEQ, original replica should remain corrupted and
+// destination replica shouldn't exist.
+void test_send_failed_with_EILSEQ_stamp(ioremap::elliptics::newapi::session &session,
+                                        ioremap::elliptics::key key,
+                                        bool chunked,
+                                        uint8_t retry_count) {
+	constexpr int src_group = 1;
+	constexpr int dst_group = 2; // backend with limited size
+
+	session.transform(key);
+	session.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
+	session.set_groups({src_group});
+	session.set_timestamp({DNET_SERVER_SEND_BUGFIX_TIMESTAMP, 0});
+
+	{
+		static const std::string json = R"({"key": "test_send_failed_with_EILSEQ_stamp key"})";
+
+		constexpr auto data_size = sizeof(eblob_disk_control) + sizeof(dnet_ext_list_hdr);
+		auto data = ioremap::elliptics::data_pointer::allocate(data_size);
+		auto dc = data.data<eblob_disk_control>();
+		auto ehdr = data.skip<eblob_disk_control>().data<dnet_ext_list_hdr>();
+
+		dc->flags = BLOB_DISK_CTL_CHUNKED_CSUM;
+		dc->disk_size = 1024;
+		dc->data_size = 100;
+		dc->position = 0;
+
+		ehdr->version = DNET_EXT_VERSION_V1;
+		ehdr->timestamp = {DNET_SERVER_SEND_BUGFIX_TIMESTAMP, 0};
+		ehdr->__pad1[0] = ehdr->__pad1[1] = ehdr->__pad1[2] = 0;
+		ehdr->__pad2[0] = ehdr->__pad2[1] = 0;
+
+		// write the key into src_group
+		ELLIPTICS_REQUIRE(async, session.write(key, json, 1024, data, 1024));
+	} {
+		const uint64_t chunk_size = chunked ? 1 : DNET_DEFAULT_SERVER_SEND_CHUNK_SIZE;
+		auto async = session.server_send({key}, 0 /*flags*/,
+		                                 chunk_size,
+		                                 src_group, std::vector<int>{dst_group},
+		                                 1000 /* 1s */,
+		                                 1000 /* 1s */,
+		                                 retry_count /* chunk_retry_count */);
+
+		auto results = async.get();
+		BOOST_REQUIRE_EQUAL(results.size(), 1);
+		auto &result = results.front();
+
+		BOOST_REQUIRE_EQUAL(result.iterator_id(), 0);
+		BOOST_REQUIRE_EQUAL(result.key(), key.raw_id());
+		BOOST_REQUIRE_EQUAL(result.status(), -EILSEQ);
+
+		// backend's absence should be checked fast and without retries
+		BOOST_REQUIRE_EQUAL(async.elapsed_time().tsec, 0);
+	} {
+		auto s = session.clone();
+		s.set_groups({src_group});
+		ELLIPTICS_REQUIRE_ERROR(async, s.read(key, 0, 0), -EILSEQ);
+	} {
+		auto s = session.clone();
+		s.set_groups({dst_group});
+		ELLIPTICS_REQUIRE_ERROR(async, s.lookup(key), -ENOENT);
+	}
+}
+
+// Check the case when original replica has corrupted record headers.
+// Server-send should respond with -EINVAL, original replica should remain corrupted and
+// destination replica shouldn't exist.
+void test_send_failed_with_EINVAL(ioremap::elliptics::newapi::session &session,
+                                  ioremap::elliptics::key key,
+                                  bool chunked,
+                                  uint8_t retry_count) {
+	static const std::string json = R"({"key": "test_send_failed_with_EINVAL key"})";
+	static const std::string data = "test_send_failed_with_EINVAL data";
+	constexpr dnet_time timestamp{11, 0};
+	constexpr uint64_t user_flags = 100501;
+
+	constexpr int src_group = 1;
+	constexpr int dst_group = 2; // backend with limited size
+
+	session.transform(key);
+	session.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
+	session.set_groups({src_group});
+	session.set_timestamp(timestamp);
+	session.set_user_flags(user_flags);
+
+	{
+		// write the key into src_group
+		ELLIPTICS_REQUIRE(async, session.write(key, json, 1024, data, 1024));
+
+		// corrupt, 90 is empirical value
+		auto result = async.get()[0];
+		corrupt_record(result.path(), result.record_info().json_offset - 90, "x");
+	}
+
+	{
+		const uint64_t chunk_size = chunked ? (data.size() / 2) : DNET_DEFAULT_SERVER_SEND_CHUNK_SIZE;
+		auto async = session.server_send({key}, 0 /*flags*/,
+		                                 chunk_size,
+		                                 src_group, std::vector<int>{dst_group},
+		                                 1000 /* 1s */,
+		                                 1000 /* 1s */,
+		                                 retry_count /* chunk_retry_count */);
+
+		auto results = async.get();
+		BOOST_REQUIRE_EQUAL(results.size(), 1);
+		auto &result = results.front();
+
+		BOOST_REQUIRE_EQUAL(result.iterator_id(), 0);
+		BOOST_REQUIRE_EQUAL(result.key(), key.raw_id());
+		BOOST_REQUIRE_EQUAL(result.status(), -EINVAL);
+
+		// backend's absence should be checked fast and without retries
+		BOOST_REQUIRE_EQUAL(async.elapsed_time().tsec, 0);
+	} {
+		auto s = session.clone();
+		s.set_groups({src_group});
+		ELLIPTICS_REQUIRE_ERROR(async, s.read(key, 0, 0), -EINVAL);
+	} {
+		auto s = session.clone();
+		s.set_groups({dst_group});
+		ELLIPTICS_REQUIRE_ERROR(async, s.lookup(key), -ENOENT);
+	}
+}
+
+/* This case cover server-send that should copy the key into 2 groups: normal and with timeout. */
+// Check the case when one of destination group are succeeded only at second write.
+// The key should be written into both replicas.
+void test_send_0_successful_retry(ioremap::elliptics::newapi::session &session,
+                                  ioremap::elliptics::key key,
+                                  const nodes_data *setup,
+                                  bool chunked,
+                                  uint8_t retry_count) {
+	static const std::string json =
+		R"({"key": "new_api_server_send_test::test_send_0_successful_retry key"})";
+	static const std::string data =
+		"new_api_server_send_test::test_send_0_successful_retry data";
+	constexpr dnet_time timestamp{11, 0};
+	constexpr uint64_t user_flags = 100501;
+
+	constexpr int src_group = 1;
+	constexpr int normal_group = 2;
+	constexpr int delayed_group = 3;
+
+	const auto delayed_remote = setup->nodes[2].remote();
+	constexpr uint32_t delayed_backend = 0;
+
+	session.transform(key);
+	session.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
+	session.set_groups({src_group});
+	session.set_timestamp(timestamp);
+	session.set_user_flags(user_flags);
+
+	{
+		// write the key into src_group
+		ELLIPTICS_REQUIRE(async, session.write(key, json, 1024, data, 1024));
+	}
+
+	session.set_delay(delayed_remote, delayed_backend, 3000).wait();
+
+	{
+		const uint64_t chunk_size = chunked ? (data.size() / 2) : DNET_DEFAULT_SERVER_SEND_CHUNK_SIZE;
+		auto async = session.server_send({key}, 0 /*flags*/,
+		                                 chunk_size,
+		                                 src_group, std::vector<int>{normal_group, delayed_group},
+		                                 2000 /* 1s */,
+		                                 2000 /* 1s */,
+		                                 retry_count /* chunk_retry_count */);
+
+		// sleep to give a time for server-send to send first write
+		std::this_thread::sleep_for(std::chrono::milliseconds(100));
+		// reset delay, so when server-send will retry write, it won't be timeouted
+		session.set_delay(delayed_remote, delayed_backend, 0).wait();
+
+		auto results = async.get();
+		BOOST_REQUIRE_EQUAL(results.size(), 1);
+		auto &result = results.front();
+
+		BOOST_REQUIRE_EQUAL(result.iterator_id(), 0);
+		BOOST_REQUIRE_EQUAL(result.key(), key.raw_id());
+		BOOST_REQUIRE_EQUAL(result.status(), 0);
+	}
+
+	// reset delay
+	session.set_delay(delayed_remote, delayed_backend, 0).wait();
+
+	{
+		// the key should be available and correct in all groups.
+		constexpr std::array<int, 3> groups{src_group, normal_group, delayed_group};
+		for (auto group: groups) {
+			session.set_groups({group});
+			const auto &results = session.read(key, 0, 0).get();
+			const auto &result = results.front();
+
+			BOOST_REQUIRE_EQUAL(result.data().to_string(), data);
+			BOOST_REQUIRE_EQUAL(result.record_info().data_timestamp, timestamp);
+
+			BOOST_REQUIRE_EQUAL(result.json().to_string(), json);
+			BOOST_REQUIRE_EQUAL(result.record_info().json_capacity, 1024);
+			BOOST_REQUIRE_EQUAL(result.record_info().json_timestamp, timestamp);
+
+			BOOST_REQUIRE_EQUAL(result.record_info().user_flags, user_flags);
+		}
+	}
+
+}
+
+// Check the case when one of destination groups is timed-out.
+// Server-send should respond with -ETIMEDOUT, but the key should be written into another destination replica.
+void test_send_0_ETIMEDOUT(ioremap::elliptics::newapi::session &session,
+                           ioremap::elliptics::key key,
+                           const nodes_data *setup,
+                           bool chunked,
+                           uint8_t retry_count) {
+	static const std::string json =
+		R"({"key": "new_api_server_send_test::test_send_0_ETIMEDOUT key"})";
+	static const std::string data =
+		"new_api_server_send_test::test_send_0_ETIMEDOUT data";
+	constexpr dnet_time timestamp{11, 0};
+	constexpr uint64_t user_flags = 100501;
+
+	constexpr int src_group = 1;
+	constexpr int normal_group = 2;
+	constexpr int delayed_group = 3;
+
+	const auto delayed_remote = setup->nodes[2].remote();
+	constexpr uint32_t delayed_backend = 0;
+
+	session.transform(key);
+	session.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
+	session.set_groups({src_group});
+	session.set_timestamp(timestamp);
+	session.set_user_flags(user_flags);
+
+	{
+		// write the key into src_group
+		ELLIPTICS_REQUIRE(async, session.write(key, json, 1024, data, 1024));
+	}
+
+	session.set_delay(delayed_remote, delayed_backend, 2000).wait();
+
+	{
+		const uint64_t chunk_size = chunked ? (data.size() / 2) : DNET_DEFAULT_SERVER_SEND_CHUNK_SIZE;
+		auto async = session.server_send({key}, 0 /*flags*/,
+		                                 chunk_size,
+		                                 src_group, std::vector<int>{normal_group, delayed_group},
+		                                 1000 /* 1s */,
+		                                 1000 /* 1s */,
+		                                 retry_count /* chunk_retry_count */);
+
+		auto results = async.get();
+		BOOST_REQUIRE_EQUAL(results.size(), 1);
+		auto &result = results.front();
+
+		BOOST_REQUIRE_EQUAL(result.iterator_id(), 0);
+		BOOST_REQUIRE_EQUAL(result.key(), key.raw_id());
+		// aggregated result for this key should be -ETIMEDOUT
+		BOOST_REQUIRE_EQUAL(result.status(), -ETIMEDOUT);
+	}
+
+	// reset delay
+	session.set_delay(delayed_remote, delayed_backend, 0).wait();
+
+	// sleep for removing affects from hanging request
+	// sleep for 1 second, because server_send retried write once and it took double delay (3 seconds)
+	// to handle them, but 2 seconds has already passed by server-send
+	std::this_thread::sleep_for(std::chrono::seconds{retry_count + 1});
+
+	{
+		// the key should be available and correct in src and normal group, there is
+		// no guarantee about delayed group, because request to it can be dropped.
+		constexpr std::array<int, 2> groups{src_group, normal_group};
+		for (auto group: groups) {
+			session.set_groups({group});
+			const auto &results = session.read(key, 0, 0).get();
+			const auto &result = results.front();
+
+			BOOST_REQUIRE_EQUAL(result.data().to_string(), data);
+			BOOST_REQUIRE_EQUAL(result.record_info().data_timestamp, timestamp);
+
+			BOOST_REQUIRE_EQUAL(result.json().to_string(), json);
+			BOOST_REQUIRE_EQUAL(result.record_info().json_capacity, 1024);
+			BOOST_REQUIRE_EQUAL(result.record_info().json_timestamp, timestamp);
+
+			BOOST_REQUIRE_EQUAL(result.record_info().user_flags, user_flags);
+		}
+	}
+}
+
+// Check the case when one of destination groups is unavailable.
+// Server-send should respond with -ENXIO, but the key should be written into another destination replica.
+void test_send_0_ENXIO(ioremap::elliptics::newapi::session &session,
+                       ioremap::elliptics::key key,
+                       const nodes_data *setup,
+                       bool chunked,
+                       uint8_t retry_count) {
+	static const std::string json = R"({"key": "test_send_0_ENXIO key"})";
+	static const std::string data = "test_send_0_ENXIO data";
+	constexpr dnet_time timestamp{11, 0};
+	constexpr uint64_t user_flags = 100501;
+
+	constexpr int src_group = 1;
+	constexpr int normal_group = 2;
+	constexpr int victim_group = 3;
+
+	// victim's address and backend_id
+	const auto victim_address = setup->nodes[2].remote();
+	constexpr uint32_t victim_backend_id = 0;
+
+	session.transform(key);
+	session.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
+	session.set_groups({src_group});
+	session.set_timestamp(timestamp);
+	session.set_user_flags(user_flags);
+
+	{
+		// write the key into src_group
+		ELLIPTICS_REQUIRE(async, session.write(key, json, 1024, data, 1024));
+	}
+
+	// disable backend
+	session.disable_backend(victim_address, victim_backend_id).wait();
+
+	{
+		const uint64_t chunk_size = chunked ? (data.size() / 2) : DNET_DEFAULT_SERVER_SEND_CHUNK_SIZE;
+		auto async = session.server_send({key}, 0 /*flags*/,
+		                                 chunk_size,
+		                                 src_group, std::vector<int>{normal_group, victim_group},
+		                                 1000 /* 1s */,
+		                                 1000 /* 1s */,
+		                                 retry_count /* chunk_retry_count */);
+
+		auto results = async.get();
+		BOOST_REQUIRE_EQUAL(results.size(), 1);
+		auto &result = results.front();
+
+		BOOST_REQUIRE_EQUAL(result.iterator_id(), 0);
+		BOOST_REQUIRE_EQUAL(result.key(), key.raw_id());
+		BOOST_REQUIRE_EQUAL(result.status(), -ENXIO);
+
+		// backend's absence should be checked fast and without retries
+		BOOST_REQUIRE_EQUAL(async.elapsed_time().tsec, 0);
+	}
+
+	// enable backend back
+	session.enable_backend(victim_address, victim_backend_id).wait();
+
+	{
+		// the key should be available and correct in src and normal groups
+		constexpr std::array<int, 2> groups{src_group, normal_group};
+		for (auto group: groups) {
+			session.set_groups({group});
+			const auto &results = session.read(key, 0, 0).get();
+			const auto &result = results.front();
+
+			BOOST_REQUIRE_EQUAL(result.data().to_string(), data);
+			BOOST_REQUIRE_EQUAL(result.record_info().data_timestamp, timestamp);
+
+			BOOST_REQUIRE_EQUAL(result.json().to_string(), json);
+			BOOST_REQUIRE_EQUAL(result.record_info().json_capacity, 1024);
+			BOOST_REQUIRE_EQUAL(result.record_info().json_timestamp, timestamp);
+
+			BOOST_REQUIRE_EQUAL(result.record_info().user_flags, user_flags);
+		}
+	} {
+		session.set_filter(ioremap::elliptics::filters::all_with_ack);
+		session.set_groups({victim_group});
+		auto async = session.read(key, 0, 0);
+		const auto &results = async.get();
+		BOOST_REQUIRE_EQUAL(results.size(), 1);
+		const auto &result = results.front();
+
+		BOOST_REQUIRE_EQUAL(result.status(), -ENOENT);
+	}
+}
+
+
+// Check the case when one of destination groups is in read-only mode.
+// Server-send should respond with -EROFS, but the key should be written into another destination replica.
+void test_send_0_EROFS(ioremap::elliptics::newapi::session &session,
+                       ioremap::elliptics::key key,
+                       const nodes_data *setup,
+                       bool chunked,
+                       uint8_t retry_count) {
+	static const std::string json = R"({"key": "test_send_0_EROFS key"})";
+	static const std::string data = "test_send_0_EROFS data";
+	constexpr dnet_time timestamp{11, 0};
+	constexpr uint64_t user_flags = 100501;
+
+	constexpr int src_group = 1;
+	constexpr int normal_group = 2;
+	constexpr int victim_group = 3;
+
+	// victim's address and backend_id
+	const auto victim_address = setup->nodes[2].remote();
+	constexpr uint32_t victim_backend_id = 0;
+
+	session.transform(key);
+	session.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
+	session.set_groups({src_group});
+	session.set_timestamp(timestamp);
+	session.set_user_flags(user_flags);
+
+	{
+		// write the key into src_group
+		ELLIPTICS_REQUIRE(async, session.write(key, json, 1024, data, 1024));
+	}
+
+	// turn RO on backend
+	session.make_readonly(victim_address, victim_backend_id).wait();
+
+	{
+		const uint64_t chunk_size = chunked ? (data.size() / 2) : DNET_DEFAULT_SERVER_SEND_CHUNK_SIZE;
+		auto async = session.server_send({key}, 0 /*flags*/,
+		                                 chunk_size,
+		                                 src_group, std::vector<int>{normal_group, victim_group},
+		                                 1000 /* 1s */,
+		                                 1000 /* 1s */,
+		                                 retry_count /* chunk_retry_count */);
+
+		auto results = async.get();
+		BOOST_REQUIRE_EQUAL(results.size(), 1);
+		auto &result = results.front();
+
+		BOOST_REQUIRE_EQUAL(result.iterator_id(), 0);
+		BOOST_REQUIRE_EQUAL(result.key(), key.raw_id());
+		BOOST_REQUIRE_EQUAL(result.status(), -EROFS);
+
+		// backend's absence should be checked fast and without retries
+		BOOST_REQUIRE_EQUAL(async.elapsed_time().tsec, 0);
+	}
+
+	// revert RO on backend
+	session.make_writable(victim_address, victim_backend_id).wait();
+
+	{
+		// the key should be available and correct in src and normal groups
+		constexpr std::array<int, 2> groups{src_group, normal_group};
+		for (auto group: groups) {
+			session.set_groups({group});
+			const auto &results = session.read(key, 0, 0).get();
+			const auto &result = results.front();
+
+			BOOST_REQUIRE_EQUAL(result.data().to_string(), data);
+			BOOST_REQUIRE_EQUAL(result.record_info().data_timestamp, timestamp);
+
+			BOOST_REQUIRE_EQUAL(result.json().to_string(), json);
+			BOOST_REQUIRE_EQUAL(result.record_info().json_capacity, 1024);
+			BOOST_REQUIRE_EQUAL(result.record_info().json_timestamp, timestamp);
+
+			BOOST_REQUIRE_EQUAL(result.record_info().user_flags, user_flags);
+		}
+	} {
+		session.set_filter(ioremap::elliptics::filters::all_with_ack);
+		session.set_groups({victim_group});
+		auto async = session.read(key, 0, 0);
+		const auto &results = async.get();
+		BOOST_REQUIRE_EQUAL(results.size(), 1);
+		const auto &result = results.front();
+
+		BOOST_REQUIRE_EQUAL(result.status(), -ENOENT);
+	}
+}
+
+
+// Check the case when one of destination groups has newer key replica.
+// Server-send should respond with -EBADFD, but the key should be written into another destination replica.
+// Newer key replica shouldn't be overwritten.
+void test_send_0_EBADFD(ioremap::elliptics::newapi::session &session,
+                        ioremap::elliptics::key key,
+                        bool chunked,
+                        uint8_t retry_count) {
+	static const std::string json = R"({"key": "test_send_0_EBADFD key"})";
+	static const std::string data = "test_send_0_EBADFD data";
+
+	constexpr dnet_time src_timestamp{11, 0};
+	constexpr dnet_time victim_timestamp{src_timestamp.tsec, src_timestamp.tnsec + 1};
+
+	constexpr uint64_t src_user_flags = 100501;
+	constexpr uint64_t victim_user_flags = src_user_flags + 1;
+
+	constexpr int src_group = 1;
+	constexpr int normal_group = 2;
+	constexpr int victim_group = 3;
+
+	session.transform(key);
+	session.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
+	session.set_groups({src_group});
+	session.set_timestamp(src_timestamp);
+	session.set_user_flags(src_user_flags);
+
+	{
+		// write the key into src_group
+		ELLIPTICS_REQUIRE(async, session.write(key, json, 1024, data, 1024));
+	} {
+		// write the key into victim_group with higher timestamp
+		auto s = session.clone();
+		s.set_timestamp(victim_timestamp);
+		s.set_groups({victim_group});
+		s.set_user_flags(victim_user_flags);
+		ELLIPTICS_REQUIRE(async, s.write(key, json, 1024, data, 1024));
+	}
+
+	{
+		const uint64_t chunk_size = chunked ? (data.size() / 2) : DNET_DEFAULT_SERVER_SEND_CHUNK_SIZE;
+		auto async = session.server_send({key}, 0 /*flags*/,
+		                                 chunk_size,
+		                                 src_group, std::vector<int>{normal_group, victim_group},
+		                                 1000 /* 1s */,
+		                                 1000 /* 1s */,
+		                                 retry_count /* chunk_retry_count */);
+
+		auto results = async.get();
+		BOOST_REQUIRE_EQUAL(results.size(), 1);
+		auto &result = results.front();
+
+		BOOST_REQUIRE_EQUAL(result.iterator_id(), 0);
+		BOOST_REQUIRE_EQUAL(result.key(), key.raw_id());
+		BOOST_REQUIRE_EQUAL(result.status(), -EBADFD);
+
+		// backend's absence should be checked fast and without retries
+		BOOST_REQUIRE_EQUAL(async.elapsed_time().tsec, 0);
+	}
+
+	{
+		constexpr std::array<int, 2> groups{src_group, normal_group};
+		for (const auto group: groups) {
+			auto s = session.clone();
+			s.set_groups({group});
+			ELLIPTICS_REQUIRE(async, s.read(key, 0, 0));
+			auto result = async.get().front();
+			BOOST_REQUIRE_EQUAL(result.data().to_string(), data);
+			BOOST_REQUIRE_EQUAL(result.record_info().data_timestamp, src_timestamp);
+
+			BOOST_REQUIRE_EQUAL(result.json().to_string(), json);
+			BOOST_REQUIRE_EQUAL(result.record_info().json_capacity, 1024);
+			BOOST_REQUIRE_EQUAL(result.record_info().json_timestamp, src_timestamp);
+
+			BOOST_REQUIRE_EQUAL(result.record_info().user_flags, src_user_flags);
+		}
+	} {
+		auto s = session.clone();
+		s.set_groups({victim_group});
+		ELLIPTICS_REQUIRE(async, s.read(key, 0, 0));
+		auto result = async.get().front();
+		BOOST_REQUIRE_EQUAL(result.data().to_string(), data);
+		BOOST_REQUIRE_EQUAL(result.record_info().data_timestamp, victim_timestamp);
+
+		BOOST_REQUIRE_EQUAL(result.json().to_string(), json);
+		BOOST_REQUIRE_EQUAL(result.record_info().json_capacity, 1024);
+		BOOST_REQUIRE_EQUAL(result.record_info().json_timestamp, victim_timestamp);
+
+		BOOST_REQUIRE_EQUAL(result.record_info().user_flags, victim_user_flags);
+	}
+}
+
+// Check the case when one of destination groups has no enough space.
+// Server-send should respond with -ENOSPC, but the key should be written into another destination replica.
+void test_send_0_ENOSPC(ioremap::elliptics::newapi::session &session,
+                        ioremap::elliptics::key key,
+                        bool chunked,
+                        uint8_t retry_count) {
+	static const std::string json = R"({"key": "test_send_0_ENOSPC key"})";
+	static const std::string data = "test_send_0_ENOSPC data";
+	constexpr dnet_time timestamp{11, 0};
+	constexpr uint64_t user_flags = 100501;
+
+	constexpr int src_group = 1;
+	constexpr int normal_group = 2;
+	constexpr int victim_group = 4;
+
+	session.transform(key);
+	session.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
+	session.set_groups({src_group});
+	session.set_timestamp(timestamp);
+	session.set_user_flags(user_flags);
+
+	{
+		// write the key into src_group
+		ELLIPTICS_REQUIRE(async, session.write(key, json, 1024, data, 1024));
+	}
+
+	{
+		const uint64_t chunk_size = chunked ? (data.size() / 2) : DNET_DEFAULT_SERVER_SEND_CHUNK_SIZE;
+		auto async = session.server_send({key}, 0 /*flags*/,
+		                                 chunk_size,
+		                                 src_group, std::vector<int>{normal_group, victim_group},
+		                                 1000 /* 1s */,
+		                                 1000 /* 1s */,
+		                                 retry_count /* chunk_retry_count */);
+
+		auto results = async.get();
+		BOOST_REQUIRE_EQUAL(results.size(), 1);
+		auto &result = results.front();
+
+		BOOST_REQUIRE_EQUAL(result.iterator_id(), 0);
+		BOOST_REQUIRE_EQUAL(result.key(), key.raw_id());
+		BOOST_REQUIRE_EQUAL(result.status(), -ENOSPC);
+
+		// backend's absence should be checked fast and without retries
+		BOOST_REQUIRE_EQUAL(async.elapsed_time().tsec, 0);
+	}
+
+	{
+		constexpr std::array<int, 2> groups{src_group, normal_group};
+		for (const auto group: groups) {
+			auto s = session.clone();
+			s.set_groups({group});
+			ELLIPTICS_REQUIRE(async, s.read(key, 0, 0));
+			auto result = async.get().front();
+			BOOST_REQUIRE_EQUAL(result.data().to_string(), data);
+			BOOST_REQUIRE_EQUAL(result.record_info().data_timestamp, timestamp);
+
+			BOOST_REQUIRE_EQUAL(result.json().to_string(), json);
+			BOOST_REQUIRE_EQUAL(result.record_info().json_capacity, 1024);
+			BOOST_REQUIRE_EQUAL(result.record_info().json_timestamp, timestamp);
+
+			BOOST_REQUIRE_EQUAL(result.record_info().user_flags, user_flags);
+		}
+	} {
+		auto s = session.clone();
+		s.set_groups({victim_group});
+		ELLIPTICS_REQUIRE_ERROR(async, s.lookup(key), -ENOENT);
+	}
+}
+
 bool register_tests(const nodes_data *setup) {
 	auto n = setup->node->get_native();
 
@@ -548,6 +1694,58 @@ bool register_tests(const nodes_data *setup) {
 
 	ELLIPTICS_TEST_CASE(test_make_groups_readonly, use_session(n), constants::dst_groups, false);
 
+	static const auto make_unique_key = [] {
+		static const std::string key_prefix = "newapi server_send failures";
+		static size_t key_idx = 0;
+		return key_prefix + std::to_string(key_idx++);
+	};
+	constexpr std::array<bool, 2> variants_for_chunked{false, true};
+	constexpr std::array<uint8_t, 2> variants_for_retries{0, 1};
+	for (const auto chunked: variants_for_chunked) {
+		for (const auto retries: variants_for_retries) {
+			// collection of server-send tests with single destination group and specified retries
+			if (retries) {
+				ELLIPTICS_TEST_CASE(test_send_with_successful_retry, use_session(n), make_unique_key(),
+				                    setup, chunked, retries);
+			}
+
+			// collection of server-send test with single destination group and specified retries,
+			// but with failures that shouldn't be retried
+			ELLIPTICS_TEST_CASE(test_send_failed_with_ETIMEDOUT, use_session(n), make_unique_key(), setup,
+			                    chunked, retries);
+			ELLIPTICS_TEST_CASE(test_send_failed_with_ENXIO, use_session(n), make_unique_key(), setup,
+			                    chunked, retries);
+			ELLIPTICS_TEST_CASE(test_send_failed_with_EROFS, use_session(n), make_unique_key(), setup,
+			                    chunked, retries);
+			ELLIPTICS_TEST_CASE(test_send_failed_with_EBADFD, use_session(n), make_unique_key(), chunked,
+			                    retries);
+			ELLIPTICS_TEST_CASE(test_send_failed_with_ENOSPC, use_session(n), make_unique_key(), chunked,
+			                    retries);
+			ELLIPTICS_TEST_CASE(test_send_failed_with_EILSEQ, use_session(n), make_unique_key(), chunked,
+			                    retries);
+			ELLIPTICS_TEST_CASE(test_send_failed_with_EILSEQ_stamp, use_session(n), make_unique_key(), chunked,
+			                    retries);
+			ELLIPTICS_TEST_CASE(test_send_failed_with_EINVAL, use_session(n), make_unique_key(), chunked,
+			                    retries);
+
+			// collection of server-send tests with two destination groups and specified retries
+			if (retries) {
+				ELLIPTICS_TEST_CASE(test_send_0_successful_retry, use_session(n), make_unique_key(),
+				                    setup, chunked, retries);
+			}
+
+			ELLIPTICS_TEST_CASE(test_send_0_ETIMEDOUT, use_session(n), make_unique_key(), setup,
+			                    chunked, retries);
+			ELLIPTICS_TEST_CASE(test_send_0_ENXIO, use_session(n), make_unique_key(), setup, chunked,
+			                    retries);
+			ELLIPTICS_TEST_CASE(test_send_0_EROFS, use_session(n), make_unique_key(), setup, chunked,
+			                    retries);
+			ELLIPTICS_TEST_CASE(test_send_0_EBADFD, use_session(n), make_unique_key(), chunked, retries);
+			ELLIPTICS_TEST_CASE(test_send_0_ENOSPC, use_session(n), make_unique_key(), chunked, retries);
+		}
+	}
+
+	// TODO(shaitan): test server_send with zero chunk_size
 	return true;
 }
 
