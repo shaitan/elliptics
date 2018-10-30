@@ -20,6 +20,7 @@ set(ELLIPTICS_CLIENT_SRCS
     logger.cpp
     newapi/session.cpp
     newapi/result_entry.cpp
+    newapi/bulk_remove_handler.cpp
     ../../library/protocol.cpp
     ../../library/compat.c
     ../../library/crypto.c

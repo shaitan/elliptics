@@ -77,6 +77,11 @@ int blob_bulk_read_new(struct eblob_backend_config *c,
                        void *data,
 		       struct dnet_cmd_stats *cmd_stats,
 		       struct dnet_access_context *context);
+int blob_bulk_remove_new(struct eblob_backend_config *c,
+                         void *state,
+                         struct dnet_cmd *cmd,
+                         void *data,
+                         struct dnet_access_context *context);
 
 int dnet_read_json_header(int fd, uint64_t offset, uint64_t size, struct dnet_json_header *jhdr);
 

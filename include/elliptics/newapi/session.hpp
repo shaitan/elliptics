@@ -182,6 +182,9 @@ public:
 	async_read_result bulk_read_data(const std::vector<dnet_id> &keys);
 
 	async_read_result bulk_read(const std::vector<dnet_id> &keys);
+
+	async_remove_result bulk_remove(const std::vector<std::pair<dnet_id, dnet_time>> &keys);
+
 };
 
 }}} /* namespace ioremap::elliptics::newapi */

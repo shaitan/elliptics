@@ -25,6 +25,7 @@
 namespace ioremap { namespace elliptics { namespace newapi {
 
 async_read_result send_bulk_read(session &sess, const std::vector<dnet_id> &keys, uint64_t read_flags);
+async_remove_result send_bulk_remove(session &session, const std::vector<std::pair<dnet_id, dnet_time>> &keys);
 
 }}} // namespace ioremap::elliptics::newapi
 

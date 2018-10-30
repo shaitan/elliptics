@@ -1475,8 +1475,9 @@ static int dnet_process_cmd_without_backend_raw(struct dnet_net_state *st,
 	case DNET_CMD_NOTIFY:
 		return dnet_cmd_notify(st, cmd);
 	case DNET_CMD_BULK_READ_NEW:
-		return dnet_cmd_bulk_read_new(st, cmd, data, context);
-		break;
+		return dnet_cmd_bulk_read_new(st, cmd, data, context);		
+	case DNET_CMD_BULK_REMOVE_NEW:
+		return dnet_cmd_bulk_remove_new(st, cmd, data, context);
 	default:
 		return -ENOTSUP;
 	}
@@ -1599,7 +1600,9 @@ static int dnet_process_cmd_with_backend_raw(struct dnet_net_state *st,
 		dnet_convert_io_attr(io);
 	default:
 		if ((n->ro || dnet_backend_read_only(backend)) &&
-		    ((cmd->cmd == DNET_CMD_DEL_NEW) || (cmd->cmd == DNET_CMD_WRITE_NEW))) {
+		    ((cmd->cmd == DNET_CMD_DEL_NEW) || 
+		     (cmd->cmd == DNET_CMD_WRITE_NEW) || 
+		     (cmd->cmd == DNET_CMD_BULK_REMOVE_NEW))) {
 			err = -EROFS;
 			break;
 		}

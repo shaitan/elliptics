@@ -474,6 +474,30 @@ inline msgpack::packer<Stream> &operator <<(msgpack::packer<Stream> &o,
 	return o;
 }
 
+inline ioremap::elliptics::dnet_bulk_remove_request &operator >> (msgpack::object o,
+                                                                  ioremap::elliptics::dnet_bulk_remove_request &v) {
+	if (o.type != msgpack::type::ARRAY || o.via.array.size < 3) {
+		throw msgpack::type_error();
+	}
+
+	const object *p = o.via.array.ptr;
+	p[0].convert(&v.ioflags);
+	p[1].convert(&v.keys);
+	p[2].convert(&v.timestamps);
+
+	return v;
+}
+
+template <typename Stream>
+inline msgpack::packer<Stream> &operator <<(msgpack::packer<Stream> &o,
+                                            const ioremap::elliptics::dnet_bulk_remove_request &v) {
+	o.pack_array(3);
+	o.pack(v.ioflags);
+	o.pack(v.keys);
+	o.pack(v.timestamps);
+	return o;
+}
+
 
 } // namespace msgpack
 
@@ -501,6 +525,25 @@ dnet_iterator_request::dnet_iterator_request(uint32_t type, uint64_t flags,
 	, groups{} {
 }
 
+dnet_bulk_remove_request::dnet_bulk_remove_request() {}
+
+dnet_bulk_remove_request::dnet_bulk_remove_request(const std::vector<dnet_id> &keys_in)
+	: keys(keys_in) {}
+
+dnet_bulk_remove_request::dnet_bulk_remove_request(const std::vector<std::pair<dnet_id, dnet_time>> &keys_in) {
+	ioflags = DNET_IO_FLAGS_CAS_TIMESTAMP;
+	keys.reserve(keys_in.size());
+	timestamps.reserve(keys_in.size());
+	for (auto &key : keys_in) {
+		keys.push_back(key.first);
+		timestamps.push_back(key.second);
+	}
+}
+
+bool dnet_bulk_remove_request::is_valid() const {
+	return (ioflags & DNET_IO_FLAGS_CAS_TIMESTAMP && (keys.size() == timestamps.size())) ||
+		(!(ioflags & DNET_IO_FLAGS_CAS_TIMESTAMP) && (timestamps.size() == 0));
+}
 
 template<typename T>
 data_pointer serialize(const T &value) {
@@ -542,6 +585,7 @@ DEFINE_HEADER(dnet_write_request);
 
 DEFINE_HEADER(dnet_lookup_response);
 
+DEFINE_HEADER(dnet_bulk_remove_request)
 DEFINE_HEADER(dnet_remove_request);
 
 DEFINE_HEADER(dnet_iterator_request);

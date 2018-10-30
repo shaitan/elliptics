@@ -12,11 +12,13 @@
 #include "bindings/cpp/timer.hpp"
 
 #include "library/access_context.h"
+#include "library/common.hpp"
 #include "library/elliptics.h"
 #include "library/protocol.hpp"
-#include "library/common.hpp"
 
 #include "bindings/cpp/functional_p.h"
+
+#include "bulk_remove_handler.h"
 
 namespace ioremap { namespace elliptics { namespace newapi {
 
@@ -264,7 +266,6 @@ private:
 	}
 
 private:
-
 	const key m_key;
 	session m_session;
 	async_result_handler<remove_result_entry> m_handler;
@@ -1298,7 +1299,7 @@ private:
 	void process(const read_result_entry &entry) {
 		auto cmd = entry.command();
 
-		if (!entry.is_valid()) {
+		if (!entry.is_valid()) { // TODO (ekozlova): if (!entry.is_valid()) then entry.command() will throw exception
 			DNET_LOG_ERROR(m_log, "{}: {}: process: invalid response, status: {}",
 				       dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), cmd->status);
 			return;
@@ -1546,6 +1547,20 @@ async_read_result session::bulk_read_data(const std::vector<dnet_id> &keys) {
 
 async_read_result session::bulk_read(const std::vector<dnet_id> &keys) {
 	return send_bulk_read(*this, keys, DNET_READ_FLAGS_JSON | DNET_READ_FLAGS_DATA);
+}
+
+async_remove_result send_bulk_remove(session &session, const std::vector<std::pair<dnet_id, dnet_time>> &keys) {
+
+	trace_scope scope{session}; 
+
+	async_remove_result result(session);
+	auto handler = std::make_shared<bulk_remove_handler>(result, session, keys);
+	handler->start();
+	return result;
+}
+
+async_remove_result session::bulk_remove(const std::vector<std::pair<dnet_id, dnet_time>> &keys) {
+	return send_bulk_remove(*this, keys);
 }
 
 }}} // ioremap::elliptics::newapi

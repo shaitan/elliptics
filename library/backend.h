@@ -255,6 +255,11 @@ int dnet_cmd_bulk_read_new(struct dnet_net_state *st,
                            struct dnet_cmd *cmd,
                            void *data,
                            struct dnet_access_context *context);
+// handle DNET_CMD_BULK_REMOVE_NEW
+int dnet_cmd_bulk_remove_new(struct dnet_net_state *st,
+                             struct dnet_cmd *cmd,
+                             void *data,
+                             struct dnet_access_context *context);
 
 // add to @queue_size and @threads_count all io pools' queues' sizes and number of threads.
 // This is used to suspend net threads if queues are heavily filled
