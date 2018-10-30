@@ -173,12 +173,12 @@ typedef std::vector<iterator_result_entry> sync_iterator_result;
 
 static inline bool operator <(const dnet_raw_id &a, const dnet_raw_id &b)
 {
-	return memcmp(a.id, b.id, sizeof(a.id)) < 0;
+	return dnet_id_cmp_str(a.id, b.id) < 0;
 }
 
 static inline bool operator ==(const dnet_raw_id &a, const dnet_raw_id &b)
 {
-	return memcmp(a.id, b.id, sizeof(a.id)) == 0;
+	return dnet_id_cmp_str(a.id, b.id) == 0;
 }
 
 static inline bool operator ==(const ioremap::elliptics::data_pointer &a, const ioremap::elliptics::data_pointer &b)
@@ -191,7 +191,7 @@ enum { skip_data = 0, compare_data = 1 };
 template <int CompareData = compare_data>
 struct dnet_raw_id_less_than {
 	inline bool operator()(const dnet_raw_id &a, const dnet_raw_id &b) const {
-		return memcmp(a.id, b.id, sizeof(a.id)) < 0;
+		return dnet_id_cmp_str(a.id, b.id) < 0;
 	}
 };
 

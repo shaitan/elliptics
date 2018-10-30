@@ -159,16 +159,6 @@ struct dnet_addr_socket {
 
 typedef std::shared_ptr<dnet_addr_socket> dnet_addr_socket_ptr;
 
-static inline bool operator <(const dnet_addr &first, const dnet_addr &second)
-{
-	return dnet_addr_cmp(&first, &second) < 0;
-}
-
-static inline bool operator ==(const dnet_addr &first, const dnet_addr &second)
-{
-	return dnet_addr_equal(&first, &second);
-}
-
 struct dnet_addr_socket_comparator
 {
 	bool operator () (const dnet_addr_socket_ptr &first, const dnet_addr_socket_ptr &second) {

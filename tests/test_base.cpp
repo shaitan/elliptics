@@ -24,16 +24,8 @@
 
 #include <blackhole/wrapper.hpp>
 
-bool operator ==(const dnet_time &lhs, const dnet_time &rhs) {
-	return dnet_time_cmp(&lhs, &rhs) == 0;
-}
-
 std::ostream& operator<<(std::ostream &stream, const dnet_time & value) {
 	return stream << dnet_print_time(&value) << (value.tnsec % 1000);
-}
-
-bool operator ==(const dnet_raw_id &lhs, const dnet_raw_id &rhs) {
-	return dnet_id_cmp_str(lhs.id, rhs.id) == 0;
 }
 
 std::ostream& operator<<(std::ostream &stream, const dnet_raw_id &value) {

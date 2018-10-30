@@ -62,4 +62,32 @@ inline static bool operator <(const dnet_id &lhs, const dnet_id &rhs) {
 	return dnet_id_cmp(&lhs, &rhs) < 0;
 }
 
+inline static bool operator ==(const dnet_id &lhs, const dnet_id &rhs) {
+	return dnet_id_cmp(&lhs, &rhs) == 0;
+}
+
+inline static bool operator <(const dnet_raw_id &a, const dnet_raw_id &b) {
+	return dnet_id_cmp_str(a.id, b.id) < 0;
+}
+
+inline static bool operator ==(const dnet_raw_id &a, const dnet_raw_id &b) {
+	return dnet_id_cmp_str(a.id, b.id) == 0;
+}
+
+inline static bool operator <(const dnet_time &lhs, const dnet_time &rhs) {
+	return dnet_time_cmp(&lhs, &rhs) < 0;
+}
+
+inline static bool operator ==(const dnet_time &lhs, const dnet_time &rhs) {
+	return dnet_time_cmp(&lhs, &rhs) == 0;
+}
+
+inline static bool operator <(const dnet_addr &lhs, const dnet_addr &rhs) {
+	return dnet_addr_cmp(&lhs, &rhs) < 0;
+}
+
+inline static  bool operator ==(const dnet_addr &first, const dnet_addr &second) {
+	return dnet_addr_equal(&first, &second);
+}
+
 #endif // IOREMAP_ELLIPTICS_COMMON_HPP

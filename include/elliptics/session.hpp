@@ -377,7 +377,7 @@ public:
 	uint64_t get_user_flags() const;
 
 	/*!
-	 * Set/get transaction timeout
+	 * Set/get transaction timeout in seconds
 	 */
 	void set_timeout(long timeout);
 	long get_timeout() const;
