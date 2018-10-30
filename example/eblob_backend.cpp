@@ -2014,6 +2014,15 @@ int blob_send_new(struct eblob_backend_config *c,
 
 		wc.offset = 0;
 		wc.size = sizeof(info->ehdr) + info->ehdr.size + info->jhdr.capacity + info->data_size;
+
+		err = blob_read_and_check_stamp(&info->ehdr.timestamp, info->fd, info->data_offset, info->data_size);
+		if (err) {
+			if ((err = send_fail_reply(err))) {
+				break;
+			}
+			continue;
+		}
+
 		err = eblob_verify_checksum(c->eblob, &ekey, &wc);
 		if (err) {
 			if ((err = send_fail_reply(err))) {
