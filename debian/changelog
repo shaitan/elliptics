@@ -1,3 +1,12 @@
+elliptics (2.27.6.16) unstable; urgency=low
+
+  * backend: add record's timestamp check to corruption stamp check
+  * tests: update stamp tests with record's timestamp cases
+  * recovery: recover expired uncommitted keys
+  * tests: cover recovery of expired uncommitted keys
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Wed, 31 Oct 2018 14:07:49 +0300
+
 elliptics (2.27.6.15) unstable; urgency=low
 
   * Revert "backends: enable backend in nonblocking sys io pool"
