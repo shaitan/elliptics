@@ -1,6 +1,8 @@
 #include <algorithm>
+#include <chrono>
 #include <fstream>
 #include <set>
+#include <thread>
 
 #include <boost/program_options.hpp>
 
@@ -11,8 +13,10 @@
 #include <eblob/blob.h>
 #include "library/common.hpp"
 #include "elliptics/newapi/session.hpp"
+#include "elliptics/result_entry.hpp"
 
 #include "test_base.hpp"
+
 
 namespace tests {
 
@@ -1406,6 +1410,401 @@ void test_remove_corrupted(const ioremap::elliptics::newapi::session &session) {
 	BOOST_REQUIRE_EQUAL(result.status(), 0);
 }
 
+// ----------------------------------- bulk_remove_tests ----------------------------------
+namespace bulk_remove_tests {
+const static size_t NUM_KEYS_IN_GROUP = 100;
+const static record rec_tmpl{
+	std::string{"key"},
+	0xff1ff2ff3,
+	dnet_time{10, 20},
+	dnet_time{10, 20},
+	std::string{"{\"key\": \"key\"}"},
+	512,
+	std::string{"key data"},
+	1024,
+	false // in cache
+};
+const static std::vector<int> good_groups{1, 2, 3, 4, 5, 6};
+const static std::vector<int> wrong_groups{11, 12, 13, 14, 15, 16};
+
+void prepare_session(newapi::session &sess) {
+	sess.set_filter(ioremap::elliptics::filters::all_with_ack);
+	sess.set_trace_id(rand());
+	sess.set_user_flags(bulk_remove_tests::rec_tmpl.user_flags);
+	sess.set_timestamp(bulk_remove_tests::rec_tmpl.timestamp);
+	sess.set_json_timestamp(bulk_remove_tests::rec_tmpl.json_timestamp);
+	sess.set_groups(bulk_remove_tests::good_groups);
+}
+
+} // namespace bulk_remove_tests
+
+
+
+std::vector<dnet_id> generate_keys(const std::vector<int> &groups, const newapi::session &sess) {
+	record rec = bulk_remove_tests::rec_tmpl;
+	std::vector<dnet_id> ids;
+	ids.reserve(bulk_remove_tests::NUM_KEYS_IN_GROUP * groups.size());
+	static int unique_part = 42;
+	std::string key_data = "br_test_key_" + std::to_string(unique_part);
+	for (size_t i = 0; i < bulk_remove_tests::NUM_KEYS_IN_GROUP; ++i) {
+		for (const int group_id : groups) {
+			rec.key = key(key_data + std::to_string(i));
+			rec.key.transform(sess);
+			rec.key.set_group_id(group_id);
+
+			ids.push_back(rec.key.id());
+		}
+	}
+	++unique_part;
+	return ids;
+}
+
+void check_all_ids_presents(const std::vector<dnet_id> &ids_to_check, const std::set<dnet_id> &responses) {
+	for (const auto &id : ids_to_check) {
+		BOOST_REQUIRE(responses.find(id) != responses.end());
+	}
+}
+void check_remove_result(const callback_result_entry &result, int expected_status) {
+	BOOST_REQUIRE_EQUAL(result.status(), expected_status);
+	BOOST_REQUIRE_EQUAL(result.command()->cmd, DNET_CMD_BULK_REMOVE_NEW);
+}
+
+std::set<dnet_id> check_remove_result_all(async_remove_result &async, int expected_status, int expected_count) {
+	std::set<dnet_id> responses;
+	size_t count = 0;
+	for (const auto &result : async) {
+		check_remove_result(result, expected_status);
+		responses.emplace(result.command()->id);
+		++count;
+	}
+	BOOST_REQUIRE_EQUAL(count, expected_count);
+	return responses;
+}
+
+void check_absence_by_lookup(const ioremap::elliptics::newapi::session &sess, 
+                             std::vector<dnet_id> &ids, bool present = false) {
+	auto s = sess.clone();
+	for (const auto& id : ids) {
+		auto async_lookup = s.lookup(id);
+		for (const auto &result : async_lookup) {
+			BOOST_REQUIRE_EQUAL(result.status(), present ? 0 : -ENOENT);
+		}
+	}
+}
+
+// write keys to multiple groups.Each key will be presented exactly once in every group. 
+// TS to check == sesstion.timestamp
+void write_keys(std::vector<dnet_id> &ids, const newapi::session &sess) {
+	auto s = sess.clone();
+	record rec = bulk_remove_tests::rec_tmpl;
+	rec.timestamp = s.get_timestamp();
+
+	std::vector<std::pair<newapi::async_write_result, tests::record>> write_results;
+	for (size_t i = 0; i < ids.size(); ++i)	{
+		rec.key = key(ids[i]);
+		auto unique_suffix = std::to_string(i);
+		rec.json = "{\"key\": \"bulk_json_" + unique_suffix + "\"}";
+		rec.data = "bulk_data_" + unique_suffix;
+	
+		s.set_groups({static_cast<int>(rec.key.id().group_id)});
+		auto async = s.write(rec.key,
+		                     rec.json, rec.json_capacity,
+		                     rec.data, rec.data_capacity);
+	
+		write_results.emplace_back(std::move(async), rec);
+	}
+	
+	for (auto &res : write_results) {
+		auto &async = res.first;
+		const auto &record = res.second;
+
+		check_lookup_result(async, DNET_CMD_WRITE_NEW, record, 1);
+	}
+}
+
+std::vector<std::pair<dnet_id, dnet_time>> add_ts(const std::vector<dnet_id> &ids, const dnet_time &ts) {
+	std::vector<std::pair<dnet_id, dnet_time>> ids_ts;
+	ids_ts.reserve(ids.size());
+	for (const auto &id : ids)
+		ids_ts.push_back({id, ts});
+	return ids_ts;
+}
+
+void test_bulk_remove_positive(const ioremap::elliptics::newapi::session &sess) {
+	auto s = sess.clone();	
+	bulk_remove_tests::prepare_session(s);
+	// create and write keys	
+	std::vector<dnet_id> ids = generate_keys(bulk_remove_tests::good_groups, s);
+	write_keys(ids, s);
+
+	std::vector<std::pair<dnet_id, dnet_time>> ids_ts = add_ts(ids, bulk_remove_tests::rec_tmpl.timestamp);
+
+	auto async = s.bulk_remove(ids_ts);
+	std::set<dnet_id> responses = check_remove_result_all(async, 0, ids.size());
+	check_all_ids_presents(ids, responses);
+	check_absence_by_lookup(s, ids);
+	// remove again
+	async = s.bulk_remove(ids_ts);
+	responses = check_remove_result_all(async, -ENOENT, ids.size());
+	check_all_ids_presents(ids, responses);
+}
+
+void test_bulk_remove_wrong_ts(const ioremap::elliptics::newapi::session &sess) {
+	auto s = sess.clone();
+	bulk_remove_tests::prepare_session(s);
+	// create and write keys	
+	std::vector<dnet_id> ids = generate_keys(bulk_remove_tests::good_groups, s);
+	write_keys(ids, s);
+
+	dnet_time old_ts = { 
+		bulk_remove_tests::rec_tmpl.timestamp.tsec / 2,
+		bulk_remove_tests::rec_tmpl.timestamp.tnsec 
+	};
+	auto ids_ts = add_ts(ids, old_ts);
+
+	auto async = s.bulk_remove(ids_ts);
+	std::set<dnet_id> responses = check_remove_result_all(async, -EBADFD, ids.size());
+	check_all_ids_presents(ids, responses);
+	check_absence_by_lookup(s, ids, true);
+	// remove again with right ts
+	ids_ts = add_ts(ids, bulk_remove_tests::rec_tmpl.timestamp);
+	async = s.bulk_remove(ids_ts);
+	responses = check_remove_result_all(async, 0, ids.size());
+	check_all_ids_presents(ids, responses);
+}
+
+void test_bulk_remove_mixed_ts(const ioremap::elliptics::newapi::session &sess) {
+	auto s = sess.clone();
+	bulk_remove_tests::prepare_session(s);
+	// create and write keys	
+	dnet_time old_ts = {10, 20};
+	s.set_timestamp(old_ts);
+	std::vector<dnet_id> old_ids = generate_keys(bulk_remove_tests::good_groups, s);
+	write_keys(old_ids, s);
+
+	// create and write another keys
+	dnet_time new_ts = {30, 20};
+	s.set_timestamp(new_ts);
+	std::vector<dnet_id> young_ids = generate_keys(bulk_remove_tests::good_groups, s);
+	write_keys(young_ids, s);
+
+	// mix 
+	std::vector<dnet_id> mixed_id;
+	mixed_id.reserve(old_ids.size() + young_ids.size());
+	for (size_t i = 0; i < old_ids.size(); ++i)
+	{
+		mixed_id.push_back(old_ids[i]);
+		mixed_id.push_back(young_ids[i]);
+	}
+	// add middle ts
+	dnet_time middle_ts = {20, 20};
+	auto mixed_id_ts = add_ts(mixed_id, middle_ts);
+	auto async = s.bulk_remove(mixed_id_ts);
+	
+	// check results
+	std::set<dnet_id> old_ids_set(old_ids.begin(), old_ids.end());
+	std::set<dnet_id> young_ids_set(young_ids.begin(), young_ids.end());
+
+	int status = 0;
+	std::set<dnet_id> responses;
+	for (const auto &result : async) {
+		const auto cmd = result.command();
+		if (old_ids_set.count(cmd->id) > 0)
+			status = 0;
+		else if (young_ids_set.count(cmd->id) > 0)
+			status = -EBADFD;
+		else 
+			BOOST_FAIL("Unexpected status");
+
+		responses.emplace(cmd->id);
+		check_remove_result(result, status);
+	}
+	check_all_ids_presents(mixed_id, responses);
+
+
+	// remove young key
+	auto young_ids_ts = add_ts(young_ids, new_ts);
+	async = s.bulk_remove(young_ids_ts);
+	auto responses_2 = check_remove_result_all(async, 0, young_ids.size());
+	check_all_ids_presents(young_ids, responses_2);
+}
+
+void test_bulk_remove_negative(const ioremap::elliptics::newapi::session &sess) {
+	auto s = sess.clone();
+	bulk_remove_tests::prepare_session(s);
+	// create and NOT write keys
+	std::vector<dnet_id> not_ids = generate_keys(bulk_remove_tests::good_groups, s);
+	auto not_ids_ts = add_ts(not_ids, bulk_remove_tests::rec_tmpl.timestamp);
+	auto async = s.bulk_remove(not_ids_ts);
+	auto responses = check_remove_result_all(async, -ENOENT, not_ids.size());
+	check_all_ids_presents(not_ids, responses);
+}
+
+void test_bulk_remove_wrong_groups(const ioremap::elliptics::newapi::session &sess) {
+	auto s = sess.clone();
+	bulk_remove_tests::prepare_session(s);
+	std::vector<dnet_id> wrong_ids = generate_keys(bulk_remove_tests::wrong_groups, s);
+	auto wrong_ids_ts = add_ts(wrong_ids, bulk_remove_tests::rec_tmpl.timestamp);
+	auto async = s.bulk_remove(wrong_ids_ts);
+	auto responses = check_remove_result_all(async, -ENXIO, wrong_ids.size());
+	check_all_ids_presents(wrong_ids, responses);	
+}
+
+void test_bulk_remove_mix(const ioremap::elliptics::newapi::session &sess) {
+	auto s = sess.clone();
+	bulk_remove_tests::prepare_session(s);
+	// write id
+	auto ids = generate_keys( bulk_remove_tests::good_groups, s);
+	auto not_ids = generate_keys(bulk_remove_tests::good_groups, s);
+	auto wrong_ids = generate_keys(bulk_remove_tests::wrong_groups, s);
+	write_keys(ids, s);
+	
+	std::vector<dnet_id> requested_id;
+	requested_id.reserve(ids.size() + not_ids.size() + wrong_ids.size());
+	for (size_t i = 0; i < ids.size(); ++i)	{
+		requested_id.push_back(ids[i]);
+		requested_id.push_back(not_ids[i]);
+		requested_id.push_back(wrong_ids[i]);
+	}
+
+	auto requested_id_ts = add_ts(requested_id, bulk_remove_tests::rec_tmpl.timestamp);
+	auto async = s.bulk_remove(requested_id_ts);
+	
+	// check results
+	std::set<dnet_id> ids_set(ids.begin(), ids.end());
+	std::set<dnet_id> not_ids_set(not_ids.begin(), not_ids.end());
+	std::set<dnet_id> wrong_ids_set(wrong_ids.begin(), wrong_ids.end());
+	
+	int status = 0;
+	std::set<dnet_id> responses;
+	for (const auto &result : async) {
+		const auto cmd = result.command();
+		if (ids_set.count(cmd->id) > 0)
+			status = 0;
+		else if (not_ids_set.count(cmd->id) > 0)
+			status = -ENOENT;
+		else if (wrong_ids_set.count(cmd->id) > 0)
+			status = -ENXIO;
+		else
+			BOOST_FAIL("Unexpected Id");
+	
+		responses.emplace(cmd->id);
+		check_remove_result(result, status);
+	}
+	
+	check_all_ids_presents(requested_id, responses);	
+}
+
+void test_bulk_remove_readonly(const ioremap::elliptics::newapi::session &sess,
+                               const nodes_data *setup) {
+	auto s = sess.clone();
+	bulk_remove_tests::prepare_session(s);
+	auto ids = generate_keys(bulk_remove_tests::good_groups, s);
+	write_keys(ids, s);
+	auto &server = setup->nodes.front();
+	const auto remote = server.remote();
+	const auto &backend = server.config().backends.front();
+	const auto ro_backend_id = std::stoi(backend.string_value("backend_id"));
+	{
+		ELLIPTICS_REQUIRE(async, s.make_readonly(remote, ro_backend_id));
+	}
+	auto ids_ts = add_ts(ids, bulk_remove_tests::rec_tmpl.timestamp);
+	auto async = s.bulk_remove(ids_ts);	
+	std::set<dnet_id> responses;
+	std::vector<dnet_id> ro_ids;
+	int status = 0;
+	for (const auto &result : async) {
+		status = 0;
+		const auto cmd = result.command();
+		if ((remote.to_raw() == *result.address() &&
+		    (result.command()->backend_id == ro_backend_id)))
+		{
+			status = -EROFS;
+			ro_ids.push_back(result.command()->id);
+		}
+		responses.emplace(cmd->id);
+		check_remove_result(result, status);
+	}	
+	
+	check_all_ids_presents(ids, responses);
+	check_absence_by_lookup(s, ids, true);
+
+	{ // reset backend to writable
+		ELLIPTICS_REQUIRE(async, s.make_writable(remote, ro_backend_id));
+	}
+	auto ro_ids_ts = add_ts(ro_ids, bulk_remove_tests::rec_tmpl.timestamp);
+	async = s.bulk_remove(ro_ids_ts);
+	check_remove_result_all(async, 0, ro_ids.size());	
+}
+
+void test_bulk_remove_direct_backend(const ioremap::elliptics::newapi::session &sess) {
+	auto s = sess.clone();
+	bulk_remove_tests::prepare_session(s);
+	std::vector<int> direct_group = {6};
+	s.set_groups(direct_group);
+	std::vector<dnet_id> direct_ids = generate_keys(direct_group, s);
+	write_keys(direct_ids, s);
+	
+	dnet_addr address;
+	memset(&address, 0, sizeof(address));
+	const int err_addr = dnet_lookup_addr(s.get_native(), nullptr, 0, &(direct_ids[0]), direct_group[0],
+	                                      &address, nullptr);
+	BOOST_REQUIRE_EQUAL(err_addr, 0);
+	s.set_direct_id(address);
+	auto direct_ids_ts = add_ts(direct_ids, bulk_remove_tests::rec_tmpl.timestamp);
+	auto async = s.bulk_remove(direct_ids_ts);
+	check_remove_result_all(async, 0, direct_ids.size());
+}
+
+void test_bulk_remove_timeout(const ioremap::elliptics::newapi::session &sess, const nodes_data *setup) {
+	auto s = sess.clone();
+	bulk_remove_tests::prepare_session(s);
+	auto ids = generate_keys(bulk_remove_tests::good_groups, s);
+	write_keys(ids, s);
+	auto &server = setup->nodes.front();
+	const auto remote = server.remote();
+	const auto &backend = server.config().backends.front();
+	const auto delayed_backend_id = std::stoi(backend.string_value("backend_id"));
+	uint32_t delay = 5 * 1000; // 5 seconds
+	
+	{ // set delay
+		ELLIPTICS_REQUIRE(async, s.set_delay(remote, delayed_backend_id, delay));
+	}	
+	s.set_timeout(1); // sec
+
+	auto ids_ts = add_ts(ids, bulk_remove_tests::rec_tmpl.timestamp);
+	auto async = s.bulk_remove(ids_ts);
+	std::set<dnet_id> responses;
+	std::vector<dnet_id> delayed_ids;
+	int status = 0;
+	for (const auto &result : async) {
+		status = 0;
+		const auto cmd = result.command();
+		if (remote.to_raw() == *result.address() &&
+		(result.command()->backend_id == delayed_backend_id)) {
+			status = -ETIMEDOUT;
+			delayed_ids.push_back(result.command()->id);
+		}
+		responses.emplace(cmd->id);
+		check_remove_result(result, status);
+	}
+
+	check_all_ids_presents(ids, responses);
+
+	// restore settings
+	{
+		ELLIPTICS_REQUIRE(async, s.set_delay(remote, delayed_backend_id, 0));
+	}
+	s.set_timeout(sess.get_timeout());
+
+	std::this_thread::sleep_for(std::chrono::milliseconds(delay));
+	auto delayed_ids_ts = add_ts(delayed_ids, bulk_remove_tests::rec_tmpl.timestamp);
+	async = s.bulk_remove(delayed_ids_ts);
+	check_remove_result_all(async, -ENOENT, delayed_ids.size());
+}
+
+// -----------------------------------------------------------------------------------------
+
 void test_bulk_read(const ioremap::elliptics::newapi::session &session) {
 	record record{
 		std::string{"key"},
@@ -1814,6 +2213,18 @@ bool register_tests(const nodes_data *setup) {
 			ELLIPTICS_TEST_CASE(test_bulk_read_mixed_status, use_session(n, {}, 0, ioflags));
 		}
 
+		if (!in_cache) {
+			// all bulk remove uses cas-version of removing
+			ELLIPTICS_TEST_CASE(test_bulk_remove_positive, use_session(n, {}, 0, ioflags));
+			ELLIPTICS_TEST_CASE(test_bulk_remove_wrong_ts, use_session(n, {}, 0, ioflags));
+			ELLIPTICS_TEST_CASE(test_bulk_remove_mixed_ts, use_session(n, {}, 0, ioflags));
+			ELLIPTICS_TEST_CASE(test_bulk_remove_negative, use_session(n, {}, 0, ioflags));
+			ELLIPTICS_TEST_CASE(test_bulk_remove_wrong_groups, use_session(n, {}, 0, ioflags));
+			ELLIPTICS_TEST_CASE(test_bulk_remove_mix, use_session(n, {}, 0, ioflags));
+			ELLIPTICS_TEST_CASE(test_bulk_remove_readonly, use_session(n, {}, 0, ioflags), setup);
+			ELLIPTICS_TEST_CASE(test_bulk_remove_direct_backend, use_session(n, {}, 0, ioflags));
+			ELLIPTICS_TEST_CASE(test_bulk_remove_timeout, use_session(n, {}, 0, ioflags), setup);
+		}
 		record.json = R"json({
 			"record": {
 				"key": "key",
