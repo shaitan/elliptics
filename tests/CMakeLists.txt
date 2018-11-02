@@ -247,6 +247,7 @@ add_custom_command(TARGET test_python
         pip install argparse &&
         pip install pytest &&
         pip install pytest-timeout &&
+        pip install pytest-mock &&
         pip install msgpack-python &&
         export LD_LIBRARY_PATH=.:.. &&
         env ${TEST_ENV} py.test ${PYTESTS_FLAGS} ${CMAKE_CURRENT_SOURCE_DIR}/pytests
