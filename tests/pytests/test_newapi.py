@@ -187,3 +187,72 @@ def test_session_bulk_read(simple_node):
     check_result(session.bulk_read_json, True, False)
     check_result(session.bulk_read_data, False, True)
     check_result(session.bulk_read, True, True)
+
+
+@pytest.mark.usefixtures('servers')
+def test_session_bulk_remove(simple_node):
+    """Test bulk_remove."""
+    session = elliptics.newapi.Session(simple_node)
+    session.trace_id = make_trace_id('test_session_bulk_remove')
+    session.groups = session.routes.groups()
+    session.set_filter(elliptics.filters.all_with_ack);
+    session.set_timestamp(elliptics.Time.now())
+
+    # prepare test data
+    keys = []
+    datas = {}
+    def make_item(data, json):
+        return {"data": data, "json": json}
+    groups = session.groups;
+    def prepare_data():
+        del keys[:]
+        datas = {}
+        write_results = []
+        for group_id in groups:
+            session.groups = [group_id]
+            for i in range(10):
+                eid = session.transform('k_br{}'.format(i))
+                eid.group_id = group_id
+                keys.append(eid)
+                data = "data{}_{}".format(group_id, i)
+                json_string = json.dumps({'some': "json{}_{}".format(group_id, i)})
+                datas[repr(eid)] = make_item(data, json_string)
+                result = session.write(eid, json_string, len(json_string), data, len(data))
+                write_results.append(result)
+
+        for r in write_results:
+            assert r.get()[0].status == 0
+
+        assert len(keys) == len(datas)
+
+    prepare_data()
+
+    #remove data
+    cur_ts = session.get_timestamp()
+    keys_ts = [(key, cur_ts) for key in keys]
+
+    count = 0
+    for result in session.bulk_remove(keys_ts):
+        assert result.status == 0
+        count += 1
+    assert count == len(keys)
+
+    # pass vector instead of vector<pair>
+    with pytest.raises(TypeError):
+        #TypeError: Expecting an object of type tuple; got an object of type Id instead
+        session.bulk_remove(keys).wait(); 
+
+    # pass empty vector 
+    with pytest.raises(Exception):
+        #Error: send_bulk_remove: keys list is empty: No such device or address: -6
+        session.bulk_remove([]).wait()
+
+    # restore test data
+    prepare_data()
+    count = 0
+    for result in session.bulk_remove(iter(keys_ts)):
+        assert result.status == 0
+        count += 1
+    assert count == len(keys_ts)
+
+

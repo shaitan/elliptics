@@ -861,6 +861,19 @@ public:
 			newapi::session{*this}.bulk_read(std_keys)
 		);
 	}
+
+	python_remove_result bulk_remove(const bp::api::object &list_of_tuples) {
+		std::vector<std::pair<dnet_id, dnet_time>> keys;
+		for (bp::stl_input_iterator<bp::tuple> it(list_of_tuples), end; it != end; ++it) {
+			bp::extract<elliptics_id> cur_id((*it)[0]);
+			bp::extract<elliptics_time> cur_ts((*it)[1]);
+			keys.emplace_back(cur_id().id(), cur_ts().m_time);
+		}
+
+		return create_result(
+			newapi::session{ *this }.bulk_remove(keys)
+		);
+	}
 };
 } /* namespace newapi */
 
@@ -1830,6 +1843,16 @@ void init_elliptics_session() {
 		    "    for result in async:\n"
 		    "        print 'group: {}, status: {}'.format(result.group_id,\n"
 		    "                                             result.status)")
+		.def("bulk_remove", &newapi::elliptics_session::bulk_remove,
+		    bp::arg("keys"),
+		    "bulk_remove(keys)n"
+		    "    Remove specified @keys with timestamp cas\n"
+		    "    Return elliptics.AsyncResult.\n"
+		    "    -- keys - list of tuples: elliptics.Id and elliptics.Time"
+		    "    keys = [(elliptics.Id([0] * 64, 1), elliptics.Time(1, 1))]\n"
+		    "    async = session.bulk_remove(keys)\n"
+		    "    for result in result:\n"
+		    "         assert res.status == 0 \n")
 
 		.def("read_json", &newapi::elliptics_session::read_json,
 		     bp::args("key"),
