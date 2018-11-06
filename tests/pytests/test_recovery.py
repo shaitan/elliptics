@@ -24,8 +24,7 @@ sys.path.insert(0, "")  # for running from cmake
 import pytest
 from conftest import make_session, scope
 import elliptics
-import elliptics_recovery.types.dc
-import elliptics_recovery.types.merge
+import elliptics_recovery.recovery
 
 
 class RECOVERY:
@@ -174,8 +173,6 @@ def recovery(one_node, remotes, backend_id, address, groups,
     '''
     Imports dnet_recovery tools and executes merge recovery. Checks result of merge.
     '''
-    from elliptics_recovery.recovery import run
-    import os
 
     cur_dir = os.getcwd()
     tmp_dir = os.path.join(cur_dir, tmp_dir)
@@ -185,7 +182,7 @@ def recovery(one_node, remotes, backend_id, address, groups,
         pass
 
     args = ['-D', tmp_dir,
-            '-l', os.path.join(tmp_dir, 'recovery.log'),
+            '-l', log_file,
             '-c', chunk_size,
             '-L', elliptics.log_level.debug,
             '-g', ','.join(map(str, groups)),
@@ -216,7 +213,7 @@ def recovery(one_node, remotes, backend_id, address, groups,
     if safe:
         args += ['-S']
 
-    assert run(args) == expected_ret_code
+    assert elliptics_recovery.recovery.run(args) == expected_ret_code
 
     cleanup_logger()
 

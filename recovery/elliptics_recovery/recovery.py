@@ -13,28 +13,31 @@
 # GNU General Public License for more details.
 # =============================================================================
 
-import os
-import sys
+import fcntl
 import logging
 import logging.handlers
+import multiprocessing
+import os
 import socket
+import sys
 import traceback
-from multiprocessing import Pool
-
-from elliptics_recovery.etime import Time
-from elliptics_recovery.utils.misc import elliptics_create_node, elliptics_create_session, worker_init
-from elliptics_recovery.monitor import Monitor, ALLOWED_STAT_FORMATS
-from elliptics_recovery.ctx import Ctx
-from elliptics.log import convert_elliptics_log_level
+from optparse import OptionParser
 
 import elliptics
-from elliptics.log import formatter
+from elliptics_recovery.ctx import Ctx
+from elliptics_recovery.etime import Time
+from elliptics_recovery.monitor import ALLOWED_STAT_FORMATS
+from elliptics_recovery.monitor import Monitor
+from elliptics_recovery.types import dc
+from elliptics_recovery.types import merge
+from elliptics_recovery.utils.misc import elliptics_create_node
+from elliptics_recovery.utils.misc import worker_init
 
 log = logging.getLogger()
 log.setLevel(logging.DEBUG)
 
 ch = logging.StreamHandler(sys.stderr)
-ch.setFormatter(formatter)
+ch.setFormatter(elliptics.log.formatter)
 ch.setLevel(logging.WARNING)
 log.addHandler(ch)
 
@@ -68,8 +71,8 @@ def get_routes(ctx):
                                  flags=elliptics.config_flags.no_route_list,
                                  remotes=ctx.remotes)
 
-    log.debug("Creating session for: {0}".format(ctx.address))
-    session = elliptics_create_session(node=node, group=0, trace_id=ctx.trace_id)
+    log.debug("Creating session for: %s", ctx.address)
+    session = elliptics.newapi.Session(node)
 
     log.debug("Parsing routing table")
     return session.routes.filter_by_groups(ctx.groups)
@@ -152,10 +155,10 @@ def main(options, args):
         # FIXME: It may be inappropriate to use one log for both
         # elliptics library and python app, esp. in presence of auto-rotation
         fh = logging.handlers.WatchedFileHandler(ctx.log_file)
-        fh.setFormatter(formatter)
-        fh.setLevel(convert_elliptics_log_level(ctx.log_level))
+        fh.setFormatter(elliptics.log.formatter)
+        fh.setLevel(elliptics.log.convert_elliptics_log_level(ctx.log_level))
         log.addHandler(fh)
-        log.setLevel(convert_elliptics_log_level(ctx.log_level))
+        log.setLevel(elliptics.log.convert_elliptics_log_level(ctx.log_level))
 
         if options.debug:
             ch.setLevel(logging.DEBUG)
@@ -167,7 +170,6 @@ def main(options, args):
 
     try:
         if options.lock:
-            import fcntl
             ctx.lockfd = os.open(os.path.join(ctx.tmp_dir, options.lock), os.O_TRUNC | os.O_CREAT | os.O_RDWR)
             fcntl.flock(ctx.lockfd, fcntl.LOCK_EX | fcntl.LOCK_NB)
             log.info("Using lock file: {0}".format(options.lock))
@@ -327,21 +329,17 @@ def main(options, args):
 
         try:
             log.info("Creating pool of processes: %d", ctx.nprocess)
-            ctx.pool = Pool(processes=ctx.nprocess, initializer=worker_init)
+            ctx.pool = multiprocessing.Pool(processes=ctx.nprocess, initializer=worker_init)
             if recovery_type == TYPE_MERGE:
                 if ctx.dump_file:
-                    from elliptics_recovery.types.merge import dump_main
-                    result = dump_main(ctx)
+                    result = merge.dump_main(ctx)
                 else:
-                    from elliptics_recovery.types.merge import main
-                    result = main(ctx)
+                    result = merge.main(ctx)
             elif recovery_type == TYPE_DC:
                 if ctx.dump_file:
-                    from elliptics_recovery.types.dc import dump_main
-                    result = dump_main(ctx)
+                    result = dc.dump_main(ctx)
                 else:
-                    from elliptics_recovery.types.dc import main
-                    result = main(ctx)
+                    result = dc.main(ctx)
             ctx.pool.close()
             ctx.pool.terminate()
             ctx.pool.join()
@@ -364,8 +362,6 @@ def main(options, args):
 
 
 def run(args=None):
-    from optparse import OptionParser
-
     parser = OptionParser()
     parser.usage = "%prog [options] TYPE"
     parser.description = __doc__

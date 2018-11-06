@@ -78,12 +78,13 @@ class BucketKeys(object):
         self.bucket_file = bucket_file
         self.group_id = group_id
 
+
     def sort_by_physical_order(self):
         chunk_files = []
         try:
             log.info("Sort bucket: phase 1: sort chunks: group_id: {0}, bucket: {1}"
                      .format(self.group_id, self.bucket_file.name))
-            max_chunks_size = 500 * 1024 * 1024 # 500 Mb
+            max_chunks_size = 500 * 1024 * 1024  # 500 Mb
 
             chunk = []
             chunk_size = 0
@@ -101,6 +102,7 @@ class BucketKeys(object):
 
             log.info("Sort bucket: phase 2: merge chunks: group_id: {0}, bucket: {1}"
                      .format(self.group_id, self.bucket_file.name))
+
             class MergeDataWrapper(object):
                 def __init__(self, gen, outer):
                     self.gen = gen

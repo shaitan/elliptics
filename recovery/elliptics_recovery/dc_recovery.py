@@ -468,8 +468,8 @@ def recover(ctx):
                                  elog=elliptics.Logger(ctx.log_file, int(ctx.log_level), True),
                                  wait_timeout=ctx.wait_timeout,
                                  flags=elliptics.config_flags.no_route_list,
-                                 net_thread_num=4,
-                                 io_thread_num=24,
+                                 net_thread_num=4,  # TODO(shaitan): why 4?
+                                 io_thread_num=24,  # TODO(shaitan): why 24?
                                  remotes=ctx.remotes)
     result = ServerSendRecovery(ctx, node).recover()
     result &= WindowedDC(ctx, node).run()

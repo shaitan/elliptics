@@ -66,15 +66,6 @@ def elliptics_create_node(address=None, elog=None, wait_timeout=3600, check_time
     return node
 
 
-def elliptics_create_session(node=None, group=None, cflags=elliptics.command_flags.default, trace_id=0):
-    log.debug("Creating session: {0}@{1}.{2}".format(node, group, cflags))
-    session = elliptics.Session(node)
-    session.groups = [group]
-    session.cflags = cflags
-    session.trace_id = trace_id
-    return session
-
-
 def worker_init():
     """Do not catch Ctrl+C in worker"""
     from signal import signal, SIGINT, SIG_IGN
@@ -82,6 +73,7 @@ def worker_init():
 
 
 # common class for collecting statistics of recovering one key
+# TODO(shaitan): try to use default dict with counters enums
 class RecoverStat(object):
     def __init__(self):
         self.reset()
