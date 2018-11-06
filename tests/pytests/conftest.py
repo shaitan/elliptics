@@ -13,9 +13,13 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 # =============================================================================
-
-
+import collections
+import multiprocessing.dummy
+import os
 import sys
+
+import mock
+
 sys.path.insert(0, "")  # for running from cmake
 
 import pytest
@@ -95,7 +99,7 @@ def connect(endpoints, groups, **kw):
     s = elliptics.Session(n)
     s.add_groups(groups)
 
-#    return PassthroughWrapper(n, s)
+    # return PassthroughWrapper(n, s)
     return s
 
 
@@ -211,3 +215,114 @@ def backends_combination(request, routes):
     elif request.param == "mix":
         return all_backends + range(max(all_backends) + 1, max(all_backends) + 3)
     return None
+
+
+@pytest.fixture()
+def mock_pool(mocker):
+    """Mock multiprocessing.Pool and use multiprocessing.dummy.Pool instead
+
+    By this mock we avoid creating sub-processes and transferring other mocks between them.
+    """
+    mocker.patch('multiprocessing.Pool', mock.MagicMock(return_value=multiprocessing.dummy.Pool()))
+
+
+@pytest.fixture()
+def mock_elliptics(mocker):
+    """Mock most of elliptics components
+
+    To be able overwrite their behaviour and avoid heavy initialization.
+    """
+    mocker.patch('elliptics.Node')
+    mocker.patch('elliptics.Logger')
+    mocker.patch('elliptics.create_node')
+    mocker.patch('elliptics.Session')
+    mocker.patch('elliptics.newapi.Session')
+
+
+@pytest.fixture()
+def mock_route_list(mock_elliptics, cluster):
+    """Mock route-list based on test configuration described in @cluster
+
+    Mock route-list in both old and new session.
+    """
+    elliptics.Session.return_value.routes = cluster.route_list
+    elliptics.newapi.Session.return_value.routes = cluster.route_list
+
+
+@pytest.fixture()
+def mock_iterator_result_container(mocker):
+    """Mock IteratorResultContainer
+
+    Original IteratorResultContainer works only with specific structure and can't be used with mocked results.
+    """
+
+    def container_side_effect():
+        containers = collections.defaultdict(list)
+
+        def side_effect(fd, *_args):
+            # read real filename because recovery re-opens files and fd itself can be different
+            # for the same files
+            return containers[os.readlink('/proc/self/fd/{}'.format(fd))]
+
+        return side_effect
+
+    mocker.patch('elliptics.core.newapi.IteratorResultContainer',
+                 mocker.MagicMock(side_effect=container_side_effect()))
+
+
+class MockedRecordInfo(object):
+    """Simple mock for record_info available from IteratorResultEntry"""
+    def __init__(self, record_flags):
+        self.record_flags = record_flags
+
+
+class MockedIteratorResult(object):
+    """Simple mock for IteratorResultEntry with minimal coverage"""
+    def __init__(self, key, user_flags, data_timestamp, data_size, status, record_flags, blob_id, data_offset, iterated_keys, total_keys):
+        self.key = key
+        self.user_flags = user_flags
+        self.data_timestamp = data_timestamp
+        self.data_size = data_size
+        self.status = status
+        self.record_info = MockedRecordInfo(record_flags=record_flags)
+        self.record_flags = record_flags
+        self.blob_id = blob_id
+        self.data_offset = data_offset
+        self.iterated_keys = iterated_keys
+        self.total_keys = total_keys
+
+    def __cmp__(self, other):
+        return cmp(self.key, other.key)
+
+
+@pytest.fixture()
+def mock_iterator(mock_iterator_result_container, cluster):
+    """Mock iterator results based on initial configuration described in @cluster"""
+
+    def iterator_side_effect(address, backend_id, **_kwargs):
+        """Returns different results for different address & backend_id based on initial configuration
+
+        defined by @cluster"""
+        records = []
+        for backend in cluster.backends:
+            if backend.address != address or backend.backend_id != backend_id:
+                continue
+
+            records = [
+                MockedIteratorResult(key=record.key,
+                                     user_flags=record.user_flags,
+                                     data_timestamp=record.data_timestamp,
+                                     data_size=record.data_size,
+                                     status=record.status,
+                                     record_flags=record.record_flags,
+                                     blob_id=record.blob_id,
+                                     data_offset=record.data_offset,
+                                     iterated_keys=i,
+                                     total_keys=len(backend.records))
+                for i, record in enumerate(backend.records, start=1)
+            ]
+
+        return mock.MagicMock(spec=elliptics.core.AsyncResult,
+                              __iter__=mock.MagicMock(return_value=iter(records)))
+
+    elliptics.newapi.Session.return_value.start_iterator.side_effect = iterator_side_effect
