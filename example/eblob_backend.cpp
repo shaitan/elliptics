@@ -489,6 +489,17 @@ static int blob_read_new_impl(eblob_backend_config *c,
 		record_offset += sizeof(ehdr) + ehdr.size;
 	}
 
+	uint64_t data_size = wc.size - jhdr.capacity;
+	uint64_t data_offset = wc.data_offset + jhdr.capacity;
+
+	err = blob_read_and_check_stamp(&ehdr.timestamp, wc.data_fd, data_offset, data_size);
+	if (err) {
+		DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-read-new {}: corrupted signature: data offset {}, "
+		               "data size {}",
+		               dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), data_offset, data_size);
+		return err;
+	}
+
 	data_pointer json;
 	uint64_t json_csum_time = 0;
 
@@ -513,21 +524,13 @@ static int blob_read_new_impl(eblob_backend_config *c,
 		}
 	}
 
-	uint64_t data_size = 0;
-	uint64_t data_offset = 0;
+	data_size = 0;
+	data_offset = 0;
 	uint64_t data_csum_time = 0;
 
 	if (request.read_flags & DNET_READ_FLAGS_DATA) {
 		data_size = wc.size - jhdr.capacity;
 		data_offset = wc.data_offset + jhdr.capacity;
-
-		err = blob_read_and_check_stamp(&ehdr.timestamp, wc.data_fd, data_offset, data_size);
-		if (err) {
-			DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-read-new {}: corrupted signature: data offset {}, "
-			                        "data size {}",
-			               dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), data_offset, data_size);
-			return err;
-		}
 
 		if (request.data_offset && request.data_offset >= data_size) {
 			err = -E2BIG;
