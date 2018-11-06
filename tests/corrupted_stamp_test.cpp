@@ -117,6 +117,7 @@ std::vector<headers_test_case> functional_cases = {
 	// Broken padding
 	{0, 1, 0, 99, DNET_EXT_VERSION_V1, 0, {0, 1, 0}, {0}},
 };
+
 }
 
 namespace tests {
@@ -211,7 +212,8 @@ void test_read_corrupted_stamp(ioremap::elliptics::newapi::session &s, const dne
 		newapi::async_write_result async_result;
 	};
 
-	const auto make_write_result = [&] (const std::string &key_prefix,
+	const auto make_write_result = [&] (const size_t id,
+	                                    const std::string &key_prefix,
 	                                    const headers_test_case &test_case,
 	                                    int ec,
 	                                    bool with_json = false,
@@ -219,6 +221,7 @@ void test_read_corrupted_stamp(ioremap::elliptics::newapi::session &s, const dne
 	                                    size_t to_remove = 0) {
 		std::ostringstream key;
 		key << key_prefix
+			<< " (" << id << ")"
 			<< " expected error: " << ec
 			<< " to add: " << to_add
 			<< " to_remove " << to_remove;
@@ -242,61 +245,62 @@ void test_read_corrupted_stamp(ioremap::elliptics::newapi::session &s, const dne
 
 	std::vector<test_write_result> write_results;
 
+	size_t id = 0;
 	for (const auto &test_case : functional_cases) {
-		write_results.push_back(make_write_result("normal case", test_case, test_case.expected_status, false));
-		write_results.push_back(make_write_result("normal case", test_case, test_case.expected_status, true));
+		write_results.push_back(make_write_result(id, "normal case", test_case, test_case.expected_status, false));
+		write_results.push_back(make_write_result(id, "normal case", test_case, test_case.expected_status, true));
 
 		write_results.push_back(
-			make_write_result("normal case (+1b)", test_case, test_case.expected_status, false, 1));
+			make_write_result(id, "normal case (+1b)", test_case, test_case.expected_status, false, 1));
 		write_results.push_back(
-			make_write_result("normal case (+1b)", test_case, test_case.expected_status, true, 1));
+			make_write_result(id, "normal case (+1b)", test_case, test_case.expected_status, true, 1));
 
 		write_results.push_back(
-			make_write_result("normal case (+2b)", test_case, test_case.expected_status, false, 2));
+			make_write_result(id, "normal case (+2b)", test_case, test_case.expected_status, false, 2));
 		write_results.push_back(
-			make_write_result("normal case (+2b)", test_case, test_case.expected_status, true, 2));
+			make_write_result(id, "normal case (+2b)", test_case, test_case.expected_status, true, 2));
 
 		write_results.push_back(
-			make_write_result("normal case (+3b)", test_case, test_case.expected_status, false, 2));
+			make_write_result(id, "normal case (+3b)", test_case, test_case.expected_status, false, 2));
 		write_results.push_back(
-			make_write_result("normal case (+3b)", test_case, test_case.expected_status, true, 2));
-
-		write_results.push_back(
-			make_write_result("normal case (+1kb)", test_case, test_case.expected_status, false, 1024));
-		write_results.push_back(
-			make_write_result("normal case (+1kb)", test_case, test_case.expected_status, true, 1024));
-
-		write_results.push_back(make_write_result("normal case (-1b)", test_case, 0, false, 0, 1));
-		write_results.push_back(make_write_result("normal case (-1b)", test_case, 0, true, 0, 1));
-
-		write_results.push_back(make_write_result("normal case (-2b)", test_case, 0, false, 0, 2));
-		write_results.push_back(make_write_result("normal case (-2b)", test_case, 0, true, 0, 2));
-
-		write_results.push_back(make_write_result("normal case (-3b)", test_case, 0, false, 0, 3));
-		write_results.push_back(make_write_result("normal case (-3b)", test_case, 0, true, 0, 3));
+			make_write_result(id, "normal case (+3b)", test_case, test_case.expected_status, true, 2));
 
 		write_results.push_back(
-			make_write_result("normal case (sizeof(eblob_disk_control))",
+			make_write_result(id, "normal case (+1kb)", test_case, test_case.expected_status, false, 1024));
+		write_results.push_back(
+			make_write_result(id, "normal case (+1kb)", test_case, test_case.expected_status, true, 1024));
+
+		write_results.push_back(make_write_result(id, "normal case (-1b)", test_case, 0, false, 0, 1));
+		write_results.push_back(make_write_result(id, "normal case (-1b)", test_case, 0, true, 0, 1));
+
+		write_results.push_back(make_write_result(id, "normal case (-2b)", test_case, 0, false, 0, 2));
+		write_results.push_back(make_write_result(id, "normal case (-2b)", test_case, 0, true, 0, 2));
+
+		write_results.push_back(make_write_result(id, "normal case (-3b)", test_case, 0, false, 0, 3));
+		write_results.push_back(make_write_result(id, "normal case (-3b)", test_case, 0, true, 0, 3));
+
+		write_results.push_back(
+			make_write_result(id, "normal case (sizeof(eblob_disk_control))",
 			                  test_case,
 			                  0,
-					  false,
+			                  false,
 			                  0,
 			                  sizeof(dnet_ext_list_hdr)));
 
 		write_results.push_back(
-			make_write_result("normal case (with_json, sizeof(eblob_disk_control))",
+			make_write_result(id, "normal case (with_json, sizeof(eblob_disk_control))",
 			                  test_case,
 			                  0,
 			                  true,
 			                  0,
 			                  sizeof(dnet_ext_list_hdr)));
 
-
 		write_results.push_back(
-			make_write_result("one byte data", test_case, 0, false, 0, constants::HEADERS_SIZE - 1));
+			make_write_result(id, "one byte data", test_case, 0, false, 0, constants::HEADERS_SIZE - 1));
 		write_results.push_back(
-			make_write_result("one byte data", test_case, 0, true, 0, constants::HEADERS_SIZE - 1));
+			make_write_result(id, "one byte data", test_case, 0, true, 0, constants::HEADERS_SIZE - 1));
 
+		++id;
 	}
 
 	session lookup_session{s.get_native_node()};
@@ -305,6 +309,8 @@ void test_read_corrupted_stamp(ioremap::elliptics::newapi::session &s, const dne
 	auto lookup_csum_session = lookup_session.clone();
 	lookup_csum_session.set_cflags(lookup_csum_session.get_cflags() | DNET_FLAGS_CHECKSUM);
 
+
+	s.set_filter(ioremap::elliptics::filters::all_with_ack);
 	auto new_lookup_session = s.clone();
 	auto new_lookup_csum_session = s.clone();
 	new_lookup_csum_session.set_cflags(new_lookup_csum_session.get_cflags() | DNET_FLAGS_CHECKSUM);
@@ -320,7 +326,7 @@ void test_read_corrupted_stamp(ioremap::elliptics::newapi::session &s, const dne
 			ELLIPTICS_REQUIRE_ERROR(res, std::move(async), write_result.expected_status);
 		} {
 			auto async = s.read_json(write_result.key);
-			ELLIPTICS_REQUIRE(res, std::move(async));
+			ELLIPTICS_REQUIRE_ERROR(res, std::move(async), write_result.expected_status);
 		} {
 			auto async = lookup_session.lookup(write_result.key);
 			ELLIPTICS_REQUIRE(res, std::move(async));
@@ -401,21 +407,21 @@ void test_read_corrupted_stamp(ioremap::elliptics::newapi::session &s, const dne
 	}
 
 	// Mixture of corrupted data chunks and normal data.
-	int index = 0;
-	for (const auto &r : s.bulk_read(mixed)) {
-		BOOST_REQUIRE_EQUAL(r.status(), mixed_statuses[index]);
-		++index;
+	size_t index = 0;
+	for (const auto &r: s.bulk_read(mixed)) {
+		BOOST_REQUIRE_EQUAL(r.status(), mixed_statuses[index++]);
 	}
 
+	index = 0;
 	for (const auto &r: s.bulk_read_json(mixed)) {
-		BOOST_REQUIRE_EQUAL(r.status(), 0);
+		BOOST_REQUIRE_EQUAL(r.status(), mixed_statuses[index++]);
 	}
 
 	index = 0;
 	for (const auto &r: s.bulk_read_data(mixed)) {
-		BOOST_REQUIRE_EQUAL(r.status(), mixed_statuses[index]);
-		++index;
+		BOOST_REQUIRE_EQUAL(r.status(), mixed_statuses[index++]);
 	}
+
 
 	// Corrupted data chunk.
 	for (const auto &r: s.bulk_read(all_illigal_stamp)) {
@@ -423,12 +429,13 @@ void test_read_corrupted_stamp(ioremap::elliptics::newapi::session &s, const dne
 	}
 
 	for (const auto &r: s.bulk_read_json(all_illigal_stamp)) {
-		BOOST_REQUIRE_EQUAL(r.status(), 0);
+		BOOST_REQUIRE_EQUAL(r.status(), -EILSEQ);
 	}
 
 	for (const auto &r: s.bulk_read_data(all_illigal_stamp)) {
 		BOOST_REQUIRE_EQUAL(r.status(), -EILSEQ);
 	}
+
 
 	// Normal data
 	for (const auto &r: s.bulk_read(all_normal_data)) {
