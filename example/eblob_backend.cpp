@@ -2094,6 +2094,8 @@ int blob_bulk_read_new(struct eblob_backend_config *c,
 	const auto num_keys = bulk_request.keys.size();
 	for (size_t i = 0; i < num_keys && !st->__need_exit; ++i) {
 		timer.restart();
+
+		cmd_copy.status = 0;
 		cmd_copy.id = bulk_request.keys[i];
 
 		auto read_stats = orig_stats;
