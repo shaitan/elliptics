@@ -1,4 +1,7 @@
+#include <algorithm>
 #include <fstream>
+#include <set>
+
 #include <boost/program_options.hpp>
 
 #define BOOST_TEST_NO_MAIN
@@ -1626,6 +1629,97 @@ void test_bulk_read(const ioremap::elliptics::newapi::session &session) {
 	set_delay_for_groups(s, {delay_group}, 0);
 }
 
+void test_bulk_read_mixed_status(ioremap::elliptics::newapi::session &s) {
+	s.set_filter(ioremap::elliptics::filters::all_with_ack);
+	s.set_trace_id(rand());
+	s.set_groups({1});
+
+	dnet_id k1;
+	s.transform("test_bulk_read_mixed_status::k1", k1);
+	k1.group_id = 1;
+	std::string json1 = R"json({"key1": "data1"})json";
+	std::string data1("data1");
+
+	dnet_id k2;
+	s.transform("test_bulk_read_mixed_status::k2", k2);
+	k2.group_id = 1;
+	std::string json2 = R"json({"key2": "data2"})json";
+	std::string data2("data2 bigger");
+
+	s.write(k1, json1, 0, data1, 0).wait();
+	s.write(k2, json2, 0, data2, 0).wait();
+
+	/*
+	 * Check for mixed reads of normal data and nonzero status data (non existent) for
+	 * all family of bulk_read* operations.
+	 *
+	 * Pattern checked for lexigraphically sorted request sequence:
+	 *   [existent_key1, adjusted_key1, existent_key2, adjusted_key2]
+	 */
+	const auto increment = [] (dnet_id id) {
+		for(ssize_t i = DNET_ID_SIZE - 1; i >= 0; --i) {
+			if (id.id[i] != 0xff) {
+				id.id[i]++;
+				break;
+			}
+		}
+
+		return id;
+	};
+
+	auto missed_k1 = increment(k1);
+	auto missed_k2 = increment(k2);
+
+	std::vector<dnet_id> mixed_ids = {
+		k1,
+		missed_k1,
+		k2,
+		missed_k2
+	};
+
+	const auto validate_result = [&] (const ioremap::elliptics::newapi::read_result_entry &entry,
+	                                  bool check_json, bool check_data) {
+		if (!dnet_id_cmp(&entry.command()->id, &missed_k1) || !dnet_id_cmp(&entry.command()->id, &missed_k2)) {
+			BOOST_REQUIRE_EQUAL(entry.status(), -ENOENT);
+		} else if (!dnet_id_cmp(&entry.command()->id, &k1)) {
+			BOOST_REQUIRE_EQUAL(entry.status(), 0);
+			if (check_json)
+				BOOST_REQUIRE_EQUAL(entry.json().to_string(), json1);
+			if (check_data)
+				BOOST_REQUIRE_EQUAL(entry.data().to_string(), data1);
+		} else if (!dnet_id_cmp(&entry.command()->id, &k2)) {
+			BOOST_REQUIRE_EQUAL(entry.status(), 0);
+			if (check_json)
+				BOOST_REQUIRE_EQUAL(entry.json().to_string(), json2);
+			if (check_data)
+				BOOST_REQUIRE_EQUAL(entry.data().to_string(), data2);
+		} else {
+			BOOST_REQUIRE(false);
+		}
+	};
+
+	size_t results_count = 0;
+	for(const auto &r: s.bulk_read(mixed_ids)) {
+		validate_result(r, true, true);
+		++results_count;
+	}
+	BOOST_REQUIRE_EQUAL(results_count, mixed_ids.size());
+
+	results_count = 0;
+	for(const auto &r: s.bulk_read_data(mixed_ids)) {
+		validate_result(r, false, true);
+		++results_count;
+	}
+	BOOST_REQUIRE_EQUAL(results_count, mixed_ids.size());
+
+	results_count = 0;
+	for(const auto &r: s.bulk_read_json(mixed_ids)) {
+		validate_result(r, true, false);
+		++results_count;
+	}
+	BOOST_REQUIRE_EQUAL(results_count, mixed_ids.size());
+}
+
 bool register_tests(const nodes_data *setup) {
 	record record{
 		std::string{"key"},
@@ -1670,6 +1764,7 @@ bool register_tests(const nodes_data *setup) {
 
 		if (!in_cache) {
 			ELLIPTICS_TEST_CASE(test_bulk_read, use_session(n, {}, 0, ioflags));
+			ELLIPTICS_TEST_CASE(test_bulk_read_mixed_status, use_session(n, {}, 0, ioflags));
 		}
 
 		record.json = R"json({
