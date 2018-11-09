@@ -888,6 +888,49 @@ void write_and_corrupt_data(ioremap::elliptics::newapi::session &s, const iorema
 	write_and_corrupt_record(s, key, json, json_capacity, data, data_capacity, json_capacity);
 }
 
+void check_read_and_lookup_corrupted_record(const ioremap::elliptics::newapi::session &session,
+                                            const ioremap::elliptics::key &key,
+                                            int group) {
+	auto s = session.clone();
+	s.set_filter(ioremap::elliptics::filters::all_with_ack);
+
+	auto async_lookup = s.lookup(key);
+	BOOST_REQUIRE_EQUAL(async_lookup.get().size(), 1);
+	BOOST_REQUIRE_EQUAL(async_lookup.get()[0].status(), -EILSEQ);
+
+	auto async_read = s.read_json(key);
+	BOOST_REQUIRE_EQUAL(async_read.get().size(), 1);
+	BOOST_REQUIRE_EQUAL(async_read.get()[0].status(), -EILSEQ);
+
+	async_read = s.read_data(key, 0, 0);
+	BOOST_REQUIRE_EQUAL(async_read.get().size(), 1);
+	BOOST_REQUIRE_EQUAL(async_read.get()[0].status(), -EILSEQ);
+
+	auto key_with_group = key;
+	key_with_group.set_group_id(group);
+	async_read = s.bulk_read_json({key_with_group.id()});
+	BOOST_REQUIRE_EQUAL(async_read.get().size(), 1);
+	BOOST_REQUIRE_EQUAL(async_read.get()[0].status(), -EILSEQ);
+
+	async_read = s.bulk_read_data({key_with_group.id()});
+	BOOST_REQUIRE_EQUAL(async_read.get().size(), 1);
+	BOOST_REQUIRE_EQUAL(async_read.get()[0].status(), -EILSEQ);
+
+	// TODO: Investigate why server_send with filter all_with_ack doesn't work and fix it
+	s.set_filter(ioremap::elliptics::filters::all);
+	auto async_iter = s.server_send(
+		{key},
+		0 /*flags*/,
+		DNET_DEFAULT_SERVER_SEND_CHUNK_SIZE,
+		group /*src group*/,
+		{42} /*dst group, does not matter*/,
+		DNET_DEFAULT_SERVER_SEND_CHUNK_WRITE_TIMEOUT,
+		DNET_DEFAULT_SERVER_SEND_CHUNK_COMMIT_TIMEOUT
+	);
+	BOOST_REQUIRE_EQUAL(async_iter.get().size(), 1);
+	BOOST_REQUIRE_EQUAL(async_iter.get()[0].status(), -EILSEQ);
+}
+
 void test_read_corrupted_json(const ioremap::elliptics::newapi::session &session) {
 	static const auto group = groups[0];
 
@@ -910,6 +953,8 @@ void test_read_corrupted_json(const ioremap::elliptics::newapi::session &session
 
 	auto result = async.get()[0];
 	BOOST_REQUIRE_EQUAL(result.status(), -EILSEQ);
+
+	check_read_and_lookup_corrupted_record(s, key, group);
 }
 
 void test_read_json_with_corrupted_data_part(const ioremap::elliptics::newapi::session &session) {
@@ -1073,9 +1118,9 @@ void test_read_data_part_with_corrupted_first_data(const ioremap::elliptics::new
 	BOOST_REQUIRE_EQUAL(async.get().size(), 1);
 
 	result = async.get()[0];
-	BOOST_REQUIRE_EQUAL(result.status(), 0);
-	const auto data_part = data.substr(1 << 20, 100);
-	BOOST_REQUIRE_EQUAL(result.data().to_string(), data_part);
+	BOOST_REQUIRE_EQUAL(result.status(), -EILSEQ);
+
+	check_read_and_lookup_corrupted_record(s, key, group);
 }
 
 void test_read_data_part_with_corrupted_second_data(const ioremap::elliptics::newapi::session &session) {
@@ -1109,6 +1154,8 @@ void test_read_data_part_with_corrupted_second_data(const ioremap::elliptics::ne
 
 	result = async.get()[0];
 	BOOST_REQUIRE_EQUAL(result.status(), -EILSEQ);
+
+	check_read_and_lookup_corrupted_record(s, key, group);
 }
 
 void test_data_and_json_timestamp(const ioremap::elliptics::newapi::session &session) {
