@@ -184,7 +184,7 @@ static int blob_iterate_callback_with_meta(struct eblob_disk_control *dc,
 	return blob_iterate_callback_common(dc, fd, data_offset, priv, 0);
 }
 
-static int blob_lookup(struct eblob_backend *b, struct eblob_key *key, struct eblob_write_control *wc) {
+static int blob_read_and_check_flags(struct eblob_backend *b, struct eblob_key *key, struct eblob_write_control *wc) {
 	int err = eblob_read_return(b, key, EBLOB_READ_NOCSUM, wc);
 	/* Uncommitted records can be read, so fail lookup with ENOENT */
 	if (err == 0 && wc->flags & BLOB_DISK_CTL_UNCOMMITTED)
@@ -389,7 +389,7 @@ static int blob_read(struct eblob_backend_config *c, void *state, struct dnet_cm
 
 	memcpy(key.id, io->id, EBLOB_ID_SIZE);
 
-	err = blob_lookup(b, &key, &wc);
+	err = blob_read_and_check_flags(b, &key, &wc);
 	if (err < 0) {
 		DNET_LOG_ERROR(c->blog, "%s: EBLOB: blob-read-fd: READ: %d: %s", dnet_dump_id_str(io->id), err,
 		               strerror(-err));
@@ -567,7 +567,7 @@ static int blob_read_range_callback(struct eblob_range_request *req)
 		io.offset = req->requested_offset;
 
 		/* FIXME: This is slow! */
-		err = blob_lookup(req->back, (struct eblob_key *)req->record_key, &wc);
+		err = blob_read_and_check_flags(req->back, (struct eblob_key *)req->record_key, &wc);
 		if (err)
 			goto err_out_exit;
 
@@ -790,7 +790,7 @@ static int blob_file_info(struct eblob_backend_config *c, void *state, struct dn
 	dnet_ext_list_init(&elist);
 
 	memcpy(key.id, cmd->id.id, EBLOB_ID_SIZE);
-	err = blob_lookup(b, &key, &wc);
+	err = blob_read_and_check_flags(b, &key, &wc);
 	if (err < 0) {
 		DNET_LOG_ERROR(c->blog, "%s: EBLOB: blob-file-info: info-read: %d: %s", dnet_dump_id(&cmd->id), err,
 		               strerror(-err));
@@ -878,7 +878,7 @@ static int eblob_backend_checksum(struct dnet_node *n, void *priv, struct dnet_i
 	int err;
 
 	memcpy(key.id, id->id, EBLOB_ID_SIZE);
-	err = blob_lookup(b, &key, &wc);
+	err = blob_read_and_check_flags(b, &key, &wc);
 	if (err < 0) {
 		DNET_LOG_ERROR(c->blog, "%s: EBLOB: blob-checksum: read: %d: %s", dnet_dump_id_str(id->id), err,
 		               strerror(-err));
@@ -923,7 +923,7 @@ static int eblob_backend_lookup(struct dnet_node *n, void *priv, struct dnet_io_
 
 	dnet_ext_list_init(&elist);
 
-	err = blob_lookup(b, &key, &wc);
+	err = blob_read_and_check_flags(b, &key, &wc);
 	if (err < 0) {
 		DNET_ERROR(n, "%s: EBLOB: blob-backend-lookup: LOOKUP: %d: %s", dnet_dump_id_str(io->key), err,
 		           strerror(-err));
@@ -1123,7 +1123,7 @@ static int blob_send(struct eblob_backend_config *cfg, void *state, struct dnet_
 
 		memcpy(key.id, ids[i].id, EBLOB_ID_SIZE);
 
-		err = blob_lookup(b, &key, &wc);
+		err = blob_read_and_check_flags(b, &key, &wc);
 		if (err < 0) {
 			DNET_LOG_ERROR(cfg->blog, "%s: EBLOB: blob_send: lookup: %d: %s", dnet_dump_id_str(key.id), err,
 			               strerror(-err));
