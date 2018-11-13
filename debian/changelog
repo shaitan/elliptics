@@ -1,3 +1,19 @@
+elliptics (2.27.7.0) unstable; urgency=low
+
+  * refact: reset status on each bulk_read iteration
+  * test: check for status for each bulk_read result
+  * refact: check for corrupted data on read_json.
+  * test: activate stamp chack for read_json cases
+  * refact: rename blob_lookup to blob_read_and_check_flags
+  * backend: return -EILSEQ on lookup, read and server_send if record is corrupted
+  * tests: check -EILSEQ on lookup, read and server_send if record is corrupted
+  * refactoring: move less-operators into one place
+  * feat: bulk remove keys
+  * tests: cover bulk remove
+  * api: bulk remove python bindings
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Tue, 13 Nov 2018 17:20:54 +0300
+
 elliptics (2.27.6.17) unstable; urgency=low
 
   * server-send: introduce chunk_retry_count
