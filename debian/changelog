@@ -1,3 +1,9 @@
+elliptics (2.27.7.1) unstable; urgency=low
+
+  * api: add id property to CallbackResultEntry
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Thu, 15 Nov 2018 17:42:54 +0300
+
 elliptics (2.27.7.0) unstable; urgency=low
 
   * refact: reset status on each bulk_read iteration
