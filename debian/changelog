@@ -1,3 +1,13 @@
+elliptics (2.27.7.2) unstable; urgency=low
+
+  * stats: count number of found stamp corruption
+  * stats: count number of times a record found marked corrupted
+  * recovery: fix misusage of RecoverStat
+  * recovery: fix typo - raise prepared exception
+  * recovery: use graceful shutdown for monitor via post message
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Fri, 23 Nov 2018 15:56:42 +0300
+
 elliptics (2.27.7.1) unstable; urgency=low
 
   * api: add id property to CallbackResultEntry
