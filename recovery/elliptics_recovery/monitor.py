@@ -223,7 +223,7 @@ class Monitor(object):
                     attribute = getattr(stats.attributes, name)
                     attribute.append(value)
                 else:
-                    RuntimeError("Unknown flavour: {0}".format(data))
+                    raise RuntimeError("Unknown flavour: {0}".format(data))
             except Exception as e:
                 self.log.error("Failed to process: {0}: {1}".format(data, e))
 
