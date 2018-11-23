@@ -108,6 +108,8 @@ class RecoverStat(object):
         self.remove_old_bytes = 0
         self.removed_uncommitted_keys = 0
         self.merged_indexes = 0
+        self.skip_write_to_ro_group = 0
+        self.skip_remove_corrupted_key_from_ro_group = 0
 
     def apply(self, stats):
         if self.skipped:
@@ -152,6 +154,10 @@ class RecoverStat(object):
             stats.counter('removed_uncommitted_keys', self.removed_uncommitted_keys)
         if self.merged_indexes:
             stats.counter("merged_indexes", self.merged_indexes)
+        if self.skip_write_to_ro_group:
+            stats.counter('skip_write_to_ro_group', self.skip_write_to_ro_group)
+        if self.skip_remove_corrupted_key_from_ro_group:
+            stats.counter('skip_remove_corrupted_key_from_ro_group', self.skip_remove_corrupted_key_from_ro_group)
 
         self.reset()
 
@@ -178,6 +184,9 @@ class RecoverStat(object):
         ret.remove_old_bytes = self.remove_old_bytes + b.remove_old_bytes
         ret.removed_uncommitted_keys = self.removed_uncommitted_keys + b.removed_uncommitted_keys
         ret.merged_indexes = self.merged_indexes + b.merged_indexes
+        ret.skip_write_to_ro_group = self.skip_write_to_ro_group + b.skip_write_to_ro_group
+        ret.skip_remove_corrupted_key_from_ro_group = (self.skip_remove_corrupted_key_from_ro_group
+                                                       + b.skip_remove_corrupted_key_from_ro_group)
         return ret
 
 

@@ -170,7 +170,7 @@ class KeyRecover(object):
         groups_for_write = []
         for group in self.diff_groups + self.missed_groups:
             if group in self.ctx.ro_groups:
-                self.stats.counter('skip_write_to_ro_group', 1)
+                self.stats.skip_write_to_ro_group += 1
                 continue
 
             groups_for_write.append(group)
@@ -288,7 +288,7 @@ class KeyRecover(object):
                     continue
 
                 if result.group_id in self.ctx.ro_groups:
-                    self.stats.counter('skip_remove_corrupted_key_from_ro_group', 1)
+                    self.stats.skip_remove_corrupted_key_from_ro_group += 1
                     continue
 
                 corrupted_groups.append(result.group_id)
