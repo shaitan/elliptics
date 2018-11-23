@@ -183,11 +183,14 @@ int dnet_read_json_header(int fd, uint64_t offset, uint64_t size, dnet_json_head
 	return 0;
 }
 
-static int blob_read_and_check_flags_new(struct eblob_backend *b, struct eblob_key *key,
-                                         struct eblob_write_control *wc) {
-	int err = eblob_read_return(b, key, EBLOB_READ_NOCSUM, wc);
-	if (err == 0 && wc->flags & BLOB_DISK_CTL_CORRUPTED)
+static int blob_read_and_check_flags_new(const eblob_backend_config *c,
+                                         eblob_key *key,
+                                         eblob_write_control *wc) {
+	int err = eblob_read_return(c->eblob, key, EBLOB_READ_NOCSUM, wc);
+	if (err == 0 && wc->flags & BLOB_DISK_CTL_CORRUPTED) {
 		err = -EILSEQ;
+		HANDY_COUNTER_INCREMENT(("backend.%u.marked_corrupted", c->data.stat_id), 1);
+	}
 	if (err == 0 && wc->flags & BLOB_DISK_CTL_UNCOMMITTED)
 		err = -ENOENT;
 	return err;
@@ -195,7 +198,6 @@ static int blob_read_and_check_flags_new(struct eblob_backend *b, struct eblob_k
 
 int blob_file_info_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, struct dnet_access_context *context) {
 	using namespace ioremap::elliptics;
-	eblob_backend *b = c->eblob;
 
 	if (context) {
 		context->add({{"id", std::string(dnet_dump_id(&cmd->id))},
@@ -207,7 +209,7 @@ int blob_file_info_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, stru
 	memcpy(key.id, cmd->id.id, EBLOB_ID_SIZE);
 
 	eblob_write_control wc;
-	int err = blob_read_and_check_flags_new(b, &key, &wc);
+	int err = blob_read_and_check_flags_new(c, &key, &wc);
 	if (err) {
 		DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-file-info-new: failed: {} [{}]", dnet_dump_id(&cmd->id),
 		               strerror(-err), err);
@@ -415,7 +417,7 @@ static int blob_read_new_impl(eblob_backend_config *c,
 	memcpy(key.id, cmd->id.id, EBLOB_ID_SIZE);
 
 	eblob_write_control wc;
-	int err = blob_read_and_check_flags_new(b, &key, &wc);
+	int err = blob_read_and_check_flags_new(c, &key, &wc);
 	if (err) {
 		DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-read-new: failed: {} [{}]", dnet_dump_id(&cmd->id),
 		               strerror(-err), err);
@@ -1937,7 +1939,7 @@ int blob_send_new(struct eblob_backend_config *c,
 
 		memcpy(ekey.id, key.id, EBLOB_ID_SIZE);
 
-		err = blob_read_and_check_flags_new(c->eblob, &ekey, &wc);
+		err = blob_read_and_check_flags_new(c, &ekey, &wc);
 		if (err) {
 			DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob_send_new: lookup failed: {}", dnet_dump_id_str(key.id),
 			               dnet_print_error(err));
