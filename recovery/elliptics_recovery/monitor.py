@@ -43,6 +43,7 @@ class StatsProxy(object):
     Very simple wrapper that forwards counter and timer methods to queue.
     Also it provides access to sub-stats via []
     """
+    SHUTDOWN = 0
     COUNTER = 1
     SET_COUNTER = 2
     TIMER = 3
@@ -198,7 +199,10 @@ class Monitor(object):
 
                 # Use different handling for different stat flavours
                 flavour = data[1]
-                if flavour == StatsProxy.COUNTER:
+                if flavour == StatsProxy.SHUTDOWN:
+                    self.log.info('Shutdown monitor')
+                    self.__shutdown_request = True
+                elif flavour == StatsProxy.COUNTER:
                     _, _, name, value = data
                     counter = getattr(stats.counter, name)
                     if value > 0:
@@ -248,7 +252,7 @@ class Monitor(object):
         """
         FIXME: We also need a condition variable per thread to really check that thread is finished
         """
-        self.__shutdown_request = True
+        self.queue.put_nowait((None, StatsProxy.SHUTDOWN))
         if self.port:
             self.httpd.shutdown()
         self.d_thread.join()
