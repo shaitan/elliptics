@@ -846,7 +846,7 @@ static int blob_file_info(struct eblob_backend_config *c, void *state, struct dn
 
 	/* Validate record's data if its checksum is requested */
 	if (cmd->flags & DNET_FLAGS_CHECKSUM) {
-		err = blob_read_and_check_stamp(&elist.timestamp, fd, offset, size);
+		err = blob_read_and_check_stamp(c, &elist.timestamp, fd, offset, size);
 		if (err) {
 			DNET_LOG_ERROR(c->blog, "%s: EBLOB: blob-file-info: corrupted signature: "
 			                        "data offset %" PRIu64 ", data size %" PRIu64,

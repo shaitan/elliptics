@@ -36,6 +36,8 @@
 #include "library/logger.hpp"
 #include "library/access_context.h"
 
+#include "monitor/measure_points.h"
+
 #include "bindings/cpp/timer.hpp"
 
 #include "rapidjson/document.h"
@@ -76,7 +78,11 @@ int blob_check_corrupted_stamp(void *buffer, size_t buffer_size) {
 	return 0;
 }
 
-int blob_read_and_check_stamp(const dnet_time *timestamp, int fd, uint64_t data_offset, uint64_t data_size) {
+int blob_read_and_check_stamp(const eblob_backend_config *c,
+                              const dnet_time *timestamp,
+                              int fd,
+                              uint64_t data_offset,
+                              uint64_t data_size) {
 	std::array<char, sizeof(eblob_disk_control) + sizeof(dnet_ext_list_hdr)> stamp;
 
 	if (data_size < stamp.size()) {
@@ -87,12 +93,17 @@ int blob_read_and_check_stamp(const dnet_time *timestamp, int fd, uint64_t data_
 		return 0;
 	}
 
-	auto err = dnet_read_ll(fd, stamp.data(), stamp.size(), data_offset);
+	int err = dnet_read_ll(fd, stamp.data(), stamp.size(), data_offset);
 	if (err) {
 		return err;
 	}
 
-	return blob_check_corrupted_stamp(static_cast<void *>(stamp.data()), stamp.size());
+	err = blob_check_corrupted_stamp(static_cast<void *>(stamp.data()), stamp.size());
+	if (err == -EILSEQ) {
+		HANDY_COUNTER_INCREMENT(("backend.%u.stamp_corruption", c->data.stat_id), 1);
+	}
+
+	return err;
 }
 
 static int dnet_get_filename(int fd, std::string &filename) {
@@ -496,7 +507,7 @@ static int blob_read_new_impl(eblob_backend_config *c,
 	uint64_t data_size = wc.size - jhdr.capacity;
 	uint64_t data_offset = wc.data_offset + jhdr.capacity;
 
-	err = blob_read_and_check_stamp(&ehdr.timestamp, wc.data_fd, data_offset, data_size);
+	err = blob_read_and_check_stamp(c, &ehdr.timestamp, wc.data_fd, data_offset, data_size);
 	if (err) {
 		DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-read-new {}: corrupted signature: data offset {}, "
 		               "data size {}",
@@ -2018,7 +2029,7 @@ int blob_send_new(struct eblob_backend_config *c,
 		wc.offset = 0;
 		wc.size = sizeof(info->ehdr) + info->ehdr.size + info->jhdr.capacity + info->data_size;
 
-		err = blob_read_and_check_stamp(&info->ehdr.timestamp, info->fd, info->data_offset, info->data_size);
+		err = blob_read_and_check_stamp(c, &info->ehdr.timestamp, info->fd, info->data_offset, info->data_size);
 		if (err) {
 			if ((err = send_fail_reply(err))) {
 				break;
