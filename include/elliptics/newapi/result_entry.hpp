@@ -12,6 +12,8 @@ public:
 
 	data_pointer raw() const;
 	data_pointer raw_data() const;
+
+	bool empty() const;
 };
 
 class lookup_result_entry : public callback_result_entry {

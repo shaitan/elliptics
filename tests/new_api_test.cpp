@@ -892,12 +892,9 @@ void write_and_corrupt_data(ioremap::elliptics::newapi::session &s, const iorema
 	write_and_corrupt_record(s, key, json, json_capacity, data, data_capacity, json_capacity);
 }
 
-void check_read_and_lookup_corrupted_record(const ioremap::elliptics::newapi::session &session,
+void check_read_and_lookup_corrupted_record(ioremap::elliptics::newapi::session &s,
                                             const ioremap::elliptics::key &key,
                                             int group) {
-	auto s = session.clone();
-	s.set_filter(ioremap::elliptics::filters::all_with_ack);
-
 	auto async_lookup = s.lookup(key);
 	BOOST_REQUIRE_EQUAL(async_lookup.get().size(), 1);
 	BOOST_REQUIRE_EQUAL(async_lookup.get()[0].status(), -EILSEQ);
@@ -920,8 +917,6 @@ void check_read_and_lookup_corrupted_record(const ioremap::elliptics::newapi::se
 	BOOST_REQUIRE_EQUAL(async_read.get().size(), 1);
 	BOOST_REQUIRE_EQUAL(async_read.get()[0].status(), -EILSEQ);
 
-	// TODO: Investigate why server_send with filter all_with_ack doesn't work and fix it
-	s.set_filter(ioremap::elliptics::filters::all);
 	auto async_iter = s.server_send(
 		{key},
 		0 /*flags*/,

@@ -16,6 +16,10 @@ data_pointer callback_result_entry::raw_data() const {
 	return ioremap::elliptics::callback_result_entry::data();
 }
 
+bool callback_result_entry::empty() const {
+    return raw_data().empty();
+}
+
 std::string lookup_result_entry::path() const {
 	dnet_lookup_response response;
 

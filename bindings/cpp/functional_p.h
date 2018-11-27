@@ -54,7 +54,7 @@ struct aggregator_handler
 
 	void on_entry(const T &result)
 	{
-		if (result.status() == 0 && result.is_valid())
+		if (result.is_valid() && result.callback_result_entry::status() == 0)
 			has_success = true;
 		handler.process(result);
 	}

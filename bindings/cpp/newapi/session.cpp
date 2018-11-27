@@ -1140,6 +1140,9 @@ public:
 
 private:
 	void process(const iterator_result_entry &entry) {
+		if (entry.empty()) // skip 'ack' entries
+			return;
+
 		m_handler.process(entry);
 
 		const auto *cmd = entry.command();
