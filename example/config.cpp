@@ -401,8 +401,12 @@ extern "C" int dnet_node_set_verbosity(struct dnet_node *node, enum dnet_log_lev
 }
 
 static io_pool_config parse_io_pool_config(const config_data &data, const kora::config_t &config) {
-	return {config.at("io_thread_num", data.cfg_state.io_thread_num),
-	        config.at("nonblocking_io_thread_num", data.cfg_state.nonblocking_io_thread_num)};
+	return {
+		config.at("io_thread_num", data.cfg_state.io_thread_num),
+		config.at("nonblocking_io_thread_num", data.cfg_state.nonblocking_io_thread_num),
+		config.at("lifo", false),
+		config.at<size_t>("queue_limit", 1000)
+	};
 }
 
 static uint64_t parse_queue_timeout(const config_data &data, const kora::config_t &config) {
@@ -511,7 +515,12 @@ std::shared_ptr<backend_config> config_data::get_backend_config(uint32_t backend
 }
 
 io_pool_config config_data::get_io_pool_config(const std::string &pool_id) {
-	const io_pool_config default_config = {cfg_state.io_thread_num, cfg_state.nonblocking_io_thread_num};
+	const io_pool_config default_config = {
+		cfg_state.io_thread_num,
+		cfg_state.nonblocking_io_thread_num,
+		/*lifo*/ false,
+		/*queue_limit*/ 1000
+	};
 
 	const auto &root = parse_config()->root();
 	if (!root.has("options"))

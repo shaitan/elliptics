@@ -58,7 +58,7 @@ static std::shared_ptr<struct dnet_io_pool> create_io_pool(struct dnet_node *nod
 	}
 
 	err = dnet_work_pool_alloc(&pool->recv_pool, node, config.io_thread_num, DNET_WORK_IO_MODE_BLOCKING,
-	                           pool_id.c_str(), dnet_io_process);
+	                           config.queue_limit, pool_id.c_str(), dnet_io_process);
 	if (err) {
 		DNET_LOG_ERROR(node, "create_io_pool(pool_id: {}): failed to allocate blocking pool: {} [{}]",
 		               pool_id, strerror(-err), err);
@@ -76,7 +76,8 @@ static std::shared_ptr<struct dnet_io_pool> create_io_pool(struct dnet_node *nod
 	}
 
 	err = dnet_work_pool_alloc(&pool->recv_pool_nb, node, config.nonblocking_io_thread_num,
-	                           DNET_WORK_IO_MODE_NONBLOCKING, pool_id.c_str(), dnet_io_process);
+	                           config.lifo ? DNET_WORK_IO_MODE_LIFO : DNET_WORK_IO_MODE_NONBLOCKING,
+	                           config.queue_limit, pool_id.c_str(), dnet_io_process);
 	if (err) {
 		DNET_LOG_ERROR(node, "create_io_pool(pool_id: {}): failed to allocate nonblocking pool: {} [{}]",
 		               pool_id, strerror(-err), err);

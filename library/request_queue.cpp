@@ -18,8 +18,10 @@ static bool dnet_id_equal(const dnet_id &lhs, const dnet_id &rhs) {
 	return !dnet_id_cmp(&lhs, &rhs);
 }
 
-dnet_request_queue::dnet_request_queue()
+dnet_request_queue::dnet_request_queue(bool lifo, size_t queue_limit)
 : m_queue_size(0)
+, m_queue_limit(queue_limit)
+, m_lifo(lifo)
 , m_locked_keys(1, &dnet_id_hash, &dnet_id_equal) {
 	INIT_LIST_HEAD(&m_queue);
 }
@@ -37,16 +39,48 @@ dnet_request_queue::~dnet_request_queue()
 	}
 }
 
-void dnet_request_queue::push_request(dnet_io_req *req)
+void dnet_request_queue::push_request(dnet_io_req *req, const char *thread_stat_id)
 {
 	clock_gettime(CLOCK_MONOTONIC_RAW, &req->queue_start_ts);
+	dnet_io_req *dropped_request = nullptr;
 
 	{
 		std::unique_lock<std::mutex> lock(m_queue_mutex);
-		list_add_tail(&req->req_entry, &m_queue);
+		// lifo should work only for requests, because their order doesn't matter.
+		// TODO: use separate queue for replies
+		auto cmd = static_cast<dnet_cmd *>(req->header);
+		if (m_lifo && !(cmd->flags & DNET_FLAGS_REPLY)) {
+			if (m_queue_limit && (m_queue_size >= m_queue_limit)) {
+				// if limit was set and reached then drop the last request from the queue
+				dropped_request = list_entry(m_queue.prev, struct dnet_io_req, req_entry);
+				// remove request from the queue
+				list_del_init(&dropped_request->req_entry);
+				--m_queue_size;
+			}
+			list_add(&req->req_entry, &m_queue);
+		} else {
+			list_add_tail(&req->req_entry, &m_queue);
+		}
 		++m_queue_size;
 	}
 	m_queue_wait.notify_one();
+
+	if (dropped_request) {
+		auto cmd = static_cast<dnet_cmd *>(dropped_request->header);
+		auto st = dropped_request->st;
+		auto node = st->n;
+		ioremap::elliptics::trace_scope trace_scope{cmd->trace_id,
+		                                            cmd->flags & DNET_FLAGS_TRACE_BIT};
+		ioremap::elliptics::backend_scope backend_scope{cmd->backend_id};
+
+		DNET_LOG_ERROR(node, "{}: {}: client: {}: drop request due queue size limit: trans: {},"
+		                     " cflags: {}, queue_size: {}/{}, need_exit: {}",
+		               dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd),
+		               dnet_state_dump_addr(st), cmd->trans,
+		               dnet_flags_dump_cflags(cmd->flags), m_queue_size, m_queue_limit,
+		               st->__need_exit);
+		drop_request(dropped_request, thread_stat_id);
+	}
 }
 
 dnet_io_req *dnet_request_queue::pop_request(dnet_work_io *wio, const char *thread_stat_id)
@@ -106,25 +140,18 @@ dnet_io_req *dnet_request_queue::pop_request(dnet_work_io *wio, const char *thre
 	if (!expired)
 		return r;
 
-	// Note: this function is marked with `weak` attribute and is not defined in client bindings,
-	// so this code should not be executed from client side otherwise it will lead to segfault.
-	dnet_send_ack(st, cmd, -ETIMEDOUT, 0, nullptr);
-
-	FORMATTED(HANDY_COUNTER_INCREMENT, ("pool.%s.queue.dropped", thread_stat_id), 1);
 	{
-		ioremap::elliptics::trace_scope trace_scope{cmd->trace_id, cmd->flags & DNET_FLAGS_TRACE_BIT};
-		ioremap::elliptics::backend_scope backend_scope{cmd->backend_id};;
+		ioremap::elliptics::trace_scope trace_scope{cmd->trace_id,
+		                                            cmd->flags & DNET_FLAGS_TRACE_BIT};
+		ioremap::elliptics::backend_scope backend_scope{cmd->backend_id};
 
-		DNET_LOG_ERROR(node, "{}: {}: client: {}: drop request: trans: {}, cflags: {}, "
-		                     "queue_time: {} usecs, timeout: {} usecs, need_exit: {}",
+
+		DNET_LOG_ERROR(node, "{}: {}: client: {}: drop request due queue timeout: trans: {}, cflags: {}, "
+		                     "queue_time: {}/{} usecs, need_exit: {}",
 		               dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), dnet_state_dump_addr(r->st),
 		               cmd->trans, dnet_flags_dump_cflags(cmd->flags), r->queue_time, timeout, st->__need_exit);
 	}
-	pthread_cond_broadcast(&node->io->full_wait);
-
-	release_request(r);
-	dnet_io_req_free(r);
-	dnet_state_put(st);
+	drop_request(r, thread_stat_id);
 
 	return nullptr;
 }
@@ -290,6 +317,23 @@ void dnet_request_queue::put_lock_entry(dnet_locks_entry *entry)
 	m_lock_pool.push_back(entry);
 }
 
+void dnet_request_queue::drop_request(dnet_io_req *r, const char *thread_stat_id) {
+	auto cmd = static_cast<dnet_cmd *>(r->header);
+	auto st = r->st;
+	auto node = st->n;
+
+	// Note: this function is marked with `weak` attribute and is not defined in client bindings,
+	// so this code should not be executed from client side otherwise it will lead to segfault.
+	dnet_send_ack(st, cmd, -ETIMEDOUT, 0, nullptr);
+
+	FORMATTED(HANDY_COUNTER_INCREMENT, ("pool.%s.queue.dropped", thread_stat_id), 1);
+	pthread_cond_broadcast(&node->io->full_wait);
+
+	release_request(r);
+	dnet_io_req_free(r);
+	dnet_state_put(st);
+}
+
 size_t dnet_request_queue::size() const {
 	return m_queue_size;
 }
@@ -327,8 +371,8 @@ void dnet_oplock_guard::unlock()
 	}
 }
 
-void dnet_push_request(struct dnet_work_pool *pool, struct dnet_io_req *req) {
-	pool->request_queue->push_request(req);
+void dnet_push_request(struct dnet_work_pool *pool, struct dnet_io_req *req, const char *thread_stat_id) {
+	pool->request_queue->push_request(req, thread_stat_id);
 }
 
 struct dnet_io_req *dnet_pop_request(struct dnet_work_io *wio, const char *thread_stat_id) {
@@ -351,8 +395,8 @@ size_t dnet_get_pool_queue_size(struct dnet_work_pool *pool) {
 	return pool->request_queue->size();
 }
 
-void *dnet_request_queue_create() {
-	return new(std::nothrow) dnet_request_queue();
+void *dnet_request_queue_create(int mode, size_t queue_limit) {
+	return new(std::nothrow) dnet_request_queue(mode == DNET_WORK_IO_MODE_LIFO, queue_limit);
 }
 
 void dnet_request_queue_destroy(struct dnet_work_pool *pool) {

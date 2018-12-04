@@ -88,6 +88,8 @@ private:
 struct io_pool_config {
 	int io_thread_num;
 	int nonblocking_io_thread_num;
+	bool lifo;
+	size_t queue_limit;
 };
 
 struct config_data;

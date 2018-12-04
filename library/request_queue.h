@@ -28,7 +28,7 @@ public:
 	/*!
 	 * Constructor: initializes internal state properly
 	 */
-	dnet_request_queue();
+	dnet_request_queue(bool lifo, size_t queue_limit = 0);
 	/*!
 	 * Destructor: frees all dnet_locks_entry objects in /a m_lock_pool and destroys all requests in /a m_queue
 	 */
@@ -37,7 +37,7 @@ public:
 	/*!
 	 * Puts request \a req into /a m_queue
 	 */
-	void push_request(dnet_io_req *req);
+	void push_request(dnet_io_req *req, const char *thread_stat_id);
 	/*!
 	 * Tries to take first available request with non-locked key and removes it from /a m_queue
 	 */
@@ -85,12 +85,17 @@ private:
 	 */
 	void put_lock_entry(dnet_locks_entry *entry);
 
+	void drop_request(dnet_io_req *r, const char *thread_stat_id);
+
 private:
 	struct list_head m_queue;
 	std::mutex m_queue_mutex;
 	std::condition_variable m_queue_wait;
 
 	std::atomic_size_t m_queue_size;
+	const size_t m_queue_limit;
+	// Use LIFO for internal queue if true and FIFO otherwise.
+	const bool m_lifo;
 
 	typedef std::unordered_map<dnet_id, dnet_locks_entry *, size_t(*)(const dnet_id&), bool(*)(const dnet_id&, const dnet_id&)> locked_keys_t;
 	locked_keys_t m_locked_keys;
@@ -116,10 +121,10 @@ private:
 extern "C" {
 #endif // __cplusplus
 
-void *dnet_request_queue_create();
+void *dnet_request_queue_create(int mode, size_t queue_limit);
 void dnet_request_queue_destroy(struct dnet_work_pool *pool);
 
-void dnet_push_request(struct dnet_work_pool *pool, struct dnet_io_req *req);
+void dnet_push_request(struct dnet_work_pool *pool, struct dnet_io_req *req, const char *thread_stat_id);
 struct dnet_io_req *dnet_pop_request(struct dnet_work_io *wio, const char *thread_stat_id);
 void dnet_release_request(struct dnet_work_io *wio, const struct dnet_io_req *req);
 

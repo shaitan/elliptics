@@ -340,8 +340,7 @@ struct dnet_net_io {
 enum dnet_work_io_mode {
 	DNET_WORK_IO_MODE_BLOCKING = 0,
 	DNET_WORK_IO_MODE_NONBLOCKING,
-	DNET_WORK_IO_MODE_CONTROL,
-	DNET_WORK_IO_MODE_EXEC_BLOCKING,
+	DNET_WORK_IO_MODE_LIFO,
 };
 
 struct dnet_work_pool;
@@ -397,6 +396,7 @@ int dnet_work_pool_alloc(struct dnet_work_pool_place *place,
                          struct dnet_node *n,
                          int num,
                          int mode,
+                         size_t queue_limit,
                          const char *pool_id,
                          void *(*process)(void *));
 int dnet_work_pool_place_init(struct dnet_work_pool_place *pool);

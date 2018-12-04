@@ -42,7 +42,7 @@
 static char *dnet_work_io_mode_string[] = {
 	[DNET_WORK_IO_MODE_BLOCKING] = "BLOCKING",
 	[DNET_WORK_IO_MODE_NONBLOCKING] = "NONBLOCKING",
-	[DNET_WORK_IO_MODE_CONTROL] = "CONTROL",
+	[DNET_WORK_IO_MODE_LIFO] = "LIFO",
 };
 
 static char *dnet_work_io_mode_str(int mode)
@@ -186,6 +186,7 @@ int dnet_work_pool_alloc(struct dnet_work_pool_place *place,
                          struct dnet_node *n,
                          int num,
                          int mode,
+                         size_t queue_limit,
                          const char *pool_id,
                          void *(*process)(void *)) {
 	int err;
@@ -211,7 +212,7 @@ int dnet_work_pool_alloc(struct dnet_work_pool_place *place,
 
 	strncpy(pool->pool_id, pool_id, sizeof(pool->pool_id));
 
-	pool->request_queue = dnet_request_queue_create();
+	pool->request_queue = dnet_request_queue_create(mode, queue_limit);
 	if (!pool->request_queue) {
 		err = -ENOMEM;
 		goto err_out_mutex_destroy;
@@ -260,7 +261,18 @@ static inline void make_thread_stat_id(char *buffer, int size, struct dnet_work_
 	 for the pool's mode, but for statistic lowercase names works better and
 	 dnet_work_io_mode_str() provides mode names in uppercase.
 	*/
-	const char *mode_marker = ((pool->mode == DNET_WORK_IO_MODE_BLOCKING) ? "blocking" : "nonblocking");
+	const char *mode_marker;
+	switch (pool->mode) {
+	case DNET_WORK_IO_MODE_NONBLOCKING:
+		mode_marker = "nonblocking";
+		break;
+	case DNET_WORK_IO_MODE_LIFO:
+		mode_marker = "lifo";
+		break;
+	default:
+		mode_marker = "blocking";
+		break;
+	}
 	snprintf(buffer, size - 1, "%s.%s", pool->pool_id, mode_marker);
 }
 
@@ -346,7 +358,7 @@ void dnet_schedule_io(struct dnet_node *n, struct dnet_io_req *r)
 	dnet_log(n, DNET_LOG_DEBUG, "%s: %s: backend_id: %zd, place: %p, cmd->backend_id: %d",
 	         dnet_state_dump_addr(r->st), dnet_dump_id(r->header), backend_id, place, cmd->backend_id);
 
-	dnet_push_request(pool, r);
+	dnet_push_request(pool, r, thread_stat_id);
 
 	pthread_mutex_unlock(&place->lock);
 
@@ -1006,7 +1018,8 @@ void *dnet_io_process(void *data_) {
 	struct dnet_net_state *st;
 	struct dnet_io_req *r;
 	struct dnet_cmd *cmd = NULL;
-	int nonblocking = (pool->mode == DNET_WORK_IO_MODE_NONBLOCKING);
+	const int lifo = (pool->mode == DNET_WORK_IO_MODE_LIFO);
+	const int nonblocking = (pool->mode == DNET_WORK_IO_MODE_NONBLOCKING || lifo);
 	char thread_stat_id[255];
 
 	dnet_set_name("dnet_%sio_%s", nonblocking ? "nb_" : "", pool->pool_id);
@@ -1015,8 +1028,8 @@ void *dnet_io_process(void *data_) {
 
 	dnet_logger_set_pool_id(pool->pool_id);
 
-	dnet_log(n, DNET_LOG_NOTICE, "started io thread: #%d, nonblocking: %d, pool: %s", wio->thread_index,
-	         nonblocking, pool->pool_id);
+	dnet_log(n, DNET_LOG_NOTICE, "started io thread: #%d, nonblocking: %d, lifo: %d, pool: %s", wio->thread_index,
+	         nonblocking, lifo, pool->pool_id);
 
 	while (!n->need_exit && !pool->need_exit) {
 		r = dnet_pop_request(wio, thread_stat_id);
@@ -1053,8 +1066,8 @@ void *dnet_io_process(void *data_) {
 		FORMATTED(HANDY_COUNTER_DECREMENT, ("pool.%s.active_threads", thread_stat_id), 1);
 	}
 
-	dnet_log(n, DNET_LOG_NOTICE, "finished io thread: #%d, nonblocking: %d, pool: %s", wio->thread_index,
-	         pool->mode == DNET_WORK_IO_MODE_NONBLOCKING, pool->pool_id);
+	dnet_log(n, DNET_LOG_NOTICE, "finished io thread: #%d, nonblocking: %d, lifo: %d, pool: %s", wio->thread_index,
+	         nonblocking, lifo, pool->pool_id);
 
 	dnet_logger_unset_pool_id();
 
@@ -1096,8 +1109,8 @@ int dnet_io_init(struct dnet_node *n, struct dnet_config *cfg)
 		goto err_out_free_cond;
 	}
 
-	err = dnet_work_pool_alloc(&n->io->pool.recv_pool, n, cfg->io_thread_num, DNET_WORK_IO_MODE_BLOCKING, "sys",
-	                           dnet_io_process);
+	err = dnet_work_pool_alloc(&n->io->pool.recv_pool, n, cfg->io_thread_num, DNET_WORK_IO_MODE_BLOCKING,
+	                           /*queue_limit*/ 0, "sys", dnet_io_process);
 	if (err) {
 		goto err_out_cleanup_recv_place;
 	}
@@ -1108,7 +1121,7 @@ int dnet_io_init(struct dnet_node *n, struct dnet_config *cfg)
 	}
 
 	err = dnet_work_pool_alloc(&n->io->pool.recv_pool_nb, n, cfg->nonblocking_io_thread_num,
-	                           DNET_WORK_IO_MODE_NONBLOCKING, "sys", dnet_io_process);
+	                           DNET_WORK_IO_MODE_NONBLOCKING, /*queue_limit*/ 0, "sys", dnet_io_process);
 	if (err) {
 		goto err_out_cleanup_recv_place_nb;
 	}
