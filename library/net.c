@@ -1359,15 +1359,15 @@ err_out_exit:
 
 		if (st->send_offset == total_size) {
 			level = !(cmd->flags & DNET_FLAGS_MORE) ? DNET_LOG_INFO : DNET_LOG_NOTICE;
+			dnet_access_context_add_uint(r->context, "send_time", send_time);
+			dnet_access_context_add_uint(r->context, "send_queue_time", r->queue_time);
+			dnet_access_context_add_uint(r->context, "response_size", total_size);
 		}
 		dnet_log(st->n, level, "%s: %s: sending trans: %lld -> %s/%d: size: %llu, cflags: %s, finish-sent: "
 		                       "%zd/%zd, send-queue-time: %lu usecs, send-time: %lu usecs",
 		         dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd), (unsigned long long)cmd->trans,
 		         dnet_addr_string(&st->addr), cmd->backend_id, (unsigned long long)cmd->size,
 		         dnet_flags_dump_cflags(cmd->flags), st->send_offset, total_size, r->queue_time, send_time);
-		dnet_access_context_add_uint(r->context, "send_time", send_time);
-		dnet_access_context_add_uint(r->context, "send_queue_time", r->queue_time);
-		dnet_access_context_add_uint(r->context, "response_size", total_size);
 	}
 	dnet_logger_unset_trace_id();
 
