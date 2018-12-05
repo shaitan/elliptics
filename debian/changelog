@@ -1,3 +1,10 @@
+elliptics (2.27.7.3) unstable; urgency=low
+
+  * fix: allow all_with_ack filter for server_send
+  * access: add send_time, send_queue_time and response_size only once
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Wed, 05 Dec 2018 22:48:15 +0300
+
 elliptics (2.27.7.2) unstable; urgency=low
 
   * stats: count number of found stamp corruption
