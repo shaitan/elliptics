@@ -30,10 +30,15 @@ class BucketsManager(object):
         if not self.ctx.bucket_order:
             return None
 
-        self.bucket_index = (self.bucket_index + 1) % len(self.ctx.bucket_order)
-        group_id = self.ctx.bucket_order[self.bucket_index]
-        log.info("Get next bucket: index: {0}, group_id: {1}, bucket_order: {2}".format(self.bucket_index, group_id, self.ctx.bucket_order))
-        return self._get_bucket(group_id)
+        for _ in range(len(self.ctx.bucket_order)):
+            self.bucket_index = (self.bucket_index + 1) % len(self.ctx.bucket_order)
+            group_id = self.ctx.bucket_order[self.bucket_index]
+            bucket = self._get_bucket(group_id)
+            if not bucket.empty:
+                log.info("Get next bucket: index: %s, group_id: %s, bucket_order: %s",
+                         self.bucket_index, group_id, self.ctx.bucket_order)
+                return bucket
+        return None
 
     def on_server_send_fail(self, key, original_key_infos, next_group_id):
         '''
@@ -77,6 +82,7 @@ class BucketKeys(object):
         log.debug("Create bucket: group_id: {0}, bucket: {1}".format(group_id, bucket_file.name))
         self.bucket_file = bucket_file
         self.group_id = group_id
+        self.empty = False
 
 
     def sort_by_physical_order(self):
@@ -173,6 +179,7 @@ class BucketKeys(object):
         log.debug("Clear bucket: group_id: {0}, bucket: {1}".format(self.group_id, self.bucket_file.name))
         self.bucket_file.seek(0)
         self.bucket_file.truncate()
+        self.empty = True
 
     def add_key(self, key, key_infos):
         '''
@@ -181,6 +188,7 @@ class BucketKeys(object):
         log.debug("Append key to bucket: group_id: {0}, bucket: {1}".format(self.group_id, self.bucket_file.name))
         key_data = (key, key_infos)
         dump_key_data(key_data, self.bucket_file)
+        self.empty = False
 
 
 class ServerSendRecovery(object):
@@ -210,17 +218,16 @@ class ServerSendRecovery(object):
         self.groups_set = frozenset(ctx.groups)
 
     def recover(self):
-        progress = True
-        while progress:
+        while True:
             bucket = self.buckets.get_next_bucket()
             if bucket is None:
                 break
+
             bucket.sort_by_physical_order()
             group_id = bucket.get_group_id()
-            progress = False
             for keys in bucket.get_keys(self.ctx.batch_size):
-                progress = True
                 self._server_send(keys, group_id)
+
             bucket.clear()
         return self.result
 
