@@ -333,3 +333,98 @@ def test_server_send_with_source_failure(cluster, error):
                   chunk_commit_timeout=1000,  # default timeout
                   chunk_retry_count=0),  # default retry count
     ])
+
+
+@pytest.mark.parametrize('cluster', [Cluster([
+    Backend(address='121.0.0.1:1', backend_id=1, group_id=1, records=[
+        DummyRecord(key='key with different replicas in two groups and missed in third'),
+        DummyRecord(key='key missed in second group #1'),
+        DummyRecord(key='key missed in second group #2'),
+        DummyRecord(key='key uncommitted in third group'),
+    ]),
+    Backend(address='121.0.0.2:1', backend_id=1, group_id=2, records=[
+        DummyRecord(key='key with different replicas in two groups and missed in third',
+                    data_timestamp=elliptics.Time(101, 500)),
+    ]),
+    Backend(address='121.0.0.3:1', backend_id=1, group_id=3, records=[
+        DummyRecord(key='key missed in second group #1'),
+        DummyRecord(key='key missed in second group #2'),
+        DummyRecord(key='key uncommitted in third group', record_flags=elliptics.record_flags.uncommitted),
+    ])
+])])
+@pytest.mark.usefixtures('mock_route_list', 'mock_iterator', 'mock_pool')
+def test_specific_case_with_readonly_groups(cluster):
+    """Test the case when old version of recovery did wrong and left some keys non-recovered.
+
+    Initial state:
+        group #1 and #2 marked read-only
+        the key that is presented in group #1 and #2 but group #2 has newer version of the key
+        two keys that are presented in group #1 and #3
+        the key that is presented in group #1 and uncommitted in group #3
+
+    Expect: uncommitted replica will be removed from group #3 and will be server-sent from group #1 to #3,
+    the key with different replicas will be server-sent from group #2 to #3.
+    """
+    mocked_remove = elliptics.newapi.Session.return_value.remove
+    mocked_remove.return_value.get.return_value = [mock.MagicMock(status=0)]
+
+    uncommitted_key = elliptics.Id.from_hex(
+        hashlib.sha512('key uncommitted in third group').hexdigest()
+    )
+
+    different_replicas_key = elliptics.Id.from_hex(
+        hashlib.sha512('key with different replicas in two groups and missed in third').hexdigest()
+    )
+
+    mocked_server_send = elliptics.newapi.Session.return_value.server_send
+    mocked_server_send.side_effect = [
+        mock.MagicMock(__iter__=mock.MagicMock(return_value=iter([
+            mock.MagicMock(key=uncommitted_key,
+                           status=0),
+        ]))),
+        mock.MagicMock(__iter__=mock.MagicMock(return_value=iter([
+            mock.MagicMock(key=different_replicas_key,
+                           status=0),
+        ]))),
+    ]
+
+    recovery(one_node=False,
+             remotes=cluster.remotes,
+             backend_id=None,
+             address=None,
+             groups=cluster.groups,
+             rtype=RECOVERY.DC,
+             log_file='recovery.log',
+             tmp_dir='test_specific_case_with_readonly_groups',
+             no_meta=True,
+             no_server_send=False,
+             expected_ret_code=0,
+             ro_groups={1, 2})
+
+    # uncommitted key should be removed from third group
+    mocked_remove.assert_called_once_with(uncommitted_key)
+
+    mocked_server_send.assert_has_calls(calls=[
+        mock.call(keys=[uncommitted_key],  # firstly uncommitted key should be recovered
+                  flags=0,  # default flags
+                  chunk_size=1024,  # default chunk_size
+                  # first server-send should be sent to group #1 because it has the largest number of keys to recover
+                  src_group=1,
+                  dst_groups=[3],  # the key should be server-sent to group #3
+                  chunk_write_timeout=1000,  # default timeout
+                  chunk_commit_timeout=1000,  # default timeout
+                  chunk_retry_count=0),  # default retry count
+        mock.call(keys=[different_replicas_key],  # secondly key with different replicas should be recovered
+                  flags=0,  # default flags
+                  chunk_size=1024,  # default chunk_size
+                  # second server-send should be to group #2, because all other server-sends should be skipped
+                  # since group #1 and #2 are read-only
+                  src_group=2,
+                  dst_groups=[3],  # the key should be server-sent to group #3
+                  chunk_write_timeout=1000,  # default timeout
+                  chunk_commit_timeout=1000,  # default timeout
+                  chunk_retry_count=0),  # default retry count
+    ])
+
+    # only the two calls above should be made
+    assert mocked_server_send.call_count == 2
