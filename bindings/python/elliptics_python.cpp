@@ -91,6 +91,7 @@ enum elliptics_record_flags {
 	record_flags_exthdr		= DNET_RECORD_FLAGS_EXTHDR,
 	record_flags_uncommitted	= DNET_RECORD_FLAGS_UNCOMMITTED,
 	record_flags_chunked_csum	= DNET_RECORD_FLAGS_CHUNKED_CSUM,
+	record_flags_corrupted		= DNET_RECORD_FLAGS_CORRUPTED,
 };
 
 enum elliptics_exceptions_policy {
@@ -485,14 +486,16 @@ BOOST_PYTHON_MODULE(core) {
 		"nocsum\n    The record is written without csum\n"
 		"append\n    The record is written via append\n"
 		"exthdr\n    The record is written with extended header\n"
-		"uncommitted\n    The record is uncommitted so it can't be read but can be writted and committed\n"
-		"chunked_csum\n    The records is checksummed by chunks")
+		"uncommitted\n    The record is uncommitted so it can't be read but can be written and committed\n"
+		"chunked_csum\n    The record is checksummed by chunks\n"
+		"corrupted\n    The record was corrupted")
 		.value("remove", record_flags_remove)
 		.value("nocsum", record_flags_nocsum)
 		.value("append", record_flags_append)
 		.value("exthdr", record_flags_exthdr)
 		.value("uncommitted", record_flags_uncommitted)
 		.value("chunked_csum", record_flags_chunked_csum)
+		.value("corrupted", record_flags_corrupted)
 	;
 
 	bp::enum_<int>("log_level",

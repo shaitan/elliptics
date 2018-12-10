@@ -1056,6 +1056,9 @@ static inline void dnet_convert_iterator_request(struct dnet_iterator_request *r
 /* This flags is set for records that is checksummed by chunks */
 #define DNET_RECORD_FLAGS_CHUNKED_CSUM		(1<<8)
 
+/* This flag is set to records which were found corrupted. */
+#define DNET_RECORD_FLAGS_CORRUPTED		(1<<9)
+
 /*
  * Iterator response
  * TODO: Maybe it's better to include whole ehdr in response
