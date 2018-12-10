@@ -261,10 +261,12 @@ class ServerSendRecovery(object):
                     for group in remote_groups:
                         if group in self.ctx.ro_groups:
                             self.stats.counter('skip_server_send_to_ro_group', len(newest_keys))
+                            log.info('Server-send: skip read-only group: %s', group)
                             continue
                         dst_groups.append(group)
                     if not dst_groups:
                         # if all remote_groups are readonly, skip server_send at all
+                        log.info('Server-send: skip keys: %s, no writable groups left', len(newest_keys))
                         break
                     iterator = self.session.server_send(keys=newest_keys,
                                                         flags=0,

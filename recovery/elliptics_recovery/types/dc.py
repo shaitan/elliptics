@@ -438,7 +438,7 @@ def fill_buckets(ctx, results):
     ctx.rest_file = open(rest_keys_filename, 'wb')
     ctx.bucket_files = {}
     ctx.bucket_order = [b[0] for b in bucket]
-    log.debug("Fill buckets: order: {}".format(ctx.bucket_order))
+    log.info("Fill buckets: order: %s", ctx.bucket_order)
 
     for r in results:
         for key, key_infos in load_key_data(r.filename):
