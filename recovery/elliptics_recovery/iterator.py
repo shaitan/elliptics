@@ -294,6 +294,8 @@ class Iterator(object):
             total_keys = 0
             positive_responses = 0
             negative_responses = 0
+            uncommitted_records = 0
+            corrupted_records = 0
 
             start = time.time()
 
@@ -309,19 +311,38 @@ class Iterator(object):
                     stats_cmd.counter("iterate.{0}".format(status), 1)
 
                 if status == 0:
-                    positive_responses += 1
+                    if record.record_info.record_flags & elliptics.record_flags.corrupted:
+                        corrupted_records += 1
+                    elif record.record_info.record_flags & elliptics.record_flags.uncommitted:
+                        uncommitted_records += 1
+                    else:
+                        positive_responses += 1
                 else:
                     negative_responses += 1
 
                 if iterated_keys % batch_size == 0:
-                    yield (iterated_keys, total_keys, positive_responses, negative_responses, start, end)
+                    yield (iterated_keys,
+                           total_keys,
+                           positive_responses,
+                           negative_responses,
+                           start,
+                           end,
+                           uncommitted_records,
+                           corrupted_records)
 
                 self._on_key_response(results, record, address, backend_id)
             end = time.time()
 
             elapsed_time = records.elapsed_time()
             self.log.debug("Time spended for iterator: {0}/{1}".format(elapsed_time.tsec, elapsed_time.tnsec))
-            yield (iterated_keys, total_keys, positive_responses, negative_responses, start, end)
+            yield (iterated_keys,
+                   total_keys,
+                   positive_responses,
+                   negative_responses,
+                   start,
+                   end,
+                   uncommitted_records,
+                   corrupted_records)
             if self.separately:
                 yield results
             else:
@@ -387,10 +408,12 @@ class Iterator(object):
         return result, result_len
 
     def _update_stats(self, stats, it):
-        iterated_keys, total_keys, _, _, start, end = it
+        iterated_keys, total_keys, _, _, start, end, uncommitted_keys, corrupted_keys = it
         stats.set_counter('iteration_speed', round(iterated_keys / (end - start), 2))
         stats.set_counter('iterated_keys', iterated_keys)
         stats.set_counter('total_keys', total_keys)
+        stats.set_counter('uncommitted_keys', uncommitted_keys)
+        stats.set_counter('corrupted_keys', corrupted_keys)
 
 
 class MergeRecoveryIterator(Iterator):
