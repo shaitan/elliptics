@@ -14,21 +14,20 @@
 # GNU General Public License for more details.
 # =============================================================================
 
-import logging
-import itertools
-from itertools import groupby
-from collections import defaultdict
-from ..utils.misc import elliptics_create_node, dump_key_data, KeyInfo, load_key_data
-from ..range import IdRange
-from ..etime import Time
-from ..iterator import Iterator, MergeData, IteratorResult
-from ..dc_recovery import recover
-
-import os
 import errno
+import itertools
+import logging
+import os
 import traceback
+from collections import defaultdict
 
 import elliptics
+
+from ..dc_recovery import recover
+from ..etime import Time
+from ..iterator import Iterator, MergeData, IteratorResult
+from ..range import IdRange
+from ..utils.misc import elliptics_create_node, dump_key_data, KeyInfo, load_key_data
 
 log = logging.getLogger(__name__)
 
@@ -302,8 +301,8 @@ def process_uncommitted(ctx, results):
 
     for r in results:
         with open(r.filename, 'ab') as f:
-            for _, batch in groupby(enumerate(load_key_data(r.uncommitted_filename)),
-                                    key=lambda x: x[0] / ctx.batch_size):
+            for _, batch in itertools.groupby(enumerate(load_key_data(r.uncommitted_filename)),
+                                              key=lambda x: x[0] / ctx.batch_size):
                 batch = [item[1] for item in batch]
                 tasks = []
                 statuses = {}  # (key, group_id) -> status
