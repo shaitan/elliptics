@@ -15,6 +15,7 @@
 # =============================================================================
 
 import logging
+import itertools
 from itertools import groupby
 from collections import defaultdict
 from ..utils.misc import elliptics_create_node, dump_key_data, KeyInfo, load_key_data
@@ -206,9 +207,11 @@ class MergedKeys(object):
         else:
             dump_key_data(key_data, merged_file)
 
-        if key_infos:
-            newest_key_group = key_infos[0].group_id
-            self.newest_key_stats[newest_key_group] += 1
+        if not key_infos:
+            return
+
+        for info in itertools.takewhile(key_infos[0].same_meta, key_infos):
+            self.newest_key_stats[info.group_id] += 1
 
 
 def merge_results(arg):

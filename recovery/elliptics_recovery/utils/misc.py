@@ -307,6 +307,15 @@ class KeyInfo(object):
             self.data_offset,
             self.blob_id)
 
+    def same_meta(self, other):
+        """Check whether @self and @other have the same meta
+        :arg other: other instance of KeyInfo
+        :type other: KeyInfo
+        :return: whether self and other have the same meta
+        :rtype: bool
+         """
+        return (self.timestamp, self.size, self.user_flags) == (other.timestamp, other.size, other.user_flags)
+
     @classmethod
     def load(cls, data):
         return cls(elliptics.Address(data[0][0], data[0][1], data[0][2]),
