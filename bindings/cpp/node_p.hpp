@@ -30,7 +30,7 @@ public:
 	, access_logger(nullptr)
 	, destroy_node(true) {
 		if (access_logger_)
-			access_logger.reset(new trace_wrapper_t(std::move(access_logger)));
+			access_logger.reset(new trace_wrapper_t(std::move(access_logger_)));
 	}
 
 	~node_data() {
