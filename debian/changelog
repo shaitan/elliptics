@@ -1,3 +1,20 @@
+elliptics (2.27.7.4) unstable; urgency=low
+
+  * Add DNET_RECORD_FLAGS_CORRUPTED and elliptics.record_flags.corrupted
+  * recovery: extend logs about skipped readonly groups and bucket orders
+  * recovery: extend iterated keys statistics
+  * tests: install pytest-mock for tests
+  * recovery: preliminary refactoring
+  * tests: recovery tests with mocked parts of elliptics-client
+  * tests: drop unused tests/remotes
+  * recovery: fix stopping on empty bucket for server-send
+  * recovery: use stable with bucket sort
+  * recovery: optimize imports in dc.py
+  * tests: cover the case when old recovery didn't recover some keys
+  * client: fix leaving access logger empty
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Wed, 12 Dec 2018 10:05:30 +0300
+
 elliptics (2.27.7.3) unstable; urgency=low
 
   * fix: allow all_with_ack filter for server_send
