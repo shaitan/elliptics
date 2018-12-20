@@ -1,3 +1,9 @@
+elliptics (2.27.8.0) unstable; urgency=low
+
+  * Introduce new io_pool mode: DNET_WORK_IO_MODE_LIFO
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Thu, 20 Dec 2018 21:32:46 +0300
+
 elliptics (2.27.7.4) unstable; urgency=low
 
   * Add DNET_RECORD_FLAGS_CORRUPTED and elliptics.record_flags.corrupted
