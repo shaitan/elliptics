@@ -1,3 +1,9 @@
+elliptics (2.27.8.1) unstable; urgency=low
+
+  * fix: do not send ack with timeout to yourself and for reply
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Fri, 11 Jan 2019 18:46:27 +0300
+
 elliptics (2.27.8.0) unstable; urgency=low
 
   * Introduce new io_pool mode: DNET_WORK_IO_MODE_LIFO
