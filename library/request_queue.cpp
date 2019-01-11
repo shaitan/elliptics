@@ -322,9 +322,12 @@ void dnet_request_queue::drop_request(dnet_io_req *r, const char *thread_stat_id
 	auto st = r->st;
 	auto node = st->n;
 
-	// Note: this function is marked with `weak` attribute and is not defined in client bindings,
-	// so this code should not be executed from client side otherwise it will lead to segfault.
-	dnet_send_ack(st, cmd, -ETIMEDOUT, 0, nullptr);
+	// Send ack with -ETIMEDOUT only for dropped request that came from outside.
+	if (st != node->st && !(cmd->flags & DNET_FLAGS_REPLY)) {
+		// Note: this function is marked with `weak` attribute and is not defined in client bindings,
+		// so this code should not be executed from client side otherwise it will lead to segfault.
+		dnet_send_ack(st, cmd, -ETIMEDOUT, 0, nullptr);
+	}
 
 	FORMATTED(HANDY_COUNTER_INCREMENT, ("pool.%s.queue.dropped", thread_stat_id), 1);
 	pthread_cond_broadcast(&node->io->full_wait);
