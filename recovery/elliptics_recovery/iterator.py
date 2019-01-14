@@ -418,7 +418,7 @@ class Iterator(object):
 
 class MergeRecoveryIterator(Iterator):
     '''
-    This class is used in merge recovery for backend iteratation on ranges which are not belong to
+    This class is used in merge recovery for backend iteration on ranges which are not belong to
     it using copy iterator. Every iterated key is moved to the backend, where it should exists.
     If moving of some key was failed, then it saves the key to the results container.
     '''
