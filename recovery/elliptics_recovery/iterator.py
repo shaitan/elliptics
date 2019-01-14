@@ -311,9 +311,12 @@ class Iterator(object):
                     stats_cmd.counter("iterate.{0}".format(status), 1)
 
                 if status == 0:
-                    if record.record_info.record_flags & elliptics.record_flags.corrupted:
+                    # TODO: directly use record.record_info when newapi iterator will be used everywhere.
+                    # record from old api, that is still used by merge recovery, doesn't have record_info
+                    record_info = getattr(record, 'record_info', None)
+                    if record_info and record_info.record_flags & elliptics.record_flags.corrupted:
                         corrupted_records += 1
-                    elif record.record_info.record_flags & elliptics.record_flags.uncommitted:
+                    elif record_info and record_info.record_flags & elliptics.record_flags.uncommitted:
                         uncommitted_records += 1
                     else:
                         positive_responses += 1
