@@ -1,3 +1,11 @@
+elliptics (2.27.8.2) unstable; urgency=low
+
+  * recovery: fix typo
+  * recovery: fix misusage of old api
+  * recovery: fix the silence of merge about failed iterator.
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Mon, 14 Jan 2019 16:23:39 +0300
+
 elliptics (2.27.8.1) unstable; urgency=low
 
   * fix: do not send ack with timeout to yourself and for reply
