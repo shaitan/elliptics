@@ -449,7 +449,7 @@ class MergeRecoveryIterator(Iterator):
         results[self._get_key_range_id(record.response.key)].append_old(record)
 
     def _update_stats(self, stats, it):
-        iterated_keys, total_keys, positive_responses, negative_responses, start, end = it
+        iterated_keys, total_keys, positive_responses, negative_responses, start, end, _, _ = it
         stats.set_counter('recovery_speed', round(iterated_keys / (end - start), 2))
         stats.set_counter('recovered_keys', positive_responses)
         stats.set_counter('recovered_keys', -negative_responses)

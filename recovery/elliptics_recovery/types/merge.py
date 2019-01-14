@@ -96,9 +96,9 @@ def process_node_backend(ctx, address, backend_id, group, ranges):
                                ranges=ranges,
                                eid=ctx.routes.get_address_backend_route_id(address, backend_id),
                                stats=stats)
-        if results is None or len(results) == 0:
-            log.warning('Iterator result is empty, skipping')
-            return True
+        if results is None:
+            log.error('Iteration failed')
+            return False
 
         stats.timer('process', 'dump_keys')
         dump_path = os.path.join(ctx.tmp_dir, 'dump_{0}.{1}'.format(address, backend_id))
