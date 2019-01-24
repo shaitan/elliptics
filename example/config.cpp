@@ -404,7 +404,7 @@ static io_pool_config parse_io_pool_config(const config_data &data, const kora::
 	return {
 		config.at("io_thread_num", data.cfg_state.io_thread_num),
 		config.at("nonblocking_io_thread_num", data.cfg_state.nonblocking_io_thread_num),
-		config.at("lifo", false),
+		config.at("lifo", true),
 		config.at<size_t>("queue_limit", 1000)
 	};
 }
