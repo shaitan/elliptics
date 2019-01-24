@@ -1,3 +1,9 @@
+elliptics (2.27.8.3) unstable; urgency=low
+
+  * lifo: use lifo by default
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Thu, 24 Jan 2019 14:53:26 +0300
+
 elliptics (2.27.8.2) unstable; urgency=low
 
   * recovery: fix typo
