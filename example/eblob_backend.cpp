@@ -802,7 +802,7 @@ int blob_write_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *da
 			if (!disk_ehdr.size)
 				return;
 
-		        jhdr = disk_jhdr;
+			jhdr = disk_jhdr;
 
 			if (request.json_size || (request.ioflags & DNET_IO_FLAGS_UPDATE_JSON)) {
 				jhdr.size = request.json_size;
