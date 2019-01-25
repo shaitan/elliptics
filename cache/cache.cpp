@@ -21,6 +21,7 @@
 #include <blackhole/attribute.hpp>
 #include <kora/config.hpp>
 
+#include "library/access_context.h"
 #include "library/backend.h"
 #include "library/protocol.hpp"
 
@@ -304,10 +305,12 @@ static int dnet_cmd_cache_io_write_new(struct cache_manager *cache,
 			0, // json_offset
 			it.json->size(), // json_size
 			it.json->size(), // json_capacity
+			{}, // json_checksum
 
 			it.timestamp, // data_timestamp
 			0, // data_offset
 			it.data->size(), // data_size
+			{}, // data_checksum
 		});
 
 		cmd_stats->size = request.json_size + request.data_size;
@@ -510,6 +513,48 @@ static int dnet_cmd_cache_io_lookup_new(struct cache_manager *cache,
 		return err;
 	}
 
+	std::vector<unsigned char> json_checksum;
+	std::vector<unsigned char> data_checksum;
+
+	if (cmd->flags & DNET_FLAGS_CHECKSUM) {
+		auto calculate_checksum = [st, cmd, context] (const std::shared_ptr<std::string> &data,
+		                                              std::vector<unsigned char> &checksum,
+		                                              const char *csum_subject,
+		                                              const char *csum_time_ctx_attr) {
+			if (!data || !data->size()) {
+				return 0;
+			}
+
+			checksum.resize(DNET_CSUM_SIZE);
+
+			util::steady_timer timer;
+			int err = dnet_checksum_data(st->n, data->data(), data->size(),
+			                             checksum.data(), checksum.size());
+			uint64_t csum_time = timer.get_us();
+			if (context) {
+				context->add({{csum_time_ctx_attr, csum_time}});
+			}
+			if (err) {
+				DNET_LOG_ERROR(st->n, "{}: {} dnet_cmd_cache_io_lookup_new: failed to calculate {} "
+				               "checksum: {} [{}]", dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd),
+				               csum_subject, strerror(-err), err);
+				return err;
+			}
+
+			return 0;
+		};
+
+		err = calculate_checksum(it.json, json_checksum, "json", "json_csum_time");
+		if (err) {
+			return err;
+		}
+
+		err = calculate_checksum(it.data, data_checksum, "data", "data_csum_time");
+		if (err) {
+			return err;
+		}
+	}
+
 	auto response = serialize(dnet_lookup_response{
 		0, // record_flags
 		it.user_flags, // user_flags
@@ -519,10 +564,12 @@ static int dnet_cmd_cache_io_lookup_new(struct cache_manager *cache,
 		0, // json_offset
 		it.json->size(), // json_size
 		it.json->size(), // json_capacity
+		std::move(json_checksum), // json_checksum
 
 		it.timestamp, // data_timestamp
 		0, // data_offset
 		it.data->size(), // data_size
+		std::move(data_checksum), // data_checksum
 	});
 
 	cmd->flags &= ~DNET_FLAGS_NEED_ACK;

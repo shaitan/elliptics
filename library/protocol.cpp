@@ -186,12 +186,22 @@ inline dnet_lookup_response &operator >>(msgpack::object o, dnet_lookup_response
 	p[8].convert(&v.data_offset);
 	p[9].convert(&v.data_size);
 
+	if (o.via.array.size > 11) {
+		p[10].convert(&v.json_checksum);
+		p[11].convert(&v.data_checksum);
+
+		if ((!v.json_checksum.empty() && v.json_checksum.size() != DNET_CSUM_SIZE) ||
+		    (!v.data_checksum.empty() && v.data_checksum.size() != DNET_CSUM_SIZE)) {
+			throw std::runtime_error("Unexpected checksum size");
+		}
+	}
+
 	return v;
 }
 
 template <typename Stream>
 inline msgpack::packer<Stream> &operator <<(msgpack::packer<Stream> &o, const dnet_lookup_response &v) {
-	o.pack_array(10);
+	o.pack_array(12);
 	o.pack(v.record_flags);
 	o.pack(v.user_flags);
 	o.pack(v.path);
@@ -204,6 +214,9 @@ inline msgpack::packer<Stream> &operator <<(msgpack::packer<Stream> &o, const dn
 	o.pack(v.data_timestamp);
 	o.pack(v.data_offset);
 	o.pack(v.data_size);
+
+	o.pack(v.json_checksum);
+	o.pack(v.data_checksum);
 
 	return o;
 }

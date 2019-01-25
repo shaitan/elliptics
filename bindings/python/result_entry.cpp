@@ -119,11 +119,16 @@ elliptics_time lookup_result_get_timestamp(const lookup_result_entry &result)
 	return elliptics_time(result.file_info()->mtime);
 }
 
-elliptics_id lookup_result_get_checksum(const lookup_result_entry &result)
+elliptics_id checksum_to_elliptics_id(const unsigned char *checksum)
 {
 	dnet_raw_id id;
-	memcpy(id.id, result.file_info()->checksum, DNET_CSUM_SIZE);
+	memcpy(id.id, checksum, DNET_CSUM_SIZE);
 	return elliptics_id(id);
+}
+
+elliptics_id lookup_result_get_checksum(const lookup_result_entry &result)
+{
+	return checksum_to_elliptics_id(result.file_info()->checksum);
 }
 
 std::string lookup_result_get_filepath(const lookup_result_entry &result)
@@ -245,6 +250,14 @@ elliptics_time dnet_record_info_get_json_timestamp(const dnet_record_info &info)
 
 elliptics_time dnet_record_info_get_data_timestamp(const dnet_record_info &info) {
 	return elliptics_time(info.data_timestamp);
+}
+
+elliptics_id dnet_record_info_get_json_checksum(const dnet_record_info &info) {
+	return checksum_to_elliptics_id(info.json_checksum);
+}
+
+elliptics_id dnet_record_info_get_data_checksum(const dnet_record_info &info) {
+	return checksum_to_elliptics_id(info.data_checksum);
 }
 
 std::string callback_result_get_raw(const newapi::callback_result_entry &result) {
@@ -524,6 +537,8 @@ void init_result_entry() {
 		              "Whole size of the record's json.")
 		.add_property("json_capacity", &dnet_record_info::json_capacity,
 		              "Size of reserved place for json in the record.")
+		.add_property("json_checksum", newapi::dnet_record_info_get_json_checksum,
+		              "Checksum of the record's json.")
 		.add_property("data_timestamp", newapi::dnet_record_info_get_data_timestamp,
 		              "Timestamp of data last modification.")
 		.add_property("data_offset", &dnet_record_info::data_offset,
@@ -531,6 +546,8 @@ void init_result_entry() {
 		              "In read result it is unfilled and is set to 0.")
 		.add_property("data_size", &dnet_record_info::data_size,
 		              "Whole size of the record's data.")
+		.add_property("data_checksum", newapi::dnet_record_info_get_data_checksum,
+		              "Checksum of the record's data.")
 	;
 
 	bp::class_<dnet_io_info>("IOInfo",

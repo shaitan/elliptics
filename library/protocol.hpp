@@ -74,10 +74,12 @@ struct dnet_lookup_response {
 	uint64_t json_offset;
 	uint64_t json_size;
 	uint64_t json_capacity;
+	std::vector<unsigned char> json_checksum;
 
 	dnet_time data_timestamp;
 	uint64_t data_offset;
 	uint64_t data_size;
+	std::vector<unsigned char> data_checksum;
 };
 
 struct dnet_remove_request {

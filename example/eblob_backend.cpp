@@ -21,6 +21,8 @@
 #include <inttypes.h>
 #include <condition_variable>
 
+#include <boost/scope_exit.hpp>
+
 #include <blackhole/wrapper.hpp>
 
 #include "example/eblob_backend.h"
@@ -230,6 +232,8 @@ int blob_file_info_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, stru
 	dnet_json_header jhdr;
 	memset(&jhdr, 0, sizeof(jhdr));
 
+	uint64_t json_offset = 0;
+
 	if (wc.flags & BLOB_DISK_CTL_EXTHDR) {
 		if (wc.total_data_size < sizeof(ehdr)) {
 			err = -ERANGE;
@@ -271,23 +275,86 @@ int blob_file_info_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, stru
 			return err;
 		}
 
-		wc.size -= sizeof(ehdr) + ehdr.size + jhdr.capacity;
-		wc.data_offset += sizeof(ehdr) + ehdr.size + jhdr.capacity;
+		json_offset = sizeof(ehdr) + ehdr.size;
+	}
+
+	const uint64_t json_size = jhdr.size;
+	const uint64_t data_offset = json_offset + jhdr.capacity;
+	const uint64_t data_size = (wc.size >= data_offset) ? (wc.size - data_offset) : 0;
+
+	std::vector<unsigned char> json_checksum;
+	std::vector<unsigned char> data_checksum;
+
+	if (cmd->flags & DNET_FLAGS_CHECKSUM) {
+		auto st = static_cast<struct dnet_net_state *>(state);
+
+		auto verify_and_get_checksum = [&] (eblob_write_control wc, uint64_t offset, uint64_t size,
+		                                    std::vector<unsigned char> &checksum, const char *csum_subject,
+		                                    const char *csum_time_ctx_attr) {
+			if (!size) {
+				return 0;
+			}
+
+			wc.offset = offset;
+			wc.size = size;
+
+			util::steady_timer timer;
+
+			BOOST_SCOPE_EXIT(&timer, &context, &csum_time_ctx_attr) {
+				if (context) {
+					uint64_t csum_time = timer.get_us();
+					context->add({{csum_time_ctx_attr, csum_time}});
+				}
+			} BOOST_SCOPE_EXIT_END
+
+			int err = eblob_verify_checksum(c->eblob, &key, &wc);
+			if (err) {
+				DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-file-info-new: {} checksum verification "
+				               "failed: {} [{}]", dnet_dump_id(&cmd->id), csum_subject,
+				               strerror(-err), err);
+				return err;
+			}
+
+			checksum.resize(DNET_CSUM_SIZE);
+			err = dnet_checksum_fd(st->n, wc.data_fd, wc.data_offset + offset, size,
+			                       checksum.data(), checksum.size());
+
+			if (err) {
+				DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-file-info-new: failed to calculate {} "
+				               "checksum: {} [{}]", dnet_dump_id(&cmd->id), csum_subject,
+				               strerror(-err), err);
+				return err;
+			}
+
+			return 0;
+		};
+
+		err = verify_and_get_checksum(wc, json_offset, json_size, json_checksum, "json", "json_csum_time");
+		if (err) {
+			return err;
+		}
+
+		err = verify_and_get_checksum(wc, data_offset, data_size, data_checksum, "data", "data_csum_time");
+		if (err) {
+			return err;
+		}
 	}
 
 	auto response = serialize(dnet_lookup_response{
 		wc.flags,
 		ehdr.flags,
-		filename,
+		std::move(filename),
 
 		jhdr.timestamp,
-		wc.data_offset - jhdr.capacity,
-		jhdr.size,
+		wc.data_offset + json_offset,
+		json_size,
 		jhdr.capacity,
+		std::move(json_checksum),
 
 		ehdr.timestamp,
-		wc.data_offset,
-		wc.size,
+		wc.data_offset + data_offset,
+		data_size,
+		std::move(data_checksum),
 	});
 
 	err = dnet_send_reply(state, cmd, response.data(), response.size(), 0, context);
@@ -298,7 +365,7 @@ int blob_file_info_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, stru
 	}
 
 	DNET_LOG_INFO(c->blog, "{}: EBLOB: blob-file-info-new: fd: {}, json_size: {}, data_size: {}",
-	              dnet_dump_id(&cmd->id), wc.data_fd, jhdr.size, wc.size);
+	              dnet_dump_id(&cmd->id), wc.data_fd, json_size, data_size);
 
 	return 0;
 }
@@ -921,10 +988,12 @@ int blob_write_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *da
 		wc.data_offset,
 		jhdr.size,
 		jhdr.capacity,
+		{},
 
 		ehdr.timestamp,
 		wc.data_offset + jhdr.capacity,
 		wc.size ? (wc.size - jhdr.capacity) : 0,
+		{},
 	});
 
 	err = dnet_send_reply(state, cmd, response.data(), response.size(), 0, context);
