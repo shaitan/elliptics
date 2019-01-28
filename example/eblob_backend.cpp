@@ -272,7 +272,6 @@ int blob_file_info_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, stru
 		}
 
 		wc.size -= sizeof(ehdr) + ehdr.size + jhdr.capacity;
-		// wc.total_data_size -= sizeof(ehdr);
 		wc.data_offset += sizeof(ehdr) + ehdr.size + jhdr.capacity;
 	}
 
@@ -908,7 +907,6 @@ int blob_write_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *da
 	if (wc.size) {
 		if (wc.size >= sizeof(ehdr) + ehdr.size) {
 			wc.size -= sizeof(ehdr) + ehdr.size;
-			// wc.total_data_size -= sizeof(ehdr);
 			wc.data_offset += sizeof(ehdr) + ehdr.size;
 		} else
 			return -EINVAL;
