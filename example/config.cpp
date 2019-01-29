@@ -518,7 +518,7 @@ io_pool_config config_data::get_io_pool_config(const std::string &pool_id) {
 	const io_pool_config default_config = {
 		cfg_state.io_thread_num,
 		cfg_state.nonblocking_io_thread_num,
-		/*lifo*/ false,
+		/*lifo*/ true,
 		/*queue_limit*/ 1000
 	};
 
