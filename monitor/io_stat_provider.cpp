@@ -76,7 +76,8 @@ void dump_io_pool_stats(struct dnet_io_pool &io_pool,
 
 	rapidjson::Value nonblocking(rapidjson::kObjectType);
 	nonblocking.AddMember("current_size", dnet_get_pool_queue_size(io_pool.recv_pool_nb.pool), allocator);
-	value.AddMember("nonblocking", nonblocking, allocator);
+	const auto mode = io_pool.recv_pool_nb.pool->mode == DNET_WORK_IO_MODE_LIFO ? "lifo" : "nonblocking";
+	value.AddMember(mode, nonblocking, allocator);
 }
 
 }} /* namespace ioremap::monitor */
