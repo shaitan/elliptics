@@ -422,9 +422,14 @@ int dnet_trans_alloc_send(struct dnet_session *s, struct dnet_trans_control *ctl
 void dnet_trans_clean_list(struct list_head *head, int error)
 {
 	struct dnet_trans *t, *tmp;
+	struct dnet_node *n;
 
 	list_for_each_entry_safe(t, tmp, head, trans_list_entry) {
 		list_del_init(&t->trans_list_entry);
+
+		n = t->n;
+
+		dnet_log(n, DNET_LOG_ERROR, "TIMEOUT: start processing trans: %llu", (unsigned long long)t->trans);
 
 		t->cmd.size = 0;
 		t->cmd.flags &= ~DNET_FLAGS_REPLY;
@@ -437,6 +442,8 @@ void dnet_trans_clean_list(struct list_head *head, int error)
 
 		dnet_trans_put(t);
 		dnet_logger_unset_trace_id();
+
+		dnet_log(n, DNET_LOG_ERROR, "TIMEOUT: finish processing trans: %llu", (unsigned long long)t->trans);
 	}
 }
 
