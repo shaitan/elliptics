@@ -130,7 +130,12 @@ class MonitorStatsChecker:
             assert queue_json['current_size'] >= 0
         io = self.json_stat['io']
         check_queue(io['blocking'])
-        check_queue(io['nonblocking'])
+        if 'nonblocking' in io:
+            check_queue(io['nonblocking'])
+        elif 'lifo' in io:
+            check_queue(io['lifo'])
+        else:
+            assert False  # either nonblocking or lifo should be presented in io
         check_queue(io['output'])
         assert io['blocked'] == False
 
@@ -147,7 +152,12 @@ class MonitorStatsChecker:
                 continue
             io = self.json_stat['backends'][backend_id]['io']
             check_queue(io['blocking'])
-            check_queue(io['nonblocking'])
+            if 'nonblocking' in io:
+                check_queue(io['nonblocking'])
+            elif 'lifo' in io:
+                check_queue(io['lifo'])
+            else:
+                assert False  # either nonblocking or lifo should be presented in io
 
     def __check_commands_stat(self):
         '''full check of commands statistics in json'''

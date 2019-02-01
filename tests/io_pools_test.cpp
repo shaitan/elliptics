@@ -98,7 +98,14 @@ static void check_statistics(ioremap::elliptics::newapi::session &s,
 		BOOST_REQUIRE(blocking.is_object());
 		BOOST_REQUIRE_EQUAL(blocking.as_object()["current_size"].as_uint(), 0);
 
-		const auto &nonblocking = io.as_object()["nonblocking"];
+		const char *mode = "nonblocking";
+		if (io.as_object().count("lifo")) {
+			mode = "lifo";
+		} else {
+			// either nonblocking or lifo should be presented
+			BOOST_REQUIRE(io.as_object().count("nonblocking"));
+		}
+		const auto &nonblocking = io.as_object()[mode];
 		BOOST_REQUIRE(nonblocking.is_object());
 		BOOST_REQUIRE_EQUAL(nonblocking.as_object()["current_size"].as_uint(), 0);
 	};
@@ -136,7 +143,14 @@ static void check_statistics(ioremap::elliptics::newapi::session &s,
 			BOOST_REQUIRE(blocking.is_object());
 			BOOST_REQUIRE_EQUAL(blocking.as_object()["current_size"].as_uint(), 0);
 
-			const auto &nonblocking = pool.as_object()["nonblocking"];
+			const char *mode = "nonblocking";
+			if (pool.as_object().count("lifo")) {
+				mode = "lifo";
+			} else {
+				// either nonblocking or lifo should be presented
+				BOOST_REQUIRE(pool.as_object().count("nonblocking"));
+			}
+			const auto &nonblocking = pool.as_object()[mode];
 			BOOST_REQUIRE(nonblocking.is_object());
 			BOOST_REQUIRE_EQUAL(nonblocking.as_object()["current_size"].as_uint(), 0);
 		}
