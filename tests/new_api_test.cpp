@@ -12,6 +12,7 @@
 
 #include <eblob/blob.h>
 #include "library/common.hpp"
+#include "library/crypto/sha512.h"
 #include "elliptics/newapi/session.hpp"
 #include "elliptics/result_entry.hpp"
 
@@ -54,10 +55,31 @@ struct record {
 	dnet_time json_timestamp;
 	std::string json;
 	uint64_t json_capacity;
+	unsigned char json_checksum[DNET_CSUM_SIZE];
 	std::string data;
 	uint64_t data_capacity;
+	unsigned char data_checksum[DNET_CSUM_SIZE];
 	bool in_cache;
 };
+
+void calculate_checksum(const std::string &data, unsigned char *checksum) {
+	static_assert(DNET_CSUM_SIZE == 64, "Checksum expected to be implemented as sha512");
+
+	if (!data.empty()) {
+		struct sha512_ctx ctx;
+		sha512_init_ctx(&ctx);
+		sha512_process_bytes(data.data(), data.size(), &ctx);
+		sha512_finish_ctx(&ctx, checksum);
+	} else {
+		memset(checksum, 0, DNET_CSUM_SIZE);
+	}
+}
+
+record add_checksums(record rec) {
+	calculate_checksum(rec.json, rec.json_checksum);
+	calculate_checksum(rec.data, rec.data_checksum);
+	return rec;
+}
 
 void check_lookup_result(ioremap::elliptics::newapi::async_lookup_result &async,
                          const int command,
@@ -91,11 +113,21 @@ void check_lookup_result(ioremap::elliptics::newapi::async_lookup_result &async,
 			BOOST_REQUIRE_EQUAL(record_info.json_capacity, record.json_capacity);
 		}
 
+		BOOST_REQUIRE_EQUAL_COLLECTIONS(std::begin(record_info.json_checksum),
+		                                std::end(record_info.json_checksum),
+		                                std::begin(record.json_checksum),
+		                                std::end(record.json_checksum));
+
 		BOOST_REQUIRE_EQUAL(dnet_time_cmp(&record_info.data_timestamp, &record.timestamp), 0);
 		if (!record.in_cache) {
 			BOOST_REQUIRE_EQUAL(record_info.data_offset, record_info.json_offset + record.json_capacity);
 		}
 		BOOST_REQUIRE_EQUAL(record_info.data_size, record.data.size());
+
+		BOOST_REQUIRE_EQUAL_COLLECTIONS(std::begin(record_info.data_checksum),
+		                                std::end(record_info.data_checksum),
+		                                std::begin(record.data_checksum),
+		                                std::end(record.data_checksum));
 
 		if (!record.in_cache) {
 			std::ifstream blob(result.path(), std::ifstream::binary);
@@ -930,6 +962,60 @@ void check_read_and_lookup_corrupted_record(ioremap::elliptics::newapi::session 
 	BOOST_REQUIRE_EQUAL(async_iter.get()[0].status(), -EILSEQ);
 }
 
+void test_lookup_corrupted_json(const ioremap::elliptics::newapi::session &session) {
+	static const auto group = groups[0];
+
+	auto s = session.clone();
+	s.set_groups({group});
+	s.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
+	s.set_filter(ioremap::elliptics::filters::all_with_ack);
+
+	static const std::string key{"test_lookup_corrupted_json key"};
+	static const std::string data{"test_lookup_corrupted_json data"};
+	static const std::string json{R"json(
+	{
+		"key": "test_lookup_corrupted_json json key"
+	}
+	)json"};
+	write_and_corrupt_json(s, key, json, 0, data, 0);
+
+	auto async_lookup = s.lookup(key);
+	BOOST_REQUIRE_EQUAL(async_lookup.get().size(), 1);
+
+	if (s.get_cflags() & DNET_FLAGS_CHECKSUM) {
+		BOOST_REQUIRE_EQUAL(async_lookup.get()[0].status(), -EILSEQ);
+	} else {
+		BOOST_REQUIRE_EQUAL(async_lookup.get()[0].status(), 0);
+	}
+}
+
+void test_lookup_corrupted_data(const ioremap::elliptics::newapi::session &session) {
+	static const auto group = groups[0];
+
+	auto s = session.clone();
+	s.set_groups({group});
+	s.set_exceptions_policy(ioremap::elliptics::session::no_exceptions);
+	s.set_filter(ioremap::elliptics::filters::all_with_ack);
+
+	static const std::string key{"test_lookup_corrupted_data key"};
+	static const std::string data{"test_lookup_corrupted_data data"};
+	static const std::string json{R"json(
+	{
+		"key": "test_lookup_corrupted_data json key"
+	}
+	)json"};
+	write_and_corrupt_data(s, key, json, 0, data, 0);
+
+	auto async_lookup = s.lookup(key);
+	BOOST_REQUIRE_EQUAL(async_lookup.get().size(), 1);
+
+	if (s.get_cflags() & DNET_FLAGS_CHECKSUM) {
+		BOOST_REQUIRE_EQUAL(async_lookup.get()[0].status(), -EILSEQ);
+	} else {
+		BOOST_REQUIRE_EQUAL(async_lookup.get()[0].status(), 0);
+	}
+}
+
 void test_read_corrupted_json(const ioremap::elliptics::newapi::session &session) {
 	static const auto group = groups[0];
 
@@ -1415,8 +1501,10 @@ const static record rec_tmpl{
 	dnet_time{10, 20},
 	std::string{"{\"key\": \"key\"}"},
 	512,
+	{},
 	std::string{"key data"},
 	1024,
+	{},
 	false // in cache
 };
 const static std::vector<int> good_groups{1, 2, 3, 4, 5, 6};
@@ -1808,8 +1896,10 @@ void test_bulk_read(const ioremap::elliptics::newapi::session &session) {
 		dnet_time{10, 20},
 		std::string{"{\"key\": \"key\"}"},
 		512,
+		{},
 		std::string{"key data"},
 		1024,
+		{},
 		(session.get_ioflags() & DNET_IO_FLAGS_CACHE) != 0
 	};
 
@@ -2169,8 +2259,10 @@ bool register_tests(const nodes_data *setup) {
 		dnet_time{10, 20},
 		std::string{"{\"key\": \"key\"}"},
 		512,
+		{},
 		std::string{"key data"},
 		1024,
+		{},
 		false
 	};
 	uint32_t ioflags = 0;
@@ -2189,6 +2281,7 @@ bool register_tests(const nodes_data *setup) {
 
 		ELLIPTICS_TEST_CASE(test_write, use_session(n, {}, 0, ioflags), record);
 		ELLIPTICS_TEST_CASE(test_lookup, use_session(n, {}, 0, ioflags), record);
+		ELLIPTICS_TEST_CASE(test_lookup, use_session(n, {}, DNET_FLAGS_CHECKSUM, ioflags), add_checksums(record));
 		ELLIPTICS_TEST_CASE(test_read_json, use_session(n, {}, 0, ioflags), record);
 		ELLIPTICS_TEST_CASE(test_read_data, use_session(n, {}, 0, ioflags), record, 0, 0);
 		ELLIPTICS_TEST_CASE(test_read_data, use_session(n, {}, 0, ioflags), record, 0, 1);
@@ -2235,6 +2328,7 @@ bool register_tests(const nodes_data *setup) {
 		ELLIPTICS_TEST_CASE(test_update_json, use_session(n, {}, 0, ioflags), record);
 		ELLIPTICS_TEST_CASE(test_read_json, use_session(n, {}, 0, ioflags), record);
 		ELLIPTICS_TEST_CASE(test_read_data, use_session(n, {}, 0, ioflags), record, 0, 0);
+		ELLIPTICS_TEST_CASE(test_lookup, use_session(n, {}, DNET_FLAGS_CHECKSUM, ioflags), add_checksums(record));
 
 		if (!in_cache) {
 			ELLIPTICS_TEST_CASE(test_update_bigger_json, use_session(n, {}, 0, ioflags), record);
@@ -2253,6 +2347,10 @@ bool register_tests(const nodes_data *setup) {
 		ELLIPTICS_TEST_CASE(test_new_write_old_read_compatibility, use_session(n, {}, 0, ioflags));
 
 		if (!in_cache) {
+			ELLIPTICS_TEST_CASE(test_lookup_corrupted_json, use_session(n, {}, DNET_FLAGS_CHECKSUM, ioflags));
+			ELLIPTICS_TEST_CASE(test_lookup_corrupted_json, use_session(n, {}, 0, ioflags));
+			ELLIPTICS_TEST_CASE(test_lookup_corrupted_data, use_session(n, {}, DNET_FLAGS_CHECKSUM, ioflags));
+			ELLIPTICS_TEST_CASE(test_lookup_corrupted_data, use_session(n, {}, 0, ioflags));
 			ELLIPTICS_TEST_CASE(test_read_corrupted_json, use_session(n, {}, 0, ioflags));
 			ELLIPTICS_TEST_CASE(test_read_json_with_corrupted_data_part, use_session(n, {}, 0, ioflags));
 			ELLIPTICS_TEST_CASE(test_read_json_with_big_capacity_and_corrupted_data_part, use_session(n, {}, 0, ioflags));
@@ -2311,18 +2409,7 @@ namespace all_with_ack_filter {
 
 using namespace tests;
 
-record record{
-	std::string{"test_write_with_all_with_ack_filter::key"},
-	0xf1235f12431,
-	dnet_time{100, 40},
-	dnet_time{100, 40},
-	std::string{"{\"key\":\"test_write_with_all_with_ack_filter::key\"}"},
-	100,
-	std::string{"test_write_with_all_with_ack_filter::data"},
-	100,
-	false};
-
-void test_write(ioremap::elliptics::newapi::session &s) {
+void test_write(ioremap::elliptics::newapi::session &s, const record &record) {
 	s.set_groups(groups);
 	s.set_filter(ioremap::elliptics::filters::all_with_ack);
 	s.set_user_flags(record.user_flags);
@@ -2335,7 +2422,7 @@ void test_write(ioremap::elliptics::newapi::session &s) {
 	check_lookup_result(async, DNET_CMD_WRITE_NEW, record, groups.size());
 }
 
-void test_lookup(ioremap::elliptics::newapi::session &s) {
+void test_lookup(ioremap::elliptics::newapi::session &s, const record &record) {
 	s.set_groups(groups);
 	s.set_filter(ioremap::elliptics::filters::all_with_ack);
 	s.set_user_flags(record.user_flags);
@@ -2346,7 +2433,7 @@ void test_lookup(ioremap::elliptics::newapi::session &s) {
 	check_lookup_result(async, DNET_CMD_LOOKUP_NEW, record, 1);
 }
 
-void test_read(ioremap::elliptics::newapi::session &s) {
+void test_read(ioremap::elliptics::newapi::session &s, const record &record) {
 	s.set_filter(ioremap::elliptics::filters::all_with_ack);
 	s.set_user_flags(record.user_flags);
 	s.set_timestamp(record.timestamp);
@@ -2395,13 +2482,28 @@ void test_read(ioremap::elliptics::newapi::session &s) {
 }
 
 bool register_tests(const nodes_data *setup) {
+	record record{
+		std::string{"test_write_with_all_with_ack_filter::key"},
+		0xf1235f12431,
+		dnet_time{100, 40},
+		dnet_time{100, 40},
+		std::string{"{\"key\":\"test_write_with_all_with_ack_filter::key\"}"},
+		100,
+		{},
+		std::string{"test_write_with_all_with_ack_filter::data"},
+		100,
+		{},
+		false
+	};
+
 	ioremap::elliptics::newapi::session s(*setup->node);
 
 	auto n = setup->node->get_native();
 
-	ELLIPTICS_TEST_CASE(test_write, use_session(n));
-	ELLIPTICS_TEST_CASE(test_lookup, use_session(n));
-	ELLIPTICS_TEST_CASE(test_read, use_session(n));
+	ELLIPTICS_TEST_CASE(test_write, use_session(n), record);
+	ELLIPTICS_TEST_CASE(test_lookup, use_session(n), record);
+	ELLIPTICS_TEST_CASE(test_lookup, use_session(n, {}, DNET_FLAGS_CHECKSUM), add_checksums(record));
+	ELLIPTICS_TEST_CASE(test_read, use_session(n), record);
 
 	return true;
 }

@@ -1,6 +1,7 @@
 import elliptics
 
 import errno
+import hashlib
 import json
 
 import pytest
@@ -39,7 +40,10 @@ def test_lookup_read_existent_key(simple_node):
 
     key = 'test_lookup_read_existent_key'
     json_string = json.dumps({'some': 'field'})
+    json_checksum = elliptics.Id(hashlib.sha512(json_string).hexdigest(), 0)
     data = 'some data'
+    data_checksum = elliptics.Id(hashlib.sha512(data).hexdigest(), 0)
+    no_checksum = elliptics.Id([0] * 64, 0)
 
     i = 0
     for i, result in enumerate(session.write(key, json_string, len(json_string), data, len(data)),
@@ -47,7 +51,9 @@ def test_lookup_read_existent_key(simple_node):
         assert result.status == 0
         assert result.record_info.json_size == len(json_string)
         assert result.record_info.json_capacity == len(json_string)
+        assert result.record_info.json_checksum == no_checksum
         assert result.record_info.data_size == len(data)
+        assert result.record_info.data_checksum == no_checksum
     assert i == len(session.groups)
 
     i = 0
@@ -55,7 +61,9 @@ def test_lookup_read_existent_key(simple_node):
         assert result.status == 0
         assert result.record_info.json_size == len(json_string)
         assert result.record_info.json_capacity == len(json_string)
+        assert result.record_info.json_checksum == no_checksum
         assert result.record_info.data_size == len(data)
+        assert result.record_info.data_checksum == no_checksum
     assert i == 1
 
     i = 0
@@ -63,9 +71,23 @@ def test_lookup_read_existent_key(simple_node):
         assert result.status == 0
         assert result.record_info.json_size == len(json_string)
         assert result.record_info.json_capacity == len(json_string)
+        assert result.record_info.json_checksum == no_checksum
         assert result.record_info.data_size == len(data)
+        assert result.record_info.data_checksum == no_checksum
         assert result.json == json_string
         assert result.data == data
+    assert i == 1
+
+    session.cflags |= elliptics.command_flags.checksum
+
+    i = 0
+    for i, result in enumerate(session.lookup(key), start=1):
+        assert result.status == 0
+        assert result.record_info.json_size == len(json_string)
+        assert result.record_info.json_capacity == len(json_string)
+        assert result.record_info.json_checksum == json_checksum
+        assert result.record_info.data_size == len(data)
+        assert result.record_info.data_checksum == data_checksum
     assert i == 1
 
 
