@@ -1,3 +1,15 @@
+elliptics (2.27.9.0) unstable; urgency=low
+
+  * fix: code style
+  * fix: remove commented code
+  * feat: add json and data checksums to dnet_lookup_response
+  * test: add json and data checksums to dnet_lookup_response
+  * stats: decrement queue size after dropping request
+  * stats: rename 'nonblocking' to 'lifo' in io pool stats
+  * tests: adjust tests to changed io statistics
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Fri, 01 Feb 2019 20:44:12 +0300
+
 elliptics (2.27.8.4) unstable; urgency=low
 
   * fix: use lifo by default in all cases
