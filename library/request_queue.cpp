@@ -56,6 +56,12 @@ void dnet_request_queue::push_request(dnet_io_req *req, const char *thread_stat_
 				// remove request from the queue
 				list_del_init(&dropped_request->req_entry);
 				--m_queue_size;
+
+				HANDY_COUNTER_DECREMENT("io.input.queue.size", 1);
+
+				HANDY_COUNTER_DECREMENT(("pool.%s.queue.size", thread_stat_id), 1);
+				HANDY_TIMER_STOP(("pool.%s.queue.wait_time", thread_stat_id),
+				                 (uint64_t)dropped_request);
 			}
 			list_add(&req->req_entry, &m_queue);
 		} else {
