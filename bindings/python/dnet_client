@@ -383,11 +383,9 @@ def process_lookup():
                 ('json_offset', r.record_info.json_offset),
                 ('json_size', r.record_info.json_size),
                 ('json_capacity', r.record_info.json_capacity),
-                ('json_checksum', r.record_info.json_checksum),
                 ('data_timestamp', str(r.record_info.data_timestamp)),
                 ('data_offset', r.record_info.data_offset),
                 ('data_size', r.record_info.data_size),
-                ('data_checksum', r.record_info.data_checksum),
             ))
 
         result[r.group_id] = group_result
