@@ -1,3 +1,9 @@
+elliptics (2.27.9.1) unstable; urgency=low
+
+  * fix: put checksums at the end of dnet_record_info
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Mon, 04 Feb 2019 14:18:16 +0300
+
 elliptics (2.27.9.0) unstable; urgency=low
 
   * fix: code style
