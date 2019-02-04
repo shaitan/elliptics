@@ -797,12 +797,13 @@ struct dnet_record_info {
 	uint64_t	json_offset;		/* offset of json within blob */
 	uint64_t	json_size;		/* size of stored json */
 	uint64_t	json_capacity;		/* reserved space for json */
-	unsigned char	json_checksum[DNET_CSUM_SIZE];
 
 	struct dnet_time data_timestamp;	/* timestamp of stored data */
 	uint64_t	data_offset;		/* offset of data within the blob */
 	uint64_t	data_size;		/* size of stored data */
 	// uint64_t	data_capacity;		/* reserved space for data */
+
+	unsigned char	json_checksum[DNET_CSUM_SIZE];
 	unsigned char	data_checksum[DNET_CSUM_SIZE];
 };
 
