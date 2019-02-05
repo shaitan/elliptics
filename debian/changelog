@@ -1,3 +1,9 @@
+elliptics (2.27.9.2) unstable; urgency=low
+
+  * fix: don't print checksums since they aren't requested
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Mon, 04 Feb 2019 19:50:29 +0300
+
 elliptics (2.27.9.1) unstable; urgency=low
 
   * fix: put checksums at the end of dnet_record_info
