@@ -32,16 +32,7 @@ dnet_record_info lookup_result_entry::record_info() const {
 	memset(&info, 0, sizeof(info));
 
 	dnet_lookup_response response;
-
 	deserialize(raw_data(), response);
-
-	auto copy_checksum = [](const std::vector<unsigned char> &src, unsigned char *dst) {
-		if (src.size()) {
-			memcpy(dst, src.data(), DNET_CSUM_SIZE);
-		} else {
-			memset(dst, 0, DNET_CSUM_SIZE);
-		}
-	};
 
 	info.record_flags = response.record_flags;
 	info.user_flags = response.user_flags;
@@ -50,15 +41,37 @@ dnet_record_info lookup_result_entry::record_info() const {
 	info.json_offset = response.json_offset;
 	info.json_size = response.json_size;
 	info.json_capacity = response.json_capacity;
-	copy_checksum(response.json_checksum, info.json_checksum);
 
 	info.data_timestamp = response.data_timestamp;
 	info.data_offset = response.data_offset;
 	info.data_size = response.data_size;
-	// info.data_capacity = response.data_capacity;
-	copy_checksum(response.data_checksum, info.data_checksum);
 
 	return info;
+}
+
+lookup_result_entry::checksum_t convert_checksum(const std::vector<unsigned char> &source) {
+	lookup_result_entry::checksum_t checksum;
+
+	if (!source.empty()) {
+		memcpy(checksum.data(), source.data(), checksum.size());
+	} else {
+		memset(checksum.data(), 0, DNET_CSUM_SIZE);
+	}
+	return checksum;
+}
+
+lookup_result_entry::checksum_t lookup_result_entry::json_checksum() const {
+	dnet_lookup_response response;
+	deserialize(raw_data(), response);
+
+	return convert_checksum(response.json_checksum);
+}
+
+lookup_result_entry::checksum_t lookup_result_entry::data_checksum() const {
+	dnet_lookup_response response;
+	deserialize(raw_data(), response);
+
+	return convert_checksum(response.data_checksum);
 }
 
 dnet_record_info read_result_entry::record_info() const {

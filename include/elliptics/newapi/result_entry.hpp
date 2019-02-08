@@ -23,6 +23,10 @@ public:
 
 	std::string path() const;
 	dnet_record_info record_info() const;
+
+	using checksum_t = std::array<uint8_t, DNET_CSUM_SIZE>;
+	checksum_t json_checksum() const;
+	checksum_t data_checksum() const;
 };
 
 class read_result_entry : public callback_result_entry {

@@ -126,6 +126,10 @@ elliptics_id checksum_to_elliptics_id(const unsigned char *checksum)
 	return elliptics_id(id);
 }
 
+elliptics_id checksum_to_elliptics_id(const newapi::lookup_result_entry::checksum_t &checksum) {
+	return checksum_to_elliptics_id(checksum.data());
+}
+
 elliptics_id lookup_result_get_checksum(const lookup_result_entry &result)
 {
 	return checksum_to_elliptics_id(result.file_info()->checksum);
@@ -252,14 +256,6 @@ elliptics_time dnet_record_info_get_data_timestamp(const dnet_record_info &info)
 	return elliptics_time(info.data_timestamp);
 }
 
-elliptics_id dnet_record_info_get_json_checksum(const dnet_record_info &info) {
-	return checksum_to_elliptics_id(info.json_checksum);
-}
-
-elliptics_id dnet_record_info_get_data_checksum(const dnet_record_info &info) {
-	return checksum_to_elliptics_id(info.data_checksum);
-}
-
 std::string callback_result_get_raw(const newapi::callback_result_entry &result) {
 	return result.raw().to_string();
 }
@@ -282,6 +278,14 @@ bp::object lookup_result_get_record_info(const newapi::lookup_result_entry &resu
 	}
 
 	return bp::object(result.record_info());
+}
+
+elliptics_id lookup_result_get_json_checksum(const newapi::lookup_result_entry &result) {
+	return checksum_to_elliptics_id(result.json_checksum());
+}
+
+elliptics_id lookup_result_get_data_checksum(const newapi::lookup_result_entry &result) {
+	return checksum_to_elliptics_id(result.data_checksum());
 }
 
 elliptics_id read_result_get_id(const newapi::read_result_entry &result)
@@ -537,8 +541,6 @@ void init_result_entry() {
 		              "Whole size of the record's json.")
 		.add_property("json_capacity", &dnet_record_info::json_capacity,
 		              "Size of reserved place for json in the record.")
-		.add_property("json_checksum", newapi::dnet_record_info_get_json_checksum,
-		              "Checksum of the record's json.")
 		.add_property("data_timestamp", newapi::dnet_record_info_get_data_timestamp,
 		              "Timestamp of data last modification.")
 		.add_property("data_offset", &dnet_record_info::data_offset,
@@ -546,8 +548,6 @@ void init_result_entry() {
 		              "In read result it is unfilled and is set to 0.")
 		.add_property("data_size", &dnet_record_info::data_size,
 		              "Whole size of the record's data.")
-		.add_property("data_checksum", newapi::dnet_record_info_get_data_checksum,
-		              "Checksum of the record's data.")
 	;
 
 	bp::class_<dnet_io_info>("IOInfo",
@@ -568,6 +568,10 @@ void init_result_entry() {
 		              "Absolute path to the file where the key is stored on server-side.")
 		.add_property("record_info", newapi::lookup_result_get_record_info,
 		              "Information about the key.")
+		.add_property("json_checksum", newapi::lookup_result_get_json_checksum,
+		              "Checksum of the record's json.")
+		.add_property("data_checksum", newapi::lookup_result_get_data_checksum,
+		              "Checksum of the record's data.")
 	;
 
 	bp::class_<newapi::read_result_entry, bp::bases<newapi::callback_result_entry>>("ReadResultEntry",

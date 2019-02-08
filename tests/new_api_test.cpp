@@ -113,8 +113,9 @@ void check_lookup_result(ioremap::elliptics::newapi::async_lookup_result &async,
 			BOOST_REQUIRE_EQUAL(record_info.json_capacity, record.json_capacity);
 		}
 
-		BOOST_REQUIRE_EQUAL_COLLECTIONS(std::begin(record_info.json_checksum),
-		                                std::end(record_info.json_checksum),
+		auto json_checksum = result.json_checksum();
+		BOOST_REQUIRE_EQUAL_COLLECTIONS(std::begin(json_checksum),
+		                                std::end(json_checksum),
 		                                std::begin(record.json_checksum),
 		                                std::end(record.json_checksum));
 
@@ -124,8 +125,9 @@ void check_lookup_result(ioremap::elliptics::newapi::async_lookup_result &async,
 		}
 		BOOST_REQUIRE_EQUAL(record_info.data_size, record.data.size());
 
-		BOOST_REQUIRE_EQUAL_COLLECTIONS(std::begin(record_info.data_checksum),
-		                                std::end(record_info.data_checksum),
+		auto data_checksum = result.data_checksum();
+		BOOST_REQUIRE_EQUAL_COLLECTIONS(std::begin(data_checksum),
+		                                std::end(data_checksum),
 		                                std::begin(record.data_checksum),
 		                                std::end(record.data_checksum));
 

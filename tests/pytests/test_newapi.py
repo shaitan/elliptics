@@ -51,9 +51,9 @@ def test_lookup_read_existent_key(simple_node):
         assert result.status == 0
         assert result.record_info.json_size == len(json_string)
         assert result.record_info.json_capacity == len(json_string)
-        assert result.record_info.json_checksum == no_checksum
+        assert result.json_checksum == no_checksum
         assert result.record_info.data_size == len(data)
-        assert result.record_info.data_checksum == no_checksum
+        assert result.data_checksum == no_checksum
     assert i == len(session.groups)
 
     i = 0
@@ -61,9 +61,9 @@ def test_lookup_read_existent_key(simple_node):
         assert result.status == 0
         assert result.record_info.json_size == len(json_string)
         assert result.record_info.json_capacity == len(json_string)
-        assert result.record_info.json_checksum == no_checksum
+        assert result.json_checksum == no_checksum
         assert result.record_info.data_size == len(data)
-        assert result.record_info.data_checksum == no_checksum
+        assert result.data_checksum == no_checksum
     assert i == 1
 
     i = 0
@@ -71,9 +71,7 @@ def test_lookup_read_existent_key(simple_node):
         assert result.status == 0
         assert result.record_info.json_size == len(json_string)
         assert result.record_info.json_capacity == len(json_string)
-        assert result.record_info.json_checksum == no_checksum
         assert result.record_info.data_size == len(data)
-        assert result.record_info.data_checksum == no_checksum
         assert result.json == json_string
         assert result.data == data
     assert i == 1
@@ -85,9 +83,9 @@ def test_lookup_read_existent_key(simple_node):
         assert result.status == 0
         assert result.record_info.json_size == len(json_string)
         assert result.record_info.json_capacity == len(json_string)
-        assert result.record_info.json_checksum == json_checksum
+        assert result.json_checksum == json_checksum
         assert result.record_info.data_size == len(data)
-        assert result.record_info.data_checksum == data_checksum
+        assert result.data_checksum == data_checksum
     assert i == 1
 
 
