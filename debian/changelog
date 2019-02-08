@@ -1,3 +1,9 @@
+elliptics (2.27.9.3) unstable; urgency=low
+
+  * fix: restore compatibility
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Fri, 08 Feb 2019 19:02:45 +0300
+
 elliptics (2.27.9.2) unstable; urgency=low
 
   * fix: don't print checksums since they aren't requested
