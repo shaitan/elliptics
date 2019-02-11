@@ -107,154 +107,154 @@ set(TESTS_DEPS dnet_ioserv)
 #TODO: may be its worth making utility function for test definition block
 #
 #TODO: rename test.cpp to misc_test.cpp
-add_executable(dnet_cpp_misc_test test.cpp)
-set_target_properties(dnet_cpp_misc_test ${TEST_PROPERTIES})
-target_link_libraries(dnet_cpp_misc_test ${TEST_LIBRARIES})
-add_test_target(test_misc dnet_cpp_misc_test DEPENDS ${TESTS_DEPS})
-
-add_executable(dnet_cpp_api_test api_test.cpp)
-set_target_properties(dnet_cpp_api_test ${TEST_PROPERTIES})
-target_link_libraries(dnet_cpp_api_test ${TEST_LIBRARIES})
-add_test_target(test_api dnet_cpp_api_test DEPENDS ${TESTS_DEPS})
-
-add_executable(dnet_cpp_cache_test cache_test.cpp)
-set_target_properties(dnet_cpp_cache_test ${TEST_PROPERTIES})
-target_link_libraries(dnet_cpp_cache_test ${TEST_LIBRARIES})
-add_test_target(test_cache dnet_cpp_cache_test DEPENDS ${TESTS_DEPS})
-
-add_executable(dnet_cpp_stats_test stats_test.cpp)
-set_target_properties(dnet_cpp_stats_test ${TEST_PROPERTIES})
-target_link_libraries(dnet_cpp_stats_test ${TEST_LIBRARIES})
-add_test_target(test_stats dnet_cpp_stats_test DEPENDS ${TESTS_DEPS})
-
-add_executable(dnet_backends_test backends_test.cpp)
-set_target_properties(dnet_backends_test ${TEST_PROPERTIES})
-target_link_libraries(dnet_backends_test ${TEST_LIBRARIES} kora-util)
-add_test_target(test_backends dnet_backends_test DEPENDS ${TESTS_DEPS})
-
-add_executable(dnet_weights_test weights_test.cpp)
-set_target_properties(dnet_weights_test ${TEST_PROPERTIES})
-target_link_libraries(dnet_weights_test ${TEST_LIBRARIES})
-add_test_target(test_weights dnet_weights_test DEPENDS ${TESTS_DEPS})
-
-add_executable(dnet_reconnect_test reconnect_test.cpp)
-set_target_properties(dnet_reconnect_test ${TEST_PROPERTIES})
-target_link_libraries(dnet_reconnect_test ${TEST_LIBRARIES})
-add_test_target(test_reconnect dnet_reconnect_test DEPENDS ${TESTS_DEPS})
-
-add_executable(dnet_locks_test locks_test.cpp)
-set_target_properties(dnet_locks_test ${TEST_PROPERTIES})
-target_link_libraries(dnet_locks_test ${TEST_LIBRARIES})
-add_test_target(test_locks dnet_locks_test DEPENDS ${TESTS_DEPS})
-
-add_executable(dnet_crypto_test crypto_test.cpp)
-set_target_properties(dnet_crypto_test ${TEST_PROPERTIES})
-target_link_libraries(dnet_crypto_test elliptics)
-add_test_target(test_crypto dnet_crypto_test DEPENDS ${TESTS_DEPS})
-
-add_executable(dnet_server_send_test server_send.cpp)
-set_target_properties(dnet_server_send_test ${TEST_PROPERTIES})
-target_link_libraries(dnet_server_send_test ${TEST_LIBRARIES})
-add_test_target(test_server_send dnet_server_send_test DEPENDS ${TESTS_DEPS})
-
-add_executable(dnet_queue_timeout_test queue_timeout.cpp)
-set_target_properties(dnet_queue_timeout_test ${TEST_PROPERTIES})
-target_link_libraries(dnet_queue_timeout_test ${TEST_LIBRARIES})
-add_test_target(test_queue_timeout dnet_queue_timeout_test DEPENDS ${TESTS_DEPS})
-
-add_executable(dnet_new_api_test new_api_test.cpp)
-set_target_properties(dnet_new_api_test ${TEST_PROPERTIES})
-target_link_libraries(dnet_new_api_test ${TEST_LIBRARIES})
-add_test_target(test_new_api dnet_new_api_test DEPENDS ${TESTS_DEPS})
-
-add_executable(dnet_new_api_cache_test new_api_cache_test.cpp)
-set_target_properties(dnet_new_api_cache_test ${TEST_PROPERTIES})
-target_link_libraries(dnet_new_api_cache_test ${TEST_LIBRARIES})
-add_test_target(test_new_api_cache dnet_new_api_cache_test DEPENDS ${TESTS_DEPS})
-
-add_executable(dnet_new_api_iterator_test new_api_iterator_test.cpp)
-set_target_properties(dnet_new_api_iterator_test ${TEST_PROPERTIES})
-target_link_libraries(dnet_new_api_iterator_test ${TEST_LIBRARIES})
-add_test_target(test_new_api_iterator dnet_new_api_iterator_test DEPENDS ${TESTS_DEPS})
-
-add_executable(dnet_new_api_server_send_test new_api_server_send_test.cpp)
-set_target_properties(dnet_new_api_server_send_test ${TEST_PROPERTIES})
-target_link_libraries(dnet_new_api_server_send_test ${TEST_LIBRARIES})
-add_test_target(test_new_api_server_send dnet_new_api_server_send_test DEPENDS ${TESTS_DEPS})
-
-add_executable(dnet_forwarding_test forwarding_test.cpp)
-set_target_properties(dnet_forwarding_test ${TEST_PROPERTIES})
-target_link_libraries(dnet_forwarding_test ${TEST_LIBRARIES})
-add_test_target(test_forwarding dnet_forwarding_test DEPENDS ${TESTS_DEPS})
-
-add_executable(dnet_io_pools_test io_pools_test.cpp)
-set_target_properties(dnet_io_pools_test ${TEST_PROPERTIES})
-target_link_libraries(dnet_io_pools_test ${TEST_LIBRARIES})
-add_test_target(test_io_pools dnet_io_pools_test DEPENDS ${TESTS_DEPS})
-
-add_executable(dnet_corrupted_stamp_test corrupted_stamp_test.cpp)
-set_target_properties(dnet_corrupted_stamp_test ${TEST_PROPERTIES})
-target_link_libraries(dnet_corrupted_stamp_test ${TEST_LIBRARIES})
-add_test_target(test_corrupted_stamp dnet_corrupted_stamp_test DEPENDS ${TESTS_DEPS})
+#add_executable(dnet_cpp_misc_test test.cpp)
+#set_target_properties(dnet_cpp_misc_test ${TEST_PROPERTIES})
+#target_link_libraries(dnet_cpp_misc_test ${TEST_LIBRARIES})
+#add_test_target(test_misc dnet_cpp_misc_test DEPENDS ${TESTS_DEPS})
+#
+#add_executable(dnet_cpp_api_test api_test.cpp)
+#set_target_properties(dnet_cpp_api_test ${TEST_PROPERTIES})
+#target_link_libraries(dnet_cpp_api_test ${TEST_LIBRARIES})
+#add_test_target(test_api dnet_cpp_api_test DEPENDS ${TESTS_DEPS})
+#
+#add_executable(dnet_cpp_cache_test cache_test.cpp)
+#set_target_properties(dnet_cpp_cache_test ${TEST_PROPERTIES})
+#target_link_libraries(dnet_cpp_cache_test ${TEST_LIBRARIES})
+#add_test_target(test_cache dnet_cpp_cache_test DEPENDS ${TESTS_DEPS})
+#
+#add_executable(dnet_cpp_stats_test stats_test.cpp)
+#set_target_properties(dnet_cpp_stats_test ${TEST_PROPERTIES})
+#target_link_libraries(dnet_cpp_stats_test ${TEST_LIBRARIES})
+#add_test_target(test_stats dnet_cpp_stats_test DEPENDS ${TESTS_DEPS})
+#
+#add_executable(dnet_backends_test backends_test.cpp)
+#set_target_properties(dnet_backends_test ${TEST_PROPERTIES})
+#target_link_libraries(dnet_backends_test ${TEST_LIBRARIES} kora-util)
+#add_test_target(test_backends dnet_backends_test DEPENDS ${TESTS_DEPS})
+#
+#add_executable(dnet_weights_test weights_test.cpp)
+#set_target_properties(dnet_weights_test ${TEST_PROPERTIES})
+#target_link_libraries(dnet_weights_test ${TEST_LIBRARIES})
+#add_test_target(test_weights dnet_weights_test DEPENDS ${TESTS_DEPS})
+#
+#add_executable(dnet_reconnect_test reconnect_test.cpp)
+#set_target_properties(dnet_reconnect_test ${TEST_PROPERTIES})
+#target_link_libraries(dnet_reconnect_test ${TEST_LIBRARIES})
+#add_test_target(test_reconnect dnet_reconnect_test DEPENDS ${TESTS_DEPS})
+#
+#add_executable(dnet_locks_test locks_test.cpp)
+#set_target_properties(dnet_locks_test ${TEST_PROPERTIES})
+#target_link_libraries(dnet_locks_test ${TEST_LIBRARIES})
+#add_test_target(test_locks dnet_locks_test DEPENDS ${TESTS_DEPS})
+#
+#add_executable(dnet_crypto_test crypto_test.cpp)
+#set_target_properties(dnet_crypto_test ${TEST_PROPERTIES})
+#target_link_libraries(dnet_crypto_test elliptics)
+#add_test_target(test_crypto dnet_crypto_test DEPENDS ${TESTS_DEPS})
+#
+#add_executable(dnet_server_send_test server_send.cpp)
+#set_target_properties(dnet_server_send_test ${TEST_PROPERTIES})
+#target_link_libraries(dnet_server_send_test ${TEST_LIBRARIES})
+#add_test_target(test_server_send dnet_server_send_test DEPENDS ${TESTS_DEPS})
+#
+#add_executable(dnet_queue_timeout_test queue_timeout.cpp)
+#set_target_properties(dnet_queue_timeout_test ${TEST_PROPERTIES})
+#target_link_libraries(dnet_queue_timeout_test ${TEST_LIBRARIES})
+#add_test_target(test_queue_timeout dnet_queue_timeout_test DEPENDS ${TESTS_DEPS})
+#
+#add_executable(dnet_new_api_test new_api_test.cpp)
+#set_target_properties(dnet_new_api_test ${TEST_PROPERTIES})
+#target_link_libraries(dnet_new_api_test ${TEST_LIBRARIES})
+#add_test_target(test_new_api dnet_new_api_test DEPENDS ${TESTS_DEPS})
+#
+#add_executable(dnet_new_api_cache_test new_api_cache_test.cpp)
+#set_target_properties(dnet_new_api_cache_test ${TEST_PROPERTIES})
+#target_link_libraries(dnet_new_api_cache_test ${TEST_LIBRARIES})
+#add_test_target(test_new_api_cache dnet_new_api_cache_test DEPENDS ${TESTS_DEPS})
+#
+#add_executable(dnet_new_api_iterator_test new_api_iterator_test.cpp)
+#set_target_properties(dnet_new_api_iterator_test ${TEST_PROPERTIES})
+#target_link_libraries(dnet_new_api_iterator_test ${TEST_LIBRARIES})
+#add_test_target(test_new_api_iterator dnet_new_api_iterator_test DEPENDS ${TESTS_DEPS})
+#
+#add_executable(dnet_new_api_server_send_test new_api_server_send_test.cpp)
+#set_target_properties(dnet_new_api_server_send_test ${TEST_PROPERTIES})
+#target_link_libraries(dnet_new_api_server_send_test ${TEST_LIBRARIES})
+#add_test_target(test_new_api_server_send dnet_new_api_server_send_test DEPENDS ${TESTS_DEPS})
+#
+#add_executable(dnet_forwarding_test forwarding_test.cpp)
+#set_target_properties(dnet_forwarding_test ${TEST_PROPERTIES})
+#target_link_libraries(dnet_forwarding_test ${TEST_LIBRARIES})
+#add_test_target(test_forwarding dnet_forwarding_test DEPENDS ${TESTS_DEPS})
+#
+#add_executable(dnet_io_pools_test io_pools_test.cpp)
+#set_target_properties(dnet_io_pools_test ${TEST_PROPERTIES})
+#target_link_libraries(dnet_io_pools_test ${TEST_LIBRARIES})
+#add_test_target(test_io_pools dnet_io_pools_test DEPENDS ${TESTS_DEPS})
+#
+#add_executable(dnet_corrupted_stamp_test corrupted_stamp_test.cpp)
+#set_target_properties(dnet_corrupted_stamp_test ${TEST_PROPERTIES})
+#target_link_libraries(dnet_corrupted_stamp_test ${TEST_LIBRARIES})
+#add_test_target(test_corrupted_stamp dnet_corrupted_stamp_test DEPENDS ${TESTS_DEPS})
 
 #
 # General list of test modules (implemented in C++).
 #
-set(TESTS_LIST
-    dnet_cpp_misc_test
-    dnet_cpp_api_test
-    dnet_cpp_cache_test
-    dnet_cpp_stats_test
-    dnet_backends_test
-    dnet_weights_test
-    dnet_reconnect_test
-    dnet_locks_test
-    dnet_crypto_test
-    dnet_server_send_test
-    dnet_queue_timeout_test
-    dnet_new_api_test
-    dnet_new_api_cache_test
-    dnet_new_api_iterator_test
-    dnet_new_api_server_send_test
-    dnet_forwarding_test
-    dnet_io_pools_test
-    dnet_corrupted_stamp_test
-)
+#set(TESTS_LIST
+#    dnet_cpp_misc_test
+#    dnet_cpp_api_test
+#    dnet_cpp_cache_test
+#    dnet_cpp_stats_test
+#    dnet_backends_test
+#    dnet_weights_test
+#    dnet_reconnect_test
+#    dnet_locks_test
+#    dnet_crypto_test
+#    dnet_server_send_test
+#    dnet_queue_timeout_test
+#    dnet_new_api_test
+#    dnet_new_api_cache_test
+#    dnet_new_api_iterator_test
+#    dnet_new_api_server_send_test
+#    dnet_forwarding_test
+#    dnet_io_pools_test
+#    dnet_corrupted_stamp_test
+#)
 
 #
 # Tests written in python use dnet_run_servers to instantiate testing environments.
 #
 list(APPEND TESTS_DEPS dnet_run_servers)
 
-add_custom_target(test_python
-    COMMAND mkdir -p ${CMAKE_CURRENT_BINARY_DIR}/pytests/elliptics
-    COMMAND mkdir -p ${CMAKE_CURRENT_BINARY_DIR}/pytests/elliptics_recovery
-    COMMAND cp ${CMAKE_CURRENT_BINARY_DIR}/../bindings/python/core.so* pytests/elliptics/
-    COMMAND cp ${CMAKE_CURRENT_BINARY_DIR}/../bindings/cpp/libelliptics_client.so* pytests/
-    COMMAND cp ${CMAKE_CURRENT_BINARY_DIR}/../*/libelliptics*.so* pytests/
-    COMMAND cp ${CMAKE_SOURCE_DIR}/bindings/python/src/* pytests/elliptics/
-    COMMAND cp -r ${CMAKE_SOURCE_DIR}/recovery/elliptics_recovery/* pytests/elliptics_recovery/
-    DEPENDS ${TESTS_DEPS} core_python
-    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-)
-
-set(PYTESTS_FLAGS "-v" "-l" "-x" "--timeout=1200" "--durations=20")
-
-add_custom_command(TARGET test_python
-    POST_BUILD
-    COMMAND virtualenv -p "${PYTHON_EXECUTABLE}" . &&
-        . bin/activate &&
-        pip install argparse &&
-        pip install pytest &&
-        pip install pytest-timeout &&
-        pip install pytest-mock &&
-        pip install msgpack-python &&
-        export LD_LIBRARY_PATH=.:.. &&
-        env ${TEST_ENV} py.test ${PYTESTS_FLAGS} ${CMAKE_CURRENT_SOURCE_DIR}/pytests
-    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/pytests
-)
-
-list(APPEND TESTS_DEPS test_python)
+#add_custom_target(test_python
+#    COMMAND mkdir -p ${CMAKE_CURRENT_BINARY_DIR}/pytests/elliptics
+#    COMMAND mkdir -p ${CMAKE_CURRENT_BINARY_DIR}/pytests/elliptics_recovery
+#    COMMAND cp ${CMAKE_CURRENT_BINARY_DIR}/../bindings/python/core.so* pytests/elliptics/
+#    COMMAND cp ${CMAKE_CURRENT_BINARY_DIR}/../bindings/cpp/libelliptics_client.so* pytests/
+#    COMMAND cp ${CMAKE_CURRENT_BINARY_DIR}/../*/libelliptics*.so* pytests/
+#    COMMAND cp ${CMAKE_SOURCE_DIR}/bindings/python/src/* pytests/elliptics/
+#    COMMAND cp -r ${CMAKE_SOURCE_DIR}/recovery/elliptics_recovery/* pytests/elliptics_recovery/
+#    DEPENDS ${TESTS_DEPS} core_python
+#    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+#)
+#
+#set(PYTESTS_FLAGS "-v" "-l" "-x" "--timeout=1200" "--durations=20")
+#
+#add_custom_command(TARGET test_python
+#    POST_BUILD
+#    COMMAND virtualenv -p "${PYTHON_EXECUTABLE}" . &&
+#        . bin/activate &&
+#        pip install argparse &&
+#        pip install pytest &&
+#        pip install pytest-timeout &&
+#        pip install pytest-mock &&
+#        pip install msgpack-python &&
+#        export LD_LIBRARY_PATH=.:.. &&
+#        env ${TEST_ENV} py.test ${PYTESTS_FLAGS} ${CMAKE_CURRENT_SOURCE_DIR}/pytests
+#    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/pytests
+#)
+#
+#list(APPEND TESTS_DEPS test_python)
 
 #
 # Target `test` execute all available tests (both implemented in C++ and in python)
