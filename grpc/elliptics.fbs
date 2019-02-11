@@ -1,0 +1,11 @@
+table LookupRequest {
+    key:string;
+}
+
+table LookupResponse {
+    value:string;
+}
+
+rpc_service Elliptics {
+    Lookup(LookupRequest):LookupResponse;
+}

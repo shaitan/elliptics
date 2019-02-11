@@ -9,6 +9,8 @@ set(ELLIPTICS_SRCS
     ../example/backends.c
     ../example/eblob_backend.cpp
     ../example/eblob_backend.c
+    ../grpc/grpc_server.cpp
+    ../grpc/elliptics.grpc.fb.cc
     )
 
 add_library(elliptics_ids STATIC ids.cpp)
@@ -31,6 +33,9 @@ target_link_libraries(elliptics
     elliptics_monitor
     elliptics_client
     kora-util
+    gpr
+    grpc
+    grpc++
     )
 
 install(TARGETS elliptics

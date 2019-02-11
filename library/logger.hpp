@@ -4,6 +4,7 @@
 
 #ifdef __cplusplus
 #include <atomic>
+#include <vector>
 #include <unordered_map>
 #include <unordered_set>
 #include <blackhole/extensions/facade.hpp>

@@ -412,6 +412,7 @@ void dnet_check_io_pool(struct dnet_io_pool *io, uint64_t *queue_size, uint64_t 
 
 struct dnet_backends_manager;
 struct dnet_io_pools_manager;
+struct dnet_grpc_server;
 struct dnet_io {
 	int			need_exit;
 
@@ -430,6 +431,7 @@ struct dnet_io {
 	int			blocked;
 
 	struct list_stat	output_stats;
+	struct dnet_grpc_server	*grpc;
 };
 
 int dnet_state_accept_process(struct dnet_net_state *st, struct epoll_event *ev);
@@ -1010,6 +1012,9 @@ struct dnet_cmd_stats {
 	uint64_t size;		// size of data received or sent by command
 };
 
+
+void dnet_start_grpc_server(struct dnet_node *n);
+void dnet_stop_grpc_server(struct dnet_node *n);
 
 #ifdef __cplusplus
 }
