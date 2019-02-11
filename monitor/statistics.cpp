@@ -31,6 +31,7 @@
 // handystats, so its a necessity to include exactly prettywriter.h,
 // its effectively forces selection of elliptics' version of rapidjson
 // in its entirety.
+#include "rapidjson/stringbuffer.h"
 #include "rapidjson/prettywriter.h"
 
 #ifdef HAVE_HANDYSTATS
