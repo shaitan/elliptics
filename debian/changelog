@@ -1,3 +1,11 @@
+elliptics (2.27.9.4) unstable; urgency=low
+
+  * fix: do not ignore an error returned by sha512_file_ctx
+  * sha512: remove duplicated code
+  * sha512: avoid reading unnecessary data
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Fri, 22 Feb 2019 17:17:03 +0300
+
 elliptics (2.27.9.3) unstable; urgency=low
 
   * fix: restore compatibility
