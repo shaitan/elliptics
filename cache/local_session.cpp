@@ -151,8 +151,9 @@ int local_session::read(const dnet_id &id,
 
 				clear_queue();
 				*data = std::move(result);
-				return 0;
 			}
+
+			return 0;
 		}
 	}
 
