@@ -632,7 +632,7 @@ static int dnet_ping_stall_node(struct dnet_net_state *st)
 
 	memset(&ctl, 0, sizeof(struct dnet_trans_control));
 
-	ctl.cmd = DNET_CMD_BACKEND_STATUS;
+	ctl.cmd = DNET_CMD_STATUS;
 	ctl.cflags = DNET_FLAGS_NEED_ACK | DNET_FLAGS_DIRECT;
 	ctl.size = sizeof(struct dnet_node_status);
 	ctl.data = &node_status;
