@@ -719,7 +719,7 @@ static int dnet_trans_check_stall(struct dnet_net_state *st)
 		 * destruction can lead to state destruction which in turn may kill state and remove it from route table,
 		 * which will deadlock.
 		 */
-		dnet_trans_remove_nolock(st, t);
+		dnet_trans_remove_timer_nolock(st, t);
 
 		diff = DIFF_TIMESPEC(t->start_ts, ts);
 		dnet_logger_set_trace_id(t->cmd.trace_id, t->cmd.flags & DNET_FLAGS_TRACE_BIT);
@@ -737,18 +737,18 @@ static int dnet_trans_check_stall(struct dnet_net_state *st)
 
 		r->header = r + 1;
 		r->hsize = sizeof(struct dnet_cmd);
-		// TODO set context from trans
-//		r->context
-		r->st = dnet_state_get(st);
-		cmd = r->header;
-		memcpy(cmd, &t->cmd, sizeof(struct dnet_cmd));
-		cmd->size = 0;
-		cmd->flags |= DNET_FLAGS_REPLY | DNET_FLAGS_DIRECT_BACKEND;
-		cmd->status = -ETIMEDOUT;
-		cmd->backend_id = -1;
-		dnet_schedule_io(st->n, r);
+		memcpy(r->header, &t->cmd, r->hsize);
 
 		pthread_mutex_unlock(&st->trans_lock);
+
+		r->st = dnet_state_get(st);
+		cmd = r->header;
+		cmd->size = 0;
+		cmd->backend_id = -1;
+		cmd->flags |= DNET_FLAGS_REPLY;
+		cmd->flags &= ~(DNET_FLAGS_MORE | DNET_FLAGS_NEED_ACK);
+		cmd->status = -ETIMEDOUT;
+		dnet_schedule_io(st->n, r);
 	}
 
 	if (trans_timeout) {

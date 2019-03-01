@@ -340,7 +340,7 @@ void dnet_schedule_io(struct dnet_node *n, struct dnet_io_req *r)
 
 	if (cmd->flags & DNET_FLAGS_DIRECT_BACKEND) {
 		backend_id = cmd->backend_id;
-	} else if (dnet_cmd_needs_backend(cmd->cmd)) {
+	} else if (dnet_cmd_needs_backend(cmd->cmd) && n->io->backends_manager) {
 		backend_id = dnet_state_search_backend(n, &cmd->id);
 	}
 
