@@ -643,6 +643,7 @@ static int dnet_ping_stall_node(struct dnet_net_state *st)
 	return dnet_trans_alloc_send_state(sess, st, &ctl);
 }
 
+/*
 static int dnet_trans_check_stall(struct dnet_net_state *st, struct list_head *head)
 {
 	int is_stall_state = 0;
@@ -660,6 +661,108 @@ static int dnet_trans_check_stall(struct dnet_net_state *st, struct list_head *h
 
 	return is_stall_state;
 }
+*/
+
+static int dnet_trans_check_stall(struct dnet_net_state *st)
+{
+	int is_stall_state = 0;
+	struct dnet_trans *t;
+	struct rb_node *rb_node;
+	struct timespec ts;
+	long diff = 0;
+	int trans_timeout = 0;
+
+	struct dnet_io_req *r;
+	struct dnet_cmd *cmd;
+	static const size_t cmd_size = sizeof(struct dnet_io_req) + sizeof(struct dnet_cmd);
+
+	clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
+
+	while (1) {
+		pthread_mutex_lock(&st->trans_lock);
+
+		t = NULL;
+		if (!RB_EMPTY_ROOT(&st->timer_root)) {
+			rb_node = rb_first(&st->timer_root);
+			t = rb_entry(rb_node, struct dnet_trans, timer_entry);
+		}
+
+		if (!t) {
+			pthread_mutex_unlock(&st->trans_lock);
+			break;
+		}
+
+		if (!st->__need_exit) {
+			int timed_out = 0;
+			if (t->time_ts.tv_sec < ts.tv_sec) {
+				timed_out = 1;
+			} else if (t->time_ts.tv_sec == ts.tv_sec) {
+				timed_out = (t->time_ts.tv_nsec <= ts.tv_nsec);
+			}
+
+			if (!timed_out) {
+				pthread_mutex_unlock(&st->trans_lock);
+				break;
+			}
+		}
+
+		++trans_timeout;
+
+		/*
+		 * Remove transaction from every tree/list, so it could not be accessed and found while we deal with it.
+		 * In particular, we will call ->complete() callback, which must ensure that no other thread calls it.
+		 *
+		 * Memory allocation for every transaction is handled by reference counters, but callbacks must ensure,
+		 * that no calls are made after 'final' callback has been invoked. 'Final' means is_trans_destroyed() returns true.
+		 *
+		 * We can not destroy transaction right here since route table is locked above this function and transaction
+		 * destruction can lead to state destruction which in turn may kill state and remove it from route table,
+		 * which will deadlock.
+		 */
+		dnet_trans_remove_nolock(st, t);
+
+		diff = DIFF_TIMESPEC(t->start_ts, ts);
+		dnet_logger_set_trace_id(t->cmd.trace_id, t->cmd.flags & DNET_FLAGS_TRACE_BIT);
+		dnet_log(st->n, DNET_LOG_ERROR, "%s: %s: TIMEOUT/need-exit %s, need-exit: %d, time: %ld",
+		         dnet_dump_id(&t->cmd.id), dnet_cmd_string(t->cmd.cmd), dnet_print_trans(t),
+		         st->__need_exit, diff);
+		dnet_logger_unset_trace_id();
+
+		r = calloc(1, cmd_size);
+		if (!r) {
+			// TODO: do something if no memory is available
+			pthread_mutex_unlock(&st->trans_lock);
+			continue;
+		}
+
+		r->header = r + 1;
+		r->hsize = sizeof(struct dnet_cmd);
+		// TODO set context from trans
+//		r->context
+		r->st = dnet_state_get(st);
+		cmd = r->header;
+		memcpy(cmd, &t->cmd, sizeof(struct dnet_cmd));
+		cmd->size = 0;
+		cmd->flags |= DNET_FLAGS_REPLY | DNET_FLAGS_DIRECT_BACKEND;
+		cmd->status = -ETIMEDOUT;
+		cmd->backend_id = -1;
+		dnet_schedule_io(st->n, r);
+
+		pthread_mutex_unlock(&st->trans_lock);
+	}
+
+	if (trans_timeout) {
+		st->stall++;
+
+		dnet_log(st->n, DNET_LOG_ERROR, "%s: TIMEOUT: transactions: %d, stall counter: %d/%lu",
+		         dnet_state_dump_addr(st), trans_timeout, st->stall, st->n->stall_count);
+
+		if (st->stall >= st->n->stall_count && st != st->n->st)
+			is_stall_state = 1;
+	}
+
+	return is_stall_state;
+}
 
 static void dnet_check_all_states(struct dnet_node *n)
 {
@@ -668,7 +771,7 @@ static void dnet_check_all_states(struct dnet_node *n)
 	int num_stall_state = 0;
 	int max_state_count = 0;
 	struct dnet_net_state **stall_states = NULL;
-	LIST_HEAD(head);
+//	LIST_HEAD(head);
 
 	pthread_mutex_lock(&n->state_lock);
 	/*
@@ -689,14 +792,14 @@ static void dnet_check_all_states(struct dnet_node *n)
 	}
 
 	list_for_each_entry_safe(st, tmp, &n->dht_state_list, node_entry) {
-		if (dnet_trans_check_stall(st, &head)) {
+		if (dnet_trans_check_stall(st/*, &head*/)) {
 			dnet_state_get(st);
 			stall_states[num_stall_state++] = st;
 		}
 	}
 	pthread_mutex_unlock(&n->state_lock);
 
-	dnet_update_stall_backend_weights(&head);
+//	dnet_update_stall_backend_weights(&head);
 
 	for (i = 0; i < num_stall_state; ++i) {
 		st = stall_states[i];
@@ -707,7 +810,7 @@ static void dnet_check_all_states(struct dnet_node *n)
 		dnet_state_put(st);
 	}
 
-	dnet_trans_clean_list(&head, -ETIMEDOUT);
+//	dnet_trans_clean_list(&head, -ETIMEDOUT);
 	free(stall_states);
 }
 
@@ -756,7 +859,7 @@ static void *dnet_check_process(void *data)
 
 	while (!n->need_exit) {
 		dnet_check_all_states(n);
-		sleep(1);
+		usleep(10 * 1000); // 10 milliseconds
 	}
 
 	return NULL;
