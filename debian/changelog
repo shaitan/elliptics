@@ -1,3 +1,13 @@
+elliptics (2.27.9.4~debug) unstable; urgency=low
+
+  * logs: extra logs for processing timed out trans
+  * ping: use CMD_STATUS instead of CMD_BACKEND_STATUS for ping
+  * debug: handle timed-out trans callback in io pool and decrease sleep time between timed-out trans checks
+  * fixup
+  * fixup
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Fri, 01 Mar 2019 18:56:37 +0300
+
 elliptics (2.27.9.4) unstable; urgency=low
 
   * fix: do not ignore an error returned by sha512_file_ctx
