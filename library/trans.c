@@ -712,6 +712,7 @@ static int dnet_trans_move_timed_out_transactions(struct dnet_net_state *st, str
 			         st->__need_exit, diff);
 		}
 
+		dnet_trans_get(t);
 		list_add_tail(&t->trans_list_entry, head);
 		dnet_logger_unset_trace_id();
 
@@ -772,6 +773,7 @@ static void dnet_trans_clean_timed_out_list(struct list_head *head) {
 		dnet_schedule_io(n, r);
 
 		dnet_log(n, DNET_LOG_ERROR, "TIMEOUT: finish processing trans: %llu", (unsigned long long)t->trans);
+		dnet_trans_put(t);
 	}
 }
 
