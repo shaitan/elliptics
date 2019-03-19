@@ -656,7 +656,7 @@ static int dnet_trans_check_stall(struct dnet_net_state *st, struct list_head *h
 
 static void dnet_check_all_states(struct dnet_node *n)
 {
-	struct dnet_net_state *st, *tmp;
+	struct dnet_net_state *st;
 	int i, err;
 	int num_stall_state = 0;
 	int max_state_count = 0;
@@ -668,7 +668,7 @@ static void dnet_check_all_states(struct dnet_node *n)
 	 * It isn't possible to send a ping transaction while checking stall transactions within dnet_trans_check_stall(),
 	 * because it may invoke callback directly, where dnet_state_reset() is called that will deadlock on state_lock mutex.
 	 */
-	list_for_each_entry_safe(st, tmp, &n->dht_state_list, node_entry) {
+	rb_for_each_entry(st, &n->dht_state_root, node_entry) {
 		++max_state_count;
 	}
 
@@ -681,7 +681,7 @@ static void dnet_check_all_states(struct dnet_node *n)
 		}
 	}
 
-	list_for_each_entry_safe(st, tmp, &n->dht_state_list, node_entry) {
+	rb_for_each_entry(st, &n->dht_state_root, node_entry) {
 		if (dnet_trans_check_stall(st, &head)) {
 			dnet_state_get(st);
 			stall_states[num_stall_state++] = st;

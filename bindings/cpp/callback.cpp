@@ -164,7 +164,7 @@ static size_t send_to_each_node_impl(session &sess, dnet_trans_control &ctl)
 	size_t count = 0;
 
 	pthread_mutex_lock(&node->state_lock);
-	list_for_each_entry(st, &node->dht_state_list, node_entry) {
+	rb_for_each_entry(st, &node->dht_state_root, node_entry) {
 		if (st == node->st)
 			continue;
 

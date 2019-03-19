@@ -114,7 +114,7 @@ static void clients_stat_json(dnet_node *n, rapidjson::Value &stat_value,
 
 	pthread_mutex_lock(&n->state_lock);
 	try {
-		list_for_each_entry(st, &n->empty_state_list, node_entry) {
+		rb_for_each_entry(st, &n->empty_state_root, node_entry) {
 			rapidjson::Value client_stat(rapidjson::kObjectType);
 			single_client_stat_json(st, client_stat, allocator);
 			stat_value.AddMember(dnet_addr_string(&st->addr), allocator, client_stat, allocator);

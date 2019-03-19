@@ -31,7 +31,7 @@ static rapidjson::Value & fill_states_stats(struct dnet_node *n,
                                             rapidjson::Document::AllocatorType &allocator) {
 	pthread_mutex_lock(&n->state_lock);
 	struct dnet_net_state *st;
-	list_for_each_entry(st, &n->empty_state_list, node_entry) {
+	rb_for_each_entry(st, &n->empty_state_root, node_entry) {
 		rapidjson::Value state(rapidjson::kObjectType);
 		state.AddMember("send_queue_size", atomic_read(&st->send_queue_size), allocator);
 		state.AddMember("la", st->la, allocator);

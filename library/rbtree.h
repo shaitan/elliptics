@@ -159,6 +159,11 @@ static inline void rb_link_node(struct rb_node * node, struct rb_node * parent,
 	*rb_link = node;
 }
 
+#define rb_for_each_entry(pos, root, field) \
+	for (pos = rb_entry(rb_first(root), typeof(*pos), field); \
+	     pos; \
+	     pos = rb_entry(rb_next(&pos->field), typeof(*pos), field))
+
 #ifdef __cplusplus
 }
 #endif

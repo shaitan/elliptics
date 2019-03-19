@@ -53,7 +53,7 @@ static int dnet_cmd_route_list(struct dnet_net_state *orig, struct dnet_cmd *cmd
 	int err;
 
 	pthread_mutex_lock(&n->state_lock);
-	list_for_each_entry(st, &n->dht_state_list, node_entry) {
+	rb_for_each_entry(st, &n->dht_state_root, node_entry) {
 		if (dnet_addr_equal(&st->addr, &orig->addr) || !st->addrs)
 			continue;
 		++states_num;
@@ -76,7 +76,7 @@ static int dnet_cmd_route_list(struct dnet_net_state *orig, struct dnet_cmd *cmd
 
 	dnet_addr_string_raw(&orig->addr, orig_addr_str, dump_size);
 
-	list_for_each_entry(st, &n->dht_state_list, node_entry) {
+	rb_for_each_entry(st, &n->dht_state_root, node_entry) {
 		int skip = dnet_addr_equal(&st->addr, &orig->addr) || !st->addrs;
 
 		if (!st->addrs)

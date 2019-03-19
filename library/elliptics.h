@@ -115,9 +115,11 @@ struct dnet_net_epoll_data
 
 struct dnet_net_state
 {
-	// To store state either at node::empty_state_list (List of all client nodes, used for statistics)
-	// or at node::dht_state_list (List of all server nodes)
-	struct list_head	node_entry;
+	// To store state either at node::empty_state_root (Map of all client nodes by addresses, used for statistics)
+	// or at node::dht_state_root (Map of all server nodes by addresses)
+	struct rb_node		node_entry;
+	// Pointer to rb tree with node_entry. It can be &node::dht_state_root, &node::dht_state_root or NULL
+	struct rb_root		*root;
 	// To store at node::storage_state_list (List of all network-active states, used for unscheduling process)
 	struct list_head	storage_state_entry;
 	// Mapping backend_id -> struct dnet_idc
@@ -228,8 +230,11 @@ struct dnet_net_state *dnet_state_create(struct dnet_node *n,
 
 void dnet_state_reset(struct dnet_net_state *st, int error);
 void dnet_state_clean(struct dnet_net_state *st);
+int dnet_state_insert_nolock(struct rb_root *root, struct dnet_net_state *st);
+void dnet_state_rb_remove_nolock(struct dnet_net_state *st);
 void dnet_state_remove_nolock(struct dnet_net_state *st);
 
+struct dnet_net_state *dnet_state_search_by_addr_nolock(struct dnet_node *n, const struct dnet_addr *addr);
 struct dnet_net_state *dnet_state_search_by_addr(struct dnet_node *n, const struct dnet_addr *addr);
 struct dnet_net_state *dnet_state_get_first(struct dnet_node *n, const struct dnet_id *id);
 ssize_t dnet_state_search_backend(struct dnet_node *n, const struct dnet_id *id);
@@ -468,10 +473,10 @@ struct dnet_node {
 	pthread_mutex_t		state_lock;
 	struct rb_root		group_root;
 
-	/* hosts client states, i.e. those who didn't join network */
-	struct list_head	empty_state_list;
-	/* hosts server states, i.e. those who joined network */
-	struct list_head	dht_state_list;
+	/* hosts client states by addresses, i.e. those who didn't join network */
+	struct rb_root		empty_state_root;
+	/* hosts server states by addresses, i.e. those who joined network */
+	struct rb_root		dht_state_root;
 
 	/* hosts all states added to given node */
 	struct list_head	storage_state_list;

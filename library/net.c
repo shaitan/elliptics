@@ -757,7 +757,7 @@ err_out_put_forward:
 
 void dnet_state_remove_nolock(struct dnet_net_state *st)
 {
-	list_del_init(&st->node_entry);
+	dnet_state_rb_remove_nolock(st);
 	list_del_init(&st->storage_state_entry);
 	dnet_idc_destroy_nolock(st);
 }
@@ -952,7 +952,6 @@ int dnet_state_micro_init(struct dnet_net_state *st,
 
 	st->la = 1;
 
-	INIT_LIST_HEAD(&st->node_entry);
 	INIT_LIST_HEAD(&st->storage_state_entry);
 	st->idc_root = RB_ROOT;
 	err = pthread_rwlock_init(&st->idc_lock, NULL);
@@ -1011,27 +1010,26 @@ err_out:
 
 int dnet_state_move_to_dht(struct dnet_net_state *st, struct dnet_addr *addrs, int addrs_count)
 {
-	struct dnet_net_state *other;
+	struct dnet_net_state *found;
 	struct dnet_node *n = st->n;
 	int err = 0;
 
 	pthread_mutex_lock(&n->state_lock);
 
-	list_for_each_entry(other, &st->n->dht_state_list, node_entry) {
-		if (dnet_addr_equal(other->addrs, addrs)) {
-			pthread_mutex_unlock(&n->state_lock);
-
-			dnet_state_reset(st, -EEXIST);
-
-			return -EEXIST;
-		}
+	found = dnet_state_search_by_addr_nolock(st->n, addrs);
+	if (found) {
+		pthread_mutex_unlock(&n->state_lock);
+		dnet_state_put(found);
+		dnet_state_reset(st, -EEXIST);
+		return -EEXIST;
 	}
 
 	memcpy(&st->addr, &addrs[st->idx], sizeof(struct dnet_addr));
 	err = dnet_copy_addrs_nolock(st, addrs, addrs_count);
 
 	if (!err) {
-		list_move_tail(&st->node_entry, &st->n->dht_state_list);
+		dnet_state_rb_remove_nolock(st);
+		dnet_state_insert_nolock(&st->n->dht_state_root, st);
 		list_move_tail(&st->storage_state_entry, &st->n->storage_state_list);
 	}
 
@@ -1165,7 +1163,7 @@ struct dnet_net_state *dnet_state_create(struct dnet_node *n,
 		}
 	} else {
 		pthread_mutex_lock(&n->state_lock);
-		list_add_tail(&st->node_entry, &n->empty_state_list);
+		dnet_state_insert_nolock(&n->empty_state_root, st);
 		list_add_tail(&st->storage_state_entry, &n->storage_state_list);
 
 		err = dnet_setup_control_nolock(st);
@@ -1197,7 +1195,7 @@ struct dnet_net_state *dnet_state_create(struct dnet_node *n,
 err_out_send_destroy:
 	pthread_mutex_lock(&n->state_lock);
 err_out_unlock:
-	list_del_init(&st->node_entry);
+	dnet_state_rb_remove_nolock(st);
 	list_del_init(&st->storage_state_entry);
 	pthread_mutex_unlock(&n->state_lock);
 	dnet_state_put(st);
@@ -1228,7 +1226,7 @@ int dnet_node_state_num(struct dnet_node *n)
 	int num = 0;
 
 	pthread_mutex_lock(&n->state_lock);
-	list_for_each_entry(st, &n->dht_state_list, node_entry) {
+	rb_for_each_entry(st, &n->dht_state_root, node_entry) {
 		num++;
 	}
 	pthread_mutex_unlock(&n->state_lock);

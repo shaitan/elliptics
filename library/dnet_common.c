@@ -737,7 +737,7 @@ int dnet_get_routes(struct dnet_session *s, struct dnet_route_entry **entries) {
 	*entries = NULL;
 
 	pthread_mutex_lock(&n->state_lock);
-	list_for_each_entry(st, &n->dht_state_list, node_entry) {
+	rb_for_each_entry(st, &n->dht_state_root, node_entry) {
 		pthread_rwlock_rdlock(&st->idc_lock);
 		for (it = rb_first(&st->idc_root); it; it = rb_next(it)) {
 			idc = rb_entry(it, struct dnet_idc, state_entry);

@@ -80,8 +80,8 @@ static struct dnet_node *dnet_node_alloc(struct dnet_config *cfg)
 	pthread_attr_setdetachstate(&n->attr, PTHREAD_CREATE_DETACHED);
 
 	n->group_root = RB_ROOT;
-	INIT_LIST_HEAD(&n->empty_state_list);
-	INIT_LIST_HEAD(&n->dht_state_list);
+	n->empty_state_root = RB_ROOT;
+	n->dht_state_root = RB_ROOT;
 	INIT_LIST_HEAD(&n->storage_state_list);
 	INIT_LIST_HEAD(&n->reconnect_list);
 	INIT_LIST_HEAD(&n->iterator_list);
@@ -524,6 +524,40 @@ int dnet_search_range(struct dnet_node *n, struct dnet_id *id, struct dnet_raw_i
 	return err;
 }
 
+int dnet_state_insert_nolock(struct rb_root *root, struct dnet_net_state *st)
+{
+	struct rb_node **n = &root->rb_node, *parent = NULL;
+	struct dnet_net_state *it;
+
+	while (*n) {
+		parent = *n;
+
+		it = rb_entry(parent, struct dnet_net_state, node_entry);
+
+		int cmp = dnet_addr_cmp(&it->addr, &st->addr);
+		if (cmp < 0)
+			n = &parent->rb_left;
+		else if (cmp > 0)
+			n = &parent->rb_right;
+		else
+			return -EEXIST;
+	}
+
+	st->root = root;
+	rb_link_node(&st->node_entry, parent, n);
+	rb_insert_color(&st->node_entry, root);
+
+	return 0;
+}
+
+void dnet_state_rb_remove_nolock(struct dnet_net_state *st) {
+	if (!st->root)
+		return;
+
+	rb_erase(&st->node_entry, st->root);
+	st->root = NULL;
+}
+
 static struct dnet_state_id *__dnet_state_search_id(struct dnet_node *n, const struct dnet_id *id)
 {
 	struct dnet_state_id *sid;
@@ -553,18 +587,31 @@ static struct dnet_net_state *__dnet_state_search(struct dnet_node *n, const str
 	return dnet_state_get(sid->idc->st);
 }
 
+struct dnet_net_state *dnet_state_search_by_addr_nolock(struct dnet_node *n, const struct dnet_addr *addr) {
+	struct rb_node *it = n->dht_state_root.rb_node;
+	struct dnet_net_state *st = NULL;
+
+	while (it) {
+		st = rb_entry(it, struct dnet_net_state, node_entry);
+
+		int cmp = dnet_addr_cmp(&st->addr, addr);
+		if (cmp < 0)
+			it = it->rb_left;
+		else if (cmp > 0)
+			it = it->rb_right;
+		else
+			return dnet_state_get(st);
+	}
+
+	return NULL;
+}
+
 struct dnet_net_state *dnet_state_search_by_addr(struct dnet_node *n, const struct dnet_addr *addr)
 {
-	struct dnet_net_state *st, *found = NULL;
+	struct dnet_net_state *found;
 
 	pthread_mutex_lock(&n->state_lock);
-	list_for_each_entry(st, &n->dht_state_list, node_entry) {
-		if (dnet_addr_equal(&st->addr, addr)) {
-			found = st;
-			dnet_state_get(found);
-			break;
-		}
-	}
+	found = dnet_state_search_by_addr_nolock(n, addr);
 	pthread_mutex_unlock(&n->state_lock);
 
 	return found;

@@ -152,7 +152,8 @@ static int dnet_cmd_join_client(struct dnet_net_state *st, struct dnet_cmd *cmd,
 
 err_out_move_back:
 	pthread_mutex_lock(&n->state_lock);
-	list_move_tail(&st->node_entry, &n->empty_state_list);
+	dnet_state_rb_remove_nolock(st);
+	dnet_state_insert_nolock(&n->empty_state_root, st);
 	list_move_tail(&st->storage_state_entry, &n->storage_state_list);
 	pthread_mutex_unlock(&n->state_lock);
 err_out_free:
