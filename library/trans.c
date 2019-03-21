@@ -814,6 +814,8 @@ static void dnet_check_all_states(struct dnet_node *n)
 
 	dnet_update_stall_backend_weights(&head);
 
+	dnet_trans_clean_timed_out_list(&head);
+
 	for (i = 0; i < num_stall_state; ++i) {
 		st = stall_states[i];
 		st->stall = 0;
@@ -823,7 +825,6 @@ static void dnet_check_all_states(struct dnet_node *n)
 		dnet_state_put(st);
 	}
 
-	dnet_trans_clean_timed_out_list(&head);
 	free(stall_states);
 }
 
