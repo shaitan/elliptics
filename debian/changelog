@@ -1,3 +1,9 @@
+elliptics (2.27.9.4~debug2) unstable; urgency=low
+
+  * fixup
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Thu, 21 Mar 2019 17:28:03 +0300
+
 elliptics (2.27.9.4~debug1) unstable; urgency=low
 
   * fixup: prolong trans life
