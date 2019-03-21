@@ -1,3 +1,11 @@
+elliptics (2.27.9.5) unstable; urgency=low
+
+  * cache: fix bad return if not interested in data
+  * fix: store dnet_states in map by addresses
+  * fix: double free in dnet_state_create
+
+ -- Artem Selishchev <arselishev@gmail.com>  Thu, 21 Mar 2019 17:44:11 +0300
+
 elliptics (2.27.9.4) unstable; urgency=low
 
   * fix: do not ignore an error returned by sha512_file_ctx
