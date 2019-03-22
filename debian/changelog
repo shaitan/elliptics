@@ -1,3 +1,9 @@
+elliptics (2.27.9.4~debug3) unstable; urgency=low
+
+  * fixup: move creating dnet_io_req under transes and states lock
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Fri, 22 Mar 2019 14:09:35 +0300
+
 elliptics (2.27.9.4~debug2) unstable; urgency=low
 
   * fixup
