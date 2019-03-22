@@ -449,34 +449,36 @@ void dnet_trans_clean_list(struct list_head *head, int error)
 
 void dnet_update_stall_backend_weights(struct list_head *stall_transactions)
 {
-	struct dnet_trans *t, *tmp;
+	struct dnet_io_req *r, *tmp;
+	struct dnet_cmd *cmd;
 	struct dnet_net_state *st;
 	double old_cache_weight, new_cache_weight;
 	double old_disk_weight, new_disk_weight;
 	int err;
 
-	list_for_each_entry_safe(t, tmp, stall_transactions, trans_list_entry) {
-		st = t->st;
+	list_for_each_entry_safe(r, tmp, stall_transactions, req_entry) {
+		cmd = r->header;
+		st = r->st;
 
-		err = dnet_get_backend_weight(st, t->cmd.backend_id, DNET_IO_FLAGS_CACHE, &old_cache_weight);
+		err = dnet_get_backend_weight(st, cmd->backend_id, DNET_IO_FLAGS_CACHE, &old_cache_weight);
 		if (!err) {
 			new_cache_weight = old_cache_weight;
 			if (new_cache_weight >= 2) {
 				new_cache_weight /= 10;
-				dnet_set_backend_weight(st, t->cmd.backend_id, DNET_IO_FLAGS_CACHE, new_cache_weight);
+				dnet_set_backend_weight(st, cmd->backend_id, DNET_IO_FLAGS_CACHE, new_cache_weight);
 			}
 
-			err = dnet_get_backend_weight(st, t->cmd.backend_id, 0, &old_disk_weight);
+			err = dnet_get_backend_weight(st, cmd->backend_id, 0, &old_disk_weight);
 			if (!err) {
 				new_disk_weight = old_disk_weight;
 				if (new_disk_weight >= 2) {
 					new_disk_weight /= 10;
-					dnet_set_backend_weight(st, t->cmd.backend_id, 0, new_disk_weight);
+					dnet_set_backend_weight(st, cmd->backend_id, 0, new_disk_weight);
 				}
 
 				dnet_log(st->n, DNET_LOG_INFO, "%s/%d: TIMEOUT: update backend weight: weight: "
 						"cache: %f -> %f, disk: %f -> %f",
-					 dnet_state_dump_addr(st), t->cmd.backend_id,
+					 dnet_state_dump_addr(st), cmd->backend_id,
 					 old_cache_weight, new_cache_weight,
 					 old_disk_weight, new_disk_weight);
 			}
@@ -649,6 +651,9 @@ static int dnet_trans_move_timed_out_transactions(struct dnet_net_state *st, str
 	struct timespec ts;
 	int trans_moved = 0;
 	long diff = 0;
+	struct dnet_cmd *cmd;
+	struct dnet_io_req *r;
+	static const size_t cmd_size = sizeof(struct dnet_io_req) + sizeof(struct dnet_cmd);
 
 	clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
 
@@ -703,17 +708,35 @@ static int dnet_trans_move_timed_out_transactions(struct dnet_net_state *st, str
 		 */
 		dnet_trans_remove_timer_nolock(st, t);
 
-		if (!list_empty(&t->trans_list_entry)) {
-			list_del(&t->trans_list_entry);
-			dnet_log(st->n, DNET_LOG_ERROR, "%s: %s: TIMEOUT/need-exit: stall %s, "
-			                                "it was moved into some timeout list, but yet it exists in timer tree, "
-			                                "need-exit: %d, time: %ld",
-			         dnet_dump_id(&t->cmd.id), dnet_cmd_string(t->cmd.cmd), dnet_print_trans(t),
-			         st->__need_exit, diff);
+//		if (!list_empty(&t->trans_list_entry)) {
+//			list_del(&t->trans_list_entry);
+//			dnet_log(st->n, DNET_LOG_ERROR, "%s: %s: TIMEOUT/need-exit: stall %s, "
+//			                                "it was moved into some timeout list, but yet it exists in timer tree, "
+//			                                "need-exit: %d, time: %ld",
+//			         dnet_dump_id(&t->cmd.id), dnet_cmd_string(t->cmd.cmd), dnet_print_trans(t),
+//			         st->__need_exit, diff);
+//		}
+//
+//		dnet_trans_get(t);
+//		list_add_tail(&t->trans_list_entry, head);
+
+		r = calloc(1, cmd_size);
+		if (!r) {
+			continue;
 		}
 
-		dnet_trans_get(t);
-		list_add_tail(&t->trans_list_entry, head);
+		r->header = r + 1;
+		r->hsize = sizeof(struct dnet_cmd);
+		memcpy(r->header, &t->cmd, r->hsize);
+
+		r->st = dnet_state_get(st);
+		cmd = r->header;
+		cmd->size = 0;
+		cmd->flags |= DNET_FLAGS_REPLY;
+		cmd->flags &= ~(DNET_FLAGS_MORE | DNET_FLAGS_NEED_ACK);
+		cmd->status = -ETIMEDOUT;
+		list_add_tail(&r->req_entry, head);
+
 		dnet_logger_unset_trace_id();
 
 		pthread_mutex_unlock(&st->trans_lock);
@@ -739,41 +762,20 @@ static int dnet_trans_check_stall(struct dnet_net_state *st, struct list_head *h
 	return is_stall_state;
 }
 
-static void dnet_trans_clean_timed_out_list(struct list_head *head) {
-	struct dnet_trans *t, *tmp;
-	struct dnet_node *n;
-	struct dnet_io_req *r;
+static void dnet_trans_clean_timed_out_list(struct dnet_node *n, struct list_head *head) {
+	struct dnet_io_req *r, *tmp;
 	struct dnet_cmd *cmd;
-	static const size_t cmd_size = sizeof(struct dnet_io_req) + sizeof(struct dnet_cmd);
 
-	list_for_each_entry_safe(t, tmp, head, trans_list_entry) {
-		list_del_init(&t->trans_list_entry);
+	list_for_each_entry_safe(r, tmp, head, req_entry) {
+		list_del_init(&r->req_entry);
 
-		n = t->n;
-
-		dnet_log(n, DNET_LOG_ERROR, "TIMEOUT: start processing trans: %llu", (unsigned long long)t->trans);
-
-		r = calloc(1, cmd_size);
-		if (!r) {
-			// TODO: do something if no memory is available
-			continue;
-		}
-
-		r->header = r + 1;
-		r->hsize = sizeof(struct dnet_cmd);
-		memcpy(r->header, &t->cmd, r->hsize);
-
-		r->st = dnet_state_get(t->st);
 		cmd = r->header;
-		cmd->size = 0;
-		cmd->backend_id = -1;
-		cmd->flags |= DNET_FLAGS_REPLY;
-		cmd->flags &= ~(DNET_FLAGS_MORE | DNET_FLAGS_NEED_ACK);
-		cmd->status = -ETIMEDOUT;
+
+		dnet_log(n, DNET_LOG_ERROR, "TIMEOUT: start processing trans: %llu", (unsigned long long)cmd->trans);
+
 		dnet_schedule_io(n, r);
 
-		dnet_log(n, DNET_LOG_ERROR, "TIMEOUT: finish processing trans: %llu", (unsigned long long)t->trans);
-		dnet_trans_put(t);
+		dnet_log(n, DNET_LOG_ERROR, "TIMEOUT: finish processing trans: %llu", (unsigned long long)cmd->trans);
 	}
 }
 
@@ -814,7 +816,7 @@ static void dnet_check_all_states(struct dnet_node *n)
 
 	dnet_update_stall_backend_weights(&head);
 
-	dnet_trans_clean_timed_out_list(&head);
+	dnet_trans_clean_timed_out_list(n, &head);
 
 	for (i = 0; i < num_stall_state; ++i) {
 		st = stall_states[i];
