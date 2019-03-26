@@ -1,3 +1,9 @@
+elliptics (2.27.9.4~debug4) unstable; urgency=low
+
+  * net: disable linger before shutdown and close
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Tue, 26 Mar 2019 14:37:23 +0300
+
 elliptics (2.27.9.4~debug3) unstable; urgency=low
 
   * fixup: move creating dnet_io_req under transes and states lock
