@@ -833,6 +833,12 @@ void dnet_sock_close(struct dnet_node *n, int s)
 	}
 	dnet_log(n, DNET_LOG_NOTICE, "self: addr: %s, closing socket: %d", addr_str, s);
 
+	// disable linger before shutdown and close
+	struct linger l;
+	l.l_onoff = 0;
+	l.l_linger = 0;
+	setsockopt(s, SOL_SOCKET, SO_LINGER, &l, sizeof(l));
+
 	shutdown(s, SHUT_RDWR);
 	close(s);
 }
