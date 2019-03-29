@@ -1,3 +1,9 @@
+elliptics (2.27.9.6) unstable; urgency=low
+
+  * Revert "fix: double free in dnet_state_create"
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Fri, 29 Mar 2019 13:41:13 +0300
+
 elliptics (2.27.9.5) unstable; urgency=low
 
   * cache: fix bad return if not interested in data
