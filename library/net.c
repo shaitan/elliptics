@@ -168,9 +168,6 @@ void dnet_state_clean(struct dnet_net_state *st)
 		if (!t)
 			break;
 
-		if (!t->cmd.status)
-			t->cmd.status = -EUCLEAN;
-
 		dnet_trans_put(t);
 		dnet_trans_put(t);
 		num++;
@@ -1146,15 +1143,17 @@ struct dnet_net_state *dnet_state_create(struct dnet_node *n,
 
 		for (i = 0; i < backends_count; ++i) {
 			err = dnet_idc_update_backend(st, backends[i]);
-			if (err)
+			if (err) {
+				dnet_state_reset(st, err);
 				goto err_out_send_destroy;
+			}
 		}
 
 		pthread_mutex_lock(&n->state_lock);
 		err = dnet_setup_control_nolock(st);
-		pthread_mutex_unlock(&n->state_lock);
 		if (err)
-			goto err_out_send_destroy;
+			goto err_out_unlock;
+		pthread_mutex_unlock(&n->state_lock);
 
 		if (!accepting_state && st->__join_state == DNET_JOIN) {
 			dnet_state_join(st);
@@ -1168,9 +1167,9 @@ struct dnet_net_state *dnet_state_create(struct dnet_node *n,
 		list_add_tail(&st->storage_state_entry, &n->storage_state_list);
 
 		err = dnet_setup_control_nolock(st);
-		pthread_mutex_unlock(&n->state_lock);
 		if (err)
-			goto err_out_send_destroy;
+			goto err_out_unlock;
+		pthread_mutex_unlock(&n->state_lock);
 	}
 
 	if (atomic_read(&st->refcnt) == 1) {
@@ -1186,15 +1185,22 @@ struct dnet_net_state *dnet_state_create(struct dnet_node *n,
 	// dnet_state_reset() which will eventually kill state, while 'creating' thread is still using its pointer
 	//
 	// 'creating' thread must release state after it finished with it
-	if (err)
-		goto err_out_send_destroy;
+	if (err) {
+		dnet_state_put(st);
+		goto err_out_exit;
+	}
 
 	return st;
 
 err_out_send_destroy:
-	dnet_state_reset(st, err);
+	pthread_mutex_lock(&n->state_lock);
+err_out_unlock:
+	dnet_state_rb_remove_nolock(st);
+	list_del_init(&st->storage_state_entry);
+	pthread_mutex_unlock(&n->state_lock);
 	dnet_state_put(st);
-	goto err_out_exit;
+	pthread_mutex_destroy(&st->send_lock);
+	pthread_mutex_destroy(&st->trans_lock);
 err_out_dup_destroy:
 	dnet_sock_close(n, st->write_s);
 err_out_free:
