@@ -3,6 +3,7 @@
 
 #include <mutex>
 #include "elliptics/interface.h"
+#include "library/logger.hpp"
 
 class dnet_pthread_mutex
 {
@@ -54,6 +55,22 @@ inline static int safe_call(Class *obj, Method method, Args &&...args)
 	} catch (std::bad_alloc &) {
 		return -ENOMEM;
 	} catch (...) {
+		return -EINVAL;
+	}
+}
+
+template <typename Callable, typename LoggerRef>
+inline static int c_exception_guard(Callable &&callable, const LoggerRef &logger_ref, const char *func_name) {
+	try {
+		return std::forward<Callable>(callable)();
+	} catch (std::bad_alloc &e) {
+		DNET_LOG_ERROR(logger_ref, "{}: {}", func_name, e.what());
+		return -ENOMEM;
+	} catch (std::exception &e) {
+		DNET_LOG_ERROR(logger_ref, "{}: {}", func_name, e.what());
+		return -EINVAL;
+	} catch (...) {
+		DNET_LOG_ERROR(logger_ref, "{}: non-standard exception", func_name);
 		return -EINVAL;
 	}
 }

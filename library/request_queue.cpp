@@ -18,6 +18,10 @@ static bool dnet_id_equal(const dnet_id &lhs, const dnet_id &rhs) {
 	return !dnet_id_cmp(&lhs, &rhs);
 }
 
+static const dnet_cmd *dnet_io_req_get_cmd(const dnet_io_req *r) {
+	return dnet_io_req_get_cmd(const_cast<dnet_io_req *>(r));
+}
+
 dnet_request_queue::dnet_request_queue(bool lifo, size_t queue_limit)
 : m_queue_size(0)
 , m_queue_limit(queue_limit)
@@ -48,7 +52,7 @@ void dnet_request_queue::push_request(dnet_io_req *req, const char *thread_stat_
 		std::unique_lock<std::mutex> lock(m_queue_mutex);
 		// lifo should work only for requests, because their order doesn't matter.
 		// TODO: use separate queue for replies
-		auto cmd = static_cast<dnet_cmd *>(req->header);
+		auto cmd = dnet_io_req_get_cmd(req);
 		if (m_lifo && !(cmd->flags & DNET_FLAGS_REPLY)) {
 			if (m_queue_limit && (m_queue_size >= m_queue_limit)) {
 				// if limit was set and reached then drop the last request from the queue
@@ -72,7 +76,7 @@ void dnet_request_queue::push_request(dnet_io_req *req, const char *thread_stat_
 	m_queue_wait.notify_one();
 
 	if (dropped_request) {
-		auto cmd = static_cast<dnet_cmd *>(dropped_request->header);
+		auto cmd = dnet_io_req_get_cmd(dropped_request);
 		auto st = dropped_request->st;
 		auto node = st->n;
 		ioremap::elliptics::trace_scope trace_scope{cmd->trace_id,
@@ -120,7 +124,7 @@ dnet_io_req *dnet_request_queue::pop_request(dnet_work_io *wio, const char *thre
 	FORMATTED(HANDY_COUNTER_DECREMENT, ("pool.%s.queue.size", thread_stat_id), 1);
 	FORMATTED(HANDY_TIMER_STOP, ("pool.%s.queue.wait_time", thread_stat_id), (uint64_t)r);
 
-	auto cmd = static_cast<dnet_cmd *>(r->header);
+	auto cmd = dnet_io_req_get_cmd(r);
 	auto st = r->st;
 	auto node = st->n;
 	const auto timeout = [&]() -> uint64_t {
@@ -192,7 +196,7 @@ dnet_io_req *dnet_request_queue::take_request(dnet_work_io *wio, const char *thr
 
 	if (!list_empty(&wio->reply_list)) {
 		it = list_first_entry(&wio->reply_list, struct dnet_io_req, req_entry);
-		auto cmd = reinterpret_cast<const dnet_cmd *>(it->header);
+		auto cmd = dnet_io_req_get_cmd(it);
 		trans = cmd->trans;
 		wio->trans = trans;
 		return it;
@@ -200,7 +204,7 @@ dnet_io_req *dnet_request_queue::take_request(dnet_work_io *wio, const char *thr
 
 	if (!list_empty(&wio->request_list)) {
 		it = list_first_entry(&wio->request_list, struct dnet_io_req, req_entry);
-		auto cmd = reinterpret_cast<const dnet_cmd *>(it->header);
+		auto cmd = dnet_io_req_get_cmd(it);
 		trans = cmd->trans;
 		wio->trans = trans;
 		return it;
@@ -209,7 +213,7 @@ dnet_io_req *dnet_request_queue::take_request(dnet_work_io *wio, const char *thr
 	std::unique_lock<std::mutex> lock(m_locks_mutex);
 
 	list_for_each_entry_safe(it, tmp, &m_queue, req_entry) {
-		auto cmd = reinterpret_cast<const dnet_cmd *>(it->header);
+		auto cmd = dnet_io_req_get_cmd(it);
 
 		/* This is not a transaction reply, process it right now */
 		if (!(cmd->flags & DNET_FLAGS_REPLY)) {
@@ -257,7 +261,7 @@ dnet_io_req *dnet_request_queue::take_request(dnet_work_io *wio, const char *thr
 
 void dnet_request_queue::release_request(const dnet_io_req *req)
 {
-	auto cmd = reinterpret_cast<const dnet_cmd *>(req->header);
+	auto cmd = dnet_io_req_get_cmd(req);
 	if (!(cmd->flags & DNET_FLAGS_REPLY) &&
 	    !(cmd->flags & DNET_FLAGS_NOLOCK)) {
 		release_key(&cmd->id);
@@ -324,7 +328,7 @@ void dnet_request_queue::put_lock_entry(dnet_locks_entry *entry)
 }
 
 void dnet_request_queue::drop_request(dnet_io_req *r, const char *thread_stat_id) {
-	auto cmd = static_cast<dnet_cmd *>(r->header);
+	auto cmd = dnet_io_req_get_cmd(r);
 	auto st = r->st;
 	auto node = st->n;
 

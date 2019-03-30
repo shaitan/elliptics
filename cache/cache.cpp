@@ -23,6 +23,7 @@
 
 #include "library/access_context.h"
 #include "library/backend.h"
+#include "library/n2_protocol.hpp"
 #include "library/protocol.hpp"
 
 #include "monitor/measure_points.h"
@@ -499,11 +500,14 @@ static int dnet_cmd_cache_io_lookup(struct dnet_backend *backend,
 
 static int dnet_cmd_cache_io_lookup_new(struct cache_manager *cache,
                                         struct dnet_net_state *st,
-                                        struct dnet_cmd *cmd,
+                                        n2_request_info *req_info,
                                         struct dnet_cmd_stats *cmd_stats,
                                         dnet_access_context *context) {
 	using namespace ioremap::elliptics;
 	cmd_stats->handled_in_cache = 1;
+
+	auto request = static_cast<n2::lookup_request *>(req_info->request.get());
+	auto cmd = &request->cmd;
 
 	int err;
 	cache_item it;
@@ -555,25 +559,25 @@ static int dnet_cmd_cache_io_lookup_new(struct cache_manager *cache,
 		}
 	}
 
-	auto response = serialize(dnet_lookup_response{
-		0, // record_flags
-		it.user_flags, // user_flags
-		"", // path
+	std::unique_ptr<n2::lookup_response>
+		response(new(std::nothrow) n2::lookup_response(request->cmd,
+						               0, // record_flags
+						               it.user_flags, // user_flags
+						               std::string(), // path
+						               it.json_timestamp, // json_timestamp
+						               0, // json_offset
+						               it.json->size(), // json_size
+						               it.json->size(), // json_capacity
+						               std::move(json_checksum), // json_checksum
+						               it.timestamp, // data_timestamp
+						               0, // data_offset
+						               it.data->size(), // data_size
+						               std::move(data_checksum))); // data_checksum
+	if (!response) {
+		return -ENOMEM;
+	}
 
-		it.json_timestamp, // json_timestamp
-		0, // json_offset
-		it.json->size(), // json_size
-		it.json->size(), // json_capacity
-		std::move(json_checksum), // json_checksum
-
-		it.timestamp, // data_timestamp
-		0, // data_offset
-		it.data->size(), // data_size
-		std::move(data_checksum), // data_checksum
-	});
-
-	cmd->flags &= ~DNET_FLAGS_NEED_ACK;
-	return dnet_send_reply(st, cmd, response.data(), response.size(), 0, context);
+	return req_info->repliers.on_reply(std::move(response));
 }
 
 static int dnet_cmd_cache_io_remove(struct cache_manager *cache,
@@ -658,7 +662,11 @@ int dnet_cmd_cache_io(struct dnet_backend *backend,
 		case DNET_CMD_READ_NEW:
 			return dnet_cmd_cache_io_read_new(cache, st, cmd, data, cmd_stats, context);
 		case DNET_CMD_LOOKUP_NEW:
-			return dnet_cmd_cache_io_lookup_new(cache, st, cmd, cmd_stats, context);
+			// Must never reach this label.
+			// The analogue func dnet_cmd_cache_io_lookup_new must be called from n2_cmd_cache_io.
+			DNET_LOG_ERROR(st->n, "{}: {} invalid cache operation call", dnet_dump_id(&cmd->id),
+			               dnet_cmd_string(cmd->cmd));
+			return -EINVAL;
 		case DNET_CMD_DEL_NEW:
 			return dnet_cmd_cache_io_remove_new(cache, cmd, data, cmd_stats, context);
 		default:
@@ -670,4 +678,47 @@ int dnet_cmd_cache_io(struct dnet_backend *backend,
 		return -ENOENT;
 	}
 
+}
+
+static uint64_t n2_request_get_io_flags(const n2_request &request) {
+	switch (request.cmd.cmd) {
+	// TODO: Get ioflags from all requests that contain ioflags field
+	default:
+		return 0;
+	}
+}
+
+int n2_cmd_cache_io(struct dnet_backend *backend,
+                    struct dnet_net_state *st,
+                    struct n2_request_info *req_info,
+                    struct dnet_cmd_stats *cmd_stats,
+                    struct dnet_access_context *context) {
+	const auto &cmd = req_info->request->cmd;
+
+	if (cmd.flags & DNET_FLAGS_NOCACHE)
+		return -ENOTSUP;
+
+	auto cache = backend->cache();
+	if (!cache) {
+		uint64_t io_flags = n2_request_get_io_flags(*req_info->request);
+		if (io_flags & DNET_IO_FLAGS_CACHE)
+			DNET_LOG_NOTICE(st->n, "{}: cache is not supported", dnet_dump_id(&cmd.id));
+		return -ENOTSUP;
+	}
+
+	FORMATTED(HANDY_TIMER_SCOPE, ("cache.%s", dnet_cmd_string(cmd.cmd)));
+
+	try {
+		switch (cmd.cmd) {
+		case DNET_CMD_LOOKUP_NEW:
+			return dnet_cmd_cache_io_lookup_new(cache, st, req_info, cmd_stats, context);
+		default:
+			return -ENOTSUP;
+		}
+	} catch (const std::exception &e) {
+		DNET_LOG_ERROR(st->n, "{}: {} cache operation failed: {}", dnet_dump_id(&cmd.id),
+		               dnet_cmd_string(cmd.cmd), e.what());
+		// TODO: resolve exception type, must it be always -ENOENT?
+		return -ENOENT;
+	}
 }

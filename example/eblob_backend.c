@@ -53,6 +53,7 @@
 
 #include "library/elliptics.h"
 #include "library/logger.hpp"
+#include "library/n2_protocol.h"
 
 /*
  * FIXME: __unused is used internally by glibc, so it may cause conflicts.
@@ -1242,7 +1243,11 @@ static int eblob_backend_command_handler(void *state,
 			err = blob_send(c, state, cmd, data);
 			break;
 		case DNET_CMD_LOOKUP_NEW:
-			err = blob_file_info_new(c, state, cmd, context);
+			// Must never reach this label.
+			// The analogue func blob_file_info_new must be called from n2_eblob_backend_command_handler.
+			DNET_LOG_ERROR(c->blog, "%s: %s invalid backend operation call",
+				       dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd));
+			err = -EINVAL;
 			break;
 		case DNET_CMD_READ_NEW:
 			err = blob_read_new(c, state, cmd, data, cmd_stats, context);
@@ -1613,6 +1618,7 @@ static int dnet_blob_config_init(struct dnet_config_backend *b, enum dnet_log_le
 
 	b->cb.command_private = c;
 	b->cb.command_handler = eblob_backend_command_handler;
+	b->cb.n2_command_handler = n2_eblob_backend_command_handler;
 	b->cb.backend_cleanup = eblob_backend_cleanup;
 	b->cb.checksum = eblob_backend_checksum;
 	b->cb.lookup = eblob_backend_lookup;

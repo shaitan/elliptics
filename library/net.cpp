@@ -33,17 +33,22 @@
 #include <netinet/tcp.h>
 
 #include <set>
+#include <boost/scope_exit.hpp>
 
 #include <blackhole/attribute.hpp>
 
 #include "bindings/cpp/timer.hpp"
 
+#include "access_context.h"
 #include "elliptics.h"
 #include "elliptics/packet.h"
 #include "elliptics/interface.h"
 #include "common.hpp"
 #include "protocol.hpp"
 #include "logger.hpp"
+#include "n2_protocol.hpp"
+#include "old_protocol/serialize.hpp"
+#include "tests.h"
 
 
 enum dnet_socket_state {
@@ -1348,6 +1353,23 @@ static int dnet_trans_complete_forward(struct dnet_addr * /*addr*/, struct dnet_
 	return err;
 }
 
+timespec dnet_time_left_to_timeout(dnet_time &deadline) {
+	dnet_time current;
+	dnet_current_time(&current);
+	if (dnet_time_before(&deadline, &current)) {
+		return timespec{0, 0};
+	}
+
+	static const long second = 1000000000;
+
+	const long diff = (deadline.tsec - current.tsec) * second + (deadline.tnsec - current.tnsec);
+
+	return timespec{
+		diff / second,
+		diff % second
+	};
+}
+
 int dnet_trans_forward(struct dnet_io_req *r, struct dnet_net_state *orig, struct dnet_net_state *forward) {
 	dnet_cmd *cmd = static_cast<dnet_cmd *>(r->header);
 
@@ -1380,22 +1402,9 @@ int dnet_trans_forward(struct dnet_io_req *r, struct dnet_net_state *orig, struc
 
 		if (dnet_time_is_empty(&deadline)) {
 			return t->wait_ts;
+		} else {
+			return dnet_time_left_to_timeout(deadline);
 		}
-
-		dnet_time current;
-		dnet_current_time(&current);
-		if (dnet_time_before(&deadline, &current)) {
-			return timespec{0, 0};
-		}
-
-		static const long second = 1000000000;
-
-		const long diff = (deadline.tsec - current.tsec) * second + (deadline.tnsec - current.tnsec);
-
-		return timespec{
-			diff / second,
-			diff % second
-		};
 	}();
 
 	if (!t->wait_ts.tv_sec && !t->wait_ts.tv_nsec) {
@@ -1423,4 +1432,282 @@ int dnet_trans_forward(struct dnet_io_req *r, struct dnet_net_state *orig, struc
 	}
 
 	return dnet_trans_send(t, r);
+}
+
+// Helper for binding noncopyable to std::function
+template <class TReturn, class TNoncopyable>
+std::function<TReturn ()> n2_bind_noncopyable(std::function<TReturn (TNoncopyable)> func,
+                                           TNoncopyable param) {
+	return [func = std::move(func), param = std::make_shared<TNoncopyable>(std::move(param))]() mutable -> TReturn {
+		return func(std::move(*param));
+	};
+}
+
+dnet_cmd n2_convert_to_response_cmd(dnet_cmd cmd) {
+	cmd.flags = (cmd.flags & ~(DNET_FLAGS_NEED_ACK)) | DNET_FLAGS_REPLY;
+	return cmd;
+}
+
+n2_repliers n2_make_repliers_via_request_queue(dnet_net_state *st, const dnet_cmd &cmd, n2_repliers repliers) {
+	auto enqueue_response = [st, cmd = n2_convert_to_response_cmd(cmd)](std::function<int ()> response_holder) {
+		std::unique_ptr<n2_response_info>
+			response_info(new(std::nothrow) n2_response_info{ cmd, std::move(response_holder) });
+		if (!response_info)
+			return -ENOMEM;
+
+		auto r = static_cast<dnet_io_req *>(calloc(1, sizeof(dnet_io_req)));
+		if (!r)
+			return -ENOMEM;
+
+		r->io_req_type = DNET_IO_REQ_TYPED_RESPONSE;
+		r->response_info = response_info.release();
+
+		r->st = dnet_state_get(st);
+		dnet_schedule_io(st->n, r);
+
+		return 0;
+	};
+
+	n2_repliers repliers_wrappers;
+
+	repliers_wrappers.on_reply_error = [on_reply_error = std::move(repliers.on_reply_error),
+                                            enqueue_response](int errc) -> int {
+		return enqueue_response(std::bind(on_reply_error, errc));
+	};
+
+	repliers_wrappers.on_reply = [on_reply = std::move(repliers.on_reply),
+	                              enqueue_response](std::unique_ptr<n2_message> msg) -> int {
+		return enqueue_response(n2_bind_noncopyable(on_reply, std::move(msg)));
+	};
+
+	return repliers_wrappers;
+}
+
+int n2_complete_trans_via_response_holder(dnet_trans *t, n2_response_info *response_info) {
+	return c_exception_guard(response_info->response_holder, t->st->n, __FUNCTION__);
+}
+
+// TODO(sabramkin): Try rework to n2_trans_alloc_send. In new mechanic we don't need to separate alloc and send
+static int n2_trans_send(dnet_trans *t, n2_request_info *request_info) {
+	using namespace ioremap::elliptics;
+
+	struct dnet_net_state *st = t->st;
+	struct dnet_test_settings test_settings;
+	int err;
+
+	dnet_trans_get(t);
+
+	BOOST_SCOPE_EXIT(&t) {
+		dnet_trans_put(t);
+	} BOOST_SCOPE_EXIT_END
+
+	pthread_mutex_lock(&st->trans_lock);
+	err = dnet_trans_insert_nolock(st, t);
+	if (!err) {
+		dnet_trans_update_timestamp(t);
+		dnet_trans_insert_timer_nolock(st, t);
+	}
+	pthread_mutex_unlock(&st->trans_lock);
+	if (err)
+		return err;
+
+	if (t->n->test_settings && !dnet_node_get_test_settings(t->n, &test_settings) &&
+	    test_settings.commands_mask & (1 << t->command))
+		return err;
+
+	auto repliers_wrappers = n2_make_repliers_via_request_queue(st,
+	                                                            request_info->request->cmd,
+	                                                            std::move(request_info->repliers));
+
+	n2::net_state_get_protocol(st)->send_request(st,
+	                                             std::move(request_info->request),
+	                                             std::move(repliers_wrappers));
+
+	return err;
+}
+
+int n2_trans_forward(n2_request_info *request_info, struct dnet_net_state *orig, struct dnet_net_state *forward) {
+	dnet_cmd *cmd = &request_info->request->cmd;
+
+	std::unique_ptr<dnet_trans, void (*)(dnet_trans *)>
+		t(dnet_trans_alloc(orig->n, 0), &dnet_trans_put);
+	if (!t) {
+		return -ENOMEM;
+	}
+
+	auto deadline = request_info->request->deadline;
+	if (!dnet_time_is_empty(&deadline)) {
+		t->wait_ts = dnet_time_left_to_timeout(deadline);
+	}
+
+	if (!t->wait_ts.tv_sec && !t->wait_ts.tv_nsec) {
+		return -ETIMEDOUT;
+	}
+
+	t->repliers = new(std::nothrow) n2_repliers; // Will be filled at old_protocol::send_request
+	if (!t->repliers) {
+		return -ENOMEM;
+	}
+
+	t->rcv_trans = cmd->trans; // TODO(sabramkin): Is it necessary in new mechanic?
+	t->trans = request_info->cmd.trans = cmd->trans = atomic_inc(&orig->n->trans);
+	t->cmd = *cmd;
+	t->command = cmd->cmd;
+
+	t->orig = dnet_state_get(orig); // TODO(sabramkin): Is it necessary in new mechanic?
+	t->st = dnet_state_get(forward);
+
+	{
+		char saddr[128];
+		char daddr[128];
+
+		DNET_LOG_INFO(orig->n, "{}: {}: forwarding trans: {} -> {}, trans: {} -> {}",
+		              dnet_dump_id(&t->cmd.id), dnet_cmd_string(t->command),
+		              dnet_addr_string_raw(&orig->addr, saddr, sizeof(saddr)),
+		              dnet_addr_string_raw(&forward->addr, daddr, sizeof(daddr)),
+		              t->rcv_trans, t->trans);
+	}
+
+	return n2_trans_send(t.release(), request_info);
+}
+
+int n2_send_error_response(struct dnet_net_state *st,
+                           struct n2_request_info *req_info,
+                           int errc,
+                           struct dnet_access_context *context) {
+	auto impl = [&] {
+		return req_info->repliers.on_reply_error(errc);
+	};
+	return c_exception_guard(impl, st->n, __FUNCTION__);
+}
+
+class cork_guard_t {
+public:
+	explicit cork_guard_t(int write_socket)
+	: write_socket_(write_socket)
+	{
+		set_cork(1);
+	}
+
+	~cork_guard_t() {
+		set_cork(0);
+	}
+
+private:
+	void set_cork(int cork) {
+		setsockopt(write_socket_, IPPROTO_TCP, TCP_CORK, &cork, 4);
+	}
+
+	const int write_socket_;
+};
+
+static int n2_send_cmd(dnet_net_state *st, dnet_cmd *cmd) {
+	return dnet_send_nolock(st,
+	                        reinterpret_cast<char *>(cmd) + st->send_offset,
+	                        sizeof(dnet_cmd) - st->send_offset);
+}
+
+static int n2_send_request_impl(dnet_net_state *st, dnet_io_req *r) {
+	using namespace ioremap::elliptics;
+
+	if (st->send_offset == 0) {
+		clock_gettime(CLOCK_MONOTONIC_RAW, &st->send_start_ts);
+		r->queue_time = DIFF_TIMESPEC(r->queue_start_ts, st->send_start_ts);
+	}
+
+	int send_error = 0;
+	uint64_t send_time = 0;
+
+	const n2_serialized &serialized = *r->serialized;
+	const dnet_cmd &cmd = serialized.cmd;
+
+	uint64_t total_size = sizeof(dnet_cmd) + cmd.size;
+
+	dnet_logger_set_trace_id(cmd.trace_id, cmd.flags & DNET_FLAGS_TRACE_BIT);
+	enum dnet_log_level level = st->send_offset == 0 ? DNET_LOG_NOTICE : DNET_LOG_DEBUG;
+	DNET_LOG(st->n, level, "%s: %s: sending trans: %lld -> %s/%d: size: %llu, cflags: %s, start-sent: "
+			       "%zd/%zd, send-queue-time: %lu usecs",
+		 dnet_dump_id(&cmd.id), dnet_cmd_string(cmd.cmd), (unsigned long long)cmd.trans,
+		 dnet_addr_string(&st->addr), cmd.backend_id, (unsigned long long)cmd.size,
+		 dnet_flags_dump_cflags(cmd.flags), st->send_offset, total_size, r->queue_time);
+
+	dnet_cmd cmd_net = cmd;
+	dnet_convert_cmd(&cmd_net);
+
+	if (serialized.chunks.empty()) {
+		send_error = n2_send_cmd(st, &cmd_net);
+
+	} else {
+		cork_guard_t cork_guard(st->write_s);
+
+		if (st->send_offset < sizeof(dnet_cmd)) {
+			send_error = n2_send_cmd(st, &cmd_net);
+		}
+
+		if (!send_error) {
+			size_t current_block_offset = sizeof(dnet_cmd);
+
+			for (const auto &dp : serialized.chunks) {
+				size_t current_block_end_offset = current_block_offset + dp.size();
+				if (st->send_offset < current_block_end_offset) /*block hasn't sent*/ {
+					auto dp_left = dp.skip(st->send_offset - current_block_offset);
+					send_error = dnet_send_nolock(st, dp_left.data(), dp_left.size());
+					if (send_error)
+						break;
+				}
+
+				current_block_offset = current_block_end_offset;
+			}
+		}
+	}
+
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
+	send_time = DIFF_TIMESPEC(st->send_start_ts, ts);
+	level = DNET_LOG_DEBUG;
+	if (!send_error) {
+		level = !(cmd.flags & DNET_FLAGS_MORE) ? DNET_LOG_INFO : DNET_LOG_NOTICE;
+		if (r->context) {
+			r->context->add({{"send_time", send_time},
+					 {"send_queue_time", r->queue_time},
+					 {"response_size", total_size},
+					});
+		}
+	}
+	DNET_LOG(st->n, level, "%s: %s: sending trans: %lld -> %s/%d: size: %llu, cflags: %s, finish-sent: "
+			       "%zd/%zd, send-queue-time: %lu usecs, send-time: %lu usecs",
+		 dnet_dump_id(&cmd.id), dnet_cmd_string(cmd.cmd), (unsigned long long)cmd.trans,
+		 dnet_addr_string(&st->addr), cmd.backend_id, (unsigned long long)cmd.size,
+		 dnet_flags_dump_cflags(cmd.flags), st->send_offset, total_size, r->queue_time, send_time);
+	dnet_logger_unset_trace_id();
+
+	/*
+	 * Flush TCP output pipeline if we've sent whole request.
+	 *
+	 * We do not destroy request here, it is postponed to caller.
+	 * Function can be called without lock - default call path from network processing thread and
+	 * dnet_process_send_single() or under st->send_lock, if queue was empty and dnet_send*() caller directly
+	 * invoked this function from dnet_io_req_queue() instead of queuing.
+	 */
+	if (!send_error) {
+		int nodelay = 1;
+		setsockopt(st->write_s, IPPROTO_TCP, TCP_NODELAY, &nodelay, 4);
+	}
+
+	if (!(cmd.flags & DNET_FLAGS_REPLY)) {
+		pthread_mutex_lock(&st->trans_lock);
+		auto t = dnet_trans_search(st, cmd.trans);
+		if (t) {
+			t->stats.send_queue_time = r->queue_time;
+			t->stats.send_time = send_time;
+		}
+		pthread_mutex_unlock(&st->trans_lock);
+		dnet_trans_put(t);
+	}
+
+	return send_error;
+}
+
+int n2_send_request(struct dnet_net_state *st, struct dnet_io_req *r) {
+	return c_exception_guard(std::bind(&n2_send_request_impl, st, r), st->n, __FUNCTION__);
 }

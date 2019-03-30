@@ -26,10 +26,15 @@ set(ELLIPTICS_CLIENT_SRCS
     ../../library/crypto.c
     ../../library/crypto/sha512.c
     ../../library/dnet_common.c
+    ../../library/n2_protocol.cpp
     ../../library/net.c
     ../../library/net.cpp
     ../../library/node.c
     ../../library/notify_common.c
+    ../../library/old_protocol/deserialize.cpp
+    ../../library/old_protocol/old_protocol.cpp
+    ../../library/old_protocol/serialize.cpp
+    ../../library/old_protocol/repliers.cpp
     ../../library/pool.c
     ../../library/request_queue.cpp
     ../../library/rbtree.c

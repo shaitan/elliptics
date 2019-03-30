@@ -223,6 +223,12 @@ int dnet_backend_process_cmd_raw(struct dnet_backend *backend,
                                  struct dnet_cmd_stats *cmd_stats,
                                  struct dnet_access_context *context);
 
+int n2_backend_process_cmd_raw(struct dnet_backend *backend,
+                               struct dnet_net_state *st,
+                               struct n2_request_info *req_info,
+                               struct dnet_cmd_stats *cmd_stats,
+                               struct dnet_access_context *context);
+
 // handle command by @backend's cache
 int dnet_cmd_cache_io(struct dnet_backend *backend,
                       struct dnet_net_state *st,
@@ -230,6 +236,12 @@ int dnet_cmd_cache_io(struct dnet_backend *backend,
                       char *data,
                       struct dnet_cmd_stats *cmd_stats,
                       struct dnet_access_context *context);
+
+int n2_cmd_cache_io(struct dnet_backend *backend,
+                    struct dnet_net_state *st,
+                    struct n2_request_info *req_info,
+                    struct dnet_cmd_stats *cmd_stats,
+                    struct dnet_access_context *context);
 
 // initialize backends' subsystem, but do not enable any backend
 int dnet_backends_init(struct dnet_node *node);
