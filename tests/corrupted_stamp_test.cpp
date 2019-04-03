@@ -79,8 +79,7 @@ std::vector<headers_test_case> marginal_cases = {
 
 	// disk_size == 0
 	{0, 1, 0, 99, DNET_EXT_VERSION_V1, 0, {0}, {0}},
-	// version != 1
-	{0, 1, 1, 99, 0, 0, {0}, {0}},
+	// version isn't equal to DNET_EXT_VERSION_V1 or DNET_EXT_VERSION_FIRST
 	{0, 1, 1, 99, 2, 0, {0}, {0}},
 	// timestamp out of range.
 	{0, 1, 100, 101, DNET_EXT_VERSION_V1, DNET_SERVER_SEND_BUGFIX_TIMESTAMP + 1, {0}, {0}},
@@ -125,6 +124,7 @@ namespace tests {
 void test_random_valid_headers(unsigned int number) {
 	std::default_random_engine random_generator;
 
+	std::uniform_int_distribution<uint8_t> version_distribution(0, 1);
 	std::uniform_int_distribution<uint64_t> flags_distribution(1, (1 << 9) - 1);
 	std::uniform_int_distribution<uint64_t> disk_size_distribution(1, std::numeric_limits<uint64_t>::max() - 4096);
 	std::uniform_int_distribution<uint64_t> data_size_distribution(0, 4096);
@@ -142,7 +142,7 @@ void test_random_valid_headers(unsigned int number) {
 		dc->data_size = dc->disk_size - data_size_distribution(random_generator);
 		dc->position = 0;
 
-		ehdr->version = DNET_EXT_VERSION_V1;
+		ehdr->version = version_distribution(random_generator);
 		ehdr->timestamp.tsec = timestamp_distribution(random_generator);
 		ehdr->timestamp.tnsec = timestamp_distribution(random_generator);
 
