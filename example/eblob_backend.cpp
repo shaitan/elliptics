@@ -67,7 +67,7 @@ int blob_check_corrupted_stamp(void *buffer, size_t buffer_size) {
 	};
 
 	const auto check_ext_header = [] (const dnet_ext_list_hdr &ehdr) {
-		return ehdr.version == DNET_EXT_VERSION_V1 &&
+		return (ehdr.version == DNET_EXT_VERSION_FIRST || ehdr.version == DNET_EXT_VERSION_V1) &&
 		       ehdr.timestamp.tsec <= DNET_SERVER_SEND_BUGFIX_TIMESTAMP &&
 		       !(ehdr.__pad1[0] || ehdr.__pad1[1] || ehdr.__pad1[2]) &&
 		       !(ehdr.__pad2[0] || ehdr.__pad2[1]);
