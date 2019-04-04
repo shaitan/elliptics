@@ -51,7 +51,7 @@
 int blob_check_corrupted_stamp(void *buffer, size_t buffer_size) {
 	// Should be `assert`, but as __func__ is public (mostly for testing),
 	// it could be called occasionally with arbitrary buffer size.
-	if (buffer_size < sizeof(eblob_disk_control) + sizeof(dnet_ext_list_hdr)) {
+	if (buffer_size < sizeof(eblob_disk_control)) {
 		return 0;
 	}
 
@@ -66,14 +66,30 @@ int blob_check_corrupted_stamp(void *buffer, size_t buffer_size) {
 		       dc.position == 0;
 	};
 
+	if (!check_dc_header(*dc)) {
+		// eblob_disk_control signature wasn't found: the key looks normal
+		return 0;
+	}
+
+	if (!(dc->flags & BLOB_DISK_CTL_EXTHDR)) {
+		// stop checking: eblob_disk_control signature found, and it's the only header according to flags
+		return -EILSEQ;
+	}
+
+	if (buffer_size < sizeof(eblob_disk_control) + sizeof(dnet_ext_list_hdr)) {
+		// dnet_ext_list_hdr is missing
+		return 0;
+	}
+
 	const auto check_ext_header = [] (const dnet_ext_list_hdr &ehdr) {
 		return (ehdr.version == DNET_EXT_VERSION_FIRST || ehdr.version == DNET_EXT_VERSION_V1) &&
-		       ehdr.timestamp.tsec <= DNET_SERVER_SEND_BUGFIX_TIMESTAMP &&
+		       ehdr.timestamp.tsec && ehdr.timestamp.tsec <= DNET_SERVER_SEND_BUGFIX_TIMESTAMP &&
 		       !(ehdr.__pad1[0] || ehdr.__pad1[1] || ehdr.__pad1[2]) &&
 		       !(ehdr.__pad2[0] || ehdr.__pad2[1]);
 	};
 
-	if (check_dc_header(*dc) && check_ext_header(*ehdr)) {
+	if (check_ext_header(*ehdr)) {
+		// dnet_ext_list_hdr signature found: the key looks corrupted
 		return -EILSEQ;
 	}
 
@@ -85,9 +101,7 @@ int blob_read_and_check_stamp(const eblob_backend_config *c,
                               int fd,
                               uint64_t data_offset,
                               uint64_t data_size) {
-	std::array<char, sizeof(eblob_disk_control) + sizeof(dnet_ext_list_hdr)> stamp;
-
-	if (data_size < stamp.size()) {
+	if (data_size < sizeof(eblob_disk_control)) {
 		return 0;
 	}
 
@@ -95,12 +109,15 @@ int blob_read_and_check_stamp(const eblob_backend_config *c,
 		return 0;
 	}
 
-	int err = dnet_read_ll(fd, stamp.data(), stamp.size(), data_offset);
+	std::array<char, sizeof(eblob_disk_control) + sizeof(dnet_ext_list_hdr)> stamp;
+	size_t stamp_size = std::min(stamp.size(), data_size);
+
+	int err = dnet_read_ll(fd, stamp.data(), stamp_size, data_offset);
 	if (err) {
 		return err;
 	}
 
-	err = blob_check_corrupted_stamp(static_cast<void *>(stamp.data()), stamp.size());
+	err = blob_check_corrupted_stamp(static_cast<void *>(stamp.data()), stamp_size);
 	if (err == -EILSEQ) {
 		HANDY_COUNTER_INCREMENT(("backend.%u.stamp_corruption", c->data.stat_id), 1);
 	}
