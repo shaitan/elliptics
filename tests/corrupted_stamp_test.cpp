@@ -18,7 +18,6 @@
 #include "test_base.hpp"
 
 namespace constants {
-constexpr auto HEADERS_SIZE = sizeof(eblob_disk_control) + sizeof(dnet_ext_list_hdr);
 constexpr auto group_id = 1;
 }
 
@@ -62,9 +61,11 @@ struct headers_test_case {
 
 std::vector<headers_test_case> marginal_cases = {
 	// 'Valid header in user data' cases.
-	{-EILSEQ, 1, 100, 100, DNET_EXT_VERSION_V1, 0, {0}, {0}},
-	{-EILSEQ, 1, 100, 100, DNET_EXT_VERSION_V1, DNET_SERVER_SEND_BUGFIX_TIMESTAMP, {0}, {0}},
-	{-EILSEQ, 1, 100, 101, DNET_EXT_VERSION_V1, DNET_SERVER_SEND_BUGFIX_TIMESTAMP, {0}, {0}},
+	{-EILSEQ, BLOB_DISK_CTL_EXTHDR, 100, 100, DNET_EXT_VERSION_V1, 1, {0}, {0}},
+	{-EILSEQ, BLOB_DISK_CTL_EXTHDR, 100, 100, DNET_EXT_VERSION_FIRST, 1, {0}, {0}},
+	{-EILSEQ, BLOB_DISK_CTL_EXTHDR, 100, 100, DNET_EXT_VERSION_V1, DNET_SERVER_SEND_BUGFIX_TIMESTAMP, {0}, {0}},
+	{-EILSEQ, BLOB_DISK_CTL_EXTHDR, 100, 101, DNET_EXT_VERSION_V1, DNET_SERVER_SEND_BUGFIX_TIMESTAMP, {0}, {0}},
+	{-EILSEQ, 1, 100, 101, 123, 123, {123}, {123}},
 	{-EILSEQ, (1 << 9) - 1, 100, 101, DNET_EXT_VERSION_V1, DNET_SERVER_SEND_BUGFIX_TIMESTAMP, {0}, {0}},
 	{-EILSEQ, (1 << 9) - 1, 1, 1024, DNET_EXT_VERSION_V1, DNET_SERVER_SEND_BUGFIX_TIMESTAMP, {0}, {0}},
 
@@ -79,43 +80,54 @@ std::vector<headers_test_case> marginal_cases = {
 
 	// disk_size == 0
 	{0, 1, 0, 99, DNET_EXT_VERSION_V1, 0, {0}, {0}},
+
 	// version isn't equal to DNET_EXT_VERSION_V1 or DNET_EXT_VERSION_FIRST
-	{0, 1, 1, 99, 2, 0, {0}, {0}},
+	{0, BLOB_DISK_CTL_EXTHDR, 1, 99, 2, 0, {0}, {0}},
 	// timestamp out of range.
-	{0, 1, 100, 101, DNET_EXT_VERSION_V1, DNET_SERVER_SEND_BUGFIX_TIMESTAMP + 1, {0}, {0}},
-	{0, 1, 100, 101, DNET_EXT_VERSION_V1, DNET_SERVER_SEND_BUGFIX_TIMESTAMP + 42, {0}, {0}},
-	{0, 1, 100, 101, DNET_EXT_VERSION_V1, DNET_SERVER_SEND_BUGFIX_TIMESTAMP + 100500, {0}, {0}},
+	{0, BLOB_DISK_CTL_EXTHDR, 100, 101, DNET_EXT_VERSION_V1, DNET_SERVER_SEND_BUGFIX_TIMESTAMP + 1, {0}, {0}},
+	{0, BLOB_DISK_CTL_EXTHDR, 100, 101, DNET_EXT_VERSION_V1, DNET_SERVER_SEND_BUGFIX_TIMESTAMP + 42, {0}, {0}},
+	{0, BLOB_DISK_CTL_EXTHDR, 100, 101, DNET_EXT_VERSION_V1, DNET_SERVER_SEND_BUGFIX_TIMESTAMP + 100500, {0}, {0}},
 	// broken timestamp + some padding
-	{0, 1, 100, 101, DNET_EXT_VERSION_V1, DNET_SERVER_SEND_BUGFIX_TIMESTAMP + 1, {1, 0, 1}, {1, 1}},
+	{0, BLOB_DISK_CTL_EXTHDR, 100, 101, DNET_EXT_VERSION_V1, DNET_SERVER_SEND_BUGFIX_TIMESTAMP + 1, {1, 0, 1}, {1, 1}},
 
 	// Broken on padding
-	{0, 1, 42, 42, DNET_EXT_VERSION_V1, 0, {1, 0, 0}, {0, 0}},
-	{0, 1, 42, 42, DNET_EXT_VERSION_V1, 0, {0, 1, 0}, {0, 0}},
-	{0, 1, 42, 42, DNET_EXT_VERSION_V1, 0, {0, 0, 1}, {0, 0}},
-	{0, 1, 42, 42, DNET_EXT_VERSION_V1, 0, {0, 0, 0}, {1, 0}},
-	{0, 1, 42, 42, DNET_EXT_VERSION_V1, 0, {0, 0, 0}, {0, 1}},
-	{0, 1, 42, 42, DNET_EXT_VERSION_V1, 0, {0, 0, 0}, {1, 1}},
-	{0, 1, 42, 42, DNET_EXT_VERSION_V1, 0, {1, 1, 1}, {0, 0}},
-	{0, 1, 42, 42, DNET_EXT_VERSION_V1, 0, {1, 0, 1}, {0, 0}},
-	{0, 1, 42, 42, DNET_EXT_VERSION_V1, 0, {1, 1, 1}, {1, 0}},
-	{0, 1, 42, 42, DNET_EXT_VERSION_V1, 0, {1, 1, 1}, {0, 1}},
-	{0, 1, 42, 42, DNET_EXT_VERSION_V1, 0, {1, 0, 1}, {1, 0}},
-	{0, 1, 42, 42, DNET_EXT_VERSION_V1, 0, {1, 0, 1}, {0, 1}}
+	{0, BLOB_DISK_CTL_EXTHDR, 42, 42, DNET_EXT_VERSION_V1, 0, {1, 0, 0}, {0, 0}},
+	{0, BLOB_DISK_CTL_EXTHDR, 42, 42, DNET_EXT_VERSION_V1, 0, {0, 1, 0}, {0, 0}},
+	{0, BLOB_DISK_CTL_EXTHDR, 42, 42, DNET_EXT_VERSION_V1, 0, {0, 0, 1}, {0, 0}},
+	{0, BLOB_DISK_CTL_EXTHDR, 42, 42, DNET_EXT_VERSION_V1, 0, {0, 0, 0}, {1, 0}},
+	{0, BLOB_DISK_CTL_EXTHDR, 42, 42, DNET_EXT_VERSION_V1, 0, {0, 0, 0}, {0, 1}},
+	{0, BLOB_DISK_CTL_EXTHDR, 42, 42, DNET_EXT_VERSION_V1, 0, {0, 0, 0}, {1, 1}},
+	{0, BLOB_DISK_CTL_EXTHDR, 42, 42, DNET_EXT_VERSION_V1, 0, {1, 1, 1}, {0, 0}},
+	{0, BLOB_DISK_CTL_EXTHDR, 42, 42, DNET_EXT_VERSION_V1, 0, {1, 0, 1}, {0, 0}},
+	{0, BLOB_DISK_CTL_EXTHDR, 42, 42, DNET_EXT_VERSION_V1, 0, {1, 1, 1}, {1, 0}},
+	{0, BLOB_DISK_CTL_EXTHDR, 42, 42, DNET_EXT_VERSION_V1, 0, {1, 1, 1}, {0, 1}},
+	{0, BLOB_DISK_CTL_EXTHDR, 42, 42, DNET_EXT_VERSION_V1, 0, {1, 0, 1}, {1, 0}},
+	{0, BLOB_DISK_CTL_EXTHDR, 42, 42, DNET_EXT_VERSION_V1, 0, {1, 0, 1}, {0, 1}}
 };
 
 std::vector<headers_test_case> functional_cases = {
-	{-EILSEQ, 1, 100, 100, DNET_EXT_VERSION_V1, 0, {0}, {0}},
-	{0, 1, 100, 99, DNET_EXT_VERSION_V1, 0, {0}, {0}},
+	{-EILSEQ, BLOB_DISK_CTL_EXTHDR, 100, 100, DNET_EXT_VERSION_V1, 1, {0}, {0}},
+	{0, BLOB_DISK_CTL_EXTHDR, 100, 99, DNET_EXT_VERSION_V1, 1, {0}, {0}},
 
-	{-EILSEQ, 1, 100, 100, DNET_EXT_VERSION_V1, 0, {0}, {0}},
-	{0, 1 << 9, 100, 42, DNET_EXT_VERSION_V1, 0, {0}, {0}},
+	{-EILSEQ, BLOB_DISK_CTL_EXTHDR, 100, 100, DNET_EXT_VERSION_V1, 1, {0}, {0}},
+	{-EILSEQ, BLOB_DISK_CTL_EXTHDR, 100, 100, DNET_EXT_VERSION_FIRST, 1, {0}, {0}},
+	{0, (1 << 9) | BLOB_DISK_CTL_EXTHDR, 100, 42, DNET_EXT_VERSION_V1, 0, {0}, {0}},
 
-	{-EILSEQ, 1, 100, 100, DNET_EXT_VERSION_V1, DNET_SERVER_SEND_BUGFIX_TIMESTAMP, {0}, {0}},
+	{-EILSEQ, BLOB_DISK_CTL_EXTHDR, 100, 100, DNET_EXT_VERSION_V1, DNET_SERVER_SEND_BUGFIX_TIMESTAMP, {0}, {0}},
 	// disk_size == 0
-	{0, 1, 0, 99, DNET_EXT_VERSION_V1, 0, {0}, {0}},
+	{0, BLOB_DISK_CTL_EXTHDR, 0, 99, DNET_EXT_VERSION_V1, 1, {0}, {0}},
 	// Broken padding
-	{0, 1, 0, 99, DNET_EXT_VERSION_V1, 0, {0, 1, 0}, {0}},
+	{0, BLOB_DISK_CTL_EXTHDR, 1, 99, DNET_EXT_VERSION_V1, 1, {0, 1, 0}, {0}},
+	// Only disk header
+	{-EILSEQ, 1, 1, 99, 123, 123, {123}, {123}},
 };
+
+size_t get_headers_size(uint64_t flags) {
+	if (flags & BLOB_DISK_CTL_EXTHDR)
+		return sizeof(eblob_disk_control) + sizeof(dnet_ext_list_hdr);
+	else
+		return sizeof(eblob_disk_control);
+}
 
 }
 
@@ -132,26 +144,30 @@ void test_random_valid_headers(unsigned int number) {
 
 	// Create valid headers stamp.
 	const auto make_random_header = [&] (const size_t to_add = 0) {
-		auto buffer = data_pointer::allocate(constants::HEADERS_SIZE + to_add);
+		uint64_t dc_flags = flags_distribution(random_generator);
 
+		auto buffer = data_pointer::allocate(get_headers_size(dc_flags) + to_add);
 		auto dc = buffer.data<eblob_disk_control>();
-		auto ehdr = buffer.skip<eblob_disk_control>().data<dnet_ext_list_hdr>();
 
-		dc->flags = flags_distribution(random_generator);
+		dc->flags = dc_flags;
 		dc->disk_size = disk_size_distribution(random_generator);
 		dc->data_size = dc->disk_size - data_size_distribution(random_generator);
 		dc->position = 0;
 
-		ehdr->version = version_distribution(random_generator);
-		ehdr->timestamp.tsec = timestamp_distribution(random_generator);
-		ehdr->timestamp.tnsec = timestamp_distribution(random_generator);
+		if (dc_flags & BLOB_DISK_CTL_EXTHDR) {
+			auto ehdr = buffer.skip<eblob_disk_control>().data<dnet_ext_list_hdr>();
 
-		ehdr->__pad1[0] = 0;
-		ehdr->__pad1[1] = 0;
-		ehdr->__pad1[2] = 0;
+			ehdr->version = version_distribution(random_generator);
+			ehdr->timestamp.tsec = timestamp_distribution(random_generator);
+			ehdr->timestamp.tnsec = timestamp_distribution(random_generator);
 
-		ehdr->__pad2[0] = 0;
-		ehdr->__pad2[1] = 0;
+			ehdr->__pad1[0] = 0;
+			ehdr->__pad1[1] = 0;
+			ehdr->__pad1[2] = 0;
+
+			ehdr->__pad2[0] = 0;
+			ehdr->__pad2[1] = 0;
+		}
 
 		return buffer;
 	};
@@ -163,25 +179,29 @@ void test_random_valid_headers(unsigned int number) {
 }
 
 data_pointer make_headers_stamp(const headers_test_case &test_case, size_t to_add = 0, size_t to_back_remove = 0) {
-	auto buffer = data_pointer::allocate(constants::HEADERS_SIZE + to_add);
+	auto headers_size = get_headers_size(test_case.dc_flags);
+	auto buffer = data_pointer::allocate(headers_size + to_add);
 
-	memset(buffer.data(), 0, constants::HEADERS_SIZE);
+	memset(buffer.data(), 0, headers_size);
 
 	auto dc = buffer.data<eblob_disk_control>();
-	auto ehdr = buffer.skip<eblob_disk_control>().data<dnet_ext_list_hdr>();
 
 	dc->flags = test_case.dc_flags;
 	dc->data_size = test_case.dc_data_size;
 	dc->disk_size = test_case.dc_disk_size;
 
-	ehdr->version = test_case.ehdr_version;
-	ehdr->timestamp.tsec = test_case.ehdr_timestamp_seconds;
-	ehdr->timestamp.tnsec = test_case.ehdr_timestamp_seconds ^ 1; // just for completeness.
+	if (test_case.dc_flags & BLOB_DISK_CTL_EXTHDR) {
+		auto ehdr = buffer.skip<eblob_disk_control>().data<dnet_ext_list_hdr>();
 
-	memcpy(ehdr->__pad1, test_case.pad1, sizeof(test_case.pad1));
-	memcpy(ehdr->__pad2, test_case.pad2, sizeof(test_case.pad2));
+		ehdr->version = test_case.ehdr_version;
+		ehdr->timestamp.tsec = test_case.ehdr_timestamp_seconds;
+		ehdr->timestamp.tnsec = test_case.ehdr_timestamp_seconds ^ 1; // just for completeness.
 
-	return data_pointer::copy(buffer.slice(0, constants::HEADERS_SIZE + to_add - to_back_remove));
+		memcpy(ehdr->__pad1, test_case.pad1, sizeof(test_case.pad1));
+		memcpy(ehdr->__pad2, test_case.pad2, sizeof(test_case.pad2));
+	}
+
+	return data_pointer::copy(buffer.slice(0, headers_size + to_add - to_back_remove));
 }
 
 // Test valid headers with explicitly set fields, most checks for marginal headers fields values.
@@ -208,6 +228,7 @@ void test_read_corrupted_stamp(ioremap::elliptics::newapi::session &s, const dne
 	struct test_write_result {
 		std::string key;
 		int expected_status;
+		size_t headers_size;
 		size_t data_size;
 		newapi::async_write_result async_result;
 	};
@@ -239,7 +260,8 @@ void test_read_corrupted_stamp(ioremap::elliptics::newapi::session &s, const dne
 
 		return test_write_result{std::move(k),
 		                         check_skipped ? 0 : ec,
-		                         constants::HEADERS_SIZE + to_add - to_remove,
+		                         get_headers_size(test_case.dc_flags),
+		                         get_headers_size(test_case.dc_flags) + to_add - to_remove,
 		                         std::move(async)};
 	};
 
@@ -296,9 +318,11 @@ void test_read_corrupted_stamp(ioremap::elliptics::newapi::session &s, const dne
 			                  sizeof(dnet_ext_list_hdr)));
 
 		write_results.push_back(
-			make_write_result(id, "one byte data", test_case, 0, false, 0, constants::HEADERS_SIZE - 1));
+			make_write_result(id, "one byte data", test_case, 0, false, 0,
+			                  get_headers_size(test_case.dc_flags) - 1));
 		write_results.push_back(
-			make_write_result(id, "one byte data", test_case, 0, true, 0, constants::HEADERS_SIZE - 1));
+			make_write_result(id, "one byte data", test_case, 0, true, 0,
+			                  get_headers_size(test_case.dc_flags) - 1));
 
 		++id;
 	}
@@ -348,27 +372,29 @@ void test_read_corrupted_stamp(ioremap::elliptics::newapi::session &s, const dne
 
 		//
 		// Different offests and data size requests.
+		// Minimum sample data size is sizeof(eblob_disk_control) = 96. To prevent -E2BIG results the test
+		// cases use data_offset + data_size <= 96 (e.g. data_offset = 11, data_size = 81)
 		//
 		{
-			auto async = s.read_data(write_result.key, 11, 101);
+			auto async = s.read_data(write_result.key, 11, 81);
 			ELLIPTICS_REQUIRE_ERROR(res, std::move(async), write_result.expected_status);
 		} {
-			auto async = s.read_data(write_result.key, 1, constants::HEADERS_SIZE - 1);
+			auto async = s.read_data(write_result.key, 1, write_result.headers_size - 1);
 			ELLIPTICS_REQUIRE_ERROR(res, std::move(async), write_result.expected_status);
 		} {
-			auto async = s.read_data(write_result.key, 1, constants::HEADERS_SIZE - 2);
+			auto async = s.read_data(write_result.key, 1, write_result.headers_size - 2);
 			ELLIPTICS_REQUIRE_ERROR(res, std::move(async), write_result.expected_status);
 		} {
-			auto async = s.read_data(write_result.key, 101, 1);
+			auto async = s.read_data(write_result.key, 81, 1);
 			ELLIPTICS_REQUIRE_ERROR(res, std::move(async), write_result.expected_status);
 		} {
-			auto async = s.read_data(write_result.key, 101, 3);
+			auto async = s.read_data(write_result.key, 81, 3);
 			ELLIPTICS_REQUIRE_ERROR(res, std::move(async), write_result.expected_status);
 		} {
-			auto async = s.read(write_result.key, 11, 101);
+			auto async = s.read(write_result.key, 11, 81);
 			ELLIPTICS_REQUIRE_ERROR(res, std::move(async), write_result.expected_status);
 		} {
-			auto async = s.read(write_result.key, 101, 3);
+			auto async = s.read(write_result.key, 81, 3);
 			ELLIPTICS_REQUIRE_ERROR(res, std::move(async), write_result.expected_status);
 		} {
 			auto async = s.read(write_result.key, 4096, 3);
