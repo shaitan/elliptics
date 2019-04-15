@@ -442,38 +442,55 @@ void dnet_trans_clean_list(struct list_head *head, int error)
 
 void dnet_update_stall_backend_weights(struct list_head *stall_transactions)
 {
-	struct dnet_trans *t, *tmp;
+	struct dnet_io_req *r, *tmp;
+	struct dnet_cmd *cmd;
 	struct dnet_net_state *st;
 	double old_cache_weight, new_cache_weight;
 	double old_disk_weight, new_disk_weight;
 	int err;
 
-	list_for_each_entry_safe(t, tmp, stall_transactions, trans_list_entry) {
-		st = t->st;
+	list_for_each_entry_safe(r, tmp, stall_transactions, req_entry) {
+		cmd = r->header;
+		st = r->st;
 
-		err = dnet_get_backend_weight(st, t->cmd.backend_id, DNET_IO_FLAGS_CACHE, &old_cache_weight);
+		err = dnet_get_backend_weight(st, cmd->backend_id, DNET_IO_FLAGS_CACHE, &old_cache_weight);
 		if (!err) {
 			new_cache_weight = old_cache_weight;
 			if (new_cache_weight >= 2) {
 				new_cache_weight /= 10;
-				dnet_set_backend_weight(st, t->cmd.backend_id, DNET_IO_FLAGS_CACHE, new_cache_weight);
+				dnet_set_backend_weight(st, cmd->backend_id, DNET_IO_FLAGS_CACHE, new_cache_weight);
 			}
 
-			err = dnet_get_backend_weight(st, t->cmd.backend_id, 0, &old_disk_weight);
+			err = dnet_get_backend_weight(st, cmd->backend_id, 0, &old_disk_weight);
 			if (!err) {
 				new_disk_weight = old_disk_weight;
 				if (new_disk_weight >= 2) {
 					new_disk_weight /= 10;
-					dnet_set_backend_weight(st, t->cmd.backend_id, 0, new_disk_weight);
+					dnet_set_backend_weight(st, cmd->backend_id, 0, new_disk_weight);
 				}
 
 				dnet_log(st->n, DNET_LOG_INFO, "%s/%d: TIMEOUT: update backend weight: weight: "
 						"cache: %f -> %f, disk: %f -> %f",
-					 dnet_state_dump_addr(st), t->cmd.backend_id,
+					 dnet_state_dump_addr(st), cmd->backend_id,
 					 old_cache_weight, new_cache_weight,
 					 old_disk_weight, new_disk_weight);
 			}
 		}
+	}
+}
+
+static int dnet_timespec_cmp(struct timespec *l, struct timespec *r)
+{
+	if (l->tv_sec > r->tv_sec) {
+		return 1;
+	} else if (l->tv_sec < r->tv_sec) {
+		return -1;
+	} else if (l->tv_nsec > r->tv_nsec) {
+		return 1;
+	} else if (l->tv_nsec < r->tv_nsec) {
+		return -1;
+	} else {
+		return 0;
 	}
 }
 
@@ -506,19 +523,11 @@ int dnet_trans_iterate_move_transaction(struct dnet_net_state *st, struct list_h
 			break;
 		}
 
-		if (!st->__need_exit) {
-			int has_timeouted;
-			if (t->time_ts.tv_sec < ts.tv_sec) {
-				has_timeouted = 1;
-			} else if (t->time_ts.tv_sec == ts.tv_sec) {
-				has_timeouted = (t->time_ts.tv_nsec <= ts.tv_nsec);
-			} else {
-				has_timeouted = 0;
-			}
-			if (!has_timeouted) {
-				pthread_mutex_unlock(&st->trans_lock);
-				break;
-			}
+		if (!st->__need_exit && dnet_timespec_cmp(&ts, &t->time_ts) < 0) {
+			// We don't need to exit => here the case when we searched timed out transaction. We found
+			// the first transaction that hasn't timed out => stop search, exit loop
+			pthread_mutex_unlock(&st->trans_lock);
+			break;
 		}
 
 		diff = DIFF_TIMESPEC(t->start_ts, ts);
@@ -636,10 +645,92 @@ static int dnet_ping_stall_node(struct dnet_net_state *st)
 	return dnet_trans_alloc_send_state(sess, st, &ctl);
 }
 
+static int dnet_trans_convert_timed_out_to_responses(struct dnet_net_state *st, struct list_head *head) {
+	struct dnet_trans *t;
+	struct rb_node *rb_node;
+	struct timespec ts;
+	int trans_moved = 0;
+	long diff = 0;
+	struct dnet_cmd *cmd;
+	struct dnet_io_req *r;
+	static const size_t cmd_size = sizeof(struct dnet_io_req) + sizeof(struct dnet_cmd);
+
+	clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
+
+	while (1) {
+		pthread_mutex_lock(&st->trans_lock);
+
+		t = NULL;
+		if (!RB_EMPTY_ROOT(&st->timer_root)) {
+			rb_node = rb_first(&st->timer_root);
+			t = rb_entry(rb_node, struct dnet_trans, timer_entry);
+		}
+
+		if (!t) {
+			pthread_mutex_unlock(&st->trans_lock);
+			break;
+		}
+
+		if (dnet_timespec_cmp(&ts, &t->time_ts) < 0) {
+			// Found transaction that hasn't timed out => stop search in rb_tree, exit loop
+			pthread_mutex_unlock(&st->trans_lock);
+			break;
+		}
+
+		diff = DIFF_TIMESPEC(t->start_ts, ts);
+		dnet_logger_set_trace_id(t->cmd.trace_id, t->cmd.flags & DNET_FLAGS_TRACE_BIT);
+
+		dnet_log(st->n, DNET_LOG_ERROR, "%s: %s: TIMEOUT/need-exit %s, "
+		                                "need-exit: %d, time: %ld",
+		         dnet_dump_id(&t->cmd.id), dnet_cmd_string(t->cmd.cmd),
+		         dnet_print_trans(t),
+		         st->__need_exit,
+		         diff);
+
+		trans_moved++;
+
+		/*
+		 * Remove timed-out transaction from net_state's timer-list, and then create
+		 * error-response for this transaction, and add to the function's output list (head).
+		 * The output list will be added to request_queue of the net state.
+		 */
+		dnet_trans_remove_timer_nolock(st, t);
+
+		r = calloc(1, cmd_size);
+		if (!r) {
+			dnet_log(st->n, DNET_LOG_ERROR, "%s: %s: bad allocation, cannot save "
+			                                "timed-out transaction %s in output list",
+				 dnet_dump_id(&t->cmd.id), dnet_cmd_string(t->cmd.cmd),
+				 dnet_print_trans(t));
+			continue;
+		}
+
+		r->st = dnet_state_get(st);
+
+		r->header = r + 1;
+		r->hsize = sizeof(struct dnet_cmd);
+		memcpy(r->header, &t->cmd, r->hsize);
+
+		cmd = r->header;
+		cmd->size = 0;
+		cmd->flags |= DNET_FLAGS_REPLY;
+		cmd->flags &= ~(DNET_FLAGS_MORE | DNET_FLAGS_NEED_ACK);
+		cmd->status = -ETIMEDOUT;
+
+		list_add_tail(&r->req_entry, head);
+
+		dnet_logger_unset_trace_id();
+
+		pthread_mutex_unlock(&st->trans_lock);
+	}
+
+	return trans_moved;
+}
+
 static int dnet_trans_check_stall(struct dnet_net_state *st, struct list_head *head)
 {
 	int is_stall_state = 0;
-	int trans_timeout = dnet_trans_iterate_move_transaction(st, head);
+	int trans_timeout = dnet_trans_convert_timed_out_to_responses(st, head);
 
 	if (trans_timeout) {
 		st->stall++;
@@ -652,6 +743,16 @@ static int dnet_trans_check_stall(struct dnet_net_state *st, struct list_head *h
 	}
 
 	return is_stall_state;
+}
+
+static void dnet_trans_enqueue_responses_on_timed_out(struct dnet_node *n, struct list_head *head) {
+	struct dnet_io_req *r, *tmp;
+
+	list_for_each_entry_safe(r, tmp, head, req_entry) {
+		list_del_init(&r->req_entry);
+
+		dnet_schedule_io(n, r);
+	}
 }
 
 static void dnet_check_all_states(struct dnet_node *n)
@@ -691,6 +792,8 @@ static void dnet_check_all_states(struct dnet_node *n)
 
 	dnet_update_stall_backend_weights(&head);
 
+	dnet_trans_enqueue_responses_on_timed_out(n, &head);
+
 	for (i = 0; i < num_stall_state; ++i) {
 		st = stall_states[i];
 		st->stall = 0;
@@ -700,7 +803,6 @@ static void dnet_check_all_states(struct dnet_node *n)
 		dnet_state_put(st);
 	}
 
-	dnet_trans_clean_list(&head, -ETIMEDOUT);
 	free(stall_states);
 }
 
