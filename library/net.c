@@ -824,6 +824,20 @@ void dnet_state_reset(struct dnet_net_state *st, int error)
 	dnet_trans_clean_list(&head, error);
 }
 
+/* Sets the SO_LINGER option to socket @s
+ * @s - socket
+ * @onoff - is linger active
+ * @linger - how many seconds to linger for
+ *
+ * http://man7.org/linux/man-pages/man7/socket.7.html
+ */
+static void dnet_set_linger(int s, int onoff, int linger)
+{
+	struct linger l;
+	l.l_onoff = onoff;
+	l.l_linger = linger;
+	setsockopt(s, SOL_SOCKET, SO_LINGER, &l, sizeof(l));
+}
 
 void dnet_sock_close(struct dnet_node *n, int s)
 {
@@ -833,13 +847,15 @@ void dnet_sock_close(struct dnet_node *n, int s)
 	}
 	dnet_log(n, DNET_LOG_NOTICE, "self: addr: %s, closing socket: %d", addr_str, s);
 
+	// disable linger before shutdown and close
+	dnet_set_linger(s, 0, 0);
+
 	shutdown(s, SHUT_RDWR);
 	close(s);
 }
 
 void dnet_set_sockopt(struct dnet_node *n, int s)
 {
-	struct linger l;
 	int opt;
 
 	opt = 1;
@@ -851,10 +867,7 @@ void dnet_set_sockopt(struct dnet_node *n, int s)
 	opt = 10;
 	setsockopt(s, IPPROTO_TCP, TCP_KEEPINTVL, &n->keep_interval, 4);
 
-	l.l_onoff = 1;
-	l.l_linger = 1;
-
-	setsockopt(s, SOL_SOCKET, SO_LINGER, &l, sizeof(l));
+	dnet_set_linger(s, 1, 1);
 
 	fcntl(s, F_SETFD, FD_CLOEXEC);
 	fcntl(s, F_SETFL, O_NONBLOCK);
