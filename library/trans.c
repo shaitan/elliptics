@@ -31,6 +31,8 @@
 #include "elliptics/interface.h"
 #include "library/logger.hpp"
 
+#define CHECK_THREAD_WAKEUP_PERIOD_NS (10 * 1000 * 1000)
+
 /*
  * Ascending transaction order
  */
@@ -733,13 +735,19 @@ static int dnet_trans_check_stall(struct dnet_net_state *st, struct list_head *h
 	int trans_timeout = dnet_trans_convert_timed_out_to_responses(st, head);
 
 	if (trans_timeout) {
-		st->stall++;
+		struct timespec ts;
+		clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
+
+		if (DIFF_TIMESPEC(st->stall_ts, ts) >= 1000000) {
+			st->stall++;
+			st->stall_ts = ts;
+
+			if (st->stall >= st->n->stall_count && st != st->n->st)
+				is_stall_state = 1;
+		}
 
 		dnet_log(st->n, DNET_LOG_ERROR, "%s: TIMEOUT: transactions: %d, stall counter: %d/%lu",
 				dnet_state_dump_addr(st), trans_timeout, st->stall, st->n->stall_count);
-
-		if (st->stall >= st->n->stall_count && st != st->n->st)
-			is_stall_state = 1;
 	}
 
 	return is_stall_state;
@@ -851,7 +859,11 @@ static void *dnet_check_process(void *data)
 
 	while (!n->need_exit) {
 		dnet_check_all_states(n);
-		sleep(1);
+
+		struct timespec ts;
+		ts.tv_sec = 0;
+		ts.tv_nsec = CHECK_THREAD_WAKEUP_PERIOD_NS;
+		nanosleep(&ts, NULL);
 	}
 
 	return NULL;

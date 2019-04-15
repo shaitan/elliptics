@@ -136,6 +136,7 @@ struct dnet_net_state
 	int			__need_exit;
 
 	int			stall;
+	struct timespec		stall_ts;
 
 	int			__join_state;
 	int			__ids_sent;
