@@ -148,22 +148,17 @@ struct dnet_node *dnet_server_node_create(struct dnet_config_data *cfg_data)
 		}
 
 		err = dnet_socket_create_listening(n, &la);
-		if (err < 0)
-			goto err_out_route_list_destroy;
-
-		s = err;
-
-		if (s < 0) {
-			err = s;
+		if (err < 0) {
 			dnet_log(n, DNET_LOG_ERROR, "failed to create socket: %s %d", strerror(-err), err);
 			goto err_out_route_list_destroy;
 		}
+		s = err;
 
 		n->st = dnet_state_create(n, NULL, 0, n->addrs, s, &err, DNET_JOIN, 1, 0, 1, n->addrs, n->addr_num);
 
 		if (!n->st) {
 			dnet_log(n, DNET_LOG_ERROR, "failed to create state: %s %d", strerror(-err), err);
-			goto err_out_state_destroy;
+			goto err_out_route_list_destroy;
 		}
 
 		// @dnet_state_create() returns state pointer which holds 2 references - one for originally created state
@@ -174,7 +169,7 @@ struct dnet_node *dnet_server_node_create(struct dnet_config_data *cfg_data)
 		err = dnet_backends_init_all(n);
 		if (err) {
 			dnet_log(n, DNET_LOG_ERROR, "failed to init backends: %s %d", strerror(-err), err);
-			goto err_out_state_destroy;
+			goto err_out_cleanup_backends;
 		}
 	}
 
@@ -183,10 +178,8 @@ struct dnet_node *dnet_server_node_create(struct dnet_config_data *cfg_data)
 	pthread_sigmask(SIG_SETMASK, &previous_sigset, NULL);
 	return n;
 
-	dnet_set_need_exit(n);
+err_out_cleanup_backends:
 	dnet_backends_cleanup_all(n);
-err_out_state_destroy:
-	dnet_state_put(n->st);
 err_out_route_list_destroy:
 	dnet_route_list_destroy(n->route);
 err_out_addr_cleanup:
