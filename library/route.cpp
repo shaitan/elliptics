@@ -393,10 +393,10 @@ int dnet_route_list::send_all_ids_nolock(dnet_net_state *st, dnet_id *id,
 
 void dnet_route_list::send_update_to_states(dnet_cmd *cmd, uint32_t backend_id)
 {
-	dnet_net_state *state;
+	dnet_net_state *state, *tmp;
 	dnet_pthread_lock_guard guard(m_node->state_lock);
 
-	list_for_each_entry(state, &m_node->storage_state_list, storage_state_entry) {
+	list_for_each_entry_safe(state, tmp, &m_node->storage_state_list, storage_state_entry) {
 		if (!state->__ids_sent || state == m_node->st)
 			continue;
 
