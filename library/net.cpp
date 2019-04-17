@@ -1212,6 +1212,8 @@ static net_addr_list dnet_reconnect_victims(struct dnet_node *node, int *flags)
 	struct dnet_addr_storage *ast, *tmp;
 	list_for_each_entry_safe(ast, tmp, &node->reconnect_list, reconnect_entry) {
 		list_del_init(&ast->reconnect_entry);
+		node->reconnect_num--;
+
 		addrs.push_back(ast->addr);
 
 		if (ast->__join_state == DNET_JOIN)

@@ -902,6 +902,8 @@ void dnet_node_cleanup_common_resources(struct dnet_node *n)
 
 	list_for_each_entry_safe(it, atmp, &n->reconnect_list, reconnect_entry) {
 		list_del(&it->reconnect_entry);
+		n->reconnect_num--;
+
 		free(it);
 	}
 	pthread_rwlock_destroy(&n->test_settings_lock);
