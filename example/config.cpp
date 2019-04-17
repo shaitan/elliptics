@@ -281,6 +281,7 @@ static void parse_options(config_data *data, const kora::config_t &options) {
 	data->cfg_state.removal_delay = options.at("removal_delay", 0);
 	data->cfg_state.server_prio = options.at("server_net_prio", 0);
 	data->cfg_state.client_prio = options.at("client_net_prio", 0);
+	data->cfg_state.reconnect_batch_size = options.at<unsigned char>("reconnect_batch_size", 0);
 	data->parallel_start = options.at("parallel", true);
 	snprintf(data->cfg_state.cookie, DNET_AUTH_COOKIE_SIZE, "%s", options.at<std::string>("auth_cookie").c_str());
 

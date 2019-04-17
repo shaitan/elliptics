@@ -383,7 +383,8 @@ struct dnet_config
 	int			server_prio;
 	int			client_prio;
 
-	int			reserved_for_future_use_3;
+	uint8_t			reconnect_batch_size;
+	uint8_t			reserved_for_future_use_3[3];
 
 	dnet_logger		*access_log;
 

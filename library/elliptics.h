@@ -512,6 +512,8 @@ struct dnet_node {
 	pthread_mutex_t		reconnect_lock;
 	struct list_head	reconnect_list;
 	int			reconnect_num;
+	/* How many addresses to try reconnect with, per reconnect iteration */
+	size_t			reconnect_batch_size;
 
 	/*
 	 * When user (client or server) adds new nodes via dnet_add_state()

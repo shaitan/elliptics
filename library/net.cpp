@@ -914,7 +914,6 @@ static void dnet_process_socket(const dnet_connect_state_ptr &state, epoll_event
 		state->succeed_count++;
 		socket->ok = 1;
 
-
 		if (socket->ask_route_list) {
 			dnet_request_route_list(state, st);
 		}
@@ -1140,7 +1139,7 @@ static net_state_list_ptr dnet_check_route_table_victims(struct dnet_node *node,
 	}
 
 	const size_t groups_count_limit = 4096;
-	const size_t groups_count_random_limit = 5;
+	const size_t groups_count_random_limit = node->reconnect_batch_size;
 
 	std::unique_ptr<unsigned[], free_destroyer>
 		groups(reinterpret_cast<unsigned *>(calloc(groups_count_limit, sizeof(unsigned))));
@@ -1208,19 +1207,31 @@ static net_addr_list dnet_reconnect_victims(struct dnet_node *node, int *flags)
 
 	dnet_pthread_lock_guard locker(node->reconnect_lock);
 
-	addrs.reserve(node->reconnect_num);
+	if (!node->reconnect_num)
+		return addrs;
+
+	size_t addresses_needed = std::min(node->reconnect_batch_size, size_t(node->reconnect_num));
+	addrs.reserve(addresses_needed);
 
 	struct dnet_addr_storage *ast, *tmp;
 	list_for_each_entry_safe(ast, tmp, &node->reconnect_list, reconnect_entry) {
+		if (addrs.size() == addresses_needed)
+			break;
+
+		if (auto st = dnet_state_search_by_addr(node, &ast->addr)) {
+			dnet_state_put(st);
+			// Address is already connected, throw it away from reconnect_list
+
+		} else {
+			addrs.push_back(ast->addr);
+
+			if (ast->__join_state == DNET_JOIN)
+				(*flags) |= DNET_CFG_JOIN_NETWORK;
+		}
+
 		list_del_init(&ast->reconnect_entry);
-		node->reconnect_num--;
-
-		addrs.push_back(ast->addr);
-
-		if (ast->__join_state == DNET_JOIN)
-			(*flags) |= DNET_CFG_JOIN_NETWORK;
-
 		free(ast);
+		node->reconnect_num--;
 	}
 
 	return addrs;

@@ -802,6 +802,9 @@ struct dnet_node *dnet_node_create(struct dnet_config *cfg)
 	if (!cfg->removal_delay)
 		cfg->removal_delay = 10; /* Store removed files 10 days by default */
 
+	if (!cfg->reconnect_batch_size)
+		cfg->reconnect_batch_size = 5;
+
 	n->wait_ts.tv_sec = cfg->wait_timeout;
 
 	n->keep_cnt = 3;
@@ -816,6 +819,7 @@ struct dnet_node *dnet_node_create(struct dnet_config *cfg)
 	n->removal_delay = cfg->removal_delay;
 	n->flags = cfg->flags;
 	n->send_limit = cfg->send_limit;
+	n->reconnect_batch_size = cfg->reconnect_batch_size;
 
 	DNET_INFO(n, "Elliptics v%d.%d.%d.%d starts, flags: %s", CONFIG_ELLIPTICS_VERSION_0,
 	          CONFIG_ELLIPTICS_VERSION_1, CONFIG_ELLIPTICS_VERSION_2, CONFIG_ELLIPTICS_VERSION_3,
