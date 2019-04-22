@@ -100,9 +100,6 @@ void test_forward_read_with_deadline(ioremap::elliptics::newapi::session &sessio
 		size_t count = 0;
 		for (const auto &result: async) {
 			BOOST_REQUIRE_EQUAL(result.status(), -ETIMEDOUT);
-			// lookup doesn't currently support deadlines, so it should be client's timeout,
-			// and result shouldn't contain DNET_FLAGS_REPLY flag.
-			BOOST_REQUIRE(!(result.command()->flags & DNET_FLAGS_REPLY));
 			BOOST_REQUIRE_EQUAL(dnet_addr_string(result.address()), forward.to_string());
 			++count;
 		}
@@ -114,9 +111,6 @@ void test_forward_read_with_deadline(ioremap::elliptics::newapi::session &sessio
 		size_t count = 0;
 		for (const auto &result: async) {
 			BOOST_REQUIRE_EQUAL(result.status(), -ETIMEDOUT);
-			// read supports deadlines, so it should be forward node's timeout,
-			// and result should contain DNET_FLAGS_REPLY flag.
-			BOOST_REQUIRE(result.command()->flags & DNET_FLAGS_REPLY);
 			BOOST_REQUIRE_EQUAL(dnet_addr_string(result.address()), forward.to_string());
 			++count;
 		}
@@ -128,9 +122,6 @@ void test_forward_read_with_deadline(ioremap::elliptics::newapi::session &sessio
 		size_t count = 0;
 		for (const auto &result: async) {
 			BOOST_REQUIRE_EQUAL(result.status(), -ETIMEDOUT);
-			// write supports deadlines, so it should be forward node's timeout,
-			// and result should contain DNET_FLAGS_REPLY flag.
-			BOOST_REQUIRE(result.command()->flags & DNET_FLAGS_REPLY);
 			BOOST_REQUIRE_EQUAL(dnet_addr_string(result.address()), forward.to_string());
 			++count;
 		}
