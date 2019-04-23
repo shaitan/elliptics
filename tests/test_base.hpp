@@ -318,6 +318,7 @@ struct start_nodes_config {
 	int client_wait_timeout;
 	int client_check_timeout;
 	int client_stall_count;
+	int client_reconnect_batch_size;
 
 	start_nodes_config(std::ostream &debug_stream, const std::vector<server_config> &&configs,
 	                   const std::string &path);

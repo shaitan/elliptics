@@ -798,7 +798,8 @@ start_nodes_config::start_nodes_config(std::ostream &debug_stream, const std::ve
 , isolated(false)
 , client_node_flags(0)
 , client_wait_timeout(0)
-, client_stall_count(0) {}
+, client_stall_count(0)
+, client_reconnect_batch_size(0) {}
 
 nodes_data::ptr start_nodes(start_nodes_config &start_config) {
 	nodes_data::ptr data = std::make_shared<nodes_data>();
@@ -1011,6 +1012,7 @@ static void start_client_node(const nodes_data::ptr &data, const std::vector<std
 	config.wait_timeout = start_config.client_wait_timeout;
 	config.check_timeout = start_config.client_check_timeout;
 	config.stall_count = start_config.client_stall_count;
+	config.reconnect_batch_size = start_config.client_reconnect_batch_size;
 
 	std::unique_ptr<blackhole::wrapper_t> logger{new blackhole::wrapper_t(*data->logger, {})};
 	data->node.reset(new node(std::move(logger), config));
