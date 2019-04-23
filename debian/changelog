@@ -1,3 +1,15 @@
+elliptics (2.27.9.8) unstable; urgency=low
+
+  * fix: syncronize reconnect_num with the length of reconnect_list
+  * fix: update comment
+  * feat: disable linger on socket close
+  * feat: process timed-out transactions in io_pool
+  * fix: ping stalled nodes via DNET_CMD_STATUS
+  * fix: check for stalled transactions every 10ms
+  * test: remove DNET_FLAGS_REPLY checking from forwarding_test
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Tue, 23 Apr 2019 11:31:34 +0300
+
 elliptics (2.27.9.7) unstable; urgency=low
 
   * fix: add the case of ehdr.version == 0 to corrupted stamp signature
