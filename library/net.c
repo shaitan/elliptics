@@ -1252,12 +1252,14 @@ struct dnet_net_state *dnet_state_create(struct dnet_node *n,
 err_out_send_destroy:
 	pthread_mutex_lock(&n->state_lock);
 err_out_unlock:
-	dnet_state_rb_remove_nolock(st);
-	list_del_init(&st->storage_state_entry);
+	dnet_state_remove_nolock(st);
 	pthread_mutex_unlock(&n->state_lock);
+
 	dnet_state_put(st);
-	pthread_mutex_destroy(&st->send_lock);
-	pthread_mutex_destroy(&st->trans_lock);
+	dnet_state_put(st);
+
+	goto err_out_exit;
+
 err_out_dup_destroy:
 	dnet_sock_close(n, st->write_s);
 	n2_old_protocol_rcvbuf_destroy(st);
