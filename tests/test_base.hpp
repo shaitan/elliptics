@@ -2,6 +2,7 @@
 #define TEST_BASE_HPP
 
 #include <unordered_set>
+#include <boost/optional.hpp>
 #include <boost/variant.hpp>
 
 #ifndef TEST_DO_NOT_INCLUDE_PLACEHOLDERS
@@ -220,6 +221,13 @@ public:
 
 	config_data options;
 	std::vector<config_data> backends;
+
+	// In a case of multiple-servers test config, all the servers (start_nodes_config::configs) are by default
+	// interconnected with each other. If you want to use custom connection graph, you must specify for each server
+	// which the others it must be connected to. Here you can specify the indexes in start_nodes_config::configs =>
+	// to that servers the current one will connect.
+	boost::optional<std::unordered_set<size_t>> custom_remote_indexes;
+
 	std::string log_path;
 	std::string access_path;
 };

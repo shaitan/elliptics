@@ -866,7 +866,8 @@ nodes_data::ptr start_nodes(start_nodes_config &start_config) {
 		for (size_t j = 0; j < start_config.configs.size(); ++j) {
 			if (j == i)
 				continue;
-
+			if (config.custom_remote_indexes && !config.custom_remote_indexes->count(j))
+				continue;
 			remotes.push_back(create_remote(ports[j]));
 		}
 
