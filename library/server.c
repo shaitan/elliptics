@@ -107,20 +107,16 @@ struct dnet_node *dnet_server_node_create(struct dnet_config_data *cfg_data)
 	if (err)
 		goto err_out_node_destroy;
 
-	err = dnet_monitor_init(n, cfg);
-	if (err)
-		goto err_out_node_destroy;
-
 	err = dnet_node_check_stack(n);
 	if (err)
-		goto err_out_monitor_destroy;
+		goto err_out_node_destroy;
 
 	if (!n->notify_hash_size) {
 		n->notify_hash_size = DNET_DEFAULT_NOTIFY_HASH_SIZE;
 
 		err = dnet_notify_init(n);
 		if (err)
-			goto err_out_monitor_destroy;
+			goto err_out_node_destroy;
 
 		dnet_log(n, DNET_LOG_NOTICE, "No notify hash size provided, using default %d",
 				n->notify_hash_size);
@@ -171,6 +167,10 @@ struct dnet_node *dnet_server_node_create(struct dnet_config_data *cfg_data)
 			dnet_log(n, DNET_LOG_ERROR, "failed to init backends: %s %d", strerror(-err), err);
 			goto err_out_cleanup_backends;
 		}
+
+		err = dnet_monitor_init(n, cfg);
+		if (err)
+			goto err_out_cleanup_backends;
 	}
 
 	dnet_log(n, DNET_LOG_DEBUG, "New server node has been created at port %d", cfg->port);
@@ -178,6 +178,9 @@ struct dnet_node *dnet_server_node_create(struct dnet_config_data *cfg_data)
 	pthread_sigmask(SIG_SETMASK, &previous_sigset, NULL);
 	return n;
 
+err_out_monitor_destroy:
+	// unused label, but saved to show how do deal if additional init steps are added after dnet_monitor_init.
+	dnet_monitor_exit(n);
 err_out_cleanup_backends:
 	dnet_backends_cleanup_all(n);
 err_out_route_list_destroy:
@@ -187,8 +190,6 @@ err_out_addr_cleanup:
 err_out_notify_exit:
 	n->need_exit = err;
 	dnet_notify_exit(n);
-err_out_monitor_destroy:
-	dnet_monitor_exit(n);
 err_out_node_destroy:
 	dnet_node_destroy(n);
 err_out_exit:
