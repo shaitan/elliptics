@@ -437,19 +437,12 @@ class WindowedDC(WindowedRecovery):
 
     def run_one(self):
         try:
-            key = None
             with self.lock:
                 key = next(self.keys)
-                self.recovers_in_progress += 1
-            KeyRecover(self.ctx, *key, node=self.node_ref(), callback=self.callback)
+            KeyRecover(self.ctx, *key, node=self.node_ref(), callback=self.async_callback)
             return True
         except StopIteration:
-            last = False
-            with self.lock:
-                last = self.recovers_in_progress == 0
-            if last:
-                self.complete.set()
-        return False
+            return False
 
 
 def cleanup(ctx):
@@ -517,6 +510,10 @@ if __name__ == '__main__':
                       dest="batch_size", default="1024",
                       help="Number of keys in read_bulk/write_bulk "
                       "batch [default: %default]")
+    parser.add_option("-p", "--pool-size", action="store",
+                      dest="pool_size", default=1,
+                      help="Size of internal pool for asynchronously "
+                      "running callbacks [default: %default]")
 
     (options, args) = parser.parse_args()
     ctx = Ctx()
@@ -586,6 +583,16 @@ if __name__ == '__main__':
         raise ValueError("Can't parse batchsize: '{0}': {1}, traceback: {2}"
                          .format(options.batch_size, repr(e), traceback.format_exc()))
     log.info("Using batch_size: {0}".format(ctx.batch_size))
+
+    try:
+        ctx.pool_size = int(options.pool_size)
+        if ctx.pool_size <= 0:
+            raise ValueError("Pool size should be positive: {0}"
+                             .format(ctx.pool_size))
+    except Exception as e:
+        raise ValueError("Can't parse poolsize: '{0}': {1}, traceback: {2}"
+                         .format(options.pool_size, repr(e), traceback.format_exc()))
+    log.info("Using pool_size: %s", ctx.pool_size)
 
     try:
         ctx.wait_timeout = int(options.wait_timeout)

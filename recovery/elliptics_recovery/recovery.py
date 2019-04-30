@@ -252,6 +252,15 @@ def main(options, args):
     log.info("Using batch_size: {0}".format(ctx.batch_size))
 
     try:
+        ctx.pool_size = int(options.pool_size)
+        if ctx.pool_size <= 0:
+            raise ValueError("Pool size should be positive: {0}".format(ctx.pool_size))
+    except Exception as e:
+        raise ValueError("Can't parse pool_size: '{0}': {1}, traceback: {2}"
+                         .format(options.pool_size, repr(e), traceback.format_exc()))
+    log.info("Using pool_size: %s", ctx.pool_size)
+
+    try:
         ctx.nprocess = int(options.nprocess)
         if ctx.nprocess <= 0:
             raise ValueError("Number of processes should be positive: {0}".format(ctx.nprocess))
@@ -440,4 +449,6 @@ def run(args=None):
                       help='Timeout in ms for writing a chunk by server-send [default: %default]')
     parser.add_option('--chunk-commit-timeout', action='store', type='int', dest='chunk_commit_timeout', default=1000,
                       help='Timeout in ms for committing a chunk by server-send [default: %default]')
+    parser.add_option('--pool-size', action='store', dest='pool_size', default=1,
+                      help='Size of internal pool for asynchronously running callbacks [default: %default]')
     return main(*parser.parse_args(args))

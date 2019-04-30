@@ -15,17 +15,20 @@
 # GNU General Public License for more details.
 # =============================================================================
 
+import collections
+import errno
+import mock
 import os
 import sys
-import errno
-import itertools
+import threading
 import time
+
 sys.path.insert(0, "")  # for running from cmake
 import pytest
 from conftest import make_session, scope
 import elliptics
 import elliptics_recovery.recovery
-
+import elliptics_recovery.utils.misc
 
 class RECOVERY:
     MERGE = 1
@@ -222,6 +225,82 @@ def recovery(one_node, remotes, backend_id, address, groups,
                 ids=['use_server_send', 'no_server_send'])
 def use_server_send(request):
     return request.param
+
+
+class TestWindowedRecovery:
+    """
+    Test misc.WindowedRecovery in success and failure scenarios.
+    The processing must work correctly and mustn't freeze in any case.
+    """
+
+    Context = collections.namedtuple('Context', 'batch_size pool_size stats')
+
+    @staticmethod
+    @pytest.mark.parametrize('count', [0, 1, 100])
+    @pytest.mark.parametrize('batch_size', [1, 5, 10])
+    @pytest.mark.parametrize('pool_size', [1, 5])
+    def test_success(count, batch_size, pool_size):
+        """
+        Make processor based on WindowedRecovery. The processor pushes elements back from one list to another
+        in several threads. Test that all elements will be processed and arrays after sorting are equivalent.
+        """
+
+        class Processor(elliptics_recovery.utils.misc.WindowedRecovery):
+            def __init__(self, values, ctx, stats):
+                super(Processor, self).__init__(ctx, stats)
+                self.values = iter(values)
+                self.processed = []
+                self.lock = threading.Lock()
+
+            def run_one(self):
+                try:
+                    with self.lock:
+                        key = next(self.values)
+                    self.processed.append(key)
+                    self.async_callback(True, mock.Mock())
+                    return True
+                except StopIteration:
+                    return False
+
+        ctx = TestWindowedRecovery.Context(batch_size=batch_size, pool_size=pool_size, stats=mock.Mock())
+        values = list(xrange(count))
+        counter = Processor(values, ctx, mock.Mock())
+
+        assert counter.run()
+        assert sorted(counter.processed) == values
+        assert counter.recovers_in_progress == 0
+        assert counter.processed_keys == count
+
+    @staticmethod
+    @pytest.mark.parametrize('raise_on', [1, 10, 20])
+    @pytest.mark.parametrize('batch_size', [1, 5, 10])
+    @pytest.mark.parametrize('pool_size', [1, 5])
+    def test_exception(raise_on, batch_size, pool_size):
+        """
+        Make counter based on WindowedRecovery. The counter raises exception at a certain element.
+        Test that counter is finished correctly and result of running is False.
+        """
+
+        class Counter(elliptics_recovery.utils.misc.WindowedRecovery):
+            def __init__(self, raise_on, ctx, stats):
+                super(Counter, self).__init__(ctx, stats)
+                self.raise_on = raise_on
+                self.lock = threading.Lock()
+
+            def run_one(self):
+                with self.lock:
+                    self.raise_on -= 1
+                    if not self.raise_on:
+                        raise Exception()
+
+                self.async_callback(True, mock.Mock())
+                return True
+
+        ctx = TestWindowedRecovery.Context(batch_size=batch_size, pool_size=pool_size, stats=mock.Mock())
+        counter = Counter(raise_on, ctx, mock.Mock())
+
+        assert not counter.run()
+        assert counter.recovers_in_progress == 0
 
 
 @pytest.mark.usefixtures("use_server_send")

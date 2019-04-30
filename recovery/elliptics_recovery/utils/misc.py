@@ -346,6 +346,7 @@ def load_key_data(filepath):
 
 class WindowedRecovery(object):
     def __init__(self, ctx, stats):
+        import multiprocessing.pool
         import threading
         self.ctx = ctx
         self.stats = stats
@@ -353,32 +354,60 @@ class WindowedRecovery(object):
         self.lock = threading.Lock()
         self.complete = threading.Event()
         self.result = True
+        self.need_exit = False
         self.recovers_in_progress = 0
         self.processed_keys = 0
+        self.pool = multiprocessing.pool.ThreadPool(processes=ctx.pool_size)
 
     def run(self):
         self.start_time = time.time()
 
-        for i in xrange(self.ctx.batch_size):
-            if not self.run_one():
+        for _ in xrange(self.ctx.batch_size):
+            if not self._try_run_one():
                 break
 
         while not self.complete.is_set():
             self.complete.wait()
+
+        self.pool.close()
+        self.pool.join()
 
         speed = self.processed_keys / (time.time() - self.start_time)
         self.stats.set_counter('recovery_speed', round(speed, 2))
         self.stats.set_counter('recovers_in_progress', self.recovers_in_progress)
         return self.result
 
-    def callback(self, result, stat):
-        self.run_one()
-        last = False
+    def _try_run_one(self):
+        with self.lock:
+            if self.need_exit:
+                return False
+            self.recovers_in_progress += 1
+        started = False
+        try:
+            started = self.run_one()
+        except:
+            log.exception("Failed to recover next key")
+            with self.lock:
+                self.result = False
+                self.need_exit = True
+        finally:
+            if started:
+                return True
+            with self.lock:
+                self.recovers_in_progress -= 1
+                if not self.recovers_in_progress:
+                    self.complete.set()
+        return False
+
+    def _callback(self, result, stat):
+        self._try_run_one()
+
         with self.lock:
             self.result &= result
             self.processed_keys += 1
             self.recovers_in_progress -= 1
-            last = self.recovers_in_progress == 0
+            if not self.recovers_in_progress:
+                self.complete.set()
 
         stat.apply(self.stats)
         speed = self.processed_keys / (time.time() - self.start_time)
@@ -387,5 +416,7 @@ class WindowedRecovery(object):
         self.stats.counter('recovered_keys', 1 if result else -1)
         self.ctx.stats.counter('recovered_keys', 1 if result else -1)
 
-        if last:
-            self.complete.set()
+    def async_callback(self, result, stat):
+        """Asynchronous start of callback is protection from stack overflow"""
+
+        self.pool.apply_async(self._callback, (result, stat))
