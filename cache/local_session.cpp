@@ -112,8 +112,9 @@ int local_session::read(const dnet_id &id,
 		DNET_LOG_DEBUG(m_state->n, "entry in list, status: {}", req_cmd->status);
 
 		if (req_cmd->status) {
+			const auto status = req_cmd->status;
 			clear_queue();
-			return req_cmd->status;
+			return status;
 		} else if (req_cmd->size) {
 			size_t roffset = 0;
 			auto rdata = data_pointer::from_raw(req_cmd + 1, r->hsize ? r->hsize : r->dsize);
