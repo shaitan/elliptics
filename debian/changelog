@@ -1,3 +1,15 @@
+elliptics (2.27.9.9) unstable; urgency=low
+
+  * fix: fix hang if dnet_send failed in send_update_to_states
+  * fix: fix possible crash if dnet_backends_init_all failed
+  * recovery: fix stack overflow because of the recursive run
+  * fix: limit addresses count on each reconnect iteration
+  * test: support reconnect_batch_size
+  * test: provide custom net graph
+  * test: add test on reconnect_batch_size
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Tue, 14 May 2019 17:39:24 +0300
+
 elliptics (2.27.9.8) unstable; urgency=low
 
   * fix: syncronize reconnect_num with the length of reconnect_list
