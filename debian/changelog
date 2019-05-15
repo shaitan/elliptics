@@ -1,3 +1,9 @@
+elliptics (2.27.9.10) unstable; urgency=low
+
+  * feat: add statistics for errors per groups in dnet_recovery
+
+ -- Artem Selishchev <arselishev@gmail.com>  Wed, 15 May 2019 14:41:11 +0300
+
 elliptics (2.27.9.9) unstable; urgency=low
 
   * fix: fix hang if dnet_send failed in send_update_to_states
