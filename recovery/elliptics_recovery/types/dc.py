@@ -37,6 +37,7 @@ def iterate_node(arg):
     elog = elliptics.Logger(ctx.log_file, int(ctx.log_level), True)
     stats = ctx.stats["iterate"][str(address)][str(backend_id)]
     stats_cmd = ctx.stats['commands']
+    stats_cmd_groups = ctx.stats['commands_by_groups']
     stats.timer('process', 'started')
     log.info("Running iterator on node: {0}/{1}".format(address, backend_id))
     log.debug("Ranges:")
@@ -74,6 +75,7 @@ def iterate_node(arg):
             batch_size=ctx.batch_size,
             stats=stats,
             stats_cmd=stats_cmd,
+            stats_cmd_groups=stats_cmd_groups,
             flags=flags,
             leave_file=True)
 
@@ -298,6 +300,7 @@ def process_uncommitted(ctx, results):
 
     stats = ctx.stats['recover']
     stats_cmd = ctx.stats['commands']
+    stats_cmd_groups = ctx.stats['commands_by_groups']
 
     for r in results:
         with open(r.filename, 'ab') as f:
@@ -348,6 +351,7 @@ def process_uncommitted(ctx, results):
                             stats.counter('removed_uncommitted_keys', 1)
                         else:
                             stats_cmd.counter('remove.{0}'.format(status), 1)
+                            stats_cmd_groups.counter('remove.{0}.{1}'.format(group_id, status), 1)
 
                         if status not in (0, -errno.ENOENT, -errno.EBADFD):
                             failed_tasks.append(tasks[i])
@@ -547,6 +551,7 @@ def lookup_keys(ctx):
     log.info("Start looking up keys")
     stats = ctx.stats["lookup"]
     stats_cmd = ctx.stats['commands']
+    stats_cmd_groups = ctx.stats['commands_by_groups']
     stats.timer('process', 'started')
     elog = elliptics.Logger(ctx.log_file, int(ctx.log_level), True)
     node = elliptics_create_node(address=ctx.address,
@@ -593,6 +598,7 @@ def lookup_keys(ctx):
                     log.debug("Failed to lookup key: {0} in group: {1}: {2}"
                               .format(id, ctx.groups[i], status))
                     stats_cmd.counter('lookup.{0}'.format(status), 1)
+                    stats_cmd_groups.counter('lookup.{0}.{1}'.format(ctx.groups[i], status), 1)
                     stats.counter("lookups", -1)
             if len(key_infos) > 0:
                 key_infos.sort(key=lambda x: (x.timestamp, x.size, x.user_flags), reverse=True)

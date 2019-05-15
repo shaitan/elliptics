@@ -46,6 +46,7 @@ def iterate_node(ctx, node, address, backend_id, ranges, eid, stats):
     try:
         log.debug("Running iterator on node: {0}/{1}".format(address, backend_id))
         stats_cmd = ctx.stats['commands']
+        stats_cmd_groups = ctx.stats['commands_by_groups']
         timestamp_range = ctx.timestamp.to_etime(), Time.time_max().to_etime()
         flags = elliptics.iterator_flags.key_range | elliptics.iterator_flags.ts_range
         key_ranges = [IdRange(r[0], r[1]) for r in ranges]
@@ -60,6 +61,7 @@ def iterate_node(ctx, node, address, backend_id, ranges, eid, stats):
                                                          batch_size=ctx.batch_size,
                                                          stats=stats,
                                                          stats_cmd=stats_cmd,
+                                                         stats_cmd_groups=stats_cmd_groups,
                                                          flags=flags,
                                                          leave_file=False,)
         if result is None:
@@ -249,6 +251,7 @@ class ServerSendRecovery(object):
         self.ctx = ctx
         self.stats = stats
         self.stats_cmd = ctx.stats['commands']
+        self.stats_cmd_groups = ctx.stats['commands_by_groups']
 
     def _prepare_backends(self, ctx, group, address, backend_id):
         '''
@@ -312,11 +315,9 @@ class ServerSendRecovery(object):
         index = -1
         for index, result in enumerate(iterator, 1):
             status = result.response.status
-            self._update_stats(start_time, index, recovers_in_progress, status)
+            self._update_stats(start_time, index, recovers_in_progress, self.group, status)
             key = result.response.key
             log.debug("Server-send result: key: {0}, status: {1}".format(key, status))
-            if status:
-                self.stats_cmd.counter("server_send.{0}".format(status), 1)
             if status == -errno.ETIMEDOUT:
                 timeouted_keys.append(key)
             else:
@@ -363,6 +364,7 @@ class ServerSendRecovery(object):
                 log.info("Removing key: {0}, status: {1}, last attempt: {2}".format(bad_keys[i], status, is_last_attempt))
                 if status:
                     self.stats_cmd.counter("remove.{0}".format(status), 1)
+                    self.stats_cmd_groups.counter("remove.{0}.{1}".format(self.group, status), 1)
                 if status == -errno.ETIMEDOUT:
                     timeouted_keys.append(bad_keys[i])
             bad_keys = timeouted_keys
@@ -390,7 +392,7 @@ class ServerSendRecovery(object):
                 return True
         return False
 
-    def _update_stats(self, start_time, processed_keys, recovers_in_progress, status):
+    def _update_stats(self, start_time, processed_keys, recovers_in_progress, group_id, status):
         speed = processed_keys / (time.time() - start_time)
         recovers_in_progress -= processed_keys
         self.stats.set_counter('recovery_speed', round(speed, 2))
@@ -398,6 +400,9 @@ class ServerSendRecovery(object):
         if status != -errno.ETIMEDOUT:
             self.stats.counter('recovered_keys', 1 if status == 0 else -1)
             self.ctx.stats.counter('recovered_keys', 1 if status == 0 else -1)
+        if status:
+            self.stats_cmd.counter("server_send.{0}".format(status), 1)
+            self.stats_cmd_groups.counter("server_send.{0}.{1}".format(group_id, status), 1)
 
     def _update_timeouted_keys_stats(self, num_timeouted_keys):
         self.stats.counter('recovered_keys', -num_timeouted_keys)

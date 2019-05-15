@@ -253,7 +253,8 @@ class Iterator(object):
               group_id=0,
               leave_file=False,
               batch_size=1024,
-              stats_cmd=None):
+              stats_cmd=None,
+              stats_cmd_groups=None):
         assert flags & elliptics.iterator_flags.data == 0, "Only metadata iterator is supported for now"
         assert len(key_ranges) > 0, "There should be at least one iteration range."
         self.ranges = key_ranges
@@ -309,6 +310,8 @@ class Iterator(object):
 
                 if status and stats_cmd is not None:
                     stats_cmd.counter("iterate.{0}".format(status), 1)
+                if status and stats_cmd_groups is not None:
+                    stats_cmd_groups.counter("iterate.{0}.{1}".format(group_id, status), 1)
 
                 if status == 0:
                     # TODO: directly use record.record_info when newapi iterator will be used everywhere.
@@ -352,7 +355,10 @@ class Iterator(object):
                 yield results[0]
         except Exception as e:
             if len(e.args) and isinstance(e.args[0], elliptics.core.ErrorInfo):
-                stats_cmd.counter("iterate.{0}".format(e.args[0].code), 1)
+                if stats_cmd is not None:
+                    stats_cmd.counter("iterate.{0}".format(e.args[0].code), 1)
+                if stats_cmd_groups is not None:
+                    stats_cmd_groups.counter("iterate.{0}.{1}".format(group_id, e.args[0].code), 1)
             self.log.error("Iteration on node: {0}/{1} failed: {2}, traceback: {3}"
                            .format(address, backend_id, repr(e), traceback.format_exc()))
             yield None
@@ -379,7 +385,7 @@ class Iterator(object):
 
     def iterate_with_stats(self, eid, timestamp_range,
                            key_ranges, tmp_dir, address, group_id, backend_id, batch_size,
-                           stats, stats_cmd, flags, leave_file=False):
+                           stats, stats_cmd, stats_cmd_groups, flags, leave_file=False):
         result = self.start(eid=eid,
                             flags=flags,
                             key_ranges=key_ranges,
@@ -390,7 +396,8 @@ class Iterator(object):
                             group_id=group_id,
                             leave_file=leave_file,
                             batch_size=batch_size,
-                            stats_cmd=stats_cmd)
+                            stats_cmd=stats_cmd,
+                            stats_cmd_groups=stats_cmd_groups)
         result_len = 0
         for it in result:
             if it is None:

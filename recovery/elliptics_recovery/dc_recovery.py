@@ -46,6 +46,7 @@ class KeyRemover(object):
         self.ctx = ctx
         self.stats = stats
         self.stats_cmd = ctx.stats['commands']
+        self.stats_cmd_groups = ctx.stats['commands_by_groups']
         self.callback = callback
         self.attempt = 0
 
@@ -71,6 +72,7 @@ class KeyRemover(object):
             for r in results:
                 if r.status:
                     self.stats_cmd.counter('remove.{0}'.format(r.status), 1)
+                    self.stats_cmd_groups.counter('remove.{0}.{1}'.format(r.group_id, r.status), 1)
 
             if error.code:
                 self.stats.remove_failed += 1
@@ -112,6 +114,7 @@ class KeyRecover(object):
         self.callback = callback
         self.stats = RecoverStat()
         self.stats_cmd = ctx.stats['commands']
+        self.stats_cmd_groups = ctx.stats['commands_by_groups']
         self.key = key
         self.key_flags = 0
         self.key_infos = key_infos
@@ -284,6 +287,9 @@ class KeyRecover(object):
         try:
             corrupted_groups = []
             for result in results:
+                if result.status:
+                    self.stats_cmd_groups.counter('read.{0}.{1}'.format(result.group_id, result.status), 1)
+
                 if result.status != -errno.EILSEQ:
                     continue
 
@@ -364,6 +370,10 @@ class KeyRecover(object):
 
     def onwrite(self, results, error):
         try:
+            for result in results:
+                if result.status:
+                    self.stats_cmd_groups.counter('write.{0}.{1}'.format(result.group_id, result.status), 1)
+
             if error.code:
                 self.stats_cmd.counter('write.{0}'.format(error.code), 1)
                 self.stats.write_failed += 1

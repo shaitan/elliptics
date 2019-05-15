@@ -199,6 +199,7 @@ class ServerSendRecovery(object):
         self.ctx = ctx
         self.stats = ctx.stats['recover']
         self.stats_cmd = ctx.stats['commands']
+        self.stats_cmd_groups = ctx.stats['commands_by_groups']
         self.node = node
         self.buckets = BucketsManager(ctx)
 
@@ -308,7 +309,7 @@ class ServerSendRecovery(object):
         index = 0
         for index, result in enumerate(iterator, 1):
             status = result.status
-            self._update_stats(start_time, index, recovers_in_progress, status)
+            self._update_stats(start_time, index, recovers_in_progress, group_id, status)
 
             key = result.key
             if status < 0:
@@ -322,7 +323,7 @@ class ServerSendRecovery(object):
         if index < recovers_in_progress:
             log.error("Server-send operation failed: group_id: %d, received results: %d, expected: %d, error: %s",
                       group_id, index, recovers_in_progress, iterator.error())
-            self._update_stats(start_time, index, recovers_in_progress, iterator.error().code)
+            self._update_stats(start_time, index, recovers_in_progress, group_id, iterator.error().code)
             timeouted_keys = [elliptics.Id(k) for k in key_infos_map.iterkeys() if k not in succeeded_keys]
 
         return timeouted_keys, corrupted_keys
@@ -441,7 +442,7 @@ class ServerSendRecovery(object):
             return key_infos[1].group_id
         return -1
 
-    def _update_stats(self, start_time, processed_keys, recovers_in_progress, status):
+    def _update_stats(self, start_time, processed_keys, recovers_in_progress, group_id, status):
         speed = processed_keys / (time.time() - start_time)
         recovers_in_progress -= processed_keys
         self.stats.set_counter('recovery_speed', round(speed, 2))
@@ -451,6 +452,7 @@ class ServerSendRecovery(object):
             self.ctx.stats.counter('recovered_keys', 1 if status == 0 else -1)
         if status != 0:
             self.stats_cmd.counter('server_send.{0}'.format(status), 1)
+            self.stats_cmd_groups.counter('server_send.{0}.{1}'.format(group_id, status), 1)
 
     def _update_timeouted_keys_stats(self, num_timeouted_keys):
         self.stats.counter('recovered_keys', -num_timeouted_keys)
