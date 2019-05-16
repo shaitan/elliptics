@@ -704,6 +704,8 @@ static int dnet_trans_convert_timed_out_to_responses(struct dnet_net_state *st, 
 			                                "timed-out transaction %s in output list",
 				 dnet_dump_id(&t->cmd.id), dnet_cmd_string(t->cmd.cmd),
 				 dnet_print_trans(t));
+			dnet_logger_unset_trace_id();
+			pthread_mutex_unlock(&st->trans_lock);
 			continue;
 		}
 
