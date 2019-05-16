@@ -1,3 +1,11 @@
+elliptics (2.27.9.11) unstable; urgency=low
+
+  * fix: initialize monitor after other server_node's inner components
+  * fix: fix deadlock if calloc returned zero
+  * fix: put transation back to timer-tree only if it exists
+
+ -- Artem Selishchev <arselishev@gmail.com>  Thu, 16 May 2019 23:34:42 +0300
+
 elliptics (2.27.9.10) unstable; urgency=low
 
   * feat: add statistics for errors per groups in dnet_recovery
