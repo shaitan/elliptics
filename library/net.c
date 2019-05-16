@@ -674,22 +674,25 @@ static int dnet_process_reply(struct dnet_net_state *st, struct dnet_io_req *r) 
 		t->complete(dnet_state_addr(t->st), cmd, t->priv);
 	}
 
-	dnet_trans_put(t);
 	if (!(flags & DNET_FLAGS_MORE)) {
 		memcpy(&t->cmd, cmd, sizeof(struct dnet_cmd));
 		dnet_trans_put(t);
 	} else {
 		/*
-		 * Put transaction back into the end of 'timer' tree with updated timestamp.
+		 * If transaction isn't deleted from main ('trans') tree, put it back into the end of 'timer' tree
+		 * with updated timestamp.
 		 * Transaction had been removed from timer tree in @dnet_update_trans_timestamp_network() in network
 		 * thread right after whole data was read.
 		 */
 
 		pthread_mutex_lock(&st->trans_lock);
-		dnet_trans_update_timestamp(t);
-		dnet_trans_insert_timer_nolock(st, t);
+		if (t->trans_entry.rb_parent_color) {
+			dnet_trans_update_timestamp(t);
+			dnet_trans_insert_timer_nolock(st, t);
+		}
 		pthread_mutex_unlock(&st->trans_lock);
 	}
+	dnet_trans_put(t);
 
 out:
 	return err;
