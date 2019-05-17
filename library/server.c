@@ -162,15 +162,15 @@ struct dnet_node *dnet_server_node_create(struct dnet_config_data *cfg_data)
 		// by network thread given state was attached to, and it can already release it.
 		dnet_state_put(n->st);
 
+		err = dnet_monitor_init(n, cfg);
+		if (err)
+			goto err_out_route_list_destroy;
+
 		err = dnet_backends_init_all(n);
 		if (err) {
 			dnet_log(n, DNET_LOG_ERROR, "failed to init backends: %s %d", strerror(-err), err);
 			goto err_out_cleanup_backends;
 		}
-
-		err = dnet_monitor_init(n, cfg);
-		if (err)
-			goto err_out_cleanup_backends;
 	}
 
 	dnet_log(n, DNET_LOG_DEBUG, "New server node has been created at port %d", cfg->port);
@@ -178,11 +178,9 @@ struct dnet_node *dnet_server_node_create(struct dnet_config_data *cfg_data)
 	pthread_sigmask(SIG_SETMASK, &previous_sigset, NULL);
 	return n;
 
-err_out_monitor_destroy:
-	// unused label, but saved to show how do deal if additional init steps are added after dnet_monitor_init.
-	dnet_monitor_exit(n);
 err_out_cleanup_backends:
 	dnet_backends_cleanup_all(n);
+	dnet_monitor_exit(n);
 err_out_route_list_destroy:
 	dnet_route_list_destroy(n->route);
 err_out_addr_cleanup:
