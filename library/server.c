@@ -171,6 +171,9 @@ struct dnet_node *dnet_server_node_create(struct dnet_config_data *cfg_data)
 			dnet_log(n, DNET_LOG_ERROR, "failed to init backends: %s %d", strerror(-err), err);
 			goto err_out_cleanup_backends;
 		}
+
+		// Note that dnet_backends_init_all function spends significant time. So, any action you add after, can
+		// be postponed indefinitely.
 	}
 
 	dnet_log(n, DNET_LOG_DEBUG, "New server node has been created at port %d", cfg->port);
