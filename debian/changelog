@@ -1,3 +1,10 @@
+elliptics (2.27.9.12) unstable; urgency=low
+
+  * fix: initialize monitor before backends
+  * fix: add comment
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Mon, 20 May 2019 12:25:21 +0300
+
 elliptics (2.27.9.11) unstable; urgency=low
 
   * fix: initialize monitor after other server_node's inner components
