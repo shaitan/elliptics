@@ -78,7 +78,7 @@ public:
 	int disable();
 
 	// start defragmentation on @level
-	int start_defrag(const dnet_backend_defrag_level level);
+	int start_defrag(const dnet_backend_defrag_level level, std::string chunks_dir);
 	// stop defragmentation
 	int stop_defrag();
 

@@ -1761,7 +1761,8 @@ struct backend_status_params
 	 backend_id(id_backend),
 	 command(cmd),
 	 defrag_level(DNET_BACKEND_DEFRAG_FULL),
-	 delay(0)
+	 delay(0),
+	 chunks_dir()
 	{}
 
 	session &orig_sess;
@@ -1771,11 +1772,15 @@ struct backend_status_params
 	dnet_backend_defrag_level defrag_level;
 	uint32_t delay;
 	std::vector<dnet_raw_id> ids;
+	std::string chunks_dir;
 };
 
 static async_backend_control_result update_backend_status(const backend_status_params &params)
 {
-	data_pointer data = data_pointer::allocate(sizeof(dnet_backend_control) + params.ids.size() * sizeof(dnet_raw_id));
+	data_pointer data = data_pointer::allocate(
+		sizeof(dnet_backend_control) +
+		params.ids.size() * sizeof(dnet_raw_id) +
+		params.chunks_dir.size());
 	dnet_backend_control *backend_control = data.data<dnet_backend_control>();
 	memset(backend_control, 0, sizeof(dnet_backend_control));
 
@@ -1784,10 +1789,16 @@ static async_backend_control_result update_backend_status(const backend_status_p
 	backend_control->ids_count = params.ids.size();
 	backend_control->defrag_level = params.defrag_level;
 	backend_control->delay = params.delay;
+	backend_control->chunks_dir_len = params.chunks_dir.size();
 
 	if (!params.ids.empty()) {
 		data_pointer tmp = data.skip<dnet_backend_control>();
 		memcpy(tmp.data(), params.ids.data(), params.ids.size() * sizeof(dnet_raw_id));
+	}
+
+	if (!params.chunks_dir.empty()) {
+		auto tmp = data.skip<dnet_backend_control>().skip(params.ids.size() * sizeof(dnet_raw_id));
+		memcpy(tmp.data(), params.chunks_dir.c_str(), params.chunks_dir.size());
 	}
 
 	// We want to set random dnet_id to ensure that we won't occupy all IO threads
@@ -1830,17 +1841,29 @@ async_backend_control_result session::remove_backend(const address &addr, uint32
 
 async_backend_control_result session::start_defrag(const address &addr, uint32_t backend_id)
 {
+	return start_defrag(addr, backend_id, {} /*chunks_dir*/);
+}
+
+async_backend_control_result session::start_defrag(const address &addr, uint32_t backend_id, std::string chunks_dir)
+{
 	trace_scope scope{*this};
 	backend_status_params params(*this, addr, backend_id, DNET_BACKEND_START_DEFRAG);
 	params.defrag_level = DNET_BACKEND_DEFRAG_FULL;
+	params.chunks_dir = std::move(chunks_dir);
 	return update_backend_status(params);
 }
 
 async_backend_control_result session::start_compact(const address &addr, uint32_t backend_id)
 {
+	return start_compact(addr, backend_id, {} /*chunks_dir*/);
+}
+
+async_backend_control_result session::start_compact(const address &addr, uint32_t backend_id, std::string chunks_dir)
+{
 	trace_scope scope{*this};
 	backend_status_params params(*this, addr, backend_id, DNET_BACKEND_START_DEFRAG);
 	params.defrag_level = DNET_BACKEND_DEFRAG_COMPACT;
+	params.chunks_dir = std::move(chunks_dir);
 	return update_backend_status(params);
 }
 

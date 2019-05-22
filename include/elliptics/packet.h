@@ -375,7 +375,8 @@ struct dnet_backend_control
 {
 	uint32_t backend_id;
 	uint32_t command;
-	uint32_t reserved[13];
+	uint32_t chunks_dir_len;
+	uint32_t reserved[12];
 	uint32_t defrag_level;
 	uint32_t delay;
 	uint32_t ids_count;

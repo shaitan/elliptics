@@ -418,7 +418,10 @@ static int dnet_backend_create(struct dnet_node *node, uint32_t backend_id) {
 static int dnet_cmd_backend_control_dangerous(struct dnet_net_state *st, struct dnet_cmd *cmd, void *data) {
 	int err = 0;
 	struct dnet_node *node = st->n;
-	auto control = reinterpret_cast<struct dnet_backend_control *>(data);
+	std::string chunks_dir;
+
+	auto data_p = ioremap::elliptics::data_pointer::from_raw(data, cmd->size);
+	auto control = data_p.data<dnet_backend_control>();
 
 	if (dnet_backend_command(control->command) == DNET_BACKEND_ENABLE) {
 		err = dnet_backend_create(node, control->backend_id);
@@ -436,9 +439,13 @@ static int dnet_cmd_backend_control_dangerous(struct dnet_net_state *st, struct 
 		return -ENOENT;
 	}
 
-	if (cmd->size < sizeof(dnet_backend_control) + control->ids_count * sizeof(dnet_raw_id)) {
-		DNET_LOG_ERROR(node, "backend_control: command size is not enough for ids, state: {}",
-		               dnet_state_dump_addr(st));
+	const auto expected_size = sizeof(dnet_backend_control) +
+		control->ids_count * sizeof(dnet_raw_id) +
+		control->chunks_dir_len;
+
+	if (cmd->size < expected_size) {
+		DNET_LOG_ERROR(node, "backend_control: command size is not enough for ids, state: {}, size: {} < {}",
+		               dnet_state_dump_addr(st), cmd->size, expected_size);
 		return -EINVAL;
 	}
 
@@ -458,7 +465,14 @@ static int dnet_cmd_backend_control_dangerous(struct dnet_net_state *st, struct 
 		err = node->io->backends_manager->erase(control->backend_id);
 		break;
 	case DNET_BACKEND_START_DEFRAG:
-		err = backend->start_defrag((dnet_backend_defrag_level)control->defrag_level);
+		if (control->chunks_dir_len) {
+			const auto tmp = data_p
+				.skip<dnet_backend_control>()
+				.slice(control->ids_count * sizeof(control->ids[0]), control->chunks_dir_len);
+
+			chunks_dir = tmp.to_string();
+		}
+		err = backend->start_defrag((dnet_backend_defrag_level)control->defrag_level, std::move(chunks_dir));
 		break;
 	case DNET_BACKEND_STOP_DEFRAG:
 		err = backend->stop_defrag();
@@ -1094,12 +1108,14 @@ void dnet_backend::detach_from_io_pool() {
 	m_pool_id.clear();
 }
 
-int dnet_backend::start_defrag(const dnet_backend_defrag_level level) {
+int dnet_backend::start_defrag(const dnet_backend_defrag_level level, std::string chunks_dir) {
 	if (!m_callbacks.defrag_start) {
 		return -ENOTSUP;
 	}
 
-	return m_callbacks.defrag_start(m_callbacks.command_private, level);
+	const char *path = chunks_dir.empty() ? nullptr : chunks_dir.c_str();
+
+	return m_callbacks.defrag_start(m_callbacks.command_private, level, path);
 }
 
 int dnet_backend::stop_defrag() {

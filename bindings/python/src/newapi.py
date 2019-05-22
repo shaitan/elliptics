@@ -132,27 +132,41 @@ class Session(elliptics.core.newapi.Session):
                                                     family=address.family,
                                                     backend_id=backend_id)
 
-    def start_defrag(self, address, backend_id):
+    def start_defrag(self, address, backend_id, chunks_dir=None):
         """
         Start defragmentation of backend @backend_id on @address.
 
-        Return elliptics.AsyncResult that provides new status of backend
+        Args:
+            address(elliptics.Address): address of the node where backend should be defraged
+            backend_id(int): id of the backend which should be defraged
+            chunks_dir(str or None): optional directory which should be used for temporary chunks
+
+        Returns:
+            elliptics.AsyncResult that provides new status of backend
         """
         return super(Session, self).start_defrag(host=address.host,
                                                  port=address.port,
                                                  family=address.family,
-                                                 backend_id=backend_id)
+                                                 backend_id=backend_id,
+                                                 chunks_dir=chunks_dir)
 
-    def start_compact(self, address, backend_id):
+    def start_compact(self, address, backend_id, chunks_dir=None):
         """
         Start compaction of backend @backend_id on @address.
 
-        Return elliptics.AsyncResult that provides new status of backend
+        Args:
+            address(elliptics.Address): address of the node where backend should be compacted
+            backend_id(int): id of the backend which should be compacted
+            chunks_dir(str or None): optional directory which should be used for temporary chunks
+
+        Returns:
+            elliptics.AsyncResult that provides new status of backend
         """
         return super(Session, self).start_compact(host=address.host,
                                                   port=address.port,
                                                   family=address.family,
-                                                  backend_id=backend_id)
+                                                  backend_id=backend_id,
+                                                  chunks_dir=chunks_dir)
 
     def stop_defrag(self, address, backend_id):
         """

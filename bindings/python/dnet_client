@@ -143,7 +143,10 @@ def process_backend_control(options, session, address, method):
     '''
     assert isinstance(session, elliptics.Session)
 
-    result = method(session, address, options.backend_id)
+    if method is in (elliptics.Session.start_defrag, elliptics.Session.start_compact):
+        result = method(session, address, options.backend_id, options.chunks_dir)
+    else:
+        result = method(session, address, options.backend_id)
     print_backend_result(options, result)
 
 
@@ -182,6 +185,8 @@ def process_backend():
     parser.usage = '%prog backend action [options]'
     parser.add_option("--backend", dest="backend_id", type="int", default=-1,
                       help="Id of the backend where the command should be executed")
+    parser.add_option("--chunks-dir", dest="chunks_dir", type="str", default=None,
+                      help="Directory for defrag temporary chunks")
 
     add_node_options(parser)
 

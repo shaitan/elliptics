@@ -471,12 +471,30 @@ public:
 		);
 	}
 
-	python_backend_status_result start_defrag(const std::string &host, int port, int family, uint32_t backend_id) {
-		return create_result(std::move(session::start_defrag(address(host, port, family), backend_id)));
+	python_backend_status_result start_defrag(const std::string &host, int port, int family, uint32_t backend_id,
+	                                          const bp::api::object &chunks_dir) {
+		std::string chunks_dir_str;
+		if (chunks_dir.ptr() != Py_None) {
+			bp::extract<std::string> get_chunks_dir(chunks_dir);
+			chunks_dir_str = get_chunks_dir();
+		}
+
+		return create_result(
+			session::start_defrag(address(host, port, family), backend_id, std::move(chunks_dir_str))
+		);
 	}
 
-	python_backend_status_result start_compact(const std::string &host, int port, int family, uint32_t backend_id) {
-		return create_result(std::move(session::start_compact(address(host, port, family), backend_id)));
+	python_backend_status_result start_compact(const std::string &host, int port, int family, uint32_t backend_id,
+	                                           const bp::api::object &chunks_dir) {
+		std::string chunks_dir_str;
+		if (chunks_dir.ptr() != Py_None) {
+			bp::extract<std::string> get_chunks_dir(chunks_dir);
+			chunks_dir_str = get_chunks_dir();
+		}
+
+		return create_result(
+			session::start_compact(address(host, port, family), backend_id, std::move(chunks_dir_str))
+		);
 	}
 
 	python_backend_status_result stop_defrag(const std::string &host, int port, int family, uint32_t backend_id) {
@@ -1531,17 +1549,21 @@ void init_elliptics_session() {
 		     "    new_status = session.remove_backend(elliptics.Address.from_host_port_family(host='host.com', port=1025, family=AF_INET), 0).get()[0].backends[0]")
 
 		.def("start_defrag", &elliptics_session::start_defrag,
-		     (bp::arg("host"), bp::arg("port"), bp::arg("family"), bp::arg("backend_id")),
-		     "start_defrag(host, port, family, backend_id)\n"
-		     "    Start defragmentation of backend @backend_id at node addressed by @host, @port, @family\n"
+		     (bp::arg("host"), bp::arg("port"), bp::arg("family"), bp::arg("backend_id"),
+		      bp::arg("chunks_dir")=bp::api::object()),
+		     "start_defrag(host, port, family, backend_id, chunks_dir=None)\n"
+		     "    Start defragmentation of backend @backend_id at node addressed by @host, @port, @family.\n"
+		     "    If @chunks_dir is specified, it will be used during datasort.\n"
 		     "    Returns AsyncResult which provides new status of the backend\n\n"
 		     "    new_status = session.start_defrag(elliptics.Address.from_host_port_family(host='host.com', port=1025, family=AF_INET), 0).get()[0].backends[0]\n"
 		     "    defrag_state = new_state.defrag_state")
 
 		.def("start_compact", &elliptics_session::start_compact,
-		     (bp::arg("host"), bp::arg("port"), bp::arg("family"), bp::arg("backend_id")),
-		     "start_compact(host, port, family, backend_id)\n"
-		     "    Start defragmentation of heavy-fragmented blobs only at backend @backend_id at node addressed by @host, @port, @family\n"
+		     (bp::arg("host"), bp::arg("port"), bp::arg("family"), bp::arg("backend_id"),
+		      bp::arg("chunks_dir")=bp::api::object()),
+		     "start_compact(host, port, family, backend_id, chunks_dir=None)\n"
+		     "    Start defragmentation of heavy-fragmented blobs only at backend @backend_id at node addressed by @host, @port, @family.\n"
+		     "    If @chunks_dir is specified, it will be used during datasort.\n"
 		     "    Returns AsyncResult which provides new status of the backend\n\n"
 		     "    new_status = session.start_compact(elliptics.Address.from_host_port_family(host='host.com', port=1025, family=AF_INET), 0).get()[0].backends[0]\n"
 		     "    defrag_state = new_state.defrag_state")

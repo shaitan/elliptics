@@ -991,7 +991,7 @@ static int blob_defrag_status(void *priv)
 	return eblob_defrag_status(c->eblob);
 }
 
-static int blob_defrag_start(void *priv, enum dnet_backend_defrag_level level)
+static int blob_defrag_start(void *priv, enum dnet_backend_defrag_level level, const char *chunks_dir)
 {
 	struct eblob_backend_config *c = priv;
 	enum eblob_defrag_state defrag_level;
@@ -1007,7 +1007,7 @@ static int blob_defrag_start(void *priv, enum dnet_backend_defrag_level level)
 			return -ENOTSUP;
 	}
 
-	int err = eblob_start_defrag_level(c->eblob, defrag_level);
+	int err = eblob_start_defrag_in_dir(c->eblob, defrag_level, chunks_dir);
 
 	DNET_LOG_INFO(c->blog, "DEFRAG: defragmentation request: status: %d", err);
 

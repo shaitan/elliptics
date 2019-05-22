@@ -293,7 +293,7 @@ struct dnet_backend_callbacks {
 			struct dnet_iterator_request *ireq, struct dnet_iterator_range *irange);
 
 	int			(* defrag_status)(void *priv);
-	int			(* defrag_start)(void *priv, enum dnet_backend_defrag_level level);
+	int			(* defrag_start)(void *priv, enum dnet_backend_defrag_level level, const char* chunks_dir);
 	int			(* defrag_stop)(void *priv);
 
 	int			(* inspect_start)(void *priv);

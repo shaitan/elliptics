@@ -680,9 +680,25 @@ public:
 	async_backend_control_result start_defrag(const address &addr, uint32_t backend_id);
 
 	/*!
+	 * Starts defragmentation.
+	 * @addr - address of the node where backend should be defraged
+	 * @backend_id - ID of the backend that should be defraged
+	 * @chunks_dir - directory where defragmentation should store temporary chunks
+	 */
+	async_backend_control_result start_defrag(const address &addr, uint32_t backend_id, std::string chunks_dir);
+
+	/*!
 	 * Starts compact (lightweight defragmentation) at backend with @backend_id at node @addr.
 	 */
 	async_backend_control_result start_compact(const address &addr, uint32_t backend_id);
+
+	/*!
+	 * Starts compact (lightweight defragmentation)
+	 * @addr - address of the node where backend should be defraged
+	 * @backend_id - ID of the backend that should be defraged
+	 * @chunks_dir - directory where defragmentation should store temporary chunks
+	 */
+	async_backend_control_result start_compact(const address &addr, uint32_t backend_id, std::string chunks_dir);
 
 	/*!
 	 * Stops defragmentation at backend with @backend_id at node @addr.
