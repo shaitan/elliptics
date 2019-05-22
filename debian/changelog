@@ -1,3 +1,10 @@
+elliptics (2.27.9.13) unstable; urgency=low
+
+  * fix: use after free
+  * Allow to extend backend_control request
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Wed, 22 May 2019 17:53:23 +0300
+
 elliptics (2.27.9.12) unstable; urgency=low
 
   * fix: initialize monitor before backends
