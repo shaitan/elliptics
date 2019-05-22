@@ -436,7 +436,7 @@ static int dnet_cmd_backend_control_dangerous(struct dnet_net_state *st, struct 
 		return -ENOENT;
 	}
 
-	if (cmd->size != sizeof(dnet_backend_control) + control->ids_count * sizeof(dnet_raw_id)) {
+	if (cmd->size < sizeof(dnet_backend_control) + control->ids_count * sizeof(dnet_raw_id)) {
 		DNET_LOG_ERROR(node, "backend_control: command size is not enough for ids, state: {}",
 		               dnet_state_dump_addr(st));
 		return -EINVAL;
