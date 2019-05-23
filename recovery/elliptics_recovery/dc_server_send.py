@@ -84,7 +84,6 @@ class BucketKeys(object):
         self.group_id = group_id
         self.empty = False
 
-
     def sort_by_physical_order(self):
         chunk_files = []
         try:
@@ -287,7 +286,11 @@ class ServerSendRecovery(object):
                                                         chunk_commit_timeout=self.ctx.chunk_commit_timeout,
                                                         chunk_retry_count=self.ctx.attempts - 1,
                                                         )
-                    timeouted_keys, corrupted_keys = self._check_server_send_results(iterator, key_infos_map, group_id)
+                    timeouted_keys, corrupted_keys = self._check_server_send_results(iterator,
+                                                                                     key_infos_map,
+                                                                                     group_id,
+                                                                                     dst_groups
+                                                                                     )
                     newest_keys = timeouted_keys
                     if corrupted_keys:
                         self._remove_corrupted_keys(corrupted_keys, group_id)
@@ -295,7 +298,7 @@ class ServerSendRecovery(object):
             if timeouted_keys:
                 self._on_server_send_timeout(timeouted_keys, key_infos_map, group_id)
 
-    def _check_server_send_results(self, iterator, key_infos_map, group_id):
+    def _check_server_send_results(self, iterator, key_infos_map, group_id, dst_groups):
         '''
         Check result of remote sending for every key.
         Returns lists of timeouted keys and corrupted keys.
@@ -318,7 +321,8 @@ class ServerSendRecovery(object):
                 continue
             elif status == 0:
                 succeeded_keys.add(str(key))
-                log.debug("Recovered key: %s, status %d", result.key, status)
+                log.info("Success recovered key: %s from group: %s to groups: %s, status %s",
+                         result.key, group_id, dst_groups, status)
 
         if index < recovers_in_progress:
             log.error("Server-send operation failed: group_id: %d, received results: %d, expected: %d, error: %s",
