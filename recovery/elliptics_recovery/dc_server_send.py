@@ -417,13 +417,16 @@ class ServerSendRecovery(object):
         '''
         Returns list of destination/remote groups to which key must be recovered.
         '''
-        missed_groups = list(self.groups_set.difference([k.group_id for k in key_infos]))
+        missed_groups = set(self.groups_set.difference(k.group_id for k in key_infos))
 
         same_meta = lambda lhs, rhs: (lhs.timestamp, lhs.size, lhs.user_flags) == (rhs.timestamp, rhs.size, rhs.user_flags)
         diff_groups = [info.group_id for info in key_infos if not same_meta(info, key_infos[0])]
 
-        missed_groups.extend(diff_groups)
-        return missed_groups
+        corrupted_groups = [info.group_id for info in key_infos if info.flags & elliptics.record_flags.corrupted]
+
+        missed_groups.update(diff_groups)
+        missed_groups.update(corrupted_groups)
+        return list(missed_groups)
 
     def _get_unprocessed_key_infos(self, original_key_infos, group_id):
         '''

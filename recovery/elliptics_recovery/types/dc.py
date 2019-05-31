@@ -120,6 +120,9 @@ def skip_key_data(ctx, key_data):
     Checks that all groups are presented in key_data and
     all key_datas have equal timestamp and user_flags
     '''
+    if any(info.flags & elliptics.record_flags.corrupted for info in key_data[1]):
+        return False
+
     if ctx.user_flags_set and all(info.user_flags not in ctx.user_flags_set for info in key_data[1]):
         return True
 

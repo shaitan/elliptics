@@ -424,15 +424,17 @@ def iterate_key(filepath, groups):
     for key, key_infos in load_key_data(filepath):
         if len(key_infos) + len(groups) > 1:
             key_infos = sorted(key_infos, key=lambda x: (x.timestamp, x.size), reverse=True)
-            missed_groups = tuple(groups.difference([k.group_id for k in key_infos]))
+            corrupted_groups = [info.group_id for info in key_infos if info.flags & elliptics.record_flags.corrupted]
+            missed_groups = groups.difference([k.group_id for k in key_infos])
+            dest_groups = tuple(missed_groups.union(corrupted_groups))
 
             # if all key_infos has the same timestamp and size and there is no missed groups -
             # skip key, it is already up-to-date in all groups
             same_meta = lambda lhs, rhs: (lhs.timestamp, lhs.size, lhs.user_flags) == (rhs.timestamp, rhs.size, rhs.user_flags)
-            if same_meta(key_infos[0], key_infos[-1]) and not missed_groups:
+            if same_meta(key_infos[0], key_infos[-1]) and not dest_groups:
                 continue
 
-            yield (key, key_infos, missed_groups)
+            yield (key, key_infos, dest_groups)
         else:
             log.error("Invalid number of replicas for key: {0}: infos_count: {1}, groups_count: {2}"
                       .format(key, len(key_infos), len(groups)))
