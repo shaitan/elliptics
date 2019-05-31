@@ -34,16 +34,46 @@ void test_forward_lookup(ioremap::elliptics::newapi::session &session, const nod
 	const auto forward = setup->nodes.front().remote();
 	s.set_forward(forward);
 
-	auto async = s.lookup({"nonexistent key"});
+	{
+		// Value mustn't be found
+		auto async = s.lookup({"some_key"});
 
-	size_t count = 0;
-	for (const auto &result: async) {
-		BOOST_REQUIRE_EQUAL(result.status(), -ENOENT);
-		std::string forward_address = "";
-		BOOST_REQUIRE_EQUAL(dnet_addr_string(result.address()), forward.to_string());
-		++count;
+		size_t count = 0;
+		for (const auto &result: async) {
+			BOOST_REQUIRE_EQUAL(result.status(), -ENOENT);
+			std::string forward_address = "";
+			BOOST_REQUIRE_EQUAL(dnet_addr_string(result.address()), forward.to_string());
+			++count;
+		}
+		BOOST_REQUIRE_EQUAL(count, 3);
 	}
-	BOOST_REQUIRE_EQUAL(count, 3);
+
+	{
+		dnet_id id;
+		s.transform("some_key", id);
+		id.group_id = 2;
+		std::string json = R"json({"key": "data"})json";
+		std::string data("data");
+
+		s.write(id, json, 0, data, 0).wait();
+
+		// Value must be found since we've just written it
+		auto async = s.lookup({"some_key"});
+
+		size_t count = 0;
+		for (const auto &result: async) {
+			BOOST_REQUIRE_EQUAL(result.status(), 0);
+			std::string forward_address = "";
+			BOOST_REQUIRE_EQUAL(dnet_addr_string(result.address()), forward.to_string());
+
+			auto record_info = result.record_info();
+			BOOST_REQUIRE_EQUAL(record_info.json_size, json.size());
+			BOOST_REQUIRE_EQUAL(record_info.data_size, data.size());
+
+			++count;
+		}
+		BOOST_REQUIRE_EQUAL(count, 1);
+	}
 }
 
 void test_forward_lookup_2_nothing(ioremap::elliptics::newapi::session &session) {
