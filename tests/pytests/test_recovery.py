@@ -731,6 +731,50 @@ class TestRecovery:
             check_data(scope, session, [self.corrupted_key], [self.corrupted_data + '.2'], self.corrupted_timestamp2)
 
     @pytest.mark.usefixtures("servers")
+    def test_write_and_corrupt_flag_data(self, simple_node):
+        '''
+        Writes key to groups 1, 2, 3 and corrupts data in group #1,
+        read after corrupt to set BLOB_DISK_CTL_CORRUPTED record_flags.
+        '''
+        session = make_session(node=simple_node,
+                               test_name='TestRecovery.test_write_and_corrupt_flag_data',
+                               test_namespace=self.namespace)
+
+        session.exceptions_policy = elliptics.exceptions_policy.no_exceptions
+        session.set_filter(elliptics.filters.all)
+        session.groups = [scope.test_group, scope.test_group2, scope.test_group3]
+        session.timestamp = self.timestamp
+        write_data(scope, session, [self.corrupted_key], [self.corrupted_data])
+
+        session.groups = [scope.test_group]
+        corrupt_key(session, self.corrupted_key)
+
+        result = session.read_data(self.corrupted_key).get()
+        assert result[0].status == -errno.EILSEQ
+
+    def test_dc_corrupted_flag_data(self, servers, simple_node, use_server_send):
+        '''
+        Check that key with BLOB_DISK_CTL_CORRUPTED record_flags was recovered.
+        '''
+        session = make_session(node=simple_node,
+                               test_name='TestRecovery.test_dc_corrupted_flag_data',
+                               test_namespace=self.namespace)
+
+        recovery(one_node=False,
+                 remotes=map(elliptics.Address.from_host_port_family, servers.remotes),
+                 backend_id=None,
+                 address=scope.test_address2,
+                 groups=(scope.test_group, scope.test_group2, scope.test_group3),
+                 rtype=RECOVERY.DC,
+                 log_file='dc_corrupted_flag_data.log',
+                 tmp_dir='dc_corrupted_flag_data_{}'.format(use_server_send[0]),
+                 no_server_send=use_server_send[1])
+
+        for group in (scope.test_group, scope.test_group2, scope.test_group3):
+            session.groups = [group]
+            check_data(scope, session, [self.corrupted_key], [self.corrupted_data], self.timestamp)
+
+    @pytest.mark.usefixtures("servers")
     def test_write_and_corrupt_data_in_single_group(self, simple_node):
         '''
         Writes one key to a single group and corrupts it.
