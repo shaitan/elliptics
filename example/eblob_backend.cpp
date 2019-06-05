@@ -159,6 +159,7 @@ int dnet_blob_config_to_json(struct dnet_config_backend *b, char **json_stat, si
 	doc.AddMember("blob_size_limit", c->data.blob_size_limit, allocator);
 	doc.AddMember("defrag_time", c->data.defrag_time, allocator);
 	doc.AddMember("defrag_splay", c->data.defrag_splay, allocator);
+	doc.AddMember("single_pass_file_size_threshold", c->data.single_pass_file_size_threshold, allocator);
 
 	rapidjson::StringBuffer buffer;
 	rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);

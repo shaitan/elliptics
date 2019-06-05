@@ -19,7 +19,7 @@ def testdir(tmpdir):
 
 
 @contextmanager
-def run_server(group_id, records_in_blob, path, datasort_dir=None):
+def run_server(group_id, records_in_blob, path, datasort_dir=None, single_pass_threshold=None):
     """Run server under contextmanager, so it will be killed at exit.
 
     Server will be run with one backend in @group, all other parameters will be placed into config
@@ -46,6 +46,8 @@ def run_server(group_id, records_in_blob, path, datasort_dir=None):
     if datasort_dir is not None:
         config[0]['backends'][0]['datasort_dir'] = datasort_dir
 
+    if single_pass_threshold is not None:
+        config[0]['backends'][0]['single_pass_file_size_threshold'] = single_pass_threshold
     server = Servers(servers=config, path=path)
 
     try:
@@ -231,3 +233,32 @@ def test_compact_chunks_dir(testdir):
         chunks_dir = str(testdir.mkdir('requested_datasort_dir'))
 
         execute_defrag(session, server.remotes[0], 0, chunks_dir, compact=True)
+
+@pytest.mark.parametrize('single_pass_threshold', [0, 42])
+def test_single_pass_threshold(testdir, single_pass_threshold):
+    """Check whether eblob parameters specific to defrag are passed correctly to backend"""
+    # group_id doesn't matter
+    group_id = 1
+    # number of records doesn't matter
+    records_in_blob = 10
+
+    with run_server(group_id=group_id,
+                    records_in_blob=records_in_blob,
+                    path=str(testdir.join('servers')),
+                    single_pass_threshold=single_pass_threshold) as server:
+        # prepare session
+        session = prepare_session(testdir, server.remotes[0], group_id=group_id)
+
+        # check that single_pass_file_size_threshold is correct in config fetched from stat
+        future = session.monitor_stat(categories=elliptics.monitor_stat_categories.backend, backends=[0])
+        stats = future.get()[0].statistics
+        assert stats["backends"]["0"]["backend"]["config"]["single_pass_file_size_threshold"] == single_pass_threshold
+
+        # disable backend
+        addr = elliptics.Address.from_host_port_family(server.remotes[0])
+        session.disable_backend(addr, 0).wait()
+
+        # check that config value fetched from elliptics is still present
+        future = session.monitor_stat(categories=elliptics.monitor_stat_categories.backend, backends=[0])
+        stats = future.get()[0].statistics
+        assert stats["backends"]["0"]["backend"]["config"]["single_pass_file_size_threshold"] == single_pass_threshold

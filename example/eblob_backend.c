@@ -1329,21 +1329,27 @@ static int dnet_blob_set_datasort_dir(struct dnet_config_backend *b,
 	return 0;
 }
 
+static uint64_t parse_size(const char *from) {
+    uint64_t val = strtoull(from, NULL, 0);
+
+    if (strchr(from, 'P') || strchr(from, 'p')) {
+        val *= 1ULL << 50;
+    } if (strchr(from, 'T') || strchr(from, 't')) {
+        val *= 1ULL << 40;
+    } else if (strchr(from, 'G') || strchr(from, 'g')) {
+        val *= 1ULL << 30;
+    } else if (strchr(from, 'M') || strchr(from, 'm')) {
+        val *= 1ULL << 20;
+    } else if (strchr(from, 'K') || strchr(from, 'k')) {
+        val *= 1ULL << 10;
+    }
+    return val;
+}
+
 static int dnet_blob_set_blob_size(struct dnet_config_backend *b, const char *key, const char *value) {
 	struct eblob_backend_config *c = b->data;
-	uint64_t val = strtoul(value, NULL, 0);
 
-	if (strchr(value, 'P') || strchr(value, 'p')) {
-		val *= 1ULL << 50;
-	} if (strchr(value, 'T') || strchr(value, 't')) {
-		val *= 1ULL << 40;
-	} else if (strchr(value, 'G') || strchr(value, 'g')) {
-		val *= 1ULL << 30;
-	} else if (strchr(value, 'M') || strchr(value, 'm')) {
-		val *= 1ULL << 20;
-	} else if (strchr(value, 'K') || strchr(value, 'k')) {
-		val *= 1ULL << 10;
-	}
+	uint64_t val = parse_size(value);
 
 	if (!strcmp(key, "blob_size"))
 		c->data.blob_size = val;
@@ -1451,6 +1457,13 @@ static int dnet_blob_set_bg_ioprio_class(struct dnet_config_backend *b, const ch
 static int dnet_blob_set_bg_ioprio_data(struct dnet_config_backend *b, const char *key __unused, const char *value) {
 	struct eblob_backend_config *c = b->data;
 	c->data.bg_ioprio_data = atoi(value);
+	return 0;
+}
+
+static int dnet_blob_set_single_pass_file_size_threshold(struct dnet_config_backend *b, const char *key __unused,
+                                                         const char *value) {
+	struct eblob_backend_config *c = b->data;
+	c->data.single_pass_file_size_threshold = parse_size(value);
 	return 0;
 }
 
@@ -1692,7 +1705,8 @@ static struct dnet_config_entry dnet_cfg_entries_blobsystem[] = {
 	{"periodic_timeout", dnet_blob_set_periodic_timeout},
 	{"backend_id", dnet_blob_set_backend_id},
 	{"bg_ioprio_class", dnet_blob_set_bg_ioprio_class},
-	{"bg_ioprio_data", dnet_blob_set_bg_ioprio_data}
+	{"bg_ioprio_data", dnet_blob_set_bg_ioprio_data},
+	{"single_pass_file_size_threshold", dnet_blob_set_single_pass_file_size_threshold}
 };
 
 static struct dnet_config_backend dnet_eblob_backend = {
