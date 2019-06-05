@@ -143,7 +143,7 @@ def process_backend_control(options, session, address, method):
     '''
     assert isinstance(session, elliptics.Session)
 
-    if method is in (elliptics.Session.start_defrag, elliptics.Session.start_compact):
+    if method in (elliptics.Session.start_defrag, elliptics.Session.start_compact):
         result = method(session, address, options.backend_id, options.chunks_dir)
     else:
         result = method(session, address, options.backend_id)
