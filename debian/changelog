@@ -1,3 +1,9 @@
+elliptics (2.27.10.1) unstable; urgency=low
+
+  * Fix typo in dnet_client
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Wed, 05 Jun 2019 16:14:31 +0300
+
 elliptics (2.27.10.0) unstable; urgency=low
 
   * recovery: move success recovered keys log to info
