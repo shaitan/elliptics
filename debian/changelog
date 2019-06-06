@@ -1,3 +1,14 @@
+elliptics (2.27.10.2) unstable; urgency=low
+
+  * feat: protocol-independent core: lookup_new on server_side
+  * test: extend forwarding test to check responses with body
+  * feat: proxy single_pass_threshold to eblob
+  * fix: proper eblob version requirements
+  * recovery: not skip corrupted key in dc
+  * test: recovery key with BLOB_DISK_CTL_CORRUPTED
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Thu, 06 Jun 2019 16:26:42 +0300
+
 elliptics (2.27.10.1) unstable; urgency=low
 
   * Fix typo in dnet_client
