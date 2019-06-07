@@ -917,8 +917,7 @@ int dnet_send_fd_threshold(struct dnet_net_state *st, void *header, uint64_t hsi
 
 int n2_send_error_response(struct dnet_net_state *st,
                            struct n2_request_info *req_info,
-                           int errc,
-                           struct dnet_access_context *context);
+                           int errc);
 
 struct dnet_route_entry
 {

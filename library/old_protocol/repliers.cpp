@@ -38,7 +38,7 @@ int replier_base::reply_error(int errc) {
 	}
 }
 
-int replier_base::reply_impl(std::unique_ptr<n2_message> msg) {
+int replier_base::reply_impl(std::unique_ptr<n2_message> /*msg*/) {
 	return -EINVAL;
 }
 

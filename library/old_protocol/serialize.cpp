@@ -59,7 +59,7 @@ static uint64_t response_transform_flags(uint64_t flags) {
 	return (flags & ~(DNET_FLAGS_NEED_ACK)) | DNET_FLAGS_REPLY;
 }
 
-int serialize_error_response(dnet_net_state *st, const dnet_cmd &cmd_in,
+int serialize_error_response(dnet_net_state * /*st*/, const dnet_cmd &cmd_in,
                              std::unique_ptr<n2_serialized> &out_serialized) {
 	dnet_cmd cmd = cmd_in;
 	cmd.flags = response_transform_flags(cmd.flags);
@@ -68,7 +68,7 @@ int serialize_error_response(dnet_net_state *st, const dnet_cmd &cmd_in,
 	return 0;
 }
 
-int serialize_lookup_request(dnet_net_state *st, std::unique_ptr<n2_request> msg_in,
+int serialize_lookup_request(dnet_net_state * /*st*/, std::unique_ptr<n2_request> msg_in,
                              std::unique_ptr<n2_serialized> &out_serialized) {
 	auto &msg = static_cast<lookup_request &>(*msg_in);
 

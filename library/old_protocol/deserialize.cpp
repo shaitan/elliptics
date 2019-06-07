@@ -73,7 +73,7 @@ int unpack(dnet_net_state *st, const data_pointer &data, T &value, size_t &lengt
 	}
 }
 
-int deserialize_lookup_request(dnet_net_state *st, const dnet_cmd &cmd,
+int deserialize_lookup_request(dnet_net_state * /*st*/, const dnet_cmd &cmd,
                                std::unique_ptr<n2_request> &out_deserialized) {
 	out_deserialized.reset(new lookup_request(cmd));
 	return 0;

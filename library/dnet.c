@@ -1864,7 +1864,7 @@ int n2_process_cmd_raw(struct dnet_net_state *st,
 	HANDY_COUNTER_INCREMENT(("io.cmd%s.%s.%d", (recursive ? "_recursive" : ""), dnet_cmd_string(cmd->cmd), err), 1);
 
 	if (err)
-		err = n2_send_error_response(st, req_info, err, context);
+		err = n2_send_error_response(st, req_info, err);
 
 	dnet_stat_inc(st->stat, cmd->cmd, err);
 	if (st->__join_state == DNET_JOIN)
