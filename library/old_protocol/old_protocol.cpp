@@ -109,9 +109,7 @@ int old_protocol::schedule_request_info(dnet_net_state *st,
 }
 
 int old_protocol::translate_lookup_request(dnet_net_state *st, const dnet_cmd &cmd) {
-	std::unique_ptr<n2_request_info> request_info(new(std::nothrow) n2_request_info);
-	if (!request_info)
-		return -ENOMEM;
+	std::unique_ptr<n2_request_info> request_info(new n2_request_info);
 
 	int err = deserialize_lookup_request(st, cmd, request_info->request);
 	if (err)
@@ -125,9 +123,7 @@ int old_protocol::translate_lookup_request(dnet_net_state *st, const dnet_cmd &c
 }
 
 int old_protocol::translate_lookup_new_request(dnet_net_state *st, const dnet_cmd &cmd) {
-	std::unique_ptr<n2_request_info> request_info(new(std::nothrow) n2_request_info);
-	if (!request_info)
-		return -ENOMEM;
+	std::unique_ptr<n2_request_info> request_info(new n2_request_info);
 
 	int err = deserialize_lookup_request(st, cmd, request_info->request);
 	if (err)
@@ -147,10 +143,7 @@ extern "C" {
 
 int n2_old_protocol_io_start(struct dnet_node *n) {
 	auto impl = [io = n->io] {
-		io->old_protocol = new(std::nothrow) n2_old_protocol_io;
-		if (!io->old_protocol)
-			return -ENOMEM;
-
+		io->old_protocol = new n2_old_protocol_io;
 		return 0;
 	};
 	return c_exception_guard(impl, n, __FUNCTION__);
@@ -165,12 +158,8 @@ void n2_old_protocol_io_stop(struct dnet_node *n) {
 	c_exception_guard(impl, n, __FUNCTION__);
 }
 
-int n2_old_protocol_rcvbuf_create(struct dnet_net_state *st) {
-	st->rcv_buffer = new(std::nothrow) n2_recv_buffer;
-	if (!st->rcv_buffer)
-		return -ENOMEM;
-
-	return 0;
+void n2_old_protocol_rcvbuf_create(struct dnet_net_state *st) {
+	st->rcv_buffer = new n2_recv_buffer;
 }
 
 void n2_old_protocol_rcvbuf_destroy(struct dnet_net_state *st) {

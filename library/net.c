@@ -1146,9 +1146,7 @@ struct dnet_net_state *dnet_state_create(struct dnet_node *n,
 			goto err_out_free;
 		}
 
-		err = n2_old_protocol_rcvbuf_create(st);
-		if (err)
-			goto err_out_free;
+		n2_old_protocol_rcvbuf_create(st);
 	}
 
 	st->read_data.st = st;

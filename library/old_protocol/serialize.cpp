@@ -64,10 +64,7 @@ int serialize_error_response(dnet_net_state *st, const dnet_cmd &cmd_in,
 	dnet_cmd cmd = cmd_in;
 	cmd.flags = response_transform_flags(cmd.flags);
 
-	out_serialized.reset(new(std::nothrow) n2_serialized{ cmd, {} });
-	if (!out_serialized)
-		return -ENOMEM;
-
+	out_serialized.reset(new n2_serialized{ cmd, {} });
 	return 0;
 }
 
@@ -75,10 +72,7 @@ int serialize_lookup_request(dnet_net_state *st, std::unique_ptr<n2_request> msg
                              std::unique_ptr<n2_serialized> &out_serialized) {
 	auto &msg = static_cast<lookup_request &>(*msg_in);
 
-	out_serialized.reset(new(std::nothrow) n2_serialized{ msg.cmd, {} });
-	if (!out_serialized)
-		return -ENOMEM;
-
+	out_serialized.reset(new n2_serialized{ msg.cmd, {} });
 	return 0;
 }
 

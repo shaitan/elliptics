@@ -371,22 +371,19 @@ int blob_file_info(eblob_backend_config *c, void *state, struct n2_request_info 
 	}
 
 	std::unique_ptr<n2::lookup_response>
-		response(new(std::nothrow) n2::lookup_response(request->cmd,
-						               wc.flags, // record_flags
-						               ehdr.flags, // user_flags
-						               std::move(filename), // path
-						               jhdr.timestamp, // json_timestamp
-						               wc.data_offset + json_offset, // json_offset
-						               json_size, // json_size
-						               jhdr.capacity, // json_capacity
-						               std::move(json_checksum), // json_checksum
-						               ehdr.timestamp, // data_timestamp
-						               wc.data_offset + data_offset, // data_offset
-						               data_size, // data_size
-						               std::move(data_checksum))); // data_checksum
-	if (!response) {
-		return -ENOMEM;
-	}
+		response(new n2::lookup_response(request->cmd,
+		                                 wc.flags, // record_flags
+		                                 ehdr.flags, // user_flags
+		                                 std::move(filename), // path
+		                                 jhdr.timestamp, // json_timestamp
+		                                 wc.data_offset + json_offset, // json_offset
+		                                 json_size, // json_size
+		                                 jhdr.capacity, // json_capacity
+		                                 std::move(json_checksum), // json_checksum
+		                                 ehdr.timestamp, // data_timestamp
+		                                 wc.data_offset + data_offset, // data_offset
+		                                 data_size, // data_size
+		                                 std::move(data_checksum))); // data_checksum
 
 	err = req_info->repliers.on_reply(std::move(response));
 	if (err) {

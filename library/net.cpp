@@ -1451,9 +1451,7 @@ dnet_cmd n2_convert_to_response_cmd(dnet_cmd cmd) {
 n2_repliers n2_make_repliers_via_request_queue(dnet_net_state *st, const dnet_cmd &cmd, n2_repliers repliers) {
 	auto enqueue_response = [st, cmd = n2_convert_to_response_cmd(cmd)](std::function<int ()> response_holder) {
 		std::unique_ptr<n2_response_info>
-			response_info(new(std::nothrow) n2_response_info{ cmd, std::move(response_holder) });
-		if (!response_info)
-			return -ENOMEM;
+			response_info(new n2_response_info{ cmd, std::move(response_holder) });
 
 		auto r = static_cast<dnet_io_req *>(calloc(1, sizeof(dnet_io_req)));
 		if (!r)
@@ -1544,10 +1542,7 @@ int n2_trans_forward(n2_request_info *request_info, struct dnet_net_state *orig,
 		return -ETIMEDOUT;
 	}
 
-	t->repliers = new(std::nothrow) n2_repliers; // Will be filled at old_protocol::send_request
-	if (!t->repliers) {
-		return -ENOMEM;
-	}
+	t->repliers = new n2_repliers; // Will be filled at old_protocol::send_request
 
 	t->rcv_trans = cmd->trans; // TODO(sabramkin): Is it necessary in new mechanic?
 	t->trans = request_info->cmd.trans = cmd->trans = atomic_inc(&orig->n->trans);

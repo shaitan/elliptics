@@ -75,18 +75,13 @@ int unpack(dnet_net_state *st, const data_pointer &data, T &value, size_t &lengt
 
 int deserialize_lookup_request(dnet_net_state *st, const dnet_cmd &cmd,
                                std::unique_ptr<n2_request> &out_deserialized) {
-	out_deserialized.reset(new(std::nothrow) lookup_request(cmd));
-	if (!out_deserialized)
-		return -ENOMEM;
-
+	out_deserialized.reset(new lookup_request(cmd));
 	return 0;
 }
 
 int deserialize_lookup_response(dnet_net_state *st, const dnet_cmd &cmd, data_pointer &&message_buffer,
                                 std::unique_ptr<n2_message> &out_deserialized) {
-	std::unique_ptr<lookup_response> msg(new(std::nothrow) lookup_response(cmd));
-	if (!msg)
-		return -ENOMEM;
+	std::unique_ptr<lookup_response> msg(new lookup_response(cmd));
 
 	try {
 		auto file_info = message_buffer
@@ -112,9 +107,7 @@ int deserialize_lookup_response(dnet_net_state *st, const dnet_cmd &cmd, data_po
 
 int deserialize_lookup_new_response(dnet_net_state *st, const dnet_cmd &cmd, data_pointer &&message_buffer,
                                     std::unique_ptr<n2_message> &out_deserialized) {
-	std::unique_ptr<lookup_response> msg(new(std::nothrow) lookup_response(cmd));
-	if (!msg)
-		return -ENOMEM;
+	std::unique_ptr<lookup_response> msg(new lookup_response(cmd));
 
 	size_t unused_length_of_packed;
 	int err = unpack(st, message_buffer, *msg, unused_length_of_packed);

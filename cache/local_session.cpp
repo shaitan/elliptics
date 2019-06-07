@@ -250,11 +250,7 @@ int local_session::write(const dnet_id &id,
 
 std::unique_ptr<ioremap::elliptics::n2::lookup_response> local_session::lookup(const dnet_cmd &tmp_cmd, int *errp)
 {
-	std::unique_ptr<n2::lookup_request> request(new(std::nothrow) n2::lookup_request(tmp_cmd));
-	if (!request) {
-		*errp = -ENOMEM;
-		return nullptr;
-	}
+	std::unique_ptr<n2::lookup_request> request(new n2::lookup_request(tmp_cmd));
 	request->cmd.flags |= m_cflags;
 	request->cmd.size = 0;
 	request->cmd.backend_id = m_backend.backend_id();

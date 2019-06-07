@@ -239,22 +239,22 @@ static int n2_fill_lookup_response_without_fd(struct dnet_net_state *st,
 		dnet_checksum_data(st->n, data, size, checksum.data(), checksum.size());
 	}
 
-	response.reset(new(std::nothrow) n2::lookup_response(*cmd,
-	                                                     0, // record_flags
-	                                                     0, // user_flags
-	                                                     {}, // path
-	                                                     {0, 0}, // json_timestamp
-	                                                     0, // json_offset
-	                                                     0, // json_size
-	                                                     0, // json_capacity
-	                                                     {}, // json_checksum
-	                                                     timestamp, // data_timestamp
-	                                                     0, // data_offset
-	                                                     size, // data_size
-	                                                     std::move(checksum) // data_checksum
+	response.reset(new n2::lookup_response(*cmd,
+	                                       0, // record_flags
+	                                       0, // user_flags
+	                                       {}, // path
+	                                       {0, 0}, // json_timestamp
+	                                       0, // json_offset
+	                                       0, // json_size
+	                                       0, // json_capacity
+	                                       {}, // json_checksum
+	                                       timestamp, // data_timestamp
+	                                       0, // data_offset
+	                                       size, // data_size
+	                                       std::move(checksum) // data_checksum
 	));
 
-	return response ? 0 : -ENOMEM;
+	return 0;
 }
 
 static int dnet_cmd_cache_io_write(struct cache_manager *cache,
@@ -596,22 +596,19 @@ static int dnet_cmd_cache_io_lookup_new(struct cache_manager *cache,
 	}
 
 	std::unique_ptr<n2::lookup_response>
-		response(new(std::nothrow) n2::lookup_response(request->cmd,
-						               0, // record_flags
-						               it.user_flags, // user_flags
-						               std::string(), // path
-						               it.json_timestamp, // json_timestamp
-						               0, // json_offset
-						               it.json->size(), // json_size
-						               it.json->size(), // json_capacity
-						               std::move(json_checksum), // json_checksum
-						               it.timestamp, // data_timestamp
-						               0, // data_offset
-						               it.data->size(), // data_size
-						               std::move(data_checksum))); // data_checksum
-	if (!response) {
-		return -ENOMEM;
-	}
+		response(new n2::lookup_response(request->cmd,
+		                                 0, // record_flags
+		                                 it.user_flags, // user_flags
+		                                 std::string(), // path
+		                                 it.json_timestamp, // json_timestamp
+		                                 0, // json_offset
+		                                 it.json->size(), // json_size
+		                                 it.json->size(), // json_capacity
+		                                 std::move(json_checksum), // json_checksum
+		                                 it.timestamp, // data_timestamp
+		                                 0, // data_offset
+		                                 it.data->size(), // data_size
+		                                 std::move(data_checksum))); // data_checksum
 
 	return req_info->repliers.on_reply(std::move(response));
 }
