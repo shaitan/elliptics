@@ -225,6 +225,38 @@ size_t cache_manager::idx(const unsigned char *id) {
 
 using namespace ioremap::cache;
 
+static int n2_fill_lookup_response_without_fd(struct dnet_net_state *st,
+                                              struct dnet_cmd *cmd,
+                                              const void *data,
+                                              int64_t size,
+                                              struct dnet_time timestamp,
+                                              std::unique_ptr<ioremap::elliptics::n2::lookup_response> &response) {
+	using namespace ioremap::elliptics;
+
+	std::vector<unsigned char> checksum;
+	if (data && cmd->flags & DNET_FLAGS_CHECKSUM) {
+		checksum.resize(DNET_CSUM_SIZE);
+		dnet_checksum_data(st->n, data, size, checksum.data(), checksum.size());
+	}
+
+	response.reset(new(std::nothrow) n2::lookup_response(*cmd,
+	                                                     0, // record_flags
+	                                                     0, // user_flags
+	                                                     {}, // path
+	                                                     {0, 0}, // json_timestamp
+	                                                     0, // json_offset
+	                                                     0, // json_size
+	                                                     0, // json_capacity
+	                                                     {}, // json_checksum
+	                                                     timestamp, // data_timestamp
+	                                                     0, // data_offset
+	                                                     size, // data_size
+	                                                     std::move(checksum) // data_checksum
+	));
+
+	return response ? 0 : -ENOMEM;
+}
+
 static int dnet_cmd_cache_io_write(struct cache_manager *cache,
                                    struct dnet_net_state *st,
                                    struct dnet_cmd *cmd,
@@ -465,9 +497,13 @@ static int dnet_cmd_cache_io_read_new(struct cache_manager *cache,
 
 static int dnet_cmd_cache_io_lookup(struct dnet_backend *backend,
                                     struct dnet_net_state *st,
-                                    struct dnet_cmd *cmd,
+                                    struct n2_request_info *req_info,
                                     struct dnet_cmd_stats *cmd_stats) {
+	using namespace ioremap::elliptics;
 	cmd_stats->handled_in_cache = 1;
+
+	auto request = static_cast<n2::lookup_request *>(req_info->request.get());
+	auto cmd = &request->cmd;
 
 	int err;
 	cache_item it;
@@ -477,25 +513,25 @@ static int dnet_cmd_cache_io_lookup(struct dnet_backend *backend,
 		return err;
 	}
 
-
 	// go check object on disk
 	local_session sess(*backend, st->n);
 	cmd->flags |= DNET_FLAGS_NOCACHE;
-	ioremap::elliptics::data_pointer data = sess.lookup(*cmd, &err);
+	auto response = sess.lookup(*cmd, &err);
 	cmd->flags &= ~DNET_FLAGS_NOCACHE;
-
 	cmd->flags &= ~(DNET_FLAGS_MORE | DNET_FLAGS_NEED_ACK);
 
 	if (err) {
-		// zero size means 'we didn't find key on disk', but yet it exists in cache
+		// we didn't find key on disk, but yet it exists in cache
 		// lookup by its nature is 'show me what is on disk' command
-		return dnet_send_file_info_ts_without_fd(st, cmd, nullptr, 0, &it.timestamp);
+		err = n2_fill_lookup_response_without_fd(st, cmd, nullptr, 0, it.timestamp, response);
+		if (err) {
+			return err;
+		}
+	} else {
+		response->data_timestamp = it.timestamp;
 	}
 
-	auto info = data.skip<dnet_addr>().data<dnet_file_info>();
-	info->mtime = it.timestamp;
-
-	return dnet_send_reply(st, cmd, data.data(), data.size(), 0, /*context*/ nullptr);
+	return req_info->repliers.on_reply(std::move(response));
 }
 
 static int dnet_cmd_cache_io_lookup_new(struct cache_manager *cache,
@@ -653,14 +689,13 @@ int dnet_cmd_cache_io(struct dnet_backend *backend,
 			return dnet_cmd_cache_io_write(cache, st, cmd, io, data, cmd_stats);
 		case DNET_CMD_READ:
 			return dnet_cmd_cache_io_read(cache, st, cmd, io, cmd_stats);
-		case DNET_CMD_LOOKUP:
-			return dnet_cmd_cache_io_lookup(backend, st, cmd, cmd_stats);
 		case DNET_CMD_DEL:
 			return dnet_cmd_cache_io_remove(cache, cmd, io, cmd_stats, context);
 		case DNET_CMD_WRITE_NEW:
 			return dnet_cmd_cache_io_write_new(cache, st, cmd, data, cmd_stats, context);
 		case DNET_CMD_READ_NEW:
 			return dnet_cmd_cache_io_read_new(cache, st, cmd, data, cmd_stats, context);
+		case DNET_CMD_LOOKUP:
 		case DNET_CMD_LOOKUP_NEW:
 			// Must never reach this label.
 			// The analogue func dnet_cmd_cache_io_lookup_new must be called from n2_cmd_cache_io.
@@ -710,6 +745,12 @@ int n2_cmd_cache_io(struct dnet_backend *backend,
 
 	try {
 		switch (cmd.cmd) {
+		case DNET_CMD_LOOKUP:
+			// Difference between handlers for LOOKUP and LOOKUP_NEW from cache is that
+			// LOOKUP_NEW command reads file_info only from cache, but LOOKUP command reads file_info
+			// from cache and if record is found, LOOKUP cmd makes extra read from disk for the answer.
+			// TODO: Merge logic with `dnet_cmd_cache_io_lookup_new`
+			return dnet_cmd_cache_io_lookup(backend, st, req_info, cmd_stats);
 		case DNET_CMD_LOOKUP_NEW:
 			return dnet_cmd_cache_io_lookup_new(cache, st, req_info, cmd_stats, context);
 		default:

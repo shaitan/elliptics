@@ -27,5 +27,7 @@ int serialize_lookup_request(dnet_net_state *st, std::unique_ptr<n2_request> msg
                              std::unique_ptr<n2_serialized> &out_serialized);
 int serialize_lookup_response(dnet_net_state *st, std::unique_ptr<n2_message> msg_in,
                               std::unique_ptr<n2_serialized> &out_serialized);
+int serialize_lookup_new_response(dnet_net_state *st, std::unique_ptr<n2_message> msg_in,
+                                  std::unique_ptr<n2_serialized> &out_serialized);
 
 }}} // namespace ioremap::elliptics::n2

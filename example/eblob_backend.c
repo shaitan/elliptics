@@ -778,98 +778,6 @@ static int blob_del(struct eblob_backend_config *c, struct dnet_cmd *cmd)
 	return err;
 }
 
-static int blob_file_info(struct eblob_backend_config *c, void *state, struct dnet_cmd *cmd)
-{
-	struct eblob_backend *b = c->eblob;
-	struct eblob_key key;
-	struct eblob_write_control wc;
-	struct dnet_ext_list elist;
-	static const size_t ehdr_size = sizeof(struct dnet_ext_list_hdr);
-	uint64_t offset = 0, size = 0, record_offset = 0;
-	int fd, err;
-
-	dnet_ext_list_init(&elist);
-
-	memcpy(key.id, cmd->id.id, EBLOB_ID_SIZE);
-	err = blob_read_and_check_flags(b, &key, &wc);
-	if (err < 0) {
-		DNET_LOG_ERROR(c->blog, "%s: EBLOB: blob-file-info: info-read: %d: %s", dnet_dump_id(&cmd->id), err,
-		               strerror(-err));
-		goto err_out_exit;
-	}
-
-	/* Existing entry */
-	offset = wc.data_offset;
-	size = wc.total_data_size;
-	fd = wc.data_fd;
-
-	/* Existing new-format entry */
-	if ((wc.flags & BLOB_DISK_CTL_EXTHDR) != 0) {
-		struct dnet_ext_list_hdr ehdr;
-		struct dnet_json_header jhdr;
-
-		/* Sanity */
-		if (size < ehdr_size) {
-			err = -ERANGE;
-			goto err_out_exit;
-		}
-
-		err = dnet_ext_hdr_read(&ehdr, fd, offset);
-		if (err != 0)
-			goto err_out_exit;
-		dnet_ext_hdr_to_list(&ehdr, &elist);
-
-		if (size < sizeof(ehdr) + ehdr.size) {
-			err = -ERANGE;
-			goto err_out_exit;
-		}
-
-		err = dnet_read_json_header(fd, offset + sizeof(ehdr), ehdr.size, &jhdr);
-		if (err)
-			goto err_out_exit;
-
-		if (size < sizeof(ehdr) + ehdr.size + jhdr.capacity) {
-			err = -ERANGE;
-			goto err_out_exit;
-		}
-
-		/* Take into an account extended header's len */
-		size -= sizeof(ehdr) + ehdr.size + jhdr.capacity;
-		offset += sizeof(ehdr) + ehdr.size + jhdr.capacity;
-		record_offset += sizeof(ehdr) + ehdr.size + jhdr.capacity;
-	}
-
-	if (size == 0) {
-		err = -ENOENT;
-		DNET_LOG_INFO(c->blog, "%s: EBLOB: blob-file-info: info-read: ZERO-SIZE-FILE", dnet_dump_id(&cmd->id));
-		goto err_out_exit;
-	}
-
-	/* Validate record's data if its checksum is requested */
-	if (cmd->flags & DNET_FLAGS_CHECKSUM) {
-		err = blob_read_and_check_stamp(c, &elist.timestamp, fd, offset, size);
-		if (err) {
-			DNET_LOG_ERROR(c->blog, "%s: EBLOB: blob-file-info: corrupted signature: "
-			                        "data offset %" PRIu64 ", data size %" PRIu64,
-			               dnet_dump_id(&cmd->id), offset, size);
-			goto err_out_exit;
-		}
-
-		wc.offset = record_offset;
-		wc.size = size;
-		err = eblob_verify_checksum(b, &key, &wc);
-		if (err) {
-			goto err_out_exit;
-		}
-	}
-
-	err = dnet_send_file_info_ts(state, cmd, fd, offset, size, &elist.timestamp, wc.flags);
-
-err_out_exit:
-	dnet_ext_list_destroy(&elist);
-	return err;
-}
-
 static int eblob_backend_checksum(struct dnet_node *n, void *priv, struct dnet_id *id, void *csum, int *csize) {
 	struct eblob_backend_config *c = priv;
 	struct eblob_backend *b = c->eblob;
@@ -1223,9 +1131,6 @@ static int eblob_backend_command_handler(void *state,
 
 	// TODO(shaitan): pass @cmd_stats to all blob_* functions and update statistics by them
 	switch (cmd->cmd) {
-		case DNET_CMD_LOOKUP:
-			err = blob_file_info(c, state, cmd);
-			break;
 		case DNET_CMD_WRITE:
 			err = blob_write(c, state, cmd, data);
 			break;
@@ -1242,9 +1147,10 @@ static int eblob_backend_command_handler(void *state,
 		case DNET_CMD_SEND:
 			err = blob_send(c, state, cmd, data);
 			break;
+		case DNET_CMD_LOOKUP:
 		case DNET_CMD_LOOKUP_NEW:
 			// Must never reach this label.
-			// The analogue func blob_file_info_new must be called from n2_eblob_backend_command_handler.
+			// The analogue func blob_file_info must be called from n2_eblob_backend_command_handler.
 			DNET_LOG_ERROR(c->blog, "%s: %s invalid backend operation call",
 				       dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd));
 			err = -EINVAL;

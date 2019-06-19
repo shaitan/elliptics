@@ -24,6 +24,7 @@ private:
 
 	int schedule_request_info(dnet_net_state *st, std::unique_ptr<n2_request_info> &&request_info);
 	int translate_lookup_request(dnet_net_state *st, const dnet_cmd &cmd);
+	int translate_lookup_new_request(dnet_net_state *st, const dnet_cmd &cmd);
 };
 
 }}} // namespace ioremap::elliptics::n2

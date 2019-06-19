@@ -59,12 +59,25 @@ int replier_base::reply_error_impl(int errc) {
 }
 
 lookup_replier::lookup_replier(dnet_net_state *st, const dnet_cmd &cmd)
-: replier_base("LOOKUP_NEW", st, cmd)
+: replier_base("LOOKUP", st, cmd)
 {}
 
 int lookup_replier::reply_impl(std::unique_ptr<n2_message> msg) {
 	std::unique_ptr<n2_serialized> serialized;
 	int err = serialize_lookup_response(st_, std::move(msg), serialized);
+	if (err)
+		return err;
+
+	return enqueue_net(st_, std::move(serialized));
+}
+
+lookup_new_replier::lookup_new_replier(dnet_net_state *st, const dnet_cmd &cmd)
+: replier_base("LOOKUP_NEW", st, cmd)
+{}
+
+int lookup_new_replier::reply_impl(std::unique_ptr<n2_message> msg) {
+	std::unique_ptr<n2_serialized> serialized;
+	int err = serialize_lookup_new_response(st_, std::move(msg), serialized);
 	if (err)
 		return err;
 

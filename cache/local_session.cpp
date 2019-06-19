@@ -248,37 +248,40 @@ int local_session::write(const dnet_id &id,
 	return err;
 }
 
-data_pointer local_session::lookup(const dnet_cmd &tmp_cmd, int *errp)
+std::unique_ptr<ioremap::elliptics::n2::lookup_response> local_session::lookup(const dnet_cmd &tmp_cmd, int *errp)
 {
-	dnet_cmd cmd = tmp_cmd;
-	cmd.flags |= m_cflags;
-	cmd.size = 0;
-	cmd.backend_id = m_backend.backend_id();
-
-	*errp = dnet_process_cmd_raw(m_state, &cmd, nullptr, 0, 0, /*context*/ nullptr);
-
-	if (*errp)
-		return data_pointer();
-
-	struct dnet_io_req *r, *tmp;
-
-	list_for_each_entry_safe(r, tmp, &m_state->send_list, req_entry) {
-		dnet_cmd *req_cmd = reinterpret_cast<dnet_cmd *>(r->header ? r->header : r->data);
-
-		if (req_cmd->status) {
-			*errp = req_cmd->status;
-			clear_queue();
-			return data_pointer();
-		} else if (req_cmd->size) {
-			data_pointer result = data_pointer::copy(req_cmd + 1, req_cmd->size);
-			clear_queue();
-			return result;
-		}
+	std::unique_ptr<n2::lookup_request> request(new(std::nothrow) n2::lookup_request(tmp_cmd));
+	if (!request) {
+		*errp = -ENOMEM;
+		return nullptr;
 	}
+	request->cmd.flags |= m_cflags;
+	request->cmd.size = 0;
+	request->cmd.backend_id = m_backend.backend_id();
 
-	*errp = -ENOENT;
-	clear_queue();
-	return data_pointer();
+	std::unique_ptr<n2::lookup_response> response;
+	n2_repliers repliers{
+		[&](std::unique_ptr<n2_message> message) {
+			response.reset(static_cast<n2::lookup_response *>(message.release()));
+			return 0;
+		}, // on_reply
+		[](int err) {
+			return err;
+		} // on_reply_error
+	};
+
+	n2_request_info req_info{request->cmd,
+		                 std::move(request),
+		                 std::move(repliers)};
+
+	*errp = n2_process_cmd_raw(m_state, &req_info, 0, 0, /*context*/ nullptr);
+	if (*errp) {
+		return nullptr;
+	}
+	if (!response) {
+		*errp = -ENOENT;
+	}
+	return response;
 }
 
 int local_session::remove(const struct dnet_id &id, dnet_access_context *context) {

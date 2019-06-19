@@ -217,8 +217,8 @@ static int blob_read_and_check_flags_new(const eblob_backend_config *c,
 	return err;
 }
 
-int blob_file_info_new(eblob_backend_config *c, void *state, struct n2_request_info *req_info,
-                       struct dnet_access_context *context) {
+int blob_file_info(eblob_backend_config *c, void *state, struct n2_request_info *req_info,
+                   struct dnet_access_context *context) {
 	using namespace ioremap::elliptics;
 
 	auto request = static_cast<n2::lookup_request *>(req_info->request.get());
@@ -349,6 +349,15 @@ int blob_file_info_new(eblob_backend_config *c, void *state, struct n2_request_i
 
 			return 0;
 		};
+
+		err = blob_read_and_check_stamp(c, &ehdr.timestamp, wc.data_fd,
+			                        wc.data_offset + data_offset, data_size);
+		if (err) {
+			DNET_LOG_ERROR(c->blog, "%s: EBLOB: blob-file-info: corrupted signature: "
+			                        "data offset %" PRIu64 ", data size %" PRIu64,
+			               dnet_dump_id(&cmd->id), wc.data_offset + data_offset, data_size);
+			return err;
+		}
 
 		err = verify_and_get_checksum(wc, json_offset, json_size, json_checksum, "json", "json_csum_time");
 		if (err) {
@@ -2309,8 +2318,9 @@ int n2_eblob_backend_command_handler(void *state,
 
 	// TODO(shaitan): pass @cmd_stats to all blob_* functions and update statistics by them
 	switch (cmd.cmd) {
+		case DNET_CMD_LOOKUP:
 		case DNET_CMD_LOOKUP_NEW:
-			err = blob_file_info_new(c, state, req_info, context);
+			err = blob_file_info(c, state, req_info, context);
 			break;
 		default:
 			err = -ENOTSUP;

@@ -21,6 +21,7 @@
 #define LOCAL_SESSION_H
 
 #include "elliptics/utils.hpp"
+#include "library/n2_protocol.hpp"
 
 #include <chrono>
 
@@ -55,7 +56,7 @@ public:
 	          const std::string &data,
 	          const dnet_time &data_ts);
 
-	ioremap::elliptics::data_pointer lookup(const dnet_cmd &cmd, int *errp);
+	std::unique_ptr<ioremap::elliptics::n2::lookup_response> lookup(const dnet_cmd &cmd, int *errp);
 
 	int remove(const struct dnet_id &id, dnet_access_context *context = nullptr);
 	int remove_new(const struct dnet_id &id,

@@ -362,8 +362,7 @@ void test_read_corrupted_stamp(ioremap::elliptics::newapi::session &s, const dne
 			ELLIPTICS_REQUIRE(res, std::move(async));
 		} {
 			auto async = new_lookup_csum_session.lookup(write_result.key);
-			// new commands don't support returning checksums yet
-			ELLIPTICS_REQUIRE(res, std::move(async));
+			ELLIPTICS_REQUIRE_ERROR(res, std::move(async), write_result.expected_status);
 		}
 
 		if (write_result.data_size <= sizeof(eblob_disk_control)) {

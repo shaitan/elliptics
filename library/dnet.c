@@ -1792,6 +1792,7 @@ static int n2_process_cmd_with_backend_raw(struct dnet_net_state *st,
 	dnet_backend_sleep_delay(backend);
 
 	switch (cmd->cmd) {
+	case DNET_CMD_LOOKUP:
 	case DNET_CMD_LOOKUP_NEW:
 		if (!(cmd->flags & DNET_FLAGS_NOCACHE)) {
 			err = n2_cmd_cache_io(backend, st, req_info, cmd_stats, context);

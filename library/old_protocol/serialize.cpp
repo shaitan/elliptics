@@ -87,6 +87,54 @@ int serialize_lookup_response(dnet_net_state *st, std::unique_ptr<n2_message> ms
 	auto impl = [&] {
 		auto &msg = static_cast<lookup_response &>(*msg_in);
 
+		auto path_size = msg.path.size() + 1;  // including 0-byte
+		auto data = data_pointer::allocate(sizeof(struct dnet_addr) +
+		                                   sizeof(struct dnet_file_info) +
+		                                   path_size);
+
+		auto addr = data
+			.data<dnet_addr>();
+		memcpy(addr, &st->n->addrs[0], sizeof(struct dnet_addr));
+		dnet_convert_addr(addr);
+
+		auto file_info = data
+			.skip<dnet_addr>()
+			.data<dnet_file_info>();
+		file_info->flen = path_size;
+		file_info->record_flags = msg.record_flags;
+		file_info->size = msg.data_size;
+		file_info->offset = msg.data_offset;
+		file_info->mtime = msg.data_timestamp;
+		if (msg.cmd.flags & DNET_FLAGS_CHECKSUM) {
+			memcpy(file_info->checksum, msg.data_checksum.data(), DNET_CSUM_SIZE);
+		}
+		dnet_convert_file_info(file_info);
+
+		auto path = data
+			.skip<dnet_addr>()
+			.skip<dnet_file_info>()
+			.data<char>();
+		memcpy(path, msg.path.c_str(), path_size);
+
+		dnet_cmd cmd = msg.cmd;
+		cmd.flags = response_transform_flags(cmd.flags);
+		cmd.size = data.size();
+
+		out_serialized.reset(new n2_serialized{
+			cmd, {data}
+		});
+
+		return 0;
+	};
+
+	return c_exception_guard(impl, st->n, __FUNCTION__);
+}
+
+int serialize_lookup_new_response(dnet_net_state *st, std::unique_ptr<n2_message> msg_in,
+                                  std::unique_ptr<n2_serialized> &out_serialized) {
+	auto impl = [&] {
+		auto &msg = static_cast<lookup_response &>(*msg_in);
+
 		msgpack::sbuffer msgpack_buffer;
 		msgpack::pack(msgpack_buffer, msg);
 
@@ -94,11 +142,9 @@ int serialize_lookup_response(dnet_net_state *st, std::unique_ptr<n2_message> ms
 		cmd.flags = response_transform_flags(cmd.flags);
 		cmd.size = msgpack_buffer.size();
 
-		out_serialized.reset(new(std::nothrow) n2_serialized{
-			cmd, { data_pointer::copy(msgpack_buffer.data(), msgpack_buffer.size()) }
+		out_serialized.reset(new n2_serialized{
+			cmd, {data_pointer::copy(msgpack_buffer.data(), msgpack_buffer.size())}
 		});
-		if (!out_serialized)
-			return -ENOMEM;
 
 		return 0;
 	};

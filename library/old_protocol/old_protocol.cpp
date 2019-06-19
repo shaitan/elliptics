@@ -31,6 +31,7 @@ int old_protocol::send_request(dnet_net_state *st,
 	}
 
 	switch (cmd.cmd) {
+	case DNET_CMD_LOOKUP:
 	case DNET_CMD_LOOKUP_NEW:
 		{
 			std::unique_ptr<n2_serialized> serialized;
@@ -55,8 +56,10 @@ int old_protocol::recv_message(dnet_net_state *st, const dnet_cmd &cmd, data_poi
 
 int old_protocol::recv_request(dnet_net_state *st, const dnet_cmd &cmd, data_pointer &&body) {
 	switch (cmd.cmd) {
-	case DNET_CMD_LOOKUP_NEW:
+	case DNET_CMD_LOOKUP:
 		return translate_lookup_request(st, cmd);
+	case DNET_CMD_LOOKUP_NEW:
+		return translate_lookup_new_request(st, cmd);
 	default:
 		// Must never reach this code, due to is_supported_message() filter called before
 		return -ENOTSUP;
@@ -79,20 +82,23 @@ int old_protocol::recv_response(dnet_net_state *st, const dnet_cmd &cmd, data_po
 		return repliers.on_reply_error(cmd.status);
 
 	} else {
-		switch (cmd.cmd) {
-		case DNET_CMD_LOOKUP_NEW:
-			{
-				std::unique_ptr<n2_message> msg;
-				int err = deserialize_lookup_response(st, cmd, std::move(body), msg);
-				if (err)
-					return err;
+		int err = 0;
+		std::unique_ptr<n2_message> msg;
 
-				return repliers.on_reply(std::move(msg));
-			}
+		switch (cmd.cmd) {
+		case DNET_CMD_LOOKUP:
+			err = deserialize_lookup_response(st, cmd, std::move(body), msg);
+			break;
+		case DNET_CMD_LOOKUP_NEW:
+			err = deserialize_lookup_new_response(st, cmd, std::move(body), msg);
+			break;
 		default:
 			// Must never reach this code, due to is_supported_message() filter called before
-			return -ENOTSUP;
+			err = -ENOTSUP;
 		}
+		if (err)
+			return err;
+		return repliers.on_reply(std::move(msg));
 	}
 }
 
@@ -114,6 +120,23 @@ int old_protocol::translate_lookup_request(dnet_net_state *st, const dnet_cmd &c
 	auto replier = std::make_shared<lookup_replier>(st, request_info->request->cmd);
 	request_info->repliers.on_reply = std::bind(&lookup_replier::reply, replier, std::placeholders::_1);
 	request_info->repliers.on_reply_error = std::bind(&lookup_replier::reply_error, replier, std::placeholders::_1);
+
+	return schedule_request_info(st, std::move(request_info));
+}
+
+int old_protocol::translate_lookup_new_request(dnet_net_state *st, const dnet_cmd &cmd) {
+	std::unique_ptr<n2_request_info> request_info(new(std::nothrow) n2_request_info);
+	if (!request_info)
+		return -ENOMEM;
+
+	int err = deserialize_lookup_request(st, cmd, request_info->request);
+	if (err)
+		return err;
+
+	auto replier = std::make_shared<lookup_new_replier>(st, request_info->request->cmd);
+	request_info->repliers.on_reply = std::bind(&lookup_new_replier::reply, replier, std::placeholders::_1);
+	request_info->repliers.on_reply_error = std::bind(&lookup_new_replier::reply_error,
+	                                                  replier, std::placeholders::_1);
 
 	return schedule_request_info(st, std::move(request_info));
 }
@@ -168,7 +191,8 @@ bool n2_old_protocol_is_supported_message(struct dnet_net_state *st) {
 			return false;
 	}
 
-	return cmd->cmd == DNET_CMD_LOOKUP_NEW;
+	return cmd->cmd == DNET_CMD_LOOKUP ||
+	       cmd->cmd == DNET_CMD_LOOKUP_NEW;
 }
 
 int n2_old_protocol_prepare_message_buffer(struct dnet_net_state *st) {

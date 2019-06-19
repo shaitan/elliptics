@@ -88,6 +88,34 @@ int deserialize_lookup_response(dnet_net_state *st, const dnet_cmd &cmd, data_po
 	if (!msg)
 		return -ENOMEM;
 
+	try {
+		auto file_info = message_buffer
+			.skip<struct dnet_addr>()
+			.data<struct dnet_file_info>();
+		msg->path = message_buffer
+			.skip<struct dnet_addr>()
+			.skip<struct dnet_file_info>()
+			.data<char>();
+		msg->data_offset = file_info->offset;
+		msg->data_size = file_info->size;
+		msg->data_timestamp = file_info->mtime;
+		msg->data_checksum = {file_info->checksum, file_info->checksum + DNET_CSUM_SIZE};
+		msg->record_flags = file_info->record_flags;
+	} catch (const std::exception &e) {
+		DNET_LOG_ERROR(st->n, "Failed to deserialize lookup_response: {}", e.what());
+		return -EINVAL;
+	}
+
+	out_deserialized = std::move(msg);
+	return 0;
+}
+
+int deserialize_lookup_new_response(dnet_net_state *st, const dnet_cmd &cmd, data_pointer &&message_buffer,
+                                    std::unique_ptr<n2_message> &out_deserialized) {
+	std::unique_ptr<lookup_response> msg(new(std::nothrow) lookup_response(cmd));
+	if (!msg)
+		return -ENOMEM;
+
 	size_t unused_length_of_packed;
 	int err = unpack(st, message_buffer, *msg, unused_length_of_packed);
 	if (err)

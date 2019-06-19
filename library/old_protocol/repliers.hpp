@@ -46,4 +46,12 @@ private:
 	int reply_impl(std::unique_ptr<n2_message> msg) override;
 };
 
+class lookup_new_replier : public replier_base {
+public:
+	lookup_new_replier(dnet_net_state *st, const dnet_cmd &cmd);
+
+private:
+	int reply_impl(std::unique_ptr<n2_message> msg) override;
+};
+
 }}} // namespace ioremap::elliptics::n2
