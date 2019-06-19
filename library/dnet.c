@@ -1536,6 +1536,8 @@ static int dnet_process_cmd_with_backend_raw(struct dnet_net_state *st,
 	if (!backend)
 		return -ENOTSUP;
 
+	dnet_access_context_add_int(context, "backend_id", cmd->backend_id);
+
 	// sleep before running a command, since for some commands ->command_handler sends reply itself,
 	// and client will not wait for this thread to finish
 	dnet_backend_sleep_delay(backend);
@@ -1782,6 +1784,8 @@ static int n2_process_cmd_with_backend_raw(struct dnet_net_state *st,
 	backend = dnet_backends_get_backend_locked(n, cmd->backend_id);
 	if (!backend)
 		return -ENOTSUP;
+
+	dnet_access_context_add_int(context, "backend_id", cmd->backend_id);
 
 	// sleep before running a command, since for some commands ->n2_command_handler sends reply itself,
 	// and client will not wait for this thread to finish

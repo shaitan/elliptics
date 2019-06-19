@@ -225,9 +225,7 @@ int blob_file_info_new(eblob_backend_config *c, void *state, struct n2_request_i
 	auto cmd = &request->cmd;
 
 	if (context) {
-		context->add({{"id", std::string(dnet_dump_id(&cmd->id))},
-		              {"backend_id", c->data.stat_id},
-		             });
+		context->add({"id", std::string(dnet_dump_id(&cmd->id))});
 	}
 
 	eblob_key key;
@@ -458,7 +456,6 @@ int blob_del_new(eblob_backend_config *c, dnet_cmd *cmd, void *data, struct dnet
 
 	if (context) {
 		context->add({{"id", std::string(dnet_dump_id(&cmd->id))},
-		              {"backend_id", c->data.stat_id},
 		              {"ioflags", std::string(dnet_flags_dump_ioflags(request.ioflags))},
 		             });
 		if (request.ioflags & DNET_IO_FLAGS_CAS_TIMESTAMP) {
@@ -735,7 +732,6 @@ int blob_read_new(eblob_backend_config *c,
 
 	if (context) {
 		context->add({{"id", std::string(dnet_dump_id(&cmd->id))},
-		              {"backend_id", c->data.stat_id},
 		              {"read_flags", std::string(dnet_dump_read_flags(request.read_flags))},
 		              {"ioflags", std::string(dnet_flags_dump_ioflags(request.ioflags))},
 		            });
@@ -766,7 +762,6 @@ int blob_write_new(eblob_backend_config *c, void *state, dnet_cmd *cmd, void *da
 
 	if (context) {
 		context->add({{"id", std::string(dnet_dump_id(&cmd->id))},
-		              {"backend_id", c->data.stat_id},
 		              {"ioflags", std::string(dnet_flags_dump_ioflags(request.ioflags))},
 		              {"request_data_offset", request.data_offset},
 		              {"request_data_size", request.data_size},
@@ -1967,7 +1962,6 @@ int blob_send_new(struct eblob_backend_config *c,
 
 	if (context) {
 		context->add({{"keys", request.keys.size()},
-		              {"backend_id", c->data.stat_id},
 		              {"chunk_size", request.chunk_size},
 		              {"flags", to_hex_string(request.flags)},
 		              {"groups", groups},
@@ -2171,7 +2165,6 @@ int blob_bulk_read_new(struct eblob_backend_config *c,
 		context->add({{"keys", bulk_request.keys.size()},
 		              {"ioflags", std::string(dnet_flags_dump_ioflags(bulk_request.ioflags))},
 		              {"read_flags", std::string(dnet_dump_read_flags(bulk_request.read_flags))},
-		              {"backend_id", backend_id},
 		             });
 	}
 
@@ -2258,7 +2251,6 @@ int blob_bulk_remove_new(struct eblob_backend_config *config,
 	if (context) {
 		context->add({{"keys", bulk_request.keys.size()},
 			      {"ioflags", std::string(dnet_flags_dump_ioflags(bulk_request.ioflags))},
-			      {"backend_id", backend_id},
 			     });
 	}
 	
