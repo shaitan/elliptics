@@ -47,7 +47,7 @@
 #include "protocol.hpp"
 #include "logger.hpp"
 #include "n2_protocol.hpp"
-#include "old_protocol/serialize.hpp"
+#include "native_protocol/serialize.hpp"
 #include "tests.h"
 
 
@@ -1533,7 +1533,7 @@ int n2_trans_forward(n2_request_info *request_info, struct dnet_net_state *orig,
 		return -ETIMEDOUT;
 	}
 
-	t->repliers = new n2_repliers; // Will be filled at old_protocol::send_request
+	t->repliers = new n2_repliers; // Will be filled at native_protocol::send_request
 
 	t->rcv_trans = cmd->trans; // TODO(sabramkin): Is it necessary in new mechanic?
 	t->trans = cmd->trans = atomic_inc(&orig->n->trans);

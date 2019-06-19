@@ -31,10 +31,10 @@ set(ELLIPTICS_CLIENT_SRCS
     ../../library/net.cpp
     ../../library/node.c
     ../../library/notify_common.c
-    ../../library/old_protocol/deserialize.cpp
-    ../../library/old_protocol/old_protocol.cpp
-    ../../library/old_protocol/serialize.cpp
-    ../../library/old_protocol/repliers.cpp
+    ../../library/native_protocol/deserialize.cpp
+    ../../library/native_protocol/native_protocol.cpp
+    ../../library/native_protocol/serialize.cpp
+    ../../library/native_protocol/repliers.cpp
     ../../library/pool.c
     ../../library/request_queue.cpp
     ../../library/rbtree.c

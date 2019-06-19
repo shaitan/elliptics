@@ -37,7 +37,7 @@
 #include "elliptics/packet.h"
 #include "elliptics/interface.h"
 #include "n2_protocol.h"
-#include "old_protocol/old_protocol.h"
+#include "native_protocol/native_protocol.h"
 
 #include "monitor/measure_points.h"
 #include "library/logger.hpp"
@@ -359,7 +359,7 @@ void dnet_io_req_free(struct dnet_io_req *r)
 		break;
 	}
 
-	// If r represents message in send_list of old_protocol's new mechanic
+	// If r represents message in send_list of native_protocol's new mechanic
 	if (r->serialized)
 		n2_serialized_free(r->serialized);
 
@@ -1146,7 +1146,7 @@ struct dnet_net_state *dnet_state_create(struct dnet_node *n,
 			goto err_out_free;
 		}
 
-		n2_old_protocol_rcvbuf_create(st);
+		n2_native_protocol_rcvbuf_create(st);
 	}
 
 	st->read_data.st = st;
@@ -1258,7 +1258,7 @@ err_out_unlock:
 	pthread_mutex_destroy(&st->trans_lock);
 err_out_dup_destroy:
 	dnet_sock_close(n, st->write_s);
-	n2_old_protocol_rcvbuf_destroy(st);
+	n2_native_protocol_rcvbuf_destroy(st);
 err_out_free:
 	free(st);
 err_out_close:
@@ -1323,7 +1323,7 @@ void dnet_state_destroy(struct dnet_net_state *st)
 	}
 
 	dnet_state_clean(st);
-	n2_old_protocol_rcvbuf_destroy(st);
+	n2_native_protocol_rcvbuf_destroy(st);
 
 	dnet_state_send_clean(st);
 

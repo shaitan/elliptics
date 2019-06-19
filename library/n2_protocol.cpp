@@ -7,7 +7,7 @@
 #include "access_context.h"
 #include "common.hpp"
 #include "elliptics.h"
-#include "old_protocol/old_protocol.hpp"
+#include "native_protocol/native_protocol.hpp"
 
 n2_request::n2_request(const dnet_cmd &cmd_,
                        const dnet_time &deadline_)
@@ -40,7 +40,7 @@ int protocol_interface::on_request(dnet_net_state *st, std::unique_ptr<n2_reques
 };
 
 protocol_interface *net_state_get_protocol(dnet_net_state* st) {
-	return &st->n->io->old_protocol->protocol;
+	return &st->n->io->native_protocol->protocol;
 }
 
 dnet_time default_deadline() {

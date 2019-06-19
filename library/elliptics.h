@@ -451,7 +451,7 @@ void dnet_check_io_pool(struct dnet_io_pool *io, uint64_t *queue_size, uint64_t 
 
 struct dnet_backends_manager;
 struct dnet_io_pools_manager;
-struct n2_old_protocol_io;
+struct n2_native_protocol_io;
 struct dnet_io {
 	int			need_exit;
 
@@ -471,7 +471,7 @@ struct dnet_io {
 
 	struct list_stat	output_stats;
 
-	struct n2_old_protocol_io	*old_protocol;
+	struct n2_native_protocol_io	*native_protocol;
 };
 
 int dnet_state_accept_process(struct dnet_net_state *st, struct epoll_event *ev);
@@ -767,7 +767,8 @@ struct dnet_trans
 						     struct dnet_cmd *cmd,
 						     void *priv);
 
-	struct n2_repliers		*repliers; /* instead of 'complete', if transaction is served by old_protocol */
+	/* instead of 'complete', if transaction is served by native_protocol */
+	struct n2_repliers		*repliers;
 
 	struct dnet_trans_stats		stats;
 };

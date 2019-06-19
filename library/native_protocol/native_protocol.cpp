@@ -1,4 +1,4 @@
-#include "old_protocol.hpp"
+#include "native_protocol.hpp"
 
 #include <blackhole/attribute.hpp>
 
@@ -9,9 +9,9 @@
 
 namespace ioremap { namespace elliptics { namespace n2 {
 
-int old_protocol::send_request(dnet_net_state *st,
-                               const n2_request &request,
-                               n2_repliers &&repliers) {
+int native_protocol::send_request(dnet_net_state *st,
+                                  const n2_request &request,
+                                  n2_repliers &&repliers) {
 	const dnet_cmd &cmd = request.cmd;
 
 	{
@@ -47,7 +47,7 @@ int old_protocol::send_request(dnet_net_state *st,
 	return enqueue_net(st, std::move(serialized));
 }
 
-int old_protocol::recv_message(dnet_net_state *st, const dnet_cmd &cmd, data_pointer &&body) {
+int native_protocol::recv_message(dnet_net_state *st, const dnet_cmd &cmd, data_pointer &&body) {
 	if (cmd.flags & DNET_FLAGS_REPLY) {
 		return recv_response(st, cmd, std::move(body));
 	} else {
@@ -55,7 +55,7 @@ int old_protocol::recv_message(dnet_net_state *st, const dnet_cmd &cmd, data_poi
 	}
 }
 
-int old_protocol::recv_request(dnet_net_state *st, const dnet_cmd &cmd, data_pointer &&body) {
+int native_protocol::recv_request(dnet_net_state *st, const dnet_cmd &cmd, data_pointer &&body) {
 	switch (cmd.cmd) {
 	case DNET_CMD_LOOKUP:
 		return translate_lookup_request(st, cmd);
@@ -69,7 +69,7 @@ int old_protocol::recv_request(dnet_net_state *st, const dnet_cmd &cmd, data_poi
 	}
 }
 
-int old_protocol::recv_response(dnet_net_state *st, const dnet_cmd &cmd, data_pointer &&raw_body) {
+int native_protocol::recv_response(dnet_net_state *st, const dnet_cmd &cmd, data_pointer &&raw_body) {
 	pthread_mutex_lock(&st->trans_lock);
 	std::unique_ptr<dnet_trans, void (*)(dnet_trans *)>
 		t(dnet_trans_search(st, cmd.trans), &dnet_trans_put);
@@ -107,7 +107,7 @@ int old_protocol::recv_response(dnet_net_state *st, const dnet_cmd &cmd, data_po
 	return repliers.on_reply(body);
 }
 
-int old_protocol::translate_lookup_request(dnet_net_state *st, const dnet_cmd &cmd) {
+int native_protocol::translate_lookup_request(dnet_net_state *st, const dnet_cmd &cmd) {
 	std::unique_ptr<n2_request_info> request_info(
 		new n2_request_info{n2_request(cmd, default_deadline()), n2_repliers()});
 
@@ -118,7 +118,7 @@ int old_protocol::translate_lookup_request(dnet_net_state *st, const dnet_cmd &c
 	return on_request(st, std::move(request_info));
 }
 
-int old_protocol::translate_lookup_new_request(dnet_net_state *st, const dnet_cmd &cmd) {
+int native_protocol::translate_lookup_new_request(dnet_net_state *st, const dnet_cmd &cmd) {
 	std::unique_ptr<n2_request_info> request_info(
 		new n2_request_info{n2_request(cmd, default_deadline()), n2_repliers()});
 
@@ -150,33 +150,33 @@ int old_protocol::translate_remove_new_request(dnet_net_state *st, const dnet_cm
 
 extern "C" {
 
-int n2_old_protocol_io_start(struct dnet_node *n) {
+int n2_native_protocol_io_start(struct dnet_node *n) {
 	auto impl = [io = n->io] {
-		io->old_protocol = new n2_old_protocol_io;
+		io->native_protocol = new n2_native_protocol_io;
 		return 0;
 	};
 	return c_exception_guard(impl, n, __FUNCTION__);
 }
 
-void n2_old_protocol_io_stop(struct dnet_node *n) {
+void n2_native_protocol_io_stop(struct dnet_node *n) {
 	auto impl = [io = n->io] {
-		delete io->old_protocol;
-		io->old_protocol = nullptr;
+		delete io->native_protocol;
+		io->native_protocol = nullptr;
 		return 0;
 	};
 	c_exception_guard(impl, n, __FUNCTION__);
 }
 
-void n2_old_protocol_rcvbuf_create(struct dnet_net_state *st) {
+void n2_native_protocol_rcvbuf_create(struct dnet_net_state *st) {
 	st->rcv_buffer = new n2_recv_buffer;
 }
 
-void n2_old_protocol_rcvbuf_destroy(struct dnet_net_state *st) {
+void n2_native_protocol_rcvbuf_destroy(struct dnet_net_state *st) {
 	delete st->rcv_buffer;
 	st->rcv_buffer = nullptr;
 }
 
-bool n2_old_protocol_is_supported_message(struct dnet_net_state *st) {
+bool n2_native_protocol_is_supported_message(struct dnet_net_state *st) {
 	const dnet_cmd *cmd = &st->rcv_cmd;
 
 	// Replies addressed to client are currently passed via old mechanic. This condition branch will be removed
@@ -194,8 +194,8 @@ bool n2_old_protocol_is_supported_message(struct dnet_net_state *st) {
 	       cmd->cmd == DNET_CMD_DEL_NEW;
 }
 
-int n2_old_protocol_prepare_message_buffer(struct dnet_net_state *st) {
-	if (!n2_old_protocol_is_supported_message(st)) {
+int n2_native_protocol_prepare_message_buffer(struct dnet_net_state *st) {
+	if (!n2_native_protocol_is_supported_message(st)) {
 		st->rcv_buffer_used = 0;
 		return -ENOTSUP;
 	} else {
@@ -211,12 +211,13 @@ int n2_old_protocol_prepare_message_buffer(struct dnet_net_state *st) {
 	return 0;
 }
 
-int n2_old_protocol_schedule_message(struct dnet_net_state *st) {
+int n2_native_protocol_schedule_message(struct dnet_net_state *st) {
 	if (!st->rcv_buffer_used)
 		return -ENOTSUP;
 
 	auto impl = [&] {
-		return st->n->io->old_protocol->protocol.recv_message(st, st->rcv_cmd, std::move(st->rcv_buffer->buf));
+		return st->n->io->native_protocol->protocol.recv_message(st, st->rcv_cmd,
+		                                                         std::move(st->rcv_buffer->buf));
 	};
 	return c_exception_guard(impl, st->n, __FUNCTION__);
 }

@@ -39,7 +39,7 @@
 #include "library/logger.hpp"
 #include "library/backend.h"
 #include "library/n2_protocol.h"
-#include "library/old_protocol/old_protocol.h"
+#include "library/native_protocol/native_protocol.h"
 
 static char *dnet_work_io_mode_string[] = {
 	[DNET_WORK_IO_MODE_BLOCKING] = "BLOCKING",
@@ -489,7 +489,7 @@ again:
 
 		st->rcv_flags &= ~DNET_IO_CMD;
 
-		err = n2_old_protocol_prepare_message_buffer(st);
+		err = n2_native_protocol_prepare_message_buffer(st);
 		if (err == 0) {
 			if (c->size)
 				goto again;
@@ -528,7 +528,7 @@ again:
 schedule:
 	clock_gettime(CLOCK_MONOTONIC_RAW, &st->rcv_finish_ts);
 
-	err = n2_old_protocol_schedule_message(st);
+	err = n2_native_protocol_schedule_message(st);
 	if (err != -ENOTSUP)
 		goto out;
 
@@ -1176,7 +1176,7 @@ int dnet_io_init(struct dnet_node *n, struct dnet_config *cfg)
 		goto err_out_cleanup_recv_place_nb;
 	}
 
-	err = n2_old_protocol_io_start(n);
+	err = n2_native_protocol_io_start(n);
 	if (err) {
 		goto err_out_free_recv_pool_nb;
 	}
@@ -1246,7 +1246,7 @@ void dnet_io_stop(struct dnet_node *n) {
 		close(io->net[i].epoll_fd);
 	}
 
-	n2_old_protocol_io_stop(n);
+	n2_native_protocol_io_stop(n);
 
 	dnet_work_pool_stop(&io->pool.recv_pool_nb);
 	dnet_work_pool_stop(&io->pool.recv_pool);

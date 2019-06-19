@@ -8,7 +8,7 @@
 
 namespace ioremap { namespace elliptics { namespace n2 {
 
-class old_protocol : public protocol_interface {
+class native_protocol : public protocol_interface {
 public:
 	// Client side
 	int send_request(dnet_net_state *st,
@@ -31,8 +31,8 @@ private:
 
 extern "C" {
 
-struct n2_old_protocol_io {
-	ioremap::elliptics::n2::old_protocol protocol;
+struct n2_native_protocol_io {
+	ioremap::elliptics::n2::native_protocol protocol;
 };
 
 struct n2_recv_buffer {
