@@ -52,7 +52,9 @@ inline msgpack::packer<Stream> &operator<<(msgpack::packer<Stream> &o, const n2:
 
 } // namespace msgpack
 
-namespace ioremap { namespace elliptics { namespace n2 {
+namespace ioremap { namespace elliptics { namespace native {
+
+using namespace ioremap::elliptics::n2;
 
 int enqueue_net(dnet_net_state *st, std::unique_ptr<n2_serialized> serialized) {
 	auto r = static_cast<dnet_io_req *>(calloc(1, sizeof(dnet_io_req)));
@@ -112,4 +114,4 @@ void serialize_new(const n2_body &raw_body, n2_serialized::chunks_t &chunks) {
 template void serialize_new<lookup_response>(const n2_body &, n2_serialized::chunks_t &);
 template void serialize_new<remove_request>(const n2_body &, n2_serialized::chunks_t &);
 
-}}} // namespace ioremap::elliptics::n2
+}}} // namespace ioremap::elliptics::native

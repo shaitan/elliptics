@@ -5,7 +5,7 @@
 #include "library/n2_protocol.hpp"
 #include "serialize.hpp"
 
-namespace ioremap { namespace elliptics { namespace n2 {
+namespace ioremap { namespace elliptics { namespace native {
 
 /*
  * Here are grouped the implementations of n2_repliers that are called from message handler as a result of message
@@ -56,4 +56,4 @@ private:
 	void serialize_body(const std::shared_ptr<n2_body> &msg, n2_serialized::chunks_t &chunks) override;
 };
 
-}}} // namespace ioremap::elliptics::n2
+}}} // namespace ioremap::elliptics::native

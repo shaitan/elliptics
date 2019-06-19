@@ -7,11 +7,13 @@
 #include "library/elliptics.h"
 #include "library/logger.hpp"
 
-namespace ioremap { namespace elliptics { namespace n2 {
+namespace ioremap { namespace elliptics { namespace native {
 
-int native_protocol::send_request(dnet_net_state *st,
-                                  const n2_request &request,
-                                  n2_repliers &&repliers) {
+using namespace ioremap::elliptics::n2;
+
+int protocol::send_request(dnet_net_state *st,
+                           const n2_request &request,
+                           n2_repliers &&repliers) {
 	const dnet_cmd &cmd = request.cmd;
 
 	{
@@ -47,7 +49,7 @@ int native_protocol::send_request(dnet_net_state *st,
 	return enqueue_net(st, std::move(serialized));
 }
 
-int native_protocol::recv_message(dnet_net_state *st, const dnet_cmd &cmd, data_pointer &&body) {
+int protocol::recv_message(dnet_net_state *st, const dnet_cmd &cmd, data_pointer &&body) {
 	if (cmd.flags & DNET_FLAGS_REPLY) {
 		return recv_response(st, cmd, std::move(body));
 	} else {
@@ -55,7 +57,7 @@ int native_protocol::recv_message(dnet_net_state *st, const dnet_cmd &cmd, data_
 	}
 }
 
-int native_protocol::recv_request(dnet_net_state *st, const dnet_cmd &cmd, data_pointer &&body) {
+int protocol::recv_request(dnet_net_state *st, const dnet_cmd &cmd, data_pointer &&body) {
 	switch (cmd.cmd) {
 	case DNET_CMD_LOOKUP:
 		return translate_lookup_request(st, cmd);
@@ -69,7 +71,7 @@ int native_protocol::recv_request(dnet_net_state *st, const dnet_cmd &cmd, data_
 	}
 }
 
-int native_protocol::recv_response(dnet_net_state *st, const dnet_cmd &cmd, data_pointer &&raw_body) {
+int protocol::recv_response(dnet_net_state *st, const dnet_cmd &cmd, data_pointer &&raw_body) {
 	pthread_mutex_lock(&st->trans_lock);
 	std::unique_ptr<dnet_trans, void (*)(dnet_trans *)>
 		t(dnet_trans_search(st, cmd.trans), &dnet_trans_put);
@@ -107,7 +109,7 @@ int native_protocol::recv_response(dnet_net_state *st, const dnet_cmd &cmd, data
 	return repliers.on_reply(body);
 }
 
-int native_protocol::translate_lookup_request(dnet_net_state *st, const dnet_cmd &cmd) {
+int protocol::translate_lookup_request(dnet_net_state *st, const dnet_cmd &cmd) {
 	std::unique_ptr<n2_request_info> request_info(
 		new n2_request_info{n2_request(cmd, default_deadline()), n2_repliers()});
 
@@ -118,7 +120,7 @@ int native_protocol::translate_lookup_request(dnet_net_state *st, const dnet_cmd
 	return on_request(st, std::move(request_info));
 }
 
-int native_protocol::translate_lookup_new_request(dnet_net_state *st, const dnet_cmd &cmd) {
+int protocol::translate_lookup_new_request(dnet_net_state *st, const dnet_cmd &cmd) {
 	std::unique_ptr<n2_request_info> request_info(
 		new n2_request_info{n2_request(cmd, default_deadline()), n2_repliers()});
 
@@ -130,7 +132,7 @@ int native_protocol::translate_lookup_new_request(dnet_net_state *st, const dnet
 	return on_request(st, std::move(request_info));
 }
 
-int old_protocol::translate_remove_new_request(dnet_net_state *st, const dnet_cmd &cmd, data_pointer &&body) {
+int protocol::translate_remove_new_request(dnet_net_state *st, const dnet_cmd &cmd, data_pointer &&body) {
 	std::unique_ptr<n2_request_info> request_info(
 		new n2_request_info{n2_request(cmd, default_deadline()), n2_repliers()});
 
@@ -146,7 +148,7 @@ int old_protocol::translate_remove_new_request(dnet_net_state *st, const dnet_cm
 	return on_request(st, std::move(request_info));
 }
 
-}}} // namespace ioremap::elliptics::n2
+}}} // namespace ioremap::elliptics::native
 
 extern "C" {
 

@@ -7,7 +7,9 @@
 #include "library/common.hpp"
 #include "library/elliptics.h"
 
-namespace ioremap { namespace elliptics { namespace n2 {
+namespace ioremap { namespace elliptics { namespace native {
+
+using namespace ioremap::elliptics::n2;
 
 replier_base::replier_base(dnet_net_state *st, const dnet_cmd &cmd)
 : st_(st)
@@ -84,4 +86,4 @@ void lookup_new_replier::serialize_body(const std::shared_ptr<n2_body> &msg, n2_
 	serialize_new<lookup_response>(*msg, chunks);
 }
 
-}}} // namespace ioremap::elliptics::n2
+}}} // namespace ioremap::elliptics::native

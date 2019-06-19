@@ -66,7 +66,9 @@ inline n2::remove_request &operator >>(msgpack::object o, n2::remove_request &v)
 
 } // namespace msgpack
 
-namespace ioremap { namespace elliptics { namespace n2 {
+namespace ioremap { namespace elliptics { namespace native {
+
+using namespace ioremap::elliptics::n2;
 
 template<typename T>
 int unpack(dnet_node *n, const data_pointer &data, T &value, size_t &length_of_packed) {
@@ -126,4 +128,4 @@ int deserialize_new(dnet_node *n, data_pointer &&message_buffer, std::shared_ptr
 template int deserialize_new<lookup_response>(dnet_node *, data_pointer &&, std::shared_ptr<n2_body> &);
 template int deserialize_new<remove_request>(dnet_node *, data_pointer &&, std::shared_ptr<n2_body> &);
 
-}}} // namespace ioremap::elliptics::n2
+}}} // namespace ioremap::elliptics::native
