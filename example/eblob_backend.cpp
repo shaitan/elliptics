@@ -221,8 +221,7 @@ int blob_file_info(eblob_backend_config *c, void *state, struct n2_request_info 
                    struct dnet_access_context *context) {
 	using namespace ioremap::elliptics;
 
-	auto request = static_cast<n2::lookup_request *>(req_info->request.get());
-	auto cmd = &request->cmd;
+	const dnet_cmd *cmd = &req_info->request.cmd;
 
 	if (context) {
 		context->add({"id", std::string(dnet_dump_id(&cmd->id))});
@@ -370,22 +369,19 @@ int blob_file_info(eblob_backend_config *c, void *state, struct n2_request_info 
 		}
 	}
 
-	std::unique_ptr<n2::lookup_response>
-		response(new n2::lookup_response(request->cmd,
-		                                 wc.flags, // record_flags
-		                                 ehdr.flags, // user_flags
-		                                 std::move(filename), // path
-		                                 jhdr.timestamp, // json_timestamp
-		                                 wc.data_offset + json_offset, // json_offset
-		                                 json_size, // json_size
-		                                 jhdr.capacity, // json_capacity
-		                                 std::move(json_checksum), // json_checksum
-		                                 ehdr.timestamp, // data_timestamp
-		                                 wc.data_offset + data_offset, // data_offset
-		                                 data_size, // data_size
-		                                 std::move(data_checksum))); // data_checksum
-
-	err = req_info->repliers.on_reply(std::move(response));
+	err = req_info->repliers.on_reply(
+		std::make_shared<n2::lookup_response>(wc.flags, // record_flags
+		                                      uint64_t(ehdr.flags), // user_flags
+		                                      std::move(filename), // path
+		                                      jhdr.timestamp, // json_timestamp
+		                                      wc.data_offset + json_offset, // json_offset
+		                                      json_size, // json_size
+		                                      jhdr.capacity, // json_capacity
+		                                      std::move(json_checksum), // json_checksum
+		                                      dnet_time(ehdr.timestamp), // data_timestamp
+		                                      wc.data_offset + data_offset, // data_offset
+		                                      data_size, // data_size
+		                                      std::move(data_checksum))); // data_checksum
 	if (err) {
 		DNET_LOG_ERROR(c->blog, "{}: EBLOB: blob-file-info-new: on_reply: {} [{}]",
 		               dnet_dump_id(&cmd->id), strerror(-err), err);
@@ -2308,7 +2304,7 @@ int n2_eblob_backend_command_handler(void *state,
                                      void *cmd_stats,
                                      struct dnet_access_context *context) {
 	int err = 0;
-	const dnet_cmd &cmd = req_info->request->cmd;
+	const dnet_cmd &cmd = req_info->request.cmd;
 	auto c = static_cast<eblob_backend_config *>(priv);
 
 	FORMATTED(HANDY_TIMER_SCOPE, ("eblob_backend.cmd.%s", dnet_cmd_string(cmd.cmd)));

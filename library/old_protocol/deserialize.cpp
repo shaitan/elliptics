@@ -58,7 +58,7 @@ inline n2::lookup_response &operator >>(msgpack::object o, n2::lookup_response &
 namespace ioremap { namespace elliptics { namespace n2 {
 
 template<typename T>
-int unpack(dnet_net_state *st, const data_pointer &data, T &value, size_t &length_of_packed) {
+int unpack(dnet_node *n, const data_pointer &data, T &value, size_t &length_of_packed) {
 	try {
 		length_of_packed = 0;
 
@@ -68,53 +68,47 @@ int unpack(dnet_net_state *st, const data_pointer &data, T &value, size_t &lengt
 		return 0;
 
 	} catch (const std::exception &e) {
-		DNET_LOG_ERROR(st->n, "Failed to unpack msgpack message header: {}", e.what());
+		DNET_LOG_ERROR(n, "Failed to unpack msgpack message header: {}", e.what());
 		return -EINVAL;
 	}
 }
 
-int deserialize_lookup_request(dnet_net_state * /*st*/, const dnet_cmd &cmd,
-                               std::unique_ptr<n2_request> &out_deserialized) {
-	out_deserialized.reset(new lookup_request(cmd));
-	return 0;
-}
-
-int deserialize_lookup_response(dnet_net_state *st, const dnet_cmd &cmd, data_pointer &&message_buffer,
-                                std::unique_ptr<n2_message> &out_deserialized) {
-	std::unique_ptr<lookup_response> msg(new lookup_response(cmd));
+int deserialize_lookup_response_body(dnet_node *n, const dnet_cmd &, data_pointer &&message_buffer,
+                                     std::shared_ptr<n2_body> &out_deserialized) {
+	auto body = std::make_shared<lookup_response>();
 
 	try {
 		auto file_info = message_buffer
 			.skip<struct dnet_addr>()
 			.data<struct dnet_file_info>();
-		msg->path = message_buffer
+		body->path = message_buffer
 			.skip<struct dnet_addr>()
 			.skip<struct dnet_file_info>()
 			.data<char>();
-		msg->data_offset = file_info->offset;
-		msg->data_size = file_info->size;
-		msg->data_timestamp = file_info->mtime;
-		msg->data_checksum = {file_info->checksum, file_info->checksum + DNET_CSUM_SIZE};
-		msg->record_flags = file_info->record_flags;
+		body->data_offset = file_info->offset;
+		body->data_size = file_info->size;
+		body->data_timestamp = file_info->mtime;
+		body->data_checksum = {file_info->checksum, file_info->checksum + DNET_CSUM_SIZE};
+		body->record_flags = file_info->record_flags;
 	} catch (const std::exception &e) {
-		DNET_LOG_ERROR(st->n, "Failed to deserialize lookup_response: {}", e.what());
+		DNET_LOG_ERROR(n, "Failed to deserialize lookup_response: {}", e.what());
 		return -EINVAL;
 	}
 
-	out_deserialized = std::move(msg);
+	out_deserialized = std::move(body);
 	return 0;
 }
 
-int deserialize_lookup_new_response(dnet_net_state *st, const dnet_cmd &cmd, data_pointer &&message_buffer,
-                                    std::unique_ptr<n2_message> &out_deserialized) {
-	std::unique_ptr<lookup_response> msg(new lookup_response(cmd));
+int deserialize_lookup_new_response_body(dnet_node *n, const dnet_cmd &, data_pointer &&message_buffer,
+                                         std::shared_ptr<n2_body> &out_deserialized) {
+	auto body = std::make_shared<lookup_response>();
 
 	size_t unused_length_of_packed;
-	int err = unpack(st, message_buffer, *msg, unused_length_of_packed);
+	int err = unpack(n, message_buffer, *body, unused_length_of_packed);
 	if (err)
 		return err;
 
-	out_deserialized = std::move(msg);
+	out_deserialized = std::move(body);
 	return 0;
 }
 

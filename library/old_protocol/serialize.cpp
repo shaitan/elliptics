@@ -55,51 +55,28 @@ int enqueue_net(dnet_net_state *st, std::unique_ptr<n2_serialized> serialized) {
 	return 0;
 }
 
-static uint64_t response_transform_flags(uint64_t flags) {
-	return (flags & ~(DNET_FLAGS_NEED_ACK)) | DNET_FLAGS_REPLY;
-}
-
-int serialize_error_response(dnet_net_state * /*st*/, const dnet_cmd &cmd_in,
-                             std::unique_ptr<n2_serialized> &out_serialized) {
-	dnet_cmd cmd = cmd_in;
-	cmd.flags = response_transform_flags(cmd.flags);
-
-	out_serialized.reset(new n2_serialized{ cmd, {} });
-	return 0;
-}
-
-int serialize_lookup_request(dnet_net_state * /*st*/, std::unique_ptr<n2_request> msg_in,
-                             std::unique_ptr<n2_serialized> &out_serialized) {
-	auto &msg = static_cast<lookup_request &>(*msg_in);
-
-	out_serialized.reset(new n2_serialized{ msg.cmd, {} });
-	return 0;
-}
-
-int serialize_lookup_response(dnet_net_state *st, std::unique_ptr<n2_message> msg_in,
-                              std::unique_ptr<n2_serialized> &out_serialized) {
-	auto &msg = static_cast<lookup_response &>(*msg_in);
-
-	auto path_size = msg.path.size() + 1;  // including 0-byte
+void serialize_lookup_response_body(dnet_node *n, const dnet_cmd &cmd, const lookup_response &body,
+                                    n2_serialized::chunks_t &chunks) {
+	auto path_size = body.path.size() + 1;  // including 0-byte
 	auto data = data_pointer::allocate(sizeof(struct dnet_addr) +
 					   sizeof(struct dnet_file_info) +
 					   path_size);
 
 	auto addr = data
 		.data<dnet_addr>();
-	memcpy(addr, &st->n->addrs[0], sizeof(struct dnet_addr));
+	memcpy(addr, &n->addrs[0], sizeof(struct dnet_addr));
 	dnet_convert_addr(addr);
 
 	auto file_info = data
 		.skip<dnet_addr>()
 		.data<dnet_file_info>();
 	file_info->flen = path_size;
-	file_info->record_flags = msg.record_flags;
-	file_info->size = msg.data_size;
-	file_info->offset = msg.data_offset;
-	file_info->mtime = msg.data_timestamp;
-	if (msg.cmd.flags & DNET_FLAGS_CHECKSUM) {
-		memcpy(file_info->checksum, msg.data_checksum.data(), DNET_CSUM_SIZE);
+	file_info->record_flags = body.record_flags;
+	file_info->size = body.data_size;
+	file_info->offset = body.data_offset;
+	file_info->mtime = body.data_timestamp;
+	if (cmd.flags & DNET_FLAGS_CHECKSUM) {
+		memcpy(file_info->checksum, body.data_checksum.data(), DNET_CSUM_SIZE);
 	}
 	dnet_convert_file_info(file_info);
 
@@ -107,35 +84,16 @@ int serialize_lookup_response(dnet_net_state *st, std::unique_ptr<n2_message> ms
 		.skip<dnet_addr>()
 		.skip<dnet_file_info>()
 		.data<char>();
-	memcpy(path, msg.path.c_str(), path_size);
+	memcpy(path, body.path.c_str(), path_size);
 
-	dnet_cmd cmd = msg.cmd;
-	cmd.flags = response_transform_flags(cmd.flags);
-	cmd.size = data.size();
-
-	out_serialized.reset(new n2_serialized{
-		cmd, {data}
-	});
-
-	return 0;
+	chunks.emplace_back(std::move(data));
 }
 
-int serialize_lookup_new_response(dnet_net_state *, std::unique_ptr<n2_message> msg_in,
-                                  std::unique_ptr<n2_serialized> &out_serialized) {
-	auto &msg = static_cast<lookup_response &>(*msg_in);
-
+void serialize_lookup_new_response_body(dnet_node *, const dnet_cmd &, const lookup_response &body,
+                                        n2_serialized::chunks_t &chunks) {
 	msgpack::sbuffer msgpack_buffer;
-	msgpack::pack(msgpack_buffer, msg);
-
-	dnet_cmd cmd = msg.cmd;
-	cmd.flags = response_transform_flags(cmd.flags);
-	cmd.size = msgpack_buffer.size();
-
-	out_serialized.reset(new n2_serialized{
-		cmd, {data_pointer::copy(msgpack_buffer.data(), msgpack_buffer.size())}
-	});
-
-	return 0;
+	msgpack::pack(msgpack_buffer, body);
+	chunks.emplace_back(data_pointer::copy(msgpack_buffer.data(), msgpack_buffer.size()));
 }
 
 }}} // namespace ioremap::elliptics::n2

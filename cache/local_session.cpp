@@ -248,17 +248,18 @@ int local_session::write(const dnet_id &id,
 	return err;
 }
 
-std::unique_ptr<ioremap::elliptics::n2::lookup_response> local_session::lookup(const dnet_cmd &tmp_cmd, int *errp)
+std::shared_ptr<n2::lookup_response> local_session::lookup(const dnet_cmd &tmp_cmd, int *errp)
 {
-	std::unique_ptr<n2::lookup_request> request(new n2::lookup_request(tmp_cmd));
-	request->cmd.flags |= m_cflags;
-	request->cmd.size = 0;
-	request->cmd.backend_id = m_backend.backend_id();
+	// TODO(sabramkin): Set correct deadline: https://st.yandex-team.ru/ELL-924
+	n2_request request(tmp_cmd, n2::default_deadline());
+	request.cmd.flags |= m_cflags;
+	request.cmd.size = 0;
+	request.cmd.backend_id = m_backend.backend_id();
 
-	std::unique_ptr<n2::lookup_response> response;
+	std::shared_ptr<n2::lookup_response> response;
 	n2_repliers repliers{
-		[&](std::unique_ptr<n2_message> message) {
-			response.reset(static_cast<n2::lookup_response *>(message.release()));
+		[&](const std::shared_ptr<n2_body> &resp) {
+			response = std::static_pointer_cast<n2::lookup_response>(resp);
 			return 0;
 		}, // on_reply
 		[](int err) {
@@ -266,9 +267,8 @@ std::unique_ptr<ioremap::elliptics::n2::lookup_response> local_session::lookup(c
 		} // on_reply_error
 	};
 
-	n2_request_info req_info{request->cmd,
-		                 std::move(request),
-		                 std::move(repliers)};
+	n2_request_info req_info{std::move(request),
+	                         std::move(repliers)};
 
 	*errp = n2_process_cmd_raw(m_state, &req_info, 0, 0, /*context*/ nullptr);
 	if (*errp) {

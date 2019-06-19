@@ -9,12 +9,8 @@
 #include "elliptics.h"
 #include "old_protocol/old_protocol.hpp"
 
-n2_message::n2_message(const dnet_cmd &cmd_)
-: cmd(cmd_)
-{}
-
 n2_request::n2_request(const dnet_cmd &cmd_, const dnet_time &deadline_)
-: n2_message(cmd_)
+: cmd(cmd_)
 , deadline(deadline_)
 {}
 
@@ -38,19 +34,14 @@ protocol_interface *net_state_get_protocol(dnet_net_state* st) {
 	return &st->n->io->old_protocol->protocol;
 }
 
-static dnet_time default_deadline() {
+dnet_time default_deadline() {
 	dnet_time res;
 	dnet_empty_time(&res);
 	return res;
 }
 
-lookup_request::lookup_request(const dnet_cmd &cmd_)
-: n2_request(cmd_, default_deadline())
-{}
-
-lookup_response::lookup_response(const dnet_cmd &cmd_)
-: n2_message(cmd_)
-, record_flags(0)
+lookup_response::lookup_response()
+: record_flags(0)
 , user_flags(0)
 , path()
 , json_timestamp({0, 0})
@@ -64,8 +55,7 @@ lookup_response::lookup_response(const dnet_cmd &cmd_)
 , data_checksum()
 {}
 
-lookup_response::lookup_response(const dnet_cmd &cmd_,
-                                 uint64_t record_flags_,
+lookup_response::lookup_response(uint64_t record_flags_,
                                  uint64_t user_flags_,
                                  std::string path_,
                                  dnet_time json_timestamp_,
@@ -77,8 +67,7 @@ lookup_response::lookup_response(const dnet_cmd &cmd_,
                                  uint64_t data_offset_,
                                  uint64_t data_size_,
                                  std::vector<unsigned char> data_checksum_)
-: n2_message(cmd_)
-, record_flags(record_flags_)
+: record_flags(record_flags_)
 , user_flags(user_flags_)
 , path(std::move(path_))
 , json_timestamp(json_timestamp_)
@@ -99,7 +88,7 @@ extern "C" {
 struct dnet_cmd *n2_io_req_get_cmd(struct dnet_io_req *r) {
 	switch (r->io_req_type) {
 	case DNET_IO_REQ_TYPED_REQUEST:
-		return &r->request_info->cmd;
+		return &r->request_info->request.cmd;
 	case DNET_IO_REQ_TYPED_RESPONSE:
 		return &r->response_info->cmd;
 	default:
@@ -108,16 +97,12 @@ struct dnet_cmd *n2_io_req_get_cmd(struct dnet_io_req *r) {
 }
 
 dnet_cmd *n2_request_info_get_cmd(struct n2_request_info *req_info) {
-	return &req_info->request->cmd;
+	return &req_info->request.cmd;
 }
 
 int n2_io_req_set_request_backend_id(struct dnet_io_req *r, int backend_id) {
-	if (r->io_req_type == DNET_IO_REQ_TYPED_REQUEST && r->request_info->request) {
-		// TODO: maybe to have shared_ptr on cmd and not to have two copies?
-		// Modify read-only long-lived cmd info
-		r->request_info->cmd.backend_id = backend_id;
-		// Modify cmd info within request
-		r->request_info->request->cmd.backend_id = backend_id;
+	if (r->io_req_type == DNET_IO_REQ_TYPED_REQUEST) {
+		r->request_info->request.cmd.backend_id = backend_id;
 		return 0;
 	} else {
 		return -EINVAL;

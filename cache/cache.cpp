@@ -225,12 +225,12 @@ size_t cache_manager::idx(const unsigned char *id) {
 
 using namespace ioremap::cache;
 
-static int n2_fill_lookup_response_without_fd(struct dnet_net_state *st,
-                                              struct dnet_cmd *cmd,
-                                              const void *data,
-                                              int64_t size,
-                                              struct dnet_time timestamp,
-                                              std::unique_ptr<ioremap::elliptics::n2::lookup_response> &response) {
+static std::shared_ptr<ioremap::elliptics::n2::lookup_response>
+n2_fill_lookup_response_without_fd(struct dnet_net_state *st,
+                                   struct dnet_cmd *cmd,
+                                   const void *data,
+                                   int64_t size,
+                                   struct dnet_time timestamp) {
 	using namespace ioremap::elliptics;
 
 	std::vector<unsigned char> checksum;
@@ -239,22 +239,18 @@ static int n2_fill_lookup_response_without_fd(struct dnet_net_state *st,
 		dnet_checksum_data(st->n, data, size, checksum.data(), checksum.size());
 	}
 
-	response.reset(new n2::lookup_response(*cmd,
-	                                       0, // record_flags
-	                                       0, // user_flags
-	                                       {}, // path
-	                                       {0, 0}, // json_timestamp
-	                                       0, // json_offset
-	                                       0, // json_size
-	                                       0, // json_capacity
-	                                       {}, // json_checksum
-	                                       timestamp, // data_timestamp
-	                                       0, // data_offset
-	                                       size, // data_size
-	                                       std::move(checksum) // data_checksum
-	));
-
-	return 0;
+	return std::make_shared<n2::lookup_response>(0, // record_flags
+	                                             0, // user_flags
+	                                             std::string(), // path
+	                                             dnet_time{0, 0}, // json_timestamp
+	                                             0, // json_offset
+	                                             0, // json_size
+	                                             0, // json_capacity
+	                                             std::vector<unsigned char>(), // json_checksum
+	                                             timestamp, // data_timestamp
+	                                             0, // data_offset
+	                                             size, // data_size
+	                                             std::move(checksum)); // data_checksum
 }
 
 static int dnet_cmd_cache_io_write(struct cache_manager *cache,
@@ -502,8 +498,7 @@ static int dnet_cmd_cache_io_lookup(struct dnet_backend *backend,
 	using namespace ioremap::elliptics;
 	cmd_stats->handled_in_cache = 1;
 
-	auto request = static_cast<n2::lookup_request *>(req_info->request.get());
-	auto cmd = &request->cmd;
+	auto cmd = &req_info->request.cmd;
 
 	int err;
 	cache_item it;
@@ -523,15 +518,12 @@ static int dnet_cmd_cache_io_lookup(struct dnet_backend *backend,
 	if (err) {
 		// we didn't find key on disk, but yet it exists in cache
 		// lookup by its nature is 'show me what is on disk' command
-		err = n2_fill_lookup_response_without_fd(st, cmd, nullptr, 0, it.timestamp, response);
-		if (err) {
-			return err;
-		}
+		return req_info->repliers.on_reply(
+			n2_fill_lookup_response_without_fd(st, cmd, nullptr, 0, it.timestamp));
 	} else {
 		response->data_timestamp = it.timestamp;
+		return req_info->repliers.on_reply(std::move(response));
 	}
-
-	return req_info->repliers.on_reply(std::move(response));
 }
 
 static int dnet_cmd_cache_io_lookup_new(struct cache_manager *cache,
@@ -542,8 +534,7 @@ static int dnet_cmd_cache_io_lookup_new(struct cache_manager *cache,
 	using namespace ioremap::elliptics;
 	cmd_stats->handled_in_cache = 1;
 
-	auto request = static_cast<n2::lookup_request *>(req_info->request.get());
-	auto cmd = &request->cmd;
+	auto cmd = &req_info->request.cmd;
 
 	int err;
 	cache_item it;
@@ -595,22 +586,19 @@ static int dnet_cmd_cache_io_lookup_new(struct cache_manager *cache,
 		}
 	}
 
-	std::unique_ptr<n2::lookup_response>
-		response(new n2::lookup_response(request->cmd,
-		                                 0, // record_flags
-		                                 it.user_flags, // user_flags
-		                                 std::string(), // path
-		                                 it.json_timestamp, // json_timestamp
-		                                 0, // json_offset
-		                                 it.json->size(), // json_size
-		                                 it.json->size(), // json_capacity
-		                                 std::move(json_checksum), // json_checksum
-		                                 it.timestamp, // data_timestamp
-		                                 0, // data_offset
-		                                 it.data->size(), // data_size
-		                                 std::move(data_checksum))); // data_checksum
-
-	return req_info->repliers.on_reply(std::move(response));
+	return req_info->repliers.on_reply(
+		std::make_shared<n2::lookup_response>(0, // record_flags
+	                                              it.user_flags, // user_flags
+	                                              std::string(), // path
+	                                              it.json_timestamp, // json_timestamp
+	                                              0, // json_offset
+	                                              it.json->size(), // json_size
+	                                              it.json->size(), // json_capacity
+	                                              std::move(json_checksum), // json_checksum
+	                                              it.timestamp, // data_timestamp
+	                                              0, // data_offset
+	                                              it.data->size(), // data_size
+	                                              std::move(data_checksum))); // data_checksum
 }
 
 static int dnet_cmd_cache_io_remove(struct cache_manager *cache,
@@ -725,14 +713,14 @@ int n2_cmd_cache_io(struct dnet_backend *backend,
                     struct n2_request_info *req_info,
                     struct dnet_cmd_stats *cmd_stats,
                     struct dnet_access_context *context) {
-	const auto &cmd = req_info->request->cmd;
+	const auto &cmd = req_info->request.cmd;
 
 	if (cmd.flags & DNET_FLAGS_NOCACHE)
 		return -ENOTSUP;
 
 	auto cache = backend->cache();
 	if (!cache) {
-		uint64_t io_flags = n2_request_get_io_flags(*req_info->request);
+		uint64_t io_flags = n2_request_get_io_flags(req_info->request);
 		if (io_flags & DNET_IO_FLAGS_CACHE)
 			DNET_LOG_NOTICE(st->n, "{}: cache is not supported", dnet_dump_id(&cmd.id));
 		return -ENOTSUP;

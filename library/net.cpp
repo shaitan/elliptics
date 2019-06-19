@@ -1434,15 +1434,6 @@ int dnet_trans_forward(struct dnet_io_req *r, struct dnet_net_state *orig, struc
 	return dnet_trans_send(t, r);
 }
 
-// Helper for binding noncopyable to std::function
-template <class TReturn, class TNoncopyable>
-std::function<TReturn ()> n2_bind_noncopyable(std::function<TReturn (TNoncopyable)> func,
-                                           TNoncopyable param) {
-	return [func = std::move(func), param = std::make_shared<TNoncopyable>(std::move(param))]() mutable -> TReturn {
-		return func(std::move(*param));
-	};
-}
-
 dnet_cmd n2_convert_to_response_cmd(dnet_cmd cmd) {
 	cmd.flags = (cmd.flags & ~(DNET_FLAGS_NEED_ACK)) | DNET_FLAGS_REPLY;
 	return cmd;
@@ -1474,8 +1465,8 @@ n2_repliers n2_make_repliers_via_request_queue(dnet_net_state *st, const dnet_cm
 	};
 
 	repliers_wrappers.on_reply = [on_reply = std::move(repliers.on_reply),
-	                              enqueue_response](std::unique_ptr<n2_message> msg) -> int {
-		return enqueue_response(n2_bind_noncopyable(on_reply, std::move(msg)));
+	                              enqueue_response](const std::shared_ptr<n2_body> &msg) -> int {
+		return enqueue_response(std::bind(on_reply, msg));
 	};
 
 	return repliers_wrappers;
@@ -1514,7 +1505,7 @@ static int n2_trans_send(dnet_trans *t, n2_request_info *request_info) {
 		return err;
 
 	auto repliers_wrappers = n2_make_repliers_via_request_queue(st,
-	                                                            request_info->request->cmd,
+	                                                            request_info->request.cmd,
 	                                                            std::move(request_info->repliers));
 
 	n2::net_state_get_protocol(st)->send_request(st,
@@ -1525,7 +1516,7 @@ static int n2_trans_send(dnet_trans *t, n2_request_info *request_info) {
 }
 
 int n2_trans_forward(n2_request_info *request_info, struct dnet_net_state *orig, struct dnet_net_state *forward) {
-	dnet_cmd *cmd = &request_info->request->cmd;
+	dnet_cmd *cmd = &request_info->request.cmd;
 
 	std::unique_ptr<dnet_trans, void (*)(dnet_trans *)>
 		t(dnet_trans_alloc(orig->n, 0), &dnet_trans_put);
@@ -1533,7 +1524,7 @@ int n2_trans_forward(n2_request_info *request_info, struct dnet_net_state *orig,
 		return -ENOMEM;
 	}
 
-	auto deadline = request_info->request->deadline;
+	auto deadline = request_info->request.deadline;
 	if (!dnet_time_is_empty(&deadline)) {
 		t->wait_ts = dnet_time_left_to_timeout(deadline);
 	}
@@ -1545,7 +1536,7 @@ int n2_trans_forward(n2_request_info *request_info, struct dnet_net_state *orig,
 	t->repliers = new n2_repliers; // Will be filled at old_protocol::send_request
 
 	t->rcv_trans = cmd->trans; // TODO(sabramkin): Is it necessary in new mechanic?
-	t->trans = request_info->cmd.trans = cmd->trans = atomic_inc(&orig->n->trans);
+	t->trans = cmd->trans = atomic_inc(&orig->n->trans);
 	t->cmd = *cmd;
 	t->command = cmd->cmd;
 
