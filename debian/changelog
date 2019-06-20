@@ -1,3 +1,9 @@
+elliptics (2.27.10.3) unstable; urgency=low
+
+  * access: add backend_id to context for each request handled or failed by a backend
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Thu, 20 Jun 2019 09:34:08 +0300
+
 elliptics (2.27.10.2) unstable; urgency=low
 
   * feat: protocol-independent core: lookup_new on server_side
