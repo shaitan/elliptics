@@ -298,13 +298,13 @@ read_response_t slru_cache_t::read(const unsigned char *id, uint64_t ioflags) {
 }
 
 int slru_cache_t::remove(const dnet_cmd *cmd,
-                         ioremap::elliptics::dnet_remove_request &request,
+                         std::shared_ptr<ioremap::elliptics::n2::remove_request> request,
                          dnet_access_context *context) {
 	TIMER_SCOPE("remove");
 
 	auto id = reinterpret_cast<const unsigned char *>(cmd->id.id);
 
-	const bool cache_only = (request.ioflags & DNET_IO_FLAGS_CACHE_ONLY);
+	const bool cache_only = (request->ioflags & DNET_IO_FLAGS_CACHE_ONLY);
 	bool remove_from_disk = !cache_only;
 	int err = -ENOENT;
 
@@ -317,14 +317,14 @@ int slru_cache_t::remove(const dnet_cmd *cmd,
 	TIMER_STOP("remove.find");
 
 	if (it) {
-		if ((cmd->cmd == DNET_CMD_DEL_NEW) && (request.ioflags & DNET_IO_FLAGS_CAS_TIMESTAMP)) {
+		if ((cmd->cmd == DNET_CMD_DEL_NEW) && (request->ioflags & DNET_IO_FLAGS_CAS_TIMESTAMP)) {
 			auto cache_ts = it->timestamp();
 
 			// cache timestamp is greater than timestamp of the data to be removed
 			// do not allow it
-			if (dnet_time_cmp(&cache_ts, &request.timestamp) > 0) {
+			if (dnet_time_cmp(&cache_ts, &request->timestamp) > 0) {
 				const std::string cache_ts_string = dnet_print_time(&cache_ts);
-				const std::string request_ts_string = dnet_print_time(&request.timestamp);
+				const std::string request_ts_string = dnet_print_time(&request->timestamp);
 				DNET_LOG_ERROR(m_node, "{}: CACHE: REMOVE_NEW: failed cas: "
 					       "cache data timestamp is greater than request timestamp: "
 					       "data-ts: {}, request-ts: {}",
@@ -365,7 +365,7 @@ int slru_cache_t::remove(const dnet_cmd *cmd,
 
 		if (cmd->cmd == DNET_CMD_DEL_NEW) {
 			if (it)
-				request.ioflags &= ~DNET_IO_FLAGS_CAS_TIMESTAMP;
+				request->ioflags &= ~DNET_IO_FLAGS_CAS_TIMESTAMP;
 
 			TIMER_SCOPE("remove.local");
 

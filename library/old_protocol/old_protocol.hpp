@@ -24,6 +24,7 @@ private:
 
 	int translate_lookup_request(dnet_net_state *st, const dnet_cmd &cmd);
 	int translate_lookup_new_request(dnet_net_state *st, const dnet_cmd &cmd);
+	int translate_remove_new_request(dnet_net_state *st, const dnet_cmd &cmd, data_pointer &&body);
 };
 
 }}} // namespace ioremap::elliptics::n2

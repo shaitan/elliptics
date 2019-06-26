@@ -152,9 +152,9 @@ read_response_t cache_manager::read(const unsigned char *id, uint64_t ioflags) {
 }
 
 int cache_manager::remove(const dnet_cmd *cmd,
-                          ioremap::elliptics::dnet_remove_request &request,
+                          std::shared_ptr<ioremap::elliptics::n2::remove_request> request,
                           dnet_access_context *context) {
-	return m_caches[idx(cmd->id.id)]->remove(cmd, request, context);
+	return m_caches[idx(cmd->id.id)]->remove(cmd, std::move(request), context);
 }
 
 read_response_t cache_manager::lookup(const unsigned char *id) {
@@ -606,8 +606,9 @@ static int dnet_cmd_cache_io_remove(struct cache_manager *cache,
 				    struct dnet_io_attr *io,
 				    struct dnet_cmd_stats *cmd_stats,
 				    dnet_access_context *context) {
-	ioremap::elliptics::dnet_remove_request request{io->flags, {0, 0}};
-	const int err = cache->remove(cmd, request, context);
+	auto request = std::make_shared<ioremap::elliptics::n2::remove_request>(static_cast<uint64_t>(io->flags),
+	                                                                        dnet_time{0, 0});
+	const int err = cache->remove(cmd, std::move(request), context);
 	if (!err) {
 		cmd_stats->handled_in_cache = 1;
 	}
@@ -615,27 +616,26 @@ static int dnet_cmd_cache_io_remove(struct cache_manager *cache,
 }
 
 static int dnet_cmd_cache_io_remove_new(struct cache_manager *cache,
-                                        struct dnet_cmd *cmd,
-                                        void *data,
+                                        struct n2_request_info *req_info,
                                         struct dnet_cmd_stats *cmd_stats,
                                         dnet_access_context *context) {
 	using namespace ioremap::elliptics;
 
-	auto request = [&data, &cmd] () {
-		dnet_remove_request request;
-		deserialize(data_pointer::from_raw(data, cmd->size), request);
-		return request;
-	} ();
+	auto request = std::static_pointer_cast<n2::remove_request>(req_info->request.body);
+	auto cmd = &req_info->request.cmd;
 
-	if (request.ioflags & DNET_IO_FLAGS_NOCACHE) {
+	if (request->ioflags & DNET_IO_FLAGS_NOCACHE) {
 		return -ENOTSUP;
 	}
 
-	const int err = cache->remove(cmd, request, context);
-	if (!err) {
-		cmd_stats->handled_in_cache = 1;
+	const int err = cache->remove(cmd, std::move(request), context);
+	if (err) {
+		return err;
 	}
-	return err;
+
+	cmd_stats->handled_in_cache = 1;
+
+	return req_info->repliers.on_reply(nullptr);
 }
 
 int dnet_cmd_cache_io(struct dnet_backend *backend,
@@ -682,13 +682,12 @@ int dnet_cmd_cache_io(struct dnet_backend *backend,
 			return dnet_cmd_cache_io_read_new(cache, st, cmd, data, cmd_stats, context);
 		case DNET_CMD_LOOKUP:
 		case DNET_CMD_LOOKUP_NEW:
+		case DNET_CMD_DEL_NEW:
 			// Must never reach this label.
 			// The analogue func dnet_cmd_cache_io_lookup_new must be called from n2_cmd_cache_io.
 			DNET_LOG_ERROR(st->n, "{}: {} invalid cache operation call", dnet_dump_id(&cmd->id),
 			               dnet_cmd_string(cmd->cmd));
 			return -EINVAL;
-		case DNET_CMD_DEL_NEW:
-			return dnet_cmd_cache_io_remove_new(cache, cmd, data, cmd_stats, context);
 		default:
 			return -ENOTSUP;
 		}
@@ -701,8 +700,12 @@ int dnet_cmd_cache_io(struct dnet_backend *backend,
 }
 
 static uint64_t n2_request_get_io_flags(const n2_request &request) {
-	switch (request.cmd.cmd) {
+	using namespace ioremap::elliptics;
+
 	// TODO: Get ioflags from all requests that contain ioflags field
+	switch (request.cmd.cmd) {
+	case DNET_CMD_DEL_NEW:
+		return static_cast<n2::remove_request *>(request.body.get())->ioflags;
 	default:
 		return 0;
 	}
@@ -738,6 +741,8 @@ int n2_cmd_cache_io(struct dnet_backend *backend,
 			return dnet_cmd_cache_io_lookup(backend, st, req_info, cmd_stats);
 		case DNET_CMD_LOOKUP_NEW:
 			return dnet_cmd_cache_io_lookup_new(cache, st, req_info, cmd_stats, context);
+		case DNET_CMD_DEL_NEW:
+			return dnet_cmd_cache_io_remove_new(cache, req_info, cmd_stats, context);
 		default:
 			return -ENOTSUP;
 		}

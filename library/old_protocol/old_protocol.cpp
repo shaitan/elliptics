@@ -30,16 +30,21 @@ int old_protocol::send_request(dnet_net_state *st,
 		*t->repliers = std::move(repliers);
 	}
 
+	n2_serialized::chunks_t chunks;
+
 	switch (cmd.cmd) {
 	case DNET_CMD_LOOKUP:
 	case DNET_CMD_LOOKUP_NEW:
-		{
-			std::unique_ptr<n2_serialized> serialized(new n2_serialized{cmd, {}});
-			return enqueue_net(st, std::move(serialized));
-		}
+		break;
+	case DNET_CMD_DEL_NEW:
+		serialize_new<remove_request>(*request.body, chunks);
+		break;
 	default:
 		return -EINVAL;
 	}
+
+	std::unique_ptr<n2_serialized> serialized(new n2_serialized{cmd, std::move(chunks)});
+	return enqueue_net(st, std::move(serialized));
 }
 
 int old_protocol::recv_message(dnet_net_state *st, const dnet_cmd &cmd, data_pointer &&body) {
@@ -56,6 +61,8 @@ int old_protocol::recv_request(dnet_net_state *st, const dnet_cmd &cmd, data_poi
 		return translate_lookup_request(st, cmd);
 	case DNET_CMD_LOOKUP_NEW:
 		return translate_lookup_new_request(st, cmd);
+	case DNET_CMD_DEL_NEW:
+		return translate_remove_new_request(st, cmd, std::move(body));
 	default:
 		// Must never reach this code, due to is_supported_message() filter called before
 		return -ENOTSUP;
@@ -88,6 +95,8 @@ int old_protocol::recv_response(dnet_net_state *st, const dnet_cmd &cmd, data_po
 	case DNET_CMD_LOOKUP_NEW:
 		err = deserialize_new<lookup_response>(st->n, std::move(raw_body), body);
 		break;
+	case DNET_CMD_DEL_NEW:
+		break;
 	default:
 		// Must never reach this code, due to is_supported_message() filter called before
 		err = -ENOTSUP;
@@ -116,6 +125,22 @@ int old_protocol::translate_lookup_new_request(dnet_net_state *st, const dnet_cm
 	auto replier = std::make_shared<lookup_new_replier>(st, cmd);
 	request_info->repliers.on_reply = std::bind(&lookup_new_replier::reply, replier, std::placeholders::_1);
 	request_info->repliers.on_reply_error = std::bind(&lookup_new_replier::reply_error,
+	                                                  replier, std::placeholders::_1);
+
+	return on_request(st, std::move(request_info));
+}
+
+int old_protocol::translate_remove_new_request(dnet_net_state *st, const dnet_cmd &cmd, data_pointer &&body) {
+	std::unique_ptr<n2_request_info> request_info(
+		new n2_request_info{n2_request(cmd, default_deadline()), n2_repliers()});
+
+	int err = deserialize_new<remove_request>(st->n, std::move(body), request_info->request.body);
+	if (err)
+		return err;
+
+	auto replier = std::make_shared<replier_base>(st, cmd);
+	request_info->repliers.on_reply = std::bind(&replier_base::reply, replier, std::placeholders::_1);
+	request_info->repliers.on_reply_error = std::bind(&replier_base::reply_error,
 	                                                  replier, std::placeholders::_1);
 
 	return on_request(st, std::move(request_info));
@@ -165,7 +190,8 @@ bool n2_old_protocol_is_supported_message(struct dnet_net_state *st) {
 	}
 
 	return cmd->cmd == DNET_CMD_LOOKUP ||
-	       cmd->cmd == DNET_CMD_LOOKUP_NEW;
+	       cmd->cmd == DNET_CMD_LOOKUP_NEW ||
+	       cmd->cmd == DNET_CMD_DEL_NEW;
 }
 
 int n2_old_protocol_prepare_message_buffer(struct dnet_net_state *st) {

@@ -41,6 +41,15 @@ inline msgpack::packer<Stream> &operator<<(msgpack::packer<Stream> &o, const n2:
 	return o;
 }
 
+template <typename Stream>
+inline msgpack::packer<Stream> &operator<<(msgpack::packer<Stream> &o, const n2::remove_request &v) {
+	o.pack_array(2);
+	o.pack(v.ioflags);
+	o.pack(v.timestamp);
+
+	return o;
+}
+
 } // namespace msgpack
 
 namespace ioremap { namespace elliptics { namespace n2 {
@@ -101,5 +110,6 @@ void serialize_new(const n2_body &raw_body, n2_serialized::chunks_t &chunks) {
 }
 
 template void serialize_new<lookup_response>(const n2_body &, n2_serialized::chunks_t &);
+template void serialize_new<remove_request>(const n2_body &, n2_serialized::chunks_t &);
 
 }}} // namespace ioremap::elliptics::n2

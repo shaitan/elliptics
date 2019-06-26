@@ -9,9 +9,18 @@
 #include "elliptics.h"
 #include "old_protocol/old_protocol.hpp"
 
-n2_request::n2_request(const dnet_cmd &cmd_, const dnet_time &deadline_)
+n2_request::n2_request(const dnet_cmd &cmd_,
+                       const dnet_time &deadline_)
 : cmd(cmd_)
 , deadline(deadline_)
+{}
+
+n2_request::n2_request(const dnet_cmd &cmd_,
+                       const dnet_time &deadline_,
+                       std::shared_ptr<n2_body> body_)
+: cmd(cmd_)
+, deadline(deadline_)
+, body(std::move(body_))
 {}
 
 namespace ioremap { namespace elliptics { namespace n2 {
@@ -79,6 +88,17 @@ lookup_response::lookup_response(uint64_t record_flags_,
 , data_offset(data_offset_)
 , data_size(data_size_)
 , data_checksum(std::move(data_checksum_))
+{}
+
+remove_request::remove_request()
+: ioflags(0)
+, timestamp({0, 0})
+{}
+
+remove_request::remove_request(uint64_t ioflags_,
+                               dnet_time timestamp_)
+: ioflags(ioflags_)
+, timestamp(timestamp_)
 {}
 
 }}} // namespace ioremap::elliptics::n2

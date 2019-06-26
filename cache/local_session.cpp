@@ -313,14 +313,13 @@ int local_session::remove(const struct dnet_id &id, dnet_access_context *context
 }
 
 int local_session::remove_new(const struct dnet_id &id,
-                              const ioremap::elliptics::dnet_remove_request &request,
+                              std::shared_ptr<ioremap::elliptics::n2::remove_request> request,
                               dnet_access_context *context) {
-	const auto packet = ioremap::elliptics::serialize(request);
+	using namespace ioremap::elliptics;
 
 	struct dnet_cmd cmd;
 	memset(&cmd, 0, sizeof(struct dnet_cmd));
 	cmd.id = id;
-	cmd.size = packet.size();
 	cmd.flags = DNET_FLAGS_NOLOCK;
 	cmd.cmd = DNET_CMD_DEL_NEW;
 	cmd.backend_id = m_backend.backend_id();
@@ -328,13 +327,31 @@ int local_session::remove_new(const struct dnet_id &id,
 	struct dnet_cmd_stats cmd_stats;
 	memset(&cmd_stats, 0, sizeof(struct dnet_cmd_stats));
 
+	int status = 0;
+	n2_repliers repliers{
+		[](const std::shared_ptr<n2_body> &/*body*/) {
+			return 0;
+		}, // on_reply
+		[&status](int err) {
+			status = err;
+			return 0;
+		} // on_reply_error
+	};
+
+	n2_request_info request_info{
+		n2_request{cmd, n2::default_deadline(), std::move(request)},
+		std::move(repliers),
+	};
 	const auto &callbacks = m_backend.callbacks();
-	int err = callbacks.command_handler(m_state,
-	                                    callbacks.command_private,
-	                                    &cmd,
-	                                    packet.data(),
-	                                    &cmd_stats,
-	                                    context);
+	int err = callbacks.n2_command_handler(m_state,
+	                                       callbacks.command_private,
+	                                       &request_info,
+	                                       &cmd_stats,
+	                                       context);
+	if (!err) {
+		err = status;
+	}
+
 	DNET_LOG_NOTICE(m_state->n, "{}: local remove_new: err: {}", dnet_dump_id(&cmd.id), err);
 
 	return err;

@@ -395,7 +395,7 @@ int blob_file_info(eblob_backend_config *c, void *state, struct n2_request_info 
 }
 
 static int blob_del_new_cas(eblob_backend_config *c, eblob_backend *b, const dnet_cmd *cmd, eblob_key &key,
-			    const ioremap::elliptics::dnet_remove_request &request) {
+                            const dnet_time &timestamp) {
 	eblob_write_control wc;
 	int err = eblob_read_return(b, &key, EBLOB_READ_NOCSUM, &wc);
 	if (err) {
@@ -432,8 +432,8 @@ static int blob_del_new_cas(eblob_backend_config *c, eblob_backend *b, const dne
 		return err;
 	}
 
-	if (dnet_time_cmp(&ehdr.timestamp, &request.timestamp) > 0) {
-		const std::string request_ts = dnet_print_time(&request.timestamp);
+	if (dnet_time_cmp(&ehdr.timestamp, &timestamp) > 0) {
+		const std::string request_ts = dnet_print_time(&timestamp);
 		const std::string disk_ts = dnet_print_time(&ehdr.timestamp);
 
 		DNET_LOG_ERROR(c->blog, "{}: EBLOB: {}: REMOVE_NEW: failed cas: "
@@ -446,34 +446,31 @@ static int blob_del_new_cas(eblob_backend_config *c, eblob_backend *b, const dne
 	return 0;
 }
 
-int blob_del_new(eblob_backend_config *c, dnet_cmd *cmd, void *data, struct dnet_access_context *context) {
+int blob_del_new(eblob_backend_config *c, struct n2_request_info *req_info, struct dnet_access_context *context) {
 	using namespace ioremap::elliptics;
 	eblob_backend *b = c->eblob;
 
-	const auto request = [&data, &cmd] () {
-		dnet_remove_request request;
-		deserialize(data_pointer::from_raw(data, cmd->size), request);
-		return request;
-	} ();
+	auto request = static_cast<n2::remove_request *>(req_info->request.body.get());
+	auto cmd = &req_info->request.cmd;
 
 	if (context) {
 		context->add({{"id", std::string(dnet_dump_id(&cmd->id))},
-		              {"ioflags", std::string(dnet_flags_dump_ioflags(request.ioflags))},
+		              {"ioflags", std::string(dnet_flags_dump_ioflags(request->ioflags))},
 		             });
-		if (request.ioflags & DNET_IO_FLAGS_CAS_TIMESTAMP) {
-			context->add({"ts-cas", std::string(dnet_print_time(&request.timestamp))});
+		if (request->ioflags & DNET_IO_FLAGS_CAS_TIMESTAMP) {
+			context->add({"ts-cas", std::string(dnet_print_time(&request->timestamp))});
 		}
 	}
 
 	DNET_LOG_INFO(c->blog, "{}: EBLOB: {}: REMOVE_NEW: start: ioflags: {}",
-		      dnet_dump_id(&cmd->id), __func__, dnet_flags_dump_ioflags(request.ioflags));
+		      dnet_dump_id(&cmd->id), __func__, dnet_flags_dump_ioflags(request->ioflags));
 
 	eblob_key key;
 	memcpy(key.id, cmd->id.id, EBLOB_ID_SIZE);
 
 	int err;
-	if (request.ioflags & DNET_IO_FLAGS_CAS_TIMESTAMP) {
-		err = blob_del_new_cas(c, b, cmd, key, request);
+	if (request->ioflags & DNET_IO_FLAGS_CAS_TIMESTAMP) {
+		err = blob_del_new_cas(c, b, cmd, key, request->timestamp);
 		if (err)
 			return err;
 	}
@@ -483,7 +480,12 @@ int blob_del_new(eblob_backend_config *c, dnet_cmd *cmd, void *data, struct dnet
 	DNET_LOG(c->blog, err ? DNET_LOG_ERROR : DNET_LOG_INFO, "{}: EBLOB: {} finished: {}",
 		 dnet_dump_id(&cmd->id), __func__, dnet_print_error(err));
 
-	return err;
+	if (err) {
+		return err;
+	}
+
+	// TODO(artsel): Do not call on_reply_error if sending to client is failed
+	return req_info->repliers.on_reply(nullptr);
 }
 
 static int blob_read_new_impl(eblob_backend_config *c,
@@ -2283,8 +2285,7 @@ int blob_bulk_remove_new(struct eblob_backend_config *config,
 		{
 			dnet_oplock_guard oplock_guard{pool, &cmd_copy.id};
 			if (bulk_request.ioflags & DNET_IO_FLAGS_CAS_TIMESTAMP) {
-				dnet_remove_request single_request{bulk_request.ioflags, bulk_request.timestamps[i]};
-				err = blob_del_new_cas(config, b, &cmd_copy, key, single_request);
+				err = blob_del_new_cas(config, b, &cmd_copy, key, bulk_request.timestamps[i]);
 			}
 			if (!err) {
 				err = eblob_remove(b, &key);
@@ -2314,6 +2315,9 @@ int n2_eblob_backend_command_handler(void *state,
 		case DNET_CMD_LOOKUP:
 		case DNET_CMD_LOOKUP_NEW:
 			err = blob_file_info(c, state, req_info, context);
+			break;
+		case DNET_CMD_DEL_NEW:
+			err = blob_del_new(c, req_info, context);
 			break;
 		default:
 			err = -ENOTSUP;

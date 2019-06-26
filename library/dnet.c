@@ -1801,7 +1801,19 @@ static int n2_process_cmd_with_backend_raw(struct dnet_net_state *st,
 		}
 
 		err = n2_backend_process_cmd_raw(backend, st, req_info, cmd_stats, context);
+		break;
+	case DNET_CMD_DEL_NEW:
+		if (n->ro || dnet_backend_read_only(backend)) {
+			err = -EROFS;
+			break;
+		}
 
+		err = n2_cmd_cache_io(backend, st, req_info, cmd_stats, context);
+		if (err != -ENOTSUP) {
+			break;
+		}
+
+		err = n2_backend_process_cmd_raw(backend, st, req_info, cmd_stats, context);
 		break;
 	default:
 		err = -ENOTSUP;

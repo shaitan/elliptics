@@ -19,6 +19,8 @@ struct n2_request {
 	std::shared_ptr<n2_body> body;
 
 	n2_request(const dnet_cmd &cmd, const dnet_time &deadline);
+
+	n2_request(const dnet_cmd &cmd, const dnet_time &deadline, std::shared_ptr<n2_body> body);
 };
 
 // Group of ways to reply on request. Some of replies can be unimplemented, depending on handler.
@@ -101,6 +103,16 @@ struct lookup_response : n2_body {
 	                uint64_t data_offset,
 	                uint64_t data_size,
 	                std::vector<unsigned char> data_checksum);
+};
+
+struct remove_request : n2_body {
+	uint64_t ioflags;
+	dnet_time timestamp;
+
+	remove_request();
+
+	remove_request(uint64_t ioflags,
+	               dnet_time timestamp);
 };
 
 }}} // namespace ioremap::elliptics::n2

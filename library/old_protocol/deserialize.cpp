@@ -53,6 +53,17 @@ inline n2::lookup_response &operator >>(msgpack::object o, n2::lookup_response &
 	return v;
 }
 
+inline n2::remove_request &operator >>(msgpack::object o, n2::remove_request &v) {
+	if (o.type != msgpack::type::ARRAY || o.via.array.size < 2)
+		throw msgpack::type_error();
+
+	object *p = o.via.array.ptr;
+	p[0].convert(&v.ioflags);
+	p[1].convert(&v.timestamp);
+
+	return v;
+}
+
 } // namespace msgpack
 
 namespace ioremap { namespace elliptics { namespace n2 {
@@ -113,5 +124,6 @@ int deserialize_new(dnet_node *n, data_pointer &&message_buffer, std::shared_ptr
 }
 
 template int deserialize_new<lookup_response>(dnet_node *, data_pointer &&, std::shared_ptr<n2_body> &);
+template int deserialize_new<remove_request>(dnet_node *, data_pointer &&, std::shared_ptr<n2_body> &);
 
 }}} // namespace ioremap::elliptics::n2

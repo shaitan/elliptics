@@ -42,7 +42,9 @@ public:
 
 	read_response_t read(const unsigned char *id, uint64_t ioflags);
 
-	int remove(const dnet_cmd *cmd, ioremap::elliptics::dnet_remove_request &request, dnet_access_context *context);
+	int remove(const dnet_cmd *cmd,
+	           std::shared_ptr<ioremap::elliptics::n2::remove_request> request,
+	           dnet_access_context *context);
 
 	read_response_t lookup(const unsigned char *id);
 

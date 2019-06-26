@@ -60,7 +60,7 @@ public:
 
 	int remove(const struct dnet_id &id, dnet_access_context *context = nullptr);
 	int remove_new(const struct dnet_id &id,
-	               const ioremap::elliptics::dnet_remove_request &request,
+	               std::shared_ptr<ioremap::elliptics::n2::remove_request> request,
 	               dnet_access_context *context = nullptr);
 
 private:
