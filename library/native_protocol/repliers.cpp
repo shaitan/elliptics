@@ -47,6 +47,10 @@ static size_t calculate_body_size(const n2_serialized::chunks_t &chunks) {
 }
 
 int replier_base::reply_impl(const std::shared_ptr<n2_body> &body) {
+	if (!need_ack_) {
+		return 0;
+	}
+
 	n2_serialized::chunks_t chunks;
 	serialize_body(body, chunks);
 
@@ -58,8 +62,9 @@ int replier_base::reply_impl(const std::shared_ptr<n2_body> &body) {
 }
 
 int replier_base::reply_error_impl(int errc) {
-	if (!need_ack_)
+	if (!need_ack_) {
 		return 0;
+	}
 
 	cmd_.size = 0;
 	cmd_.status = errc;
