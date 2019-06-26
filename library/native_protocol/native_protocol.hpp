@@ -25,6 +25,23 @@ private:
 	int translate_lookup_request(dnet_net_state *st, const dnet_cmd &cmd);
 	int translate_lookup_new_request(dnet_net_state *st, const dnet_cmd &cmd);
 	int translate_remove_new_request(dnet_net_state *st, const dnet_cmd &cmd, data_pointer &&body);
+
+	template <class Replier>
+	int translate_request(dnet_net_state *st, const dnet_cmd &cmd, std::shared_ptr<n2_body> body) {
+		auto replier = std::make_shared<Replier>(st, cmd);
+
+		std::unique_ptr<n2_request_info> request_info(
+			new n2_request_info{n2_request(cmd, n2::default_deadline(), std::move(body)), n2_repliers()});
+
+		request_info->repliers.on_reply = std::bind(&Replier::reply,
+		                                            replier,
+		                                            std::placeholders::_1);
+		request_info->repliers.on_reply_error = std::bind(&Replier::reply_error,
+		                                                  replier,
+		                                                  std::placeholders::_1);
+		return on_request(st, std::move(request_info));
+	}
+
 };
 
 }}} // namespace ioremap::elliptics::native

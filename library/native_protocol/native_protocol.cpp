@@ -110,42 +110,19 @@ int protocol::recv_response(dnet_net_state *st, const dnet_cmd &cmd, data_pointe
 }
 
 int protocol::translate_lookup_request(dnet_net_state *st, const dnet_cmd &cmd) {
-	std::unique_ptr<n2_request_info> request_info(
-		new n2_request_info{n2_request(cmd, default_deadline()), n2_repliers()});
-
-	auto replier = std::make_shared<lookup_replier>(st, cmd);
-	request_info->repliers.on_reply = std::bind(&lookup_replier::reply, replier, std::placeholders::_1);
-	request_info->repliers.on_reply_error = std::bind(&lookup_replier::reply_error, replier, std::placeholders::_1);
-
-	return on_request(st, std::move(request_info));
+	return translate_request<lookup_replier>(st, cmd, nullptr);
 }
 
 int protocol::translate_lookup_new_request(dnet_net_state *st, const dnet_cmd &cmd) {
-	std::unique_ptr<n2_request_info> request_info(
-		new n2_request_info{n2_request(cmd, default_deadline()), n2_repliers()});
-
-	auto replier = std::make_shared<lookup_new_replier>(st, cmd);
-	request_info->repliers.on_reply = std::bind(&lookup_new_replier::reply, replier, std::placeholders::_1);
-	request_info->repliers.on_reply_error = std::bind(&lookup_new_replier::reply_error,
-	                                                  replier, std::placeholders::_1);
-
-	return on_request(st, std::move(request_info));
+	return translate_request<lookup_new_replier>(st, cmd, nullptr);
 }
 
 int protocol::translate_remove_new_request(dnet_net_state *st, const dnet_cmd &cmd, data_pointer &&body) {
-	std::unique_ptr<n2_request_info> request_info(
-		new n2_request_info{n2_request(cmd, default_deadline()), n2_repliers()});
-
-	int err = deserialize_new<remove_request>(st->n, std::move(body), request_info->request.body);
+	std::shared_ptr<n2_body> deserialized;
+	int err = deserialize_new<remove_request>(st->n, std::move(body), deserialized);
 	if (err)
 		return err;
-
-	auto replier = std::make_shared<replier_base>(st, cmd);
-	request_info->repliers.on_reply = std::bind(&replier_base::reply, replier, std::placeholders::_1);
-	request_info->repliers.on_reply_error = std::bind(&replier_base::reply_error,
-	                                                  replier, std::placeholders::_1);
-
-	return on_request(st, std::move(request_info));
+	return translate_request<replier_base>(st, cmd, deserialized);
 }
 
 }}} // namespace ioremap::elliptics::native
