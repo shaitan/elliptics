@@ -82,9 +82,10 @@ int protocol::recv_response(dnet_net_state *st, const dnet_cmd &cmd, data_pointe
 	}
 
 	n2_repliers &repliers = *t->repliers;
+	bool last = !(cmd.flags & DNET_FLAGS_MORE);
 
 	if (cmd.status) {
-		return repliers.on_reply_error(cmd.status);
+		return repliers.on_reply_error(cmd.status, last);
 	}
 
 	int err = 0;
@@ -106,7 +107,7 @@ int protocol::recv_response(dnet_net_state *st, const dnet_cmd &cmd, data_pointe
 	if (err)
 		return err;
 
-	return repliers.on_reply(body);
+	return repliers.on_reply(body, last);
 }
 
 int protocol::translate_lookup_request(dnet_net_state *st, const dnet_cmd &cmd) {

@@ -29,9 +29,38 @@ struct n2_request {
 struct n2_repliers {
 	// Here refcounting isn't required, but shared_ptr is used for dynamic destruction and for compatibility
 	// with binding to std::function (bound parameter must be copyable).
-	std::function<int (const std::shared_ptr<n2_body> &)> on_reply;
+	std::function<int (const std::shared_ptr<n2_body> &/*body*/, bool /*last*/)> on_reply;
 
-	std::function<int (int)> on_reply_error;
+	std::function<int (int /*err*/, bool /*last*/)> on_reply_error;
+
+	// Helpers
+	inline int on_last_reply(const std::shared_ptr<n2_body> &body) const {
+		return on_reply(body, true);
+	}
+
+	inline int on_next_reply(const std::shared_ptr<n2_body> &body) const {
+		return on_reply(body, false);
+	}
+
+	inline int on_ack(bool last) const {
+		return on_reply(nullptr, last);
+	}
+
+	inline int on_last_ack() const {
+		return on_ack(true);
+	}
+
+	inline int on_next_ack() const {
+		return on_ack(false);
+	}
+
+	inline int on_last_error(int err) const {
+		return on_reply_error(err, true);
+	}
+
+	inline int on_next_error(int err) const {
+		return on_reply_error(err, false);
+	}
 
 	// TODO: add streaming repliers
 };

@@ -258,11 +258,11 @@ std::shared_ptr<n2::lookup_response> local_session::lookup(const dnet_cmd &tmp_c
 
 	std::shared_ptr<n2::lookup_response> response;
 	n2_repliers repliers{
-		[&](const std::shared_ptr<n2_body> &resp) {
+		[&](const std::shared_ptr<n2_body> &resp, bool) {
 			response = std::static_pointer_cast<n2::lookup_response>(resp);
 			return 0;
 		}, // on_reply
-		[](int err) {
+		[](int err, bool) {
 			return err;
 		} // on_reply_error
 	};
@@ -329,10 +329,10 @@ int local_session::remove_new(const struct dnet_id &id,
 
 	int status = 0;
 	n2_repliers repliers{
-		[](const std::shared_ptr<n2_body> &/*body*/) {
+		[](const std::shared_ptr<n2_body> &, bool) {
 			return 0;
 		}, // on_reply
-		[&status](int err) {
+		[&status](int err, bool) {
 			status = err;
 			return 0;
 		} // on_reply_error

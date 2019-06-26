@@ -21,8 +21,8 @@ class replier_base {
 public:
 	replier_base(dnet_net_state *st, const dnet_cmd &cmd);
 
-	int reply(const std::shared_ptr<n2_body> &msg);
-	int reply_error(int errc);
+	int reply(const std::shared_ptr<n2_body> &msg, bool last);
+	int reply_error(int errc, bool last);
 
 protected:
 	dnet_net_state *st_;
@@ -31,11 +31,13 @@ protected:
 private:
 	int reply_impl(const std::shared_ptr<n2_body> &msg);
 	int reply_error_impl(int errc);
+	bool test_and_set_reply_has_sent(bool last);
+	void set_flag(uint64_t flag, bool value);
 
 	virtual void serialize_body(const std::shared_ptr<n2_body> &msg, n2_serialized::chunks_t &chunks);
 
 	const bool need_ack_;
-	std::atomic_flag reply_has_sent_;
+	std::atomic_bool reply_has_sent_;
 };
 
 // Lookup request stuff

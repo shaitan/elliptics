@@ -518,11 +518,11 @@ static int dnet_cmd_cache_io_lookup(struct dnet_backend *backend,
 	if (err) {
 		// we didn't find key on disk, but yet it exists in cache
 		// lookup by its nature is 'show me what is on disk' command
-		return req_info->repliers.on_reply(
+		return req_info->repliers.on_last_reply(
 			n2_fill_lookup_response_without_fd(st, cmd, nullptr, 0, it.timestamp));
 	} else {
 		response->data_timestamp = it.timestamp;
-		return req_info->repliers.on_reply(std::move(response));
+		return req_info->repliers.on_last_reply(std::move(response));
 	}
 }
 
@@ -586,7 +586,7 @@ static int dnet_cmd_cache_io_lookup_new(struct cache_manager *cache,
 		}
 	}
 
-	return req_info->repliers.on_reply(
+	return req_info->repliers.on_last_reply(
 		std::make_shared<n2::lookup_response>(0, // record_flags
 	                                              it.user_flags, // user_flags
 	                                              std::string(), // path
@@ -635,7 +635,7 @@ static int dnet_cmd_cache_io_remove_new(struct cache_manager *cache,
 
 	cmd_stats->handled_in_cache = 1;
 
-	return req_info->repliers.on_reply(nullptr);
+	return req_info->repliers.on_last_ack();
 }
 
 int dnet_cmd_cache_io(struct dnet_backend *backend,

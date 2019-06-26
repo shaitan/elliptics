@@ -15,27 +15,26 @@ replier_base::replier_base(dnet_net_state *st, const dnet_cmd &cmd)
 : st_(st)
 , cmd_(cmd)
 , need_ack_(!!(cmd_.flags & DNET_FLAGS_NEED_ACK))
-, reply_has_sent_(ATOMIC_FLAG_INIT)
+, reply_has_sent_(false)
 {
-	cmd_.flags = (cmd_.flags & ~(DNET_FLAGS_NEED_ACK)) | DNET_FLAGS_REPLY;
+	set_flag(DNET_FLAGS_NEED_ACK, false);
+	set_flag(DNET_FLAGS_REPLY, true);
 }
 
-int replier_base::reply(const std::shared_ptr<n2_body> &msg) {
-	if (!reply_has_sent_.test_and_set()) {
-		return c_exception_guard(std::bind(&replier_base::reply_impl, this, std::cref(msg)),
-		                         st_->n, __FUNCTION__);
-	} else {
+int replier_base::reply(const std::shared_ptr<n2_body> &msg, bool last) {
+	if (!test_and_set_reply_has_sent(last)) {
 		return -EALREADY;
 	}
+	set_flag(DNET_FLAGS_MORE, !last);
+	return c_exception_guard(std::bind(&replier_base::reply_impl, this, std::cref(msg)), st_->n, __FUNCTION__);
 }
 
-int replier_base::reply_error(int errc) {
-	if (!reply_has_sent_.test_and_set()) {
-		return c_exception_guard(std::bind(&replier_base::reply_error_impl, this, errc),
-		                         st_->n, __FUNCTION__);
-	} else {
+int replier_base::reply_error(int errc, bool last) {
+	if (!test_and_set_reply_has_sent(last)) {
 		return -EALREADY;
 	}
+	set_flag(DNET_FLAGS_MORE, !last);
+	return c_exception_guard(std::bind(&replier_base::reply_error_impl, this, errc), st_->n, __FUNCTION__);
 }
 
 static size_t calculate_body_size(const n2_serialized::chunks_t &chunks) {
@@ -71,6 +70,22 @@ int replier_base::reply_error_impl(int errc) {
 
 	std::unique_ptr<n2_serialized> serialized(new n2_serialized{cmd_, {}});
 	return enqueue_net(st_, std::move(serialized));
+}
+
+bool replier_base::test_and_set_reply_has_sent(bool last) {
+	if (last) {
+		return !reply_has_sent_.exchange(true);
+	} else {
+		return !reply_has_sent_;
+	}
+}
+
+void replier_base::set_flag(uint64_t flag, bool value) {
+	if (value) {
+		cmd_.flags |= flag;
+	} else {
+		cmd_.flags &= ~flag;
+	}
 }
 
 void replier_base::serialize_body(const std::shared_ptr<n2_body> &/*msg*/, n2_serialized::chunks_t &/*chunks*/) {};

@@ -1460,13 +1460,13 @@ n2_repliers n2_make_repliers_via_request_queue(dnet_net_state *st, const dnet_cm
 	n2_repliers repliers_wrappers;
 
 	repliers_wrappers.on_reply_error = [on_reply_error = std::move(repliers.on_reply_error),
-                                            enqueue_response](int errc) -> int {
-		return enqueue_response(std::bind(on_reply_error, errc));
+                                            enqueue_response](int errc, bool last) -> int {
+		return enqueue_response(std::bind(on_reply_error, errc, last));
 	};
 
 	repliers_wrappers.on_reply = [on_reply = std::move(repliers.on_reply),
-	                              enqueue_response](const std::shared_ptr<n2_body> &msg) -> int {
-		return enqueue_response(std::bind(on_reply, msg));
+	                              enqueue_response](const std::shared_ptr<n2_body> &msg, bool last) -> int {
+		return enqueue_response(std::bind(on_reply, msg, last));
 	};
 
 	return repliers_wrappers;
@@ -1561,7 +1561,7 @@ int n2_send_error_response(struct dnet_net_state *st,
                            struct n2_request_info *req_info,
                            int errc) {
 	auto impl = [&] {
-		return req_info->repliers.on_reply_error(errc);
+		return req_info->repliers.on_last_error(errc);
 	};
 	return c_exception_guard(impl, st->n, __FUNCTION__);
 }

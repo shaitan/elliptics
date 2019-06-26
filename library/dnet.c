@@ -1878,6 +1878,10 @@ int n2_process_cmd_raw(struct dnet_net_state *st,
 	if (err)
 		err = n2_send_error_response(st, req_info, err);
 
+	// error -EALREADY occurs if previously we have tried to send response to client and that attempt has failed
+	if (err == -EALREADY)
+		err = 0;
+
 	dnet_stat_inc(st->stat, cmd->cmd, err);
 	if (st->__join_state == DNET_JOIN)
 		dnet_counter_inc(n, cmd->cmd, err);

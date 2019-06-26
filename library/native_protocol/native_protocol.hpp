@@ -35,13 +35,14 @@ private:
 
 		request_info->repliers.on_reply = std::bind(&Replier::reply,
 		                                            replier,
-		                                            std::placeholders::_1);
+		                                            std::placeholders::_1,
+		                                            std::placeholders::_2);
 		request_info->repliers.on_reply_error = std::bind(&Replier::reply_error,
 		                                                  replier,
-		                                                  std::placeholders::_1);
+		                                                  std::placeholders::_1,
+		                                                  std::placeholders::_2);
 		return on_request(st, std::move(request_info));
 	}
-
 };
 
 }}} // namespace ioremap::elliptics::native

@@ -369,7 +369,7 @@ int blob_file_info(eblob_backend_config *c, void *state, struct n2_request_info 
 		}
 	}
 
-	err = req_info->repliers.on_reply(
+	err = req_info->repliers.on_last_reply(
 		std::make_shared<n2::lookup_response>(wc.flags, // record_flags
 		                                      uint64_t(ehdr.flags), // user_flags
 		                                      std::move(filename), // path
@@ -484,8 +484,7 @@ int blob_del_new(eblob_backend_config *c, struct n2_request_info *req_info, stru
 		return err;
 	}
 
-	// TODO(artsel): Do not call on_reply_error if sending to client is failed
-	return req_info->repliers.on_reply(nullptr);
+	return req_info->repliers.on_last_ack();
 }
 
 static int blob_read_new_impl(eblob_backend_config *c,
