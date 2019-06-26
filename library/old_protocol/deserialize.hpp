@@ -6,9 +6,10 @@
 
 namespace ioremap { namespace elliptics { namespace n2 {
 
-int deserialize_lookup_response_body(dnet_node *n, const dnet_cmd &cmd, data_pointer &&message_buffer,
+int deserialize_lookup_response_body(dnet_node *n, data_pointer &&message_buffer,
                                      std::shared_ptr<n2_body> &out_deserialized);
-int deserialize_lookup_new_response_body(dnet_node *n, const dnet_cmd &cmd, data_pointer &&message_buffer,
-                                         std::shared_ptr<n2_body> &out_deserialized);
+
+template <class Message>
+int deserialize_new(dnet_node *n, data_pointer &&message_buffer, std::shared_ptr<n2_body> &out_deserialized);
 
 }}} // namespace ioremap::elliptics::n2

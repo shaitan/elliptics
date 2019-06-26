@@ -1147,14 +1147,6 @@ static int eblob_backend_command_handler(void *state,
 		case DNET_CMD_SEND:
 			err = blob_send(c, state, cmd, data);
 			break;
-		case DNET_CMD_LOOKUP:
-		case DNET_CMD_LOOKUP_NEW:
-			// Must never reach this label.
-			// The analogue func blob_file_info must be called from n2_eblob_backend_command_handler.
-			DNET_LOG_ERROR(c->blog, "%s: %s invalid backend operation call",
-				       dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd));
-			err = -EINVAL;
-			break;
 		case DNET_CMD_READ_NEW:
 			err = blob_read_new(c, state, cmd, data, cmd_stats, context);
 			break;
@@ -1175,6 +1167,13 @@ static int eblob_backend_command_handler(void *state,
 			break;
 		case DNET_CMD_BULK_REMOVE_NEW:
 			err = blob_bulk_remove_new(c, state, cmd, data, context);
+			break;
+		case DNET_CMD_LOOKUP:
+		case DNET_CMD_LOOKUP_NEW:
+			// Must never reach this label.
+			DNET_LOG_ERROR(c->blog, "%s: %s invalid backend operation call",
+				       dnet_dump_id(&cmd->id), dnet_cmd_string(cmd->cmd));
+			err = -EINVAL;
 			break;
 		default:
 			err = -ENOTSUP;

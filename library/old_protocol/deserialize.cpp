@@ -73,7 +73,7 @@ int unpack(dnet_node *n, const data_pointer &data, T &value, size_t &length_of_p
 	}
 }
 
-int deserialize_lookup_response_body(dnet_node *n, const dnet_cmd &, data_pointer &&message_buffer,
+int deserialize_lookup_response_body(dnet_node *n, data_pointer &&message_buffer,
                                      std::shared_ptr<n2_body> &out_deserialized) {
 	auto body = std::make_shared<lookup_response>();
 
@@ -99,9 +99,9 @@ int deserialize_lookup_response_body(dnet_node *n, const dnet_cmd &, data_pointe
 	return 0;
 }
 
-int deserialize_lookup_new_response_body(dnet_node *n, const dnet_cmd &, data_pointer &&message_buffer,
-                                         std::shared_ptr<n2_body> &out_deserialized) {
-	auto body = std::make_shared<lookup_response>();
+template <class Message>
+int deserialize_new(dnet_node *n, data_pointer &&message_buffer, std::shared_ptr<n2_body> &out_deserialized) {
+	auto body = std::make_shared<Message>();
 
 	size_t unused_length_of_packed;
 	int err = unpack(n, message_buffer, *body, unused_length_of_packed);
@@ -111,5 +111,7 @@ int deserialize_lookup_new_response_body(dnet_node *n, const dnet_cmd &, data_po
 	out_deserialized = std::move(body);
 	return 0;
 }
+
+template int deserialize_new<lookup_response>(dnet_node *, data_pointer &&, std::shared_ptr<n2_body> &);
 
 }}} // namespace ioremap::elliptics::n2

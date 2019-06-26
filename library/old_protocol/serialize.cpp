@@ -55,8 +55,10 @@ int enqueue_net(dnet_net_state *st, std::unique_ptr<n2_serialized> serialized) {
 	return 0;
 }
 
-void serialize_lookup_response_body(dnet_node *n, const dnet_cmd &cmd, const lookup_response &body,
+void serialize_lookup_response_body(dnet_node *n, const dnet_cmd &cmd, const n2_body &raw_body,
                                     n2_serialized::chunks_t &chunks) {
+	const auto &body = static_cast<const lookup_response &>(raw_body);
+
 	auto path_size = body.path.size() + 1;  // including 0-byte
 	auto data = data_pointer::allocate(sizeof(struct dnet_addr) +
 					   sizeof(struct dnet_file_info) +
@@ -89,11 +91,15 @@ void serialize_lookup_response_body(dnet_node *n, const dnet_cmd &cmd, const loo
 	chunks.emplace_back(std::move(data));
 }
 
-void serialize_lookup_new_response_body(dnet_node *, const dnet_cmd &, const lookup_response &body,
-                                        n2_serialized::chunks_t &chunks) {
+template <class Message>
+void serialize_new(const n2_body &raw_body, n2_serialized::chunks_t &chunks) {
+	const auto &body = static_cast<const Message &>(raw_body);
+
 	msgpack::sbuffer msgpack_buffer;
 	msgpack::pack(msgpack_buffer, body);
 	chunks.emplace_back(data_pointer::copy(msgpack_buffer.data(), msgpack_buffer.size()));
 }
+
+template void serialize_new<lookup_response>(const n2_body &, n2_serialized::chunks_t &);
 
 }}} // namespace ioremap::elliptics::n2

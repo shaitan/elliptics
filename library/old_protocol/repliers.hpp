@@ -19,7 +19,7 @@ namespace ioremap { namespace elliptics { namespace n2 {
 
 class replier_base {
 public:
-	replier_base(const char *handler_name, dnet_net_state *st, const dnet_cmd &cmd);
+	replier_base(dnet_net_state *st, const dnet_cmd &cmd);
 
 	int reply(const std::shared_ptr<n2_body> &msg);
 	int reply_error(int errc);
@@ -32,9 +32,8 @@ private:
 	int reply_impl(const std::shared_ptr<n2_body> &msg);
 	int reply_error_impl(int errc);
 
-	virtual void serialize_body(const std::shared_ptr<n2_body> &msg, n2_serialized::chunks_t &chunks) = 0;
+	virtual void serialize_body(const std::shared_ptr<n2_body> &msg, n2_serialized::chunks_t &chunks);
 
-	const char *handler_name_;
 	const bool need_ack_;
 	std::atomic_flag reply_has_sent_;
 };

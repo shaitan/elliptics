@@ -20,9 +20,10 @@ namespace ioremap { namespace elliptics { namespace n2 {
 // TODO: this function isn't related to serialization process, think about moving it to another module
 int enqueue_net(dnet_net_state *st, std::unique_ptr<n2_serialized> serialized);
 
-void serialize_lookup_response_body(dnet_node *n, const dnet_cmd &cmd, const lookup_response &body,
+void serialize_lookup_response_body(dnet_node *n, const dnet_cmd &cmd, const n2_body &raw_body,
                                     n2_serialized::chunks_t &chunks);
-void serialize_lookup_new_response_body(dnet_node *n, const dnet_cmd &cmd, const lookup_response &body,
-                                        n2_serialized::chunks_t &chunks);
+
+template <class Message>
+void serialize_new(const n2_body &raw_body, n2_serialized::chunks_t &chunks);
 
 }}} // namespace ioremap::elliptics::n2

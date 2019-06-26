@@ -69,7 +69,7 @@ protocol_interface *net_state_get_protocol(dnet_net_state* st);
 
 dnet_time default_deadline();
 
-struct lookup_response : public n2_body {
+struct lookup_response : n2_body {
 	uint64_t record_flags;
 	uint64_t user_flags;
 	std::string path;

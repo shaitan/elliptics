@@ -68,34 +68,34 @@ int old_protocol::recv_response(dnet_net_state *st, const dnet_cmd &cmd, data_po
 		t(dnet_trans_search(st, cmd.trans), &dnet_trans_put);
 	pthread_mutex_unlock(&st->trans_lock);
 
-	if (!t || !t->repliers)
+	if (!t || !t->repliers) {
 		return -EINVAL;
+	}
 
 	n2_repliers &repliers = *t->repliers;
 
 	if (cmd.status) {
 		return repliers.on_reply_error(cmd.status);
-
-	} else {
-		int err = 0;
-		std::shared_ptr<n2_body> body;
-
-		switch (cmd.cmd) {
-		case DNET_CMD_LOOKUP:
-			err = deserialize_lookup_response_body(st->n, cmd, std::move(raw_body), body);
-			break;
-		case DNET_CMD_LOOKUP_NEW:
-			err = deserialize_lookup_new_response_body(st->n, cmd, std::move(raw_body), body);
-			break;
-		default:
-			// Must never reach this code, due to is_supported_message() filter called before
-			err = -ENOTSUP;
-		}
-		if (err)
-			return err;
-
-		return repliers.on_reply(body);
 	}
+
+	int err = 0;
+	std::shared_ptr<n2_body> body;
+
+	switch (cmd.cmd) {
+	case DNET_CMD_LOOKUP:
+		err = deserialize_lookup_response_body(st->n, std::move(raw_body), body);
+		break;
+	case DNET_CMD_LOOKUP_NEW:
+		err = deserialize_new<lookup_response>(st->n, std::move(raw_body), body);
+		break;
+	default:
+		// Must never reach this code, due to is_supported_message() filter called before
+		err = -ENOTSUP;
+	}
+	if (err)
+		return err;
+
+	return repliers.on_reply(body);
 }
 
 int old_protocol::translate_lookup_request(dnet_net_state *st, const dnet_cmd &cmd) {
