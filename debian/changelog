@@ -1,3 +1,20 @@
+elliptics (2.27.10.4) unstable; urgency=low
+
+  * fix: merge processing LOOKUP and LOOKUP_NEW
+  * fix: undo explicit checking of allocation by new() operator
+  * fix: resolve unused parameter warnings
+  * fix: remove superfluous exception guard
+  * fix: rework protocol to use shared request body
+  * refact: minor refactoring of LOOKUP and LOOKUP_NEW commands
+  * refact: separate serialization and deserialization from logic of DELETE_NEW command
+  * fix: rename old_protocol -> native_protocol
+  * fix: move native_protocol features outside of common namespace
+  * refact: union logic of request translation in old_protocol
+  * refact: do not send response if no flag DNET_FLAGS_NEED_ACK
+  * refact: support sending of several responses in repliers
+
+ -- Artem Selishchev <arselishev@gmail.com>  Thu, 27 Jun 2019 18:06:50 +0300
+
 elliptics (2.27.10.3) unstable; urgency=low
 
   * access: add backend_id to context for each request handled or failed by a backend
