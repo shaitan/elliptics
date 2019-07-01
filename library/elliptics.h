@@ -374,6 +374,7 @@ struct dnet_net_io {
 	int			epoll_fd;
 	pthread_t		tid;
 	struct dnet_node	*n;
+	const char		*name;
 };
 
 enum dnet_work_io_mode {
@@ -454,6 +455,8 @@ struct dnet_io_pools_manager;
 struct n2_native_protocol_io;
 struct dnet_io {
 	int			need_exit;
+
+	struct dnet_net_io	acceptor;
 
 	int			net_thread_num, net_thread_pos;
 	struct dnet_net_io	*net;

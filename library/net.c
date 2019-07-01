@@ -920,10 +920,14 @@ int dnet_setup_control_nolock(struct dnet_net_state *st)
 	int err, pos;
 
 	if (st->epoll_fd == -1) {
-		pos = io->net_thread_pos;
-		if (++io->net_thread_pos >= io->net_thread_num)
-			io->net_thread_pos = 0;
-		st->epoll_fd = io->net[pos].epoll_fd;
+		if (st->accept_s != -1 && (n->flags & DNET_CFG_JOIN_NETWORK)) {
+			st->epoll_fd = io->acceptor.epoll_fd;
+		} else {
+			pos = io->net_thread_pos;
+			if (++io->net_thread_pos >= io->net_thread_num)
+				io->net_thread_pos = 0;
+			st->epoll_fd = io->net[pos].epoll_fd;
+		}
 
 		pthread_mutex_lock(&st->send_lock);
 		err = dnet_schedule_recv(st);
