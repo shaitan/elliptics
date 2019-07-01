@@ -12,13 +12,12 @@ namespace bu = boost::unit_test;
 nodes_data::ptr configure_test_setup(const std::string &path) {
 	auto server_config = [](const config_data &c) {
 		auto server = server_config::default_value();
-		server.options("wait_timeout", 3);
 		return server.apply_options(c);
 	};
 
-	auto configs = {server_config(config_data()("group", 1)),
-	                server_config(config_data()("group", 2)),
-	                server_config(config_data()("group", 3))};
+	auto configs = {server_config(config_data()("group", 1)("wait_timeout", 3)),
+	                server_config(config_data()("group", 2)("wait_timeout", 3)),
+	                server_config(config_data()("group", 3)("wait_timeout", 1))};
 
 	start_nodes_config config{bu::results_reporter::get_stream(), configs, path};
 	config.fork = true;
@@ -162,6 +161,36 @@ void test_forward_read_with_deadline(ioremap::elliptics::newapi::session &sessio
 	s.set_delay(delayed_remote, delayed_backend, 0).wait();
 }
 
+void test_forward_lookup_with_deadline_at_proxy(ioremap::elliptics::newapi::session &session, const nodes_data *setup) {
+	auto s = session.clone();
+	s.set_groups({2});
+	s.set_filter(ioremap::elliptics::filters::all_final);
+
+	const auto delayed_remote = setup->nodes[1].remote();
+	static const auto delayed_backend = 0;
+	s.set_delay(delayed_remote, delayed_backend, 2000).wait();
+
+	// Doesn't matter. Response with ETIMEDOUT will be received earlier, timeout will be triggered in forward node.
+	s.set_timeout(50);
+
+	const auto forward = setup->nodes[2].remote();
+	s.set_forward(forward);
+
+	{
+		auto async = s.lookup({"nonexistent key"});
+		size_t count = 0;
+		for (const auto &result: async) {
+			BOOST_REQUIRE_EQUAL(result.status(), -ETIMEDOUT);
+			BOOST_REQUIRE_EQUAL(dnet_addr_string(result.address()), forward.to_string());
+			++count;
+		}
+		BOOST_REQUIRE_EQUAL(count, 1);
+	}
+
+	// reset backend's delay to 0
+	s.set_delay(delayed_remote, delayed_backend, 0).wait();
+}
+
 bool register_tests(const nodes_data *setup)
 {
 	auto n = setup->node->get_native();
@@ -170,6 +199,7 @@ bool register_tests(const nodes_data *setup)
 	ELLIPTICS_TEST_CASE(test_forward_lookup_2_nothing, use_session(n));
 	ELLIPTICS_TEST_CASE(test_forward_lookup_2_nonexistent_groups, use_session(n), setup);
 	ELLIPTICS_TEST_CASE(test_forward_read_with_deadline, use_session(n), setup);
+	ELLIPTICS_TEST_CASE(test_forward_lookup_with_deadline_at_proxy, use_session(n), setup);
 
 	return true;
 }
