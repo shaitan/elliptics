@@ -383,6 +383,7 @@ void dnet_schedule_io(struct dnet_node *n, struct dnet_io_req *r)
 			                            "failed to set cmd->backend_id : %s %d",
 	        	         dnet_state_dump_addr(r->st), dnet_dump_id(&cmd->id), backend_id, place,
 	        	         strerror(-err), err);
+			pthread_mutex_unlock(&place->lock);
 			return;
 		}
 	}
