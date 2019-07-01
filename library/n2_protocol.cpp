@@ -144,6 +144,22 @@ void n2_response_info_free(struct n2_response_info *resp_info) {
 	delete resp_info;
 }
 
+struct n2_response_info *n2_response_info_create_from_error(struct dnet_cmd *cmd, struct n2_repliers *repliers,
+                                                            int err) {
+	auto response_holder = std::bind(repliers->on_reply_error, err, true);
+	return new n2_response_info{ *cmd, std::move(response_holder) };
+}
+
+void n2_response_info_call_response(struct n2_response_info *response_info) {
+	response_info->response_holder();
+}
+
+void n2_reply_error(struct n2_repliers *repliers, int error) {
+	if (repliers->on_reply_error) {
+		repliers->on_last_error(error);
+	}
+}
+
 void n2_trans_destroy_repliers(struct n2_repliers *repliers) {
 	delete repliers;
 }

@@ -268,6 +268,10 @@ void dnet_trans_destroy(struct dnet_trans *t)
 	}
 
 	if (t->repliers) {
+		// This call takes affect only if no final on_reply* has been called before
+		// (when transaction is interrupted some way before getting meaningful result)
+		n2_reply_error(t->repliers, -ECANCELED);
+
 		n2_trans_destroy_repliers(t->repliers);
 	}
 
@@ -441,6 +445,9 @@ void dnet_trans_clean_list(struct list_head *head, int error)
 		if (t->complete) {
 			t->complete(dnet_state_addr(t->st), &t->cmd, t->priv);
 		}
+		if (t->repliers) {
+			n2_reply_error(t->repliers, error);
+		}
 
 		dnet_trans_put(t);
 		dnet_logger_unset_trace_id();
@@ -457,7 +464,7 @@ void dnet_update_stall_backend_weights(struct list_head *stall_transactions)
 	int err;
 
 	list_for_each_entry_safe(r, tmp, stall_transactions, req_entry) {
-		cmd = r->header;
+		cmd = dnet_io_req_get_cmd(r);
 		st = r->st;
 
 		err = dnet_get_backend_weight(st, cmd->backend_id, DNET_IO_FLAGS_CACHE, &old_cache_weight);
@@ -703,7 +710,19 @@ static int dnet_trans_convert_timed_out_to_responses(struct dnet_net_state *st, 
 		 */
 		dnet_trans_remove_timer_nolock(st, t);
 
-		r = calloc(1, cmd_size);
+		if (t->repliers) {
+			// Protocol-independent mechanic.
+
+			// Request will not be scheduled, it's created only as a holder for response_holder and cmd,
+			// and for compatibility with nextgoing algorithms.
+			// TODO: In this case dnet_io_req is superfluous proxy entity. This is temporary hack
+			// TODO: that should be reworked.
+			r = calloc(1, sizeof(struct dnet_io_req));
+		} else {
+			// Old mechanic. TODO: remove then refactoring complete
+			r = calloc(1, cmd_size);
+		}
+
 		if (!r) {
 			dnet_log(st->n, DNET_LOG_ERROR, "%s: %s: bad allocation, cannot save "
 			                                "timed-out transaction %s in output list",
@@ -716,15 +735,22 @@ static int dnet_trans_convert_timed_out_to_responses(struct dnet_net_state *st, 
 
 		r->st = dnet_state_get(st);
 
-		r->header = r + 1;
-		r->hsize = sizeof(struct dnet_cmd);
-		memcpy(r->header, &t->cmd, r->hsize);
+		if (t->repliers) {
+			// Protocol-independent mechanic
+			r->io_req_type = DNET_IO_REQ_TYPED_RESPONSE;
+			r->response_info = n2_response_info_create_from_error(&t->cmd, t->repliers, -ETIMEDOUT);
+		} else {
+			// Old mechanic. TODO: remove then refactoring complete
+			r->header = r + 1;
+			r->hsize = sizeof(struct dnet_cmd);
+			memcpy(r->header, &t->cmd, r->hsize);
 
-		cmd = r->header;
-		cmd->size = 0;
-		cmd->flags |= DNET_FLAGS_REPLY;
-		cmd->flags &= ~(DNET_FLAGS_MORE | DNET_FLAGS_NEED_ACK);
-		cmd->status = -ETIMEDOUT;
+			cmd = r->header;
+			cmd->size = 0;
+			cmd->flags |= DNET_FLAGS_REPLY;
+			cmd->flags &= ~(DNET_FLAGS_MORE | DNET_FLAGS_NEED_ACK);
+			cmd->status = -ETIMEDOUT;
+		}
 
 		list_add_tail(&r->req_entry, timeout_responses);
 
@@ -766,7 +792,15 @@ static void dnet_trans_enqueue_responses_on_timed_out(struct dnet_node *n, struc
 	list_for_each_entry_safe(r, tmp, timeout_responses, req_entry) {
 		list_del_init(&r->req_entry);
 
-		dnet_schedule_io(n, r);
+		if (r->io_req_type == DNET_IO_REQ_TYPED_RESPONSE) {
+			n2_response_info_call_response(r->response_info);
+
+			// Response functor is already includes scheduling io, so we can throw out current dnet_io_req
+			// just after response call.
+			dnet_io_req_free(r);
+		} else {
+			dnet_schedule_io(n, r);
+		}
 	}
 }
 
