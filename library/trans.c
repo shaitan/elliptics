@@ -652,7 +652,7 @@ static int dnet_ping_stall_node(struct dnet_net_state *st)
 	return dnet_trans_alloc_send_state(sess, st, &ctl);
 }
 
-static int dnet_trans_convert_timed_out_to_responses(struct dnet_net_state *st, struct list_head *head) {
+static int dnet_trans_convert_timed_out_to_responses(struct dnet_net_state *st, struct list_head *timeout_responses) {
 	struct dnet_trans *t;
 	struct rb_node *rb_node;
 	struct timespec ts;
@@ -698,7 +698,7 @@ static int dnet_trans_convert_timed_out_to_responses(struct dnet_net_state *st, 
 
 		/*
 		 * Remove timed-out transaction from net_state's timer-list, and then create
-		 * error-response for this transaction, and add to the function's output list (head).
+		 * error-response for this transaction, and add to the function's output list (timeout_responses).
 		 * The output list will be added to request_queue of the net state.
 		 */
 		dnet_trans_remove_timer_nolock(st, t);
@@ -726,7 +726,7 @@ static int dnet_trans_convert_timed_out_to_responses(struct dnet_net_state *st, 
 		cmd->flags &= ~(DNET_FLAGS_MORE | DNET_FLAGS_NEED_ACK);
 		cmd->status = -ETIMEDOUT;
 
-		list_add_tail(&r->req_entry, head);
+		list_add_tail(&r->req_entry, timeout_responses);
 
 		dnet_logger_unset_trace_id();
 
@@ -736,10 +736,10 @@ static int dnet_trans_convert_timed_out_to_responses(struct dnet_net_state *st, 
 	return trans_moved;
 }
 
-static int dnet_trans_check_stall(struct dnet_net_state *st, struct list_head *head)
+static int dnet_trans_check_stall(struct dnet_net_state *st, struct list_head *timeout_responses)
 {
 	int is_stall_state = 0;
-	int trans_timeout = dnet_trans_convert_timed_out_to_responses(st, head);
+	int trans_timeout = dnet_trans_convert_timed_out_to_responses(st, timeout_responses);
 
 	if (trans_timeout) {
 		struct timespec ts;
@@ -760,10 +760,10 @@ static int dnet_trans_check_stall(struct dnet_net_state *st, struct list_head *h
 	return is_stall_state;
 }
 
-static void dnet_trans_enqueue_responses_on_timed_out(struct dnet_node *n, struct list_head *head) {
+static void dnet_trans_enqueue_responses_on_timed_out(struct dnet_node *n, struct list_head *timeout_responses) {
 	struct dnet_io_req *r, *tmp;
 
-	list_for_each_entry_safe(r, tmp, head, req_entry) {
+	list_for_each_entry_safe(r, tmp, timeout_responses, req_entry) {
 		list_del_init(&r->req_entry);
 
 		dnet_schedule_io(n, r);
@@ -777,7 +777,7 @@ static void dnet_check_all_states(struct dnet_node *n)
 	int num_stall_state = 0;
 	int max_state_count = 0;
 	struct dnet_net_state **stall_states = NULL;
-	LIST_HEAD(head);
+	LIST_HEAD(timeout_responses);
 
 	pthread_mutex_lock(&n->state_lock);
 	/*
@@ -798,16 +798,16 @@ static void dnet_check_all_states(struct dnet_node *n)
 	}
 
 	rb_for_each_entry(st, &n->dht_state_root, node_entry) {
-		if (dnet_trans_check_stall(st, &head)) {
+		if (dnet_trans_check_stall(st, &timeout_responses)) {
 			dnet_state_get(st);
 			stall_states[num_stall_state++] = st;
 		}
 	}
 	pthread_mutex_unlock(&n->state_lock);
 
-	dnet_update_stall_backend_weights(&head);
+	dnet_update_stall_backend_weights(&timeout_responses);
 
-	dnet_trans_enqueue_responses_on_timed_out(n, &head);
+	dnet_trans_enqueue_responses_on_timed_out(n, &timeout_responses);
 
 	for (i = 0; i < num_stall_state; ++i) {
 		st = stall_states[i];
