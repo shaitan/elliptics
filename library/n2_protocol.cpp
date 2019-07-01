@@ -23,6 +23,13 @@ n2_request::n2_request(const dnet_cmd &cmd_,
 , body(std::move(body_))
 {}
 
+n2_response_info::n2_response_info(const dnet_cmd &cmd_in, std::function<int ()> &&response_holder_in)
+: cmd(cmd_in)
+, response_holder(std::move(response_holder_in))
+{
+	cmd.flags |= DNET_FLAGS_REPLY;
+}
+
 namespace ioremap { namespace elliptics { namespace n2 {
 
 int protocol_interface::on_request(dnet_net_state *st, std::unique_ptr<n2_request_info> request_info) {

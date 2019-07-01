@@ -77,6 +77,9 @@ struct n2_response_info {
 	dnet_cmd cmd;
 
 	std::function<int ()> response_holder;
+
+	n2_response_info() = default;
+	n2_response_info(const dnet_cmd &cmd, std::function<int ()> &&response_holder);
 };
 
 namespace ioremap { namespace elliptics { namespace n2 {
