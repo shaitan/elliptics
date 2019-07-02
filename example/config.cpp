@@ -401,12 +401,12 @@ extern "C" int dnet_node_set_verbosity(struct dnet_node *node, enum dnet_log_lev
 	return 0;
 }
 
-static io_pool_config parse_io_pool_config(const config_data &data, const kora::config_t &config) {
+static io_pool_config parse_io_pool_config(const kora::config_t &config, const io_pool_config &defaults) {
 	return {
-		config.at("io_thread_num", data.cfg_state.io_thread_num),
-		config.at("nonblocking_io_thread_num", data.cfg_state.nonblocking_io_thread_num),
-		config.at("lifo", true),
-		config.at<size_t>("queue_limit", 1000)
+		config.at("io_thread_num", defaults.io_thread_num),
+		config.at("nonblocking_io_thread_num", defaults.nonblocking_io_thread_num),
+		config.at("lifo", defaults.lifo),
+		config.at<size_t>("queue_limit", defaults.queue_limit)
 	};
 }
 
@@ -430,7 +430,7 @@ static boost::optional<cache::cache_config> parse_cache_config(const config_data
 	return config.has("cache") ? cache_config::parse(config["cache"]) : data.cache_config;
 }
 
-backend_config::backend_config(const config_data &data, const kora::config_t &config)
+backend_config::backend_config(config_data &data, const kora::config_t &config)
 : raw_config{kora::to_json(config.underlying_object())}
 , backend_id{config.at<uint32_t>("backend_id")}
 , group_id{config.at<uint32_t>("group")}
@@ -438,7 +438,7 @@ backend_config::backend_config(const config_data &data, const kora::config_t &co
 , enable_at_start{config.at<bool>("enable", true)}
 , read_only_at_start{config.at<bool>("read_only", false)}
 , pool_id{config.at<std::string>("pool_id", "")}
-, pool_config(parse_io_pool_config(data, config))
+, pool_config(parse_io_pool_config(config, data.io_pool_defaults()))
 , queue_timeout{parse_queue_timeout(data, config)}
 , cache_config{parse_cache_config(data, config)}
 , config_backend(get_config_backend(config))
@@ -515,13 +515,31 @@ std::shared_ptr<backend_config> config_data::get_backend_config(uint32_t backend
 	return nullptr;
 }
 
-io_pool_config config_data::get_io_pool_config(const std::string &pool_id) {
-	const io_pool_config default_config = {
+io_pool_config config_data::io_pool_defaults() {
+	io_pool_config sys_defaults = {
 		cfg_state.io_thread_num,
 		cfg_state.nonblocking_io_thread_num,
 		/*lifo*/ true,
 		/*queue_limit*/ 1000
 	};
+
+	const auto &root = parse_config()->root();
+	if (!root.has("options"))
+		return sys_defaults;
+
+	const auto &options = root["options"];
+	if (!options.has("io_pools"))
+		return sys_defaults;
+
+	const auto &io_pools = options["io_pools"];
+	if (!io_pools.has("defaults"))
+		return sys_defaults;
+
+	return parse_io_pool_config(io_pools["defaults"], sys_defaults);
+}
+
+io_pool_config config_data::get_io_pool_config(const std::string &pool_id) {
+	const auto default_config = io_pool_defaults();
 
 	const auto &root = parse_config()->root();
 	if (!root.has("options"))
@@ -535,7 +553,7 @@ io_pool_config config_data::get_io_pool_config(const std::string &pool_id) {
 	if (!io_pools.has(pool_id))
 		return default_config;
 
-	return parse_io_pool_config(*this, io_pools[pool_id]);
+	return parse_io_pool_config(io_pools[pool_id], default_config);
 }
 
 void config_data::parse_backends(const kora::config_t &config) {

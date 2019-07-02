@@ -94,7 +94,7 @@ struct io_pool_config {
 
 struct config_data;
 struct backend_config {
-	backend_config(const config_data &data, const kora::config_t &config);
+	backend_config(config_data &data, const kora::config_t &config);
 	backend_config(const backend_config &) = delete;
 	backend_config &operator=(const backend_config &) = delete;
 
@@ -142,6 +142,10 @@ struct config_data : public dnet_config_data {
 
 	// load all backends presented in @backends
 	void parse_backends(const kora::config_t &backends);
+
+	// default config for a backend io pool.
+	// It should be used if local config isn't presented or it has some parameters missed
+	io_pool_config io_pool_defaults();
 
 	// get actual io pool's config with re-parsing config file if it was updated
 	io_pool_config get_io_pool_config(const std::string &pool_id);
