@@ -1,3 +1,10 @@
+elliptics (2.27.10.5) unstable; urgency=low
+
+  * feat(net): separate acceptor thread from the other net threads
+  * feat(pools): allow to specify default config for backends' io pools
+
+ -- Kirill Smorodinnikov <shaitkir@gmail.com>  Wed, 03 Jul 2019 14:14:22 +0300
+
 elliptics (2.27.10.4) unstable; urgency=low
 
   * fix: merge processing LOOKUP and LOOKUP_NEW
