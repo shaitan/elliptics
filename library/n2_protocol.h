@@ -24,7 +24,7 @@ struct n2_response_info *n2_response_info_create_from_error(struct dnet_cmd *cmd
 void n2_response_info_call_response(struct n2_response_info *response_info);
 
 void n2_reply_error(struct n2_repliers *repliers, int error);
-void n2_trans_destroy_repliers(struct n2_repliers *repliers);
+void n2_destroy_repliers(struct n2_repliers *repliers);
 
 #ifdef __cplusplus
 }

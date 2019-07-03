@@ -160,7 +160,7 @@ void n2_reply_error(struct n2_repliers *repliers, int error) {
 	}
 }
 
-void n2_trans_destroy_repliers(struct n2_repliers *repliers) {
+void n2_destroy_repliers(struct n2_repliers *repliers) {
 	delete repliers;
 }
 

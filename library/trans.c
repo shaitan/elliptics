@@ -272,7 +272,7 @@ void dnet_trans_destroy(struct dnet_trans *t)
 		// (when transaction is interrupted some way before getting meaningful result)
 		n2_reply_error(t->repliers, -ECANCELED);
 
-		n2_trans_destroy_repliers(t->repliers);
+		n2_destroy_repliers(t->repliers);
 	}
 
 	if (st && st->n && t->command) {
